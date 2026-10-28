@@ -127,7 +127,18 @@ const scrolled = await js(`(() => { const el=document.querySelector("#scroll");
   el.scrollTop = Math.max(0, el.scrollHeight - el.clientHeight - 400);
   el.dispatchEvent(new Event("scroll")); return Math.round(el.scrollTop); })()`);
 await js(`document.querySelector("#side .item[data-view=cfg]").click()`); await sleep(500);
-check("设置里不出现「回到最新」", (await js(`getComputedStyle(document.querySelector("#jump")).display`)) === "none");
+// 「回到最新」只能在对话里出现：把几个能滚的视图都切一遍，各自滚到中间看它冒不冒出来
+const jumpSeen = [];
+for (const sel of ['#doclist .item[data-doc]', '#side .item[data-view=cfg]', '#auditlist .item']) {
+  const clicked = await js('(function(){ var b=document.querySelector("' + sel.replace("'", "") + '"); if(!b) return false; b.click(); return true; })()');
+  if (!clicked) { jumpSeen.push(sel + '=skip'); continue; }
+  await sleep(600);
+  await js('(function(){ var el=document.querySelector("#scroll"); el.scrollTop=Math.floor(el.scrollHeight/2); el.dispatchEvent(new Event("scroll")); })()');
+  await sleep(200);
+  const disp = await js('getComputedStyle(document.querySelector("#jump")).display');
+  jumpSeen.push(sel + '=' + disp);
+}
+check("非对话界面都没有「回到最新」", jumpSeen.every((x) => x.endsWith('=none') || x.endsWith('=skip')), jumpSeen.join(' | '));
 await js(`document.querySelector("#side .item[data-view=chat]").click()`); await sleep(700);
 const back = await js(`Math.round(document.querySelector("#scroll").scrollTop)`);
 check("切回对话保住滚动位置", Math.abs(back - scrolled) <= 8, `${scrolled} → ${back}`);

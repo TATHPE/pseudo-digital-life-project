@@ -378,10 +378,14 @@ export const PAGE = `<!doctype html>
   #stop:hover { background:rgba(255,95,86,.2); }
 
   /* ── 回到最新（P2 #15）──────────────────────────────── */
+  /* 「回到最新」只在对话里可能出现：
+     display 由 body[data-view] + .on 两道同时决定，任何 JS 路径都不可能把它漏到别的界面 */
   #jump { position:absolute; right:26px; bottom:86px; display:none; align-items:center; gap:6px;
           background:#000; border:1px solid var(--line); color:var(--ink); font-weight:700;
           font:10px/1 var(--mono); letter-spacing:.1em; padding:8px 11px; cursor:pointer; z-index:8; }
   #jump:hover { background:rgba(233,240,242,.14); }
+  body[data-view="chat"] #jump.on { display:inline-flex; }
+  body:not([data-view="chat"]) #jump { display:none !important; }
   main { position:relative; }
 
   /* ── 骨架（P2 #19）：首屏别空着 ─────────────────────── */
@@ -619,10 +623,11 @@ function show(v) {
   // 切走时把滚动位置存下来：隐藏 #chat 会让 #scroll 的 scrollHeight 塌成 0，浏览器会把 scrollTop 归零
   if (view === "chat" && v !== "chat") chatScroll = $("#scroll").scrollTop;
   view = v;
+  document.body.dataset.view = v;   // CSS 用它把「回到最新」锁在对话里
   for (const id of ["chat", "cfg", "toolview", "memview", "docview", "auditview", "searchview"]) $("#" + id).hidden = id !== v;
   $("#composer").style.display = v === "chat" ? "" : "none";
   // "回到最新"是对话专用的，别的界面不该出现
-  if (v !== "chat") $("#jump").style.display = "none";
+  if (v !== "chat") $("#jump").classList.remove("on");
   if (v === "chat") {
     requestAnimationFrame(function () {
       const el = $("#scroll");
@@ -1155,12 +1160,13 @@ function nearBottom() {
 $("#scroll").addEventListener("scroll", function () {
   if (view !== "chat") return;
   follow = nearBottom();
-  $("#jump").style.display = follow ? "none" : "inline-flex";
+  $("#jump").classList.toggle("on", !follow);
   if (follow) $("#jumpn").textContent = "";
 });
 $("#jump").onclick = function () {
+  $("#jump").classList.remove("on");
   follow = true; scrollBottom();
-  $("#jump").style.display = "none"; $("#jumpn").textContent = "";
+  $("#jumpn").textContent = "";
 };
 
 // ── 停止生成（P1 #7）──────────────────────────────────
@@ -1416,7 +1422,7 @@ $("#composer").onsubmit = async (e) => {
         if (d.type === "done") { meta.textContent = clock(new Date().toISOString()); }
       }
       if (follow) scrollBottom();
-      else { const n = Number($("#jumpn").textContent || 0) + 1; $("#jumpn").textContent = String(n); $("#jump").style.display = "inline-flex"; }
+else { const n = Number($("#jumpn").textContent || 0) + 1; $("#jumpn").textContent = String(n); $("#jump").classList.add("on"); }
     }
   } catch (err) {
     const aborted = err && (err.name === "AbortError");
