@@ -245,9 +245,10 @@ export const PAGE = `<!doctype html>
 <aside id="side">
   <div class="sec" id="pendsec" hidden><h3>PENDING · 待确认</h3><div id="pendlist"></div></div>
   <div class="sec"><h3>SESSIONS</h3><div id="sesslist"></div></div>
-  <div class="sec"><h3>TOOLS</h3><div id="toollist"><button class="item on" data-view="chat">对话<span class="m">与鲸鲸说话</span></button></div></div>
+  <!-- 内容在前、参考在后：TOOLS 有 16 项，放在中间会把 DOCS / MEMORY 挤到折叠线以下 -->
   <div class="sec"><h3>DOCS</h3><div id="doclist"></div></div>
   <div class="sec"><h3>MEMORY</h3><div id="memlist"></div></div>
+  <div class="sec"><h3>TOOLS</h3><div id="toollist"><button class="item on" data-view="chat">对话<span class="m">与鲸鲸说话</span></button></div></div>
   <div class="sec"><h3>CONFIG</h3>
     <button class="item" data-view="cfg">设置<span class="m">接口 / 人格</span></button>
   </div>
