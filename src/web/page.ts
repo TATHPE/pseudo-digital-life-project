@@ -611,6 +611,7 @@ const TITLE = 'Pseudo Digital Life Project';
 const H = { "x-jj": "1", "content-type": "application/json" };
 const WHALE = "<svg class='ico' aria-hidden='true'><use href='#whale' /></svg>";
 let view = "chat", TOOLS = [], MEMS = [];
+let sideActive = null;   // 侧栏里最后点的那一项（文档/工具/记忆/日期都是多选一）
 
 
 var chatScroll = 0;   // 切走前记下对话滚到哪了
@@ -630,8 +631,14 @@ function show(v) {
       else { el.scrollTop = el.scrollHeight; chatScroll = 0; }
     });
   }
+  // 侧栏里除了几个导航项，其余都是多选一（工具 / 文档 / 记忆 / 日期）。
+  // 只按 data-view 匹配会变成「点了 A，B C D 一起被框」。
+  const navOnly = (b) => !b.dataset.doc && !b.dataset.tool && !b.dataset.mem && !b.dataset.day;
   for (const b of document.querySelectorAll("#side .item")) {
-    b.classList.toggle("on", b.dataset.view === v);
+    b.classList.toggle("on", navOnly(b) && b.dataset.view === v);
+  }
+  if (sideActive && sideActive.isConnected && !navOnly(sideActive) && sideActive.dataset.view === v) {
+    sideActive.classList.add("on");
   }
   $("#side").classList.remove("open");
 }
@@ -1306,6 +1313,7 @@ document.addEventListener("click", (e) => {
   const t = e.target.closest("#side .item");
   if (!t || !t.dataset.view) return;
   const v = t.dataset.view;
+  sideActive = t;
   for (const b of document.querySelectorAll("#side .item")) b.classList.toggle("on", b === t);
   if (v === "cfg") { show("cfg"); loadConfig().then(() => loadPersona($("#p-file").value)); return; }
   if (v === "toolview") { openTool(Number(t.dataset.tool)); return; }

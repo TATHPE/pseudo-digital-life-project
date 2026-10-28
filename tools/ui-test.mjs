@@ -132,6 +132,12 @@ await js(`document.querySelector("#side .item[data-view=chat]").click()`); await
 const back = await js(`Math.round(document.querySelector("#scroll").scrollTop)`);
 check("切回对话保住滚动位置", Math.abs(back - scrolled) <= 8, `${scrolled} → ${back}`);
 
+// 侧栏多选一：点第 2 篇文档时，第 1 篇不能还挂着框
+await js(`(() => { document.querySelector("#side .item[data-doc]").click(); return true; })()`); await sleep(600);
+await js(`(() => { const d = document.querySelectorAll("#doclist .item[data-doc]"); if (d[1]) d[1].click(); return true; })()`); await sleep(600);
+const onCount = await js(`({ total: document.querySelectorAll("#side .item.on").length, docs: document.querySelectorAll("#doclist .item.on").length })`);
+check("侧栏同时只有一项被框", onCount.total === 1 && onCount.docs <= 1, JSON.stringify(onCount));
+
 ws.close(); proc.kill();
 let bad = 0;
 for (const [n, ok, d] of out) { console.log(`${ok ? "✅" : "❌"} ${n}${d ? "  — " + String(d).slice(0, 70) : ""}`); if (!ok) bad++; }
