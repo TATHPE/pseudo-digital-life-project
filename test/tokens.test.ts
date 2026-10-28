@@ -15,9 +15,10 @@ test("单调性：越长的文本 token 不减少", () => {
  * 若改了系数，这里会失败——这是有意的。
  */
 const CALIB: Array<[string, number]> = [
-  ["persona/core.md", 216],
+  ["persona/core.md", 215],
   ["persona/voice.md+values.md", 427],
-  ["persona/tools.md", 115],
+  ["persona/tools.md", 115],   // 英文/代码多，用来卡住「按词算」这条
+  ["README.md", 5109],       // 中英混排大文本：旧系数在这里也偏 15%
 ];
 
 test("标定：估算与 cl100k 实测偏差 ≤15%", () => {
