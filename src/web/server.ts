@@ -182,7 +182,8 @@ export function faviconSvg(): string {
   const vb = m?.[1] ?? "0 0 512 512";
   const body = m?.[2] ?? "";
   // 两个都设：path 用的是 currentColor，独立 SVG 里它取决于 color（默认黑）
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vb}" fill="#0f97a4" color="#0f97a4">${body}</svg>`;
+  // 标签页图标用黑色：浏览器标签栏大多是浅底，青色在深色栏里反而不显
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vb}" fill="#000" color="#000">${body}</svg>`;
 }
 
 export function manifestJson(): string {

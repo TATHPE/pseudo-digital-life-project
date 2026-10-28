@@ -23,7 +23,6 @@ export const PAGE = `<!doctype html>
 <!-- PWA（19 §7.5）：装到桌面后是独立窗口，不是浏览器标签页 -->
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" type="image/svg+xml" href="/icon.svg">
-<link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
 <link rel="apple-touch-icon" href="/icon-180.png">
 <meta name="theme-color" content="#0b0e0b">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -174,9 +173,6 @@ export const PAGE = `<!doctype html>
   .row.user .meta { color:rgba(255,180,84,.75); }
   .body { background:var(--panel2); border:1px solid var(--line-dim);
           border-left:2px solid var(--line); padding:12px 15px; display:inline-block; max-width:100%; }
-  .row.user .body { background:var(--panel2); border-color:rgba(255,180,84,.22);
-                    border-left:0; border-right:2px solid var(--amber);
-                    margin-left:auto; max-width:82%; text-align:left; }
   .body > :first-child { margin-top:0; } .body > :last-child { margin-bottom:0; }
   .body p { margin:8px 0; } .body ul, .body ol { margin:8px 0; padding-left:22px; }
   .body li { margin:3px 0; }
@@ -277,9 +273,11 @@ export const PAGE = `<!doctype html>
   /* ── 气泡：两侧一眼分得开（之前两边都是淡框，长消息看着像没有气泡）── */
   .body { background:rgba(18,28,24,.92); border:1px solid var(--line-dim);
           border-left:2px solid var(--cyan); padding:12px 15px; display:inline-block; max-width:100%; }
+  /* 关键：inline-block 上的 margin-left:auto 不生效（auto 只作用于块级盒子），
+     所以用户气泡一直贴在左边缘。改成 block + fit-content 才真的靠右。 */
   .row.user .body { background:rgba(38,28,14,.92); border-color:rgba(255,180,84,.34);
-                    border-left:0; border-right:2px solid var(--amber);
-                    margin-left:auto; max-width:82%; text-align:left; }
+                    border-left:0; border-right:2px solid var(--amber); display:block;
+                    width:fit-content; margin-left:auto; max-width:82%; text-align:left; }
 
   /* ── 侧栏分区可折叠（MEMORY / DOCS / ACTIONS）────── */
   .sec h3 button { all:unset; cursor:pointer; display:flex; align-items:center; gap:8px; width:100%;

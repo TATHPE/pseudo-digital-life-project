@@ -588,7 +588,7 @@ test("favicon：静态 /icon.svg 里的 viewBox 必须是符号自己的（之�
     const svg = await (await fetch(`${base}/icon.svg`)).text();
     assert.match(svg, /viewBox="0 0 512 512"/, "viewBox 必须和 symbol 一致");
     assert.ok(svg.includes("M453.004"), "要真的是那条鲸尾路径");
-    assert.match(svg, /color="#0f97a4"/, "currentColor 需要 color 才有颜色");
+    assert.match(svg, /color="#000"/, "currentColor 需要 color 才有颜色（标签页用黑色）");
     assert.match(svg, /^<svg xmlns=/, "必须是独立 SVG 文档");
     assert.ok(PAGE.includes('rel="icon" type="image/svg+xml" href="/icon.svg"'), "head 里要有静态图标链接");
     assert.ok(!PAGE.includes("function favicon()"), "不要再靠运行时拼 data URI");
@@ -666,4 +666,9 @@ test("面板：头像可换 / 三个分区可折叠 / 气泡两侧不同", () =>
   }
   // 两侧气泡底色不同（不然长消息看着像没有气泡）
   assert.ok(PAGE.includes(".row.user .body { background:rgba(38,28,14,.92)"), "用户气泡要有自己的底色");
+  // 只写 margin-left:auto 是空操作（inline-block 不吃 auto 边距）—— 必须配 width:fit-content
+  const userBody = PAGE.slice(PAGE.indexOf(".row.user .body {"), PAGE.indexOf(".row.user .body {") + 260);
+  assert.ok(userBody.includes("margin-left:auto"), "用户气泡要 auto 左边距");
+  assert.ok(userBody.includes("width:fit-content"), "否则 auto 边距不起作用，气泡会贴在左边");
+  assert.ok(userBody.includes("display:block"), "inline-block 上的 auto 边距无效");
 });
