@@ -255,6 +255,8 @@ export const PAGE = `<!doctype html>
     /* 遮罩用 box-shadow 而不是伪元素：伪元素 z-index:-1 会被 aside 自己的背景盖住，等于没有 */
     aside.open { box-shadow:0 0 0 100vmax rgba(0,0,0,.5); }
     .chip { display:none; }
+    /* 窄屏状态行分级：保留时间与计数，收起那句描述（它最长、最容易被截成半句） */
+    #statetext { display:none; }
     #menu { display:inline-flex; }
     /* 底部装饰标签会和输入框叠在一起，手机上直接不要 */
     .frame b { display:none; }
@@ -348,7 +350,7 @@ export const PAGE = `<!doctype html>
 <header>
   <button id="menu" aria-label="菜单" title="菜单">≡</button>
   <span class="brand" aria-label="鲸鲸"><svg class="ico" role="img" aria-hidden="false"><use href="#whale" /></svg></span>
-  <span class="hud" title=""><i class="dot"></i><span id="state">…</span><span id="readout"></span></span>
+  <span class="hud" title=""><i class="dot"></i><span id="state">…</span><span id="statetext"></span><span id="readout"></span></span>
   <span id="pendbadge" class="badge" hidden>0</span>
   <span class="chip" id="metachip" title="release · schema · 冻结状态">…</span>
   <span class="chip" id="modelchip">…</span>
@@ -546,7 +548,8 @@ function clock(iso) {
 }
 async function state() {
   const s = await (await fetch("/api/state")).json();
-  $("#state").textContent = s.line + (s.state?.text ? " · " + s.state.text : "");
+  $("#state").textContent = s.line;
+  $("#statetext").textContent = s.state?.text ? " · " + s.state.text : "";
   var hud = document.querySelector(".hud"); if (hud) hud.title = s.line + (s.state?.text ? " · " + s.state.text : "");
   // 断电提示：只在重启后第一次显示（服务端只给一次）
   if (s.outage) {
