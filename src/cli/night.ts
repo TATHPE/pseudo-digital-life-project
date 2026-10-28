@@ -22,9 +22,40 @@ export interface NightOptions {
   now?: Date;
 }
 
+/**
+ * 检查角色表里那些本地角色，模型到底装没装（问一次 Ollama 的 /api/tags）。
+ * 只检查 kind=local 的；云端角色不做网络探测（也不该在夜间流程里出网）。
+ */
+async function missingLocalModels(roles: Record<string, { kind: string; provider: string; model: string }>): Promise<string[]> {
+  const wanted = [...new Set(Object.values(roles).filter((r) => r.kind === "local" && r.provider === "ollama").map((r) => r.model))];
+  if (!wanted.length) return [];
+  let have: string[] = [];
+  try {
+    const r = await fetch("http://127.0.0.1:11434/api/tags", { signal: AbortSignal.timeout(3000) });
+    const j = await r.json() as { models?: Array<{ name: string }> };
+    have = (j.models ?? []).map((m) => m.name);
+  } catch {
+    return ["（Ollama 没在跑：http://127.0.0.1:11434 连不上）"];
+  }
+  return wanted.filter((m) => !have.includes(m) && !have.includes(m + ":latest"));
+}
+
 export async function runNightCli(opts: NightOptions): Promise<number> {
   const now = opts.now ?? new Date();
   const cfg = resolveConfig(opts.home);
+  // 前置检查：本地整理模型在不在。
+  // 2026-10-28 删掉了 1.5B（它调不动工具），如果环境里没有任何本地 chat 模型，
+  // 这里必须**说人话**，而不是让 ollama 抛一个 404 让人去猜。
+  const missing = await missingLocalModels(cfg.roles);
+  if (missing.length) {
+    console.error("⚠ 夜间整备需要本地模型，但 Ollama 里没有：");
+    for (const m of missing) console.error("   - " + m);
+    console.error(String.fromCharCode(10) + "可选：");
+    console.error("  ① 装一个能调工具的（推荐）：ollama pull qwen2.5:7b-instruct");
+    console.error("     然后 export JJ_MODEL_NIGHT=qwen2.5:7b-instruct（route/extract/salience/conflict 同理）");
+    console.error("  ② 暂时不跑夜间整备：记忆会停在「只追加不整理」的状态（inbox 仍然不丢）");
+    return 2;
+  }
   const d = openDb(opts.dbFile);
   const transport = createTransport(routerFrom(cfg.roles as never));
   const embedder = createEmbedder("ollama", { baseUrl: cfg.ollama, model: cfg.roles["embed"]!.model });
