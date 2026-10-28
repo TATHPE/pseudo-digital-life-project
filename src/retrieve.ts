@@ -19,6 +19,8 @@ export interface Hit {
   stage: Stage; weight: number; cite: string;
   relevance: number;          // 0..1，用于 fading 的"话题直接命中"判断
   via: "active" | "fading" | "flashback";
+  /** 敏感度：local_only 的原文不许跟着工具结果出网（13 §10） */
+  sensitivity?: "local_only" | "shareable";
   bm25Rank?: number; cosRank?: number; cosine?: number;
 }
 
@@ -72,13 +74,13 @@ export async function search(
   // 元数据按 id 批量取（不含 embedding）。
   // 用 json_each(?) 而不是 IN (?,?,…)——后者要为每个 chunk 重新 prepare 一个
   // 500 参数的语句，实测占掉 20 ms；json_each 只要一个参数、一条语句。
-  const metaById = new Map<number, { text: string; stage: Stage; weight: number }>();
+  const metaById = new Map<number, { text: string; stage: Stage; weight: number; sensitivity?: string }>();
   if (ranked.length) {
     const got = db.prepare(
-      `SELECT id,text,stage,weight FROM memories
+      `SELECT id,text,stage,weight,sensitivity FROM memories
        WHERE status='active' AND id IN (SELECT value FROM json_each(?))`,
-    ).all(JSON.stringify(ranked.map((r) => r.id))) as Array<{ id: number; text: string; stage: Stage; weight: number }>;
-    for (const g of got) metaById.set(g.id, { text: g.text, stage: g.stage, weight: g.weight });
+    ).all(JSON.stringify(ranked.map((r) => r.id))) as Array<{ id: number; text: string; stage: Stage; weight: number; sensitivity?: string }>;
+    for (const g of got) metaById.set(g.id, { text: g.text, stage: g.stage, weight: g.weight, ...(g.sensitivity ? { sensitivity: g.sensitivity } : {}) });
   }
   const rows = ranked
     .filter((r) => metaById.has(r.id))
@@ -121,6 +123,7 @@ export async function search(
       via: "active" as const,
       score: rrf * (0.6 + 0.4 * r.weight),
       cite: `mem:${r.id}`, bm25Rank: bmRank.get(r.id), cosRank: cosRank.get(r.id), cosine: c,
+      ...(r.sensitivity ? { sensitivity: r.sensitivity as "local_only" | "shareable" } : {}),
     };
   });
 

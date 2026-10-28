@@ -355,6 +355,8 @@ export const PAGE = `<!doctype html>
 
   /* ── 面板内摄入（P1 #6）────────────────────────────── */
   .ingest { margin-top:6px; display:flex; flex-direction:column; gap:6px; }
+  .ilab { font:9px/1.2 var(--mono); letter-spacing:.1em; color:var(--ink-dim); font-weight:700; margin:0; }
+  .ingest select { font:11px/1.3 var(--mono); padding:6px 8px; }
   .ingest .rowmini { display:flex; align-items:center; justify-content:space-between; gap:8px; }
   .ingest label { display:flex; align-items:center; gap:5px; flex:none; white-space:nowrap;
                  font:10px/1 var(--mono); color:var(--dim); }
@@ -434,8 +436,13 @@ export const PAGE = `<!doctype html>
   <!-- 内容在前、参考在后：TOOLS 有 16 项，放在中间会把 DOCS / MEMORY 挤到折叠线以下 -->
   <div class="sec" data-sec="docs"><h3><button type="button" data-tog="docs">DOCS <span class="n" id="doccount"></span></button></h3><div id="doclist"></div>
     <div class="ingest">
-      <input id="dlg-path" class="searchbox" placeholder="sources/笔记.md" autocomplete="off">
-      <div class="rowmini"><label><input type="checkbox" id="dlg-share"> 允许进云端</label><button id="dlg-go">摄入</button></div>
+      <label class="ilab">加文档 · 填 data/ 内的路径</label>
+      <select id="dlg-pick" class="searchbox"></select>
+      <input id="dlg-path" class="searchbox" placeholder="或直接粘路径，如 sources/我的笔记.pdf" autocomplete="off">
+      <div class="rowmini">
+        <label title="勾上：这些文档的片段会随简报发给云端模型。不勾：只在本机检索，模型读不到原文"><input type="checkbox" id="dlg-share"> 允许进云端</label>
+        <button id="dlg-go">摄入</button>
+      </div>
       <span id="dlg-msg" class="hint"></span>
     </div></div>
   <div class="sec" data-sec="mem"><h3><button type="button" data-tog="mem">MEMORY <span class="n" id="memcount"></span></button></h3><div id="memlist"></div></div>
@@ -719,7 +726,18 @@ $("#pendlist").onclick = async (e) => {
   await pending(); await timeline(); await state();
 };
 // ── DOCS：摄入过的文档（点击看分块）──────────────────────────
+async function ingestCandidates() {
+  var list = [];
+  try { list = await (await fetch("/api/ingest/candidates")).json(); } catch (e) { return; }
+  var sel = $("#dlg-pick");
+  if (!sel) return;
+  sel.innerHTML = (list && list.length)
+    ? "<option value=''>data/sources 里还有 " + list.length + " 个未摄入的文件…</option>" +
+      list.map(function (x) { return "<option value='" + escapeHtml(x.path) + "'>" + escapeHtml(x.path) + "</option>"; }).join("")
+    : "<option value=''>data/sources 里没有待摄入的文件</option>";
+}
 async function docs() {
+  ingestCandidates();
   let list = [];
   try { list = await (await fetch("/api/docs")).json(); } catch (e) { return; }
   const box = $("#doclist");
@@ -813,6 +831,9 @@ $("#dlg-go").onclick = async () => {
     msg.textContent = j.error + (j.hint ? " · " + j.hint : "");
   }
 };
+$("#dlg-pick").addEventListener("change", (e) => {
+  if (e.target.value) $("#dlg-path").value = e.target.value;
+});
 $("#dlg-path").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); $("#dlg-go").click(); } });
 
 // ── 测试连接 + 今日花费（P1 #11/#12）──────────────────

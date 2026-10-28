@@ -255,7 +255,8 @@ test("doc.search / doc.list 是 T0，走 execute 能直接调（不用确认）"
   const { home, db } = rig();
   const f = join(home, "sources", "e.md");
   writeFileSync(f, "# e\n\n领地是它自己划的圈。" + "内容".repeat(80));
-  await ingestFile(db, f, { home, embedder: createEmbedder("fake") });
+  // 云端表达时只有 shareable 的原文会被工具返回 → 这个用例要标成可发送
+  await ingestFile(db, f, { home, embedder: createEmbedder("fake"), sensitivity: "shareable" });
 
   const policy = await loadPolicy(home);
   const ctx = { home, now: () => new Date(), db, embedder: createEmbedder("fake") };
@@ -295,4 +296,24 @@ test("schema v7：v6 老库补上 documents/chunks 的新列", () => {
   assert.ok(chunkCols.includes("deleted_at"));
   d.db.close();
   void readFileSync; void sourcesDir;
+});
+
+test("工具结果也不许把 local_only 原文带出网：云端表达时只回 shareable，其余只报个数", async () => {
+  const { home, db } = rig();
+  writeFileSync(join(home, "sources", "私.md"), "# 私" + String.fromCharCode(10,10) + "这一段只在本地，不许出网。领地边界与降级。" + "内容".repeat(60));
+  await ingestFile(db, join(home, "sources", "私.md"), { home, embedder: createEmbedder("fake") }); // 默认 local_only
+  const policy = await loadPolicy(home);
+  const ctx = { home, now: () => new Date(), db, embedder: createEmbedder("fake") };
+
+  // 默认 express = deepseek（云端）→ 原文不出网
+  const remote = await execute({ db, policy, ctx }, "doc.search", { q: "领地" });
+  assert.equal(remote.ok, true);
+  assert.ok(!remote.output.includes("领地边界"), `泄漏了：${remote.output.slice(0, 80)}`);
+  assert.match(remote.output, /不出网|共 \d+ 段匹配/);
+
+  // 把表达角色改到回环（本地推理）→ 原文可以给它看
+  writeFileSync(join(home, "config.json"), JSON.stringify({ express: { provider: "ollama", model: "qwen2.5:1.5b-instruct", baseUrl: "http://127.0.0.1:11434" } }));
+  const local = await execute({ db, policy, ctx }, "doc.search", { q: "领地" });
+  assert.equal(local.ok, true);
+  assert.ok(local.output.includes("领地边界"), `本地时应返回原文：${local.output.slice(0, 80)}`);
 });

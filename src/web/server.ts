@@ -17,7 +17,7 @@ import { writeFileConfig, readFileConfig, resolveConfig } from "../configfile.ts
 import { AVATAR_FRAMES, DEFAULT_AVATAR, isAvatarFrame } from "./avatar.ts";
 import { getPending, listPending, updatePending } from "../confirm.ts";
 import { readStateSafe } from "../deploy/slot.ts";
-import { listDocs, forgetDoc, setDocSensitivity, ingestPath } from "../ingest.ts";
+import { listDocs, forgetDoc, setDocSensitivity, ingestPath, collectFiles } from "../ingest.ts";
 import { bigramText } from "../text.ts";
 import { atomicWriteFile } from "../fsx.ts";
 import { safePath } from "../verbs.ts";
@@ -33,9 +33,10 @@ import { runAgent, type ChatFn } from "../agent.ts";
 import { renderMarkdown, esc } from "../md.ts";
 import { loadState, advance, describe } from "../state.ts";
 import type { Outage } from "../types.ts";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 const joinDir = (a: string, b: string) => join(a, b);
+const posixPath = (p: string) => p.split("\\").join("/");
 import type { StreamTransport } from "../transport.ts";
 import type { Embedder } from "../embed.ts";
 import type { MemoryLine, Tier } from "../types.ts";
@@ -444,10 +445,25 @@ export function createWebServer(deps: WebDeps) {
         return;
       }
 
+      if (req.method === "GET" && url.pathname === "/api/ingest/candidates") {
+        // 面板不能读客户端文件系统 —— 只能列服务端 data/sources 下还没摄入的东西
+        const dir = join(deps.home, "sources");
+        const done = new Set((deps.db.prepare("SELECT rel_path FROM documents WHERE deleted_at IS NULL").all() as Array<{ rel_path: string }>)
+          .map((r) => String(r.rel_path ?? "")));
+        json(res, 200, collectFiles(dir)
+          .map((f) => posixPath(relative(dir, f)))
+          .filter((rel) => !done.has(rel))
+          .slice(0, 50)
+          .map((rel) => ({ rel, path: "sources/" + rel })));
+        return;
+      }
       if (req.method === "POST" && url.pathname === "/api/ingest") {
         const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
         const body = JSON.parse(await readBody(req)) as { path?: string; shareable?: boolean };
         const target = String(body.path ?? "").trim();
+        // 编码闸（和 /api/say 同一条）：GBK 请求体解出来是 U+FFFD，
+        // 不拦的话会变成"查一个乱码路径 → E_NOT_FOUND"，让人以为是文件不存在
+        if (looksMojibake(target)) { json(res, 400, { error: "E_ENCODING", hint: "请求体不是 UTF-8（可能是 GBK）" }); return; }
         if (!target) { json(res, 400, { error: "E_NO_PATH" }); return; }
         // 只允许 home 内的路径（面板不是文件管理器；sources/ 是约定的落点）
         let abs: string;

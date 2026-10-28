@@ -82,6 +82,27 @@ import { remember } from "./store.ts";
 import { renderTemplate, templateCatalog, templateById, planRun, runArgv } from "./shell.ts";
 import { listDocs } from "./ingest.ts";
 import { dedupeTitle } from "./chunk.ts";
+import { resolveConfig } from "./configfile.ts";
+import { isRemoteRole } from "./transport.ts";
+
+/**
+ * 工具结果会跟着下一轮请求一起发给表达角色（agent.ts 把 tool 消息塞进 messages）。
+ * 所以「这段原文能不能出网」必须在**工具返回之前**判定，而不是等 transport 抛错——
+ * 等它抛错时，文字已经在请求体里了。
+ */
+function expressIsRemote(ctx: VerbCtx): boolean {
+  try {
+    const cfg = resolveConfig(ctx.home);
+    const ex = cfg.roles["express"];
+    return ex ? isRemoteRole(ex) : true;   // 拿不准就当远端（保守）
+  } catch { return true; }
+}
+
+/** 出网时的替代文案：不假装没有，只说"有但不能发"（07 §3 的诚实条款） */
+function redacted(what: string, n: number): string {
+  return `（${what}共 ${n} 段匹配，但当前表达模型在云端，原文不出网。` +
+    `要让它读到：把那一篇标为"可发送"，或在本地面板里打开对应引用）`;
+}
 import { spawnSync } from "node:child_process";
 
 /** docker 模式超时后清容器（客户端被杀不等于容器停了） */
@@ -107,6 +128,12 @@ export const verbs: VerbDef[] = [
       if (!ctx.db) throw new Error("E_NO_DB");
       if (!ctx.embedder) throw new Error("E_NO_EMBEDDER");
       const r = await search(ctx.db, ctx.embedder, String(a.q ?? ""), { k: Number(a.k ?? 5) });
+      // 云端表达：只回 shareable 的原文；local_only 只报个数
+      if (expressIsRemote(ctx)) {
+        const ok = r.hits.filter((h) => h.sensitivity === "shareable");
+        if (!ok.length) return r.hits.length ? redacted("本地下", r.hits.length) : "（没有相关记忆）";
+        return ok.map((h) => `[mem:${h.id}] ${h.text}`).join(String.fromCharCode(10));
+      }
       return r.hits.length ? r.hits.map((h) => `[mem:${h.id}] ${h.text}`).join(String.fromCharCode(10)) : "（没有相关记忆）";
     },
   },
@@ -282,6 +309,14 @@ export const verbs: VerbDef[] = [
     async run(a, ctx) {
       if (!ctx.db) throw new Error("E_NO_DB");
       const r = await searchDocs(ctx.db, ctx.embedder ?? null, String(a.q ?? ""), { k: Number(a.k ?? 5) });
+      if (expressIsRemote(ctx)) {
+        const ok = r.hits.filter((h) => h.sensitivity === "shareable");
+        if (!ok.length) return r.hits.length ? redacted("本地文档里", r.hits.length) : "（没有相关文档块）";
+        const NL2 = String.fromCharCode(10);
+        return ok.map((h) =>
+          "[" + h.cite + "] " + h.title + (dedupeTitle(h.headingPath, h.title) ? " › " + dedupeTitle(h.headingPath, h.title) : "") + NL2 + h.text.slice(0, 600),
+        ).join(NL2 + NL2);
+      }
       if (!r.hits.length) return "（没有相关文档块）";
       const NL = String.fromCharCode(10);
       return r.hits.map((h) =>

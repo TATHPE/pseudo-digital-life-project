@@ -43,11 +43,16 @@ export function hostOf(url: string): string {
   try { return new URL(url).hostname; } catch { return ""; }
 }
 
+/** 这个角色最终会不会出网：回环 = 本地推理，其余 = 走公网（读记忆原文前必须先问这一句） */
+export function isRemoteRole(c: RoleConfig): boolean {
+  return !isLoopback(endpointOf(c));
+}
+
 export function isLoopback(url: string): boolean {
   return LOOPBACK.has(hostOf(url));
 }
 
-function endpointOf(c: RoleConfig): string {
+export function endpointOf(c: RoleConfig): string {
   if (c.baseUrl) return c.baseUrl.replace(/\/+$/, "");
   if (c.provider === "ollama") return "http://127.0.0.1:11434";
   if (c.provider === "anthropic") return "https://api.anthropic.com";

@@ -729,3 +729,44 @@ test("配色铁律：全站只有鲸鲸气泡用青色，其余是黑底+白边�
   assert.ok(PAGE.includes(".ro-l { font:8px/1 var(--mono); letter-spacing:.22em; color:var(--ink); font-weight:700;"));
   assert.ok(PAGE.includes("input, select, textarea { width:100%; color:var(--fg); font:inherit; background:#000;"));
 });
+
+test("面板摄入：候选列表只列未摄入的，编码不对不装成 E_NOT_FOUND", async () => {
+  const dir = tmp();
+  const d = openDb(join(dir, "m.db"));
+  mkdirSync(join(dir, "sources", "子目录"), { recursive: true });
+  writeFileSync(join(dir, "sources", "待摄入.md"), "# 待摄入\n\n" + "内容".repeat(60));
+  mkdirSync(join(dir, "sources", "子目录"), { recursive: true });
+  writeFileSync(join(dir, "sources", "子目录", "另一个.txt"), "文本");
+  const srv = createWebServer({
+    db: d.db, inboxDir: join(dir, "inbox"), home: dir,
+    getTransport: () => { throw new Error("no model"); }, getEmbedder: () => null,
+    getConfig: () => ({ ollama: "", roles: { express: { provider: "deepseek", model: "x", embed: { provider: "ollama", model: "bge-m3" } } } }),
+  });
+  await new Promise<void>((r) => srv.listen(0, "127.0.0.1", () => r()));
+  const base = `http://127.0.0.1:${(srv.address() as AddressInfo).port}`;
+  const H = { "x-jj": "1", "content-type": "application/json" };
+  try {
+    const c1 = await (await fetch(`${base}/api/ingest/candidates`)).json() as any[];
+    assert.ok(c1.some((x) => x.path === "sources/待摄入.md"), "候选要给出可直接填进输入框的路径");
+    assert.ok(c1.some((x) => x.path === "sources/子目录/另一个.txt"), "子目录也要列");
+
+    const ok = await fetch(`${base}/api/ingest`, { method: "POST", headers: H, body: JSON.stringify({ path: "sources/待摄入.md" }) });
+    assert.equal(ok.status, 200);
+    assert.equal(((await ok.json()) as any).chunks > 0, true);
+
+    // 摄入过的就不再是候选
+    const c2 = await (await fetch(`${base}/api/ingest/candidates`)).json() as any[];
+    assert.ok(!c2.some((x) => x.path === "sources/待摄入.md"), "已摄入的不该还在候选里");
+
+    // GBK 请求体 → 明确说编码错，而不是"文件不存在"
+    const gbk = Buffer.concat([Buffer.from('{"path":"sources/'), Buffer.from([0xd3, 0xef, 0xb2, 0xe2]), Buffer.from('.md"}')]);
+    const bad = await fetch(`${base}/api/ingest`, { method: "POST", headers: H, body: gbk });
+    assert.equal(bad.status, 400);
+    assert.equal(((await bad.json()) as any).error, "E_ENCODING");
+
+    // 越界路径仍然拒
+    const outside = await fetch(`${base}/api/ingest`, { method: "POST", headers: H, body: JSON.stringify({ path: "../etc/passwd" }) });
+    assert.equal(outside.status, 400);
+    assert.equal(((await outside.json()) as any).error, "E_OUTSIDE_HOME");
+  } finally { srv.close(); }
+});
