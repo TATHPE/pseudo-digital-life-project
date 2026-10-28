@@ -714,3 +714,18 @@ test("仪表带与 ticker：8 个读数格 + 分段条 + 底部状态带（数�
     assert.ok(PAGE.includes("#readoutbar, .ticker { display:none; }"), "手机上收起");
   } finally { srv.close(); }
 });
+
+test("配色铁律：全站只有鲸鲸气泡用青色，其余是黑底+白边框+粗白字", () => {
+  // var(--cyan) 只允许出现在一处：.body（鲸鲸的回话）
+  const uses = PAGE.match(/var\(--cyan\)/g) ?? [];
+  assert.equal(uses.length, 1, `var(--cyan) 出现在 ${uses.length} 处，只允许 1 处`);
+  const bodyRule = PAGE.slice(PAGE.indexOf(".body { background:rgba(13,31,34"), PAGE.indexOf(".body { background:rgba(13,31,34") + 220);
+  assert.ok(bodyRule.includes("var(--cyan)"), "那一处必须是鲸鲸气泡的左边框");
+  // 硬编码的青色 rgba 也不许再出现（除了色板定义本身）
+  const hard = (PAGE.match(/rgba\(15,151,164/g) ?? []).length;
+  assert.equal(hard, 0, `还有 ${hard} 处硬编码青色`);
+  // 结构用白：读数标签/读数/侧栏条目/按钮都必须是加粗白字
+  assert.ok(PAGE.includes("color:var(--ink); font-weight:700;") || PAGE.includes("font-weight:700"), "要有加粗白字");
+  assert.ok(PAGE.includes(".ro-l { font:8px/1 var(--mono); letter-spacing:.22em; color:var(--ink); font-weight:700;"));
+  assert.ok(PAGE.includes("input, select, textarea { width:100%; color:var(--fg); font:inherit; background:#000;"));
+});
