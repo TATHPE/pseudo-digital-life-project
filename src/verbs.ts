@@ -25,6 +25,16 @@ export interface VerbDef {
   /** 策略判定用的目标（路径/域名）；返回 null 表示"没有目标" */
   target(args: Record<string, unknown>, ctx: VerbCtx): string;
   run(args: Record<string, unknown>, ctx: VerbCtx): Promise<string>;
+  /**
+   * T3 专用（04 §4.1）：把参数渲染成"将要执行的确切 argv"。
+   * 返回值同时用于（a）给人看确认预览、（b）算 argv_sha256 绑令牌、（c）写审计。
+   * 没有它的 T3 verb = 无法签发令牌 = 永远拒绝。
+   */
+  /** 档位随参数变化时用（shell.run：档位由**模板**决定，04 §5.2） */
+  tierFor?(args: Record<string, unknown>): Tier;
+  capability?(args: Record<string, unknown>, ctx: VerbCtx): {
+    argv: string[]; cwd: string; template: string;
+  };
 }
 
 const S = (props: Record<string, unknown>, required: string[] = []) =>
@@ -69,6 +79,7 @@ const maxList = 200;
 
 import { search } from "./retrieve.ts";
 import { remember } from "./store.ts";
+import { renderTemplate, templateCatalog, templateById, runArgv } from "./shell.ts";
 
 export const verbs: VerbDef[] = [
   {
@@ -252,6 +263,48 @@ export const verbs: VerbDef[] = [
         payload: { text, proactive: true, reason: "notify" },
       });
       return "已通知";
+    },
+  },
+  {
+    name: "shell.run", tier: "T3", reversible: false,
+    description: "跑一条**注册过的命令模板**（不拼字符串；每次确认 + 一次性令牌 + 超时杀进程树）。可用模板见 shell.templates",
+    params: S({
+      template: { type: "string" },
+      slots: { type: "object" },
+      token: { type: "string" },
+    }, ["template"]),
+    target: (a) => `shell:${String(a.template ?? "")}`,
+    tierFor(a) {
+      const t = templateById(String(a.template ?? ""));
+      return t ? t.tier : "T4";   // 不存在的模板按 T4 处理（连拒绝都走策略层）
+    },
+    capability(a, ctx) {
+      const r = renderTemplate(ctx.home, String(a.template ?? ""),
+        (a.slots && typeof a.slots === "object" ? a.slots : {}) as Record<string, unknown>);
+      return { argv: r.argv, cwd: r.cwd, template: r.template };
+    },
+    async run(a, ctx) {
+      // 令牌已在 execute 里校验并标记 used；这里只管“跑”
+      const r = renderTemplate(ctx.home, String(a.template ?? ""),
+        (a.slots && typeof a.slots === "object" ? a.slots : {}) as Record<string, unknown>);
+      const res = await runArgv(r.argv, { cwd: r.cwd, timeoutMs: r.timeoutMs });
+      const head = `exit=${res.code ?? res.signal} ${res.ms}ms` +
+        (res.timedOut ? " 超时已杀" : "") + (res.truncated ? " 输出已截断" : "");
+      const body = [res.stdout.trimEnd(), res.stderr.trimEnd()].filter(Boolean).join(String.fromCharCode(10));
+      if (res.timedOut) throw new Error(`E_TIMEOUT: ${head}${body ? String.fromCharCode(10) + body : ""}`);
+      return `${head}${body ? String.fromCharCode(10) + body : ""}`;
+    },
+  },
+  {
+    name: "shell.templates", tier: "T0", reversible: true,
+    description: "列出可执行的命令模板（id / 档位 / 参数槽），不执行任何东西",
+    params: S({}),
+    target: () => "internal",
+    async run() {
+      return templateCatalog().map((t) =>
+        `${t.id} [${t.tier}] ${t.description}` + (Object.keys(t.slots).length
+          ? ` ｜ slots: ${Object.entries(t.slots).map(([k, v]) => `${k}~${v.pattern}`).join(" ")}` : ""))
+        .join(String.fromCharCode(10));
     },
   },
 ];

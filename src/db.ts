@@ -32,7 +32,12 @@ export function openDb(path: string): Db {
     db.prepare("INSERT INTO meta(key,value) VALUES(?,?)").run("schema_version", String(SCHEMA_VERSION));
     db.prepare("INSERT INTO meta(key,value) VALUES(?,?)").run("created_at", new Date().toISOString());
   } else if (Number(cur.value) < SCHEMA_VERSION) {
-    // 新增表全部 IF NOT EXISTS，所以"重跑 001"等价于迁移
+    // 新增表全部 IF NOT EXISTS，所以"重跑 001"等价于迁移；
+    // 但**加列**不行（CREATE TABLE IF NOT EXISTS 对已存在的表是空操作）——要显式 ALTER。
+    if (Number(cur.value) < 6) {
+      ensureColumn(db, "exec_audit", "capability", "TEXT");
+      ensureColumn(db, "exec_audit", "host_profile", "TEXT");
+    }
     db.prepare("UPDATE meta SET value=? WHERE key='schema_version'").run(String(SCHEMA_VERSION));
   }
   return { db, vecLoaded, path };
@@ -40,6 +45,13 @@ export function openDb(path: string): Db {
 
 export function meta(db: DatabaseSync, key: string): string | undefined {
   return (db.prepare("SELECT value FROM meta WHERE key=?").get(key) as { value?: string } | undefined)?.value;
+}
+
+/** 幂等加列（SQLite 没有 ADD COLUMN IF NOT EXISTS） */
+function ensureColumn(db: DatabaseSync, table: string, column: string, type: string): void {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+  if (cols.some((c) => c.name === column)) return;
+  db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
 }
 
 export function setMeta(db: DatabaseSync, key: string, value: string): void {

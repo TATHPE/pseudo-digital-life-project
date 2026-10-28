@@ -20,7 +20,11 @@ node src/cli/jingjing.ts test cloud   # 真调云端 + 记账 + 预算闸
 node src/cli/jingjing.ts night        # 夜间整备：抽取 → 冲突消解 → 归并 → 自传
 node src/cli/jingjing.ts eval         # 评估：recall / abstain / trap / contract 四道门
 node src/cli/jingjing.ts eval --model # 额外跑模型层"编造共同回忆"（花 API 费用）
-node src/cli/jingjing.ts redteam      # 红队 14 例（必须全拦）
+node src/cli/jingjing.ts redteam      # 红队 21 例（必须全拦）
+node src/cli/jingjing.ts templates    # shell.run 能跑的模板（id/档位/参数槽）
+node src/cli/jingjing.ts shell git.status                   # T0/T1 只读模板，直接跑
+node src/cli/jingjing.ts shell node.run_script --slots '{"script":"a.mjs"}'        # T3：只预览 argv+指纹
+node src/cli/jingjing.ts shell node.run_script --slots '{"script":"a.mjs"}' --yes  # T3：确认并执行（一次性令牌）
 node src/cli/jingjing.ts verb fs.list '{"path":"workspace"}'   # 手动调能力
 node src/cli/jingjing.ts beat --dry-run  # 心跳判定（不写库不发消息）
 node src/cli/jingjing.ts serve 7700 --beat  # 面板 + 每 60s 一次心跳
@@ -57,6 +61,7 @@ node src/cli/brief-demo.ts --full     # M1.1：第 1 轮 vs 第 100 轮简报
 | `src/mcp.ts` | MCP stdio 客户端（initialize / tools/list / tools/call） | `11 §3` |
 | `src/md.ts` | Markdown → HTML（先转义，代码块优先，链接只放 http(s)） | `17 §5.5` |
 | `src/verbs.ts` | 能力目录（T 档/参数/目标）+ `safePath` 真实路径校验 | `04 §3` |
+| `src/shell.ts` | **T3**：命令模板（占位符独占 argv 元素）+ 一次性令牌（argv_sha256/cwd/120s/单次）+ 超时杀进程树 + 环境白名单 | `04 §4.1/§5.2/§6` |
 | `src/tools.ts` | **唯一工具面**：verb + MCP 全走 execute；点号→下划线别名 | `11 §5.6` |
 | `src/policy.ts` | casbin 策略（allow/deny × advise/enforce） | `04 §4` |
 | `src/execute.ts` | 策略 → 执行 → 审计，一处不落 | `04 §4` |
@@ -129,6 +134,9 @@ node src/cli/brief-demo.ts --full     # M1.1：第 1 轮 vs 第 100 轮简报
 - [x] **M2 完成**：断电检测/记忆/提示、self_state、补算衰减、三种时间措辞
 - [x] **M3 大部分**：夜间整备（游标/抽取/冲突/归并）、自传（反推引用+摘录兜底）、领地
 - [x] **M3 完成**：夜间整备 / 自传 / 领地 / eval harness（四门全绿）
+- [x] **M5 完成**：能力目录 + casbin 策略 + 红队 21 例 + A/B 双槽与自动回滚 + **T3 shell.run**
+- [ ] T3 的**面板确认按钮**（现在只能在终端 `--yes`）
+- [ ] 真正的沙箱（Job Object / bwrap / 降权）——现在只有模板白名单 + 杀进程树 + 环境白名单
 
 ## 图标署名（CC BY 3.0，不可删）
 

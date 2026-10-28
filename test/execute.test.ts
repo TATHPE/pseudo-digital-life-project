@@ -38,11 +38,18 @@ test("globOk：裸 * 不炸，前缀匹配正确", () => {
   assert.equal(globOk("etc/passwd", "workspace/*"), false);
 });
 
-test("能力表：没有 rm/sudo/reg 这类东西", () => {
+test("能力表：shell.run 存在，但它是 T3 且有 argv 渲染器", () => {
+  // M5.3 时这条断言是"表里根本没有 shell.run"；5.6 之后它开了一个口子，
+  // 于是断言换成"口子必须是窄的"：危险动词仍然不存在，而 shell.run 只能走模板 + 令牌。
   const names = verbs.map((v) => v.name);
-  for (const bad of ["shell.run", "shell.admin", "fs.delete", "fs.raw", "pkg.install"]) {
+  for (const bad of ["shell.admin", "fs.delete", "fs.raw", "pkg.install", "shell.exec", "proc.spawn"]) {
     assert.ok(!names.includes(bad), `不该有 ${bad}`);
   }
+  const shell = verbByName("shell.run")!;
+  assert.equal(shell.tier, "T3", "shell.run 必须默认是最高档");
+  assert.equal(shell.reversible, false);
+  assert.equal(typeof shell.capability, "function", "没有 argv 渲染器就签不出令牌");
+  assert.equal(typeof shell.tierFor, "function", "档位必须跟着模板走");
   assert.ok(names.includes("fs.trash"), "删除只提供回收站语义");
   assert.equal(verbByName("fs.write")!.tier, "T1");
 });

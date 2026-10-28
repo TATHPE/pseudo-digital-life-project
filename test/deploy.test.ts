@@ -49,7 +49,7 @@ test("打版产出清单：六个 persona 文件 + 三重指纹 + 上一版", ()
   const files = Object.keys(m.files).sort();
   assert.equal(files.length, 6, files.join(","));
   assert.ok(files.every((f) => f.startsWith("persona/") && f.endsWith(".md")));
-  assert.match(m.coreFp.schema, /^v5-/);
+  assert.match(m.coreFp.schema, /^v\d+-/);
   assert.match(m.coreFp.tool, /^n\d+-/);
   assert.equal(m.parentId, null);
   assert.ok(existsSync(join(releaseDir(home, a.id), "record.md")), "要留「我变了」的记录");

@@ -1,5 +1,5 @@
 /** M0 schema（02 §4 + 18 §1 的 outage/审计） */
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 export const MIGRATION_001 = `
 PRAGMA journal_mode=WAL;
@@ -75,7 +75,9 @@ CREATE INDEX IF NOT EXISTS ix_events_ts ON events(ts);
 CREATE TABLE IF NOT EXISTS exec_audit (
   id TEXT PRIMARY KEY, ts TEXT NOT NULL, verb TEXT NOT NULL, tier TEXT NOT NULL,
   argv_json TEXT, cwd TEXT, exit_code INTEGER, duration_ms INTEGER,
-  decision TEXT NOT NULL, deny_reason TEXT
+  decision TEXT NOT NULL, deny_reason TEXT,
+  -- v6：T3 的令牌 id（04 §7）与宿主画像（04 §5.3；我们不走 PowerShell，记 direct/node…）
+  capability TEXT, host_profile TEXT
 );
 
 -- 记账（13 §6）：cached_tokens 单独一列
