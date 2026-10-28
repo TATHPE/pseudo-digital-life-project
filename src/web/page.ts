@@ -532,7 +532,9 @@ export const PAGE = `<!doctype html>
             </select></div>
           <div><label>model</label><input id="c-model" placeholder="deepseek-chat"></div>
         </div>
-        <label>baseUrl（可选）</label><input id="c-base" placeholder="https://api.deepseek.com">
+        <label>baseUrl（接入地址 · 留空 = 官方默认）</label>
+        <input id="c-base" placeholder="留空即用官方端点（deepseek → https://api.deepseek.com）">
+        <p class="hint" id="c-ep">…</p>
         <label>api key（保存后只显示指纹）</label><input id="c-key" type="password" placeholder="sk-…" autocomplete="off">
         <div class="acts"><button id="c-save" class="primary">保存接口</button>
           <button id="c-test">测试连接</button>
@@ -611,10 +613,23 @@ const WHALE = "<svg class='ico' aria-hidden='true'><use href='#whale' /></svg>";
 let view = "chat", TOOLS = [], MEMS = [];
 
 
+var chatScroll = 0;   // 切走前记下对话滚到哪了
 function show(v) {
+  // 切走时把滚动位置存下来：隐藏 #chat 会让 #scroll 的 scrollHeight 塌成 0，浏览器会把 scrollTop 归零
+  if (view === "chat" && v !== "chat") chatScroll = $("#scroll").scrollTop;
   view = v;
   for (const id of ["chat", "cfg", "toolview", "memview", "docview", "auditview", "searchview"]) $("#" + id).hidden = id !== v;
   $("#composer").style.display = v === "chat" ? "" : "none";
+  // "回到最新"是对话专用的，别的界面不该出现
+  if (v !== "chat") $("#jump").style.display = "none";
+  if (v === "chat") {
+    requestAnimationFrame(function () {
+      const el = $("#scroll");
+      // 只在"离开前不是贴底"时恢复；贴底的话重新滚到底更符合直觉
+      if (chatScroll > 0 && chatScroll < el.scrollHeight - el.clientHeight - 4) el.scrollTop = chatScroll;
+      else { el.scrollTop = el.scrollHeight; chatScroll = 0; }
+    });
+  }
   for (const b of document.querySelectorAll("#side .item")) {
     b.classList.toggle("on", b.dataset.view === v);
   }
@@ -1131,6 +1146,7 @@ function nearBottom() {
   return el.scrollHeight - el.scrollTop - el.clientHeight < 80;
 }
 $("#scroll").addEventListener("scroll", function () {
+  if (view !== "chat") return;
   follow = nearBottom();
   $("#jump").style.display = follow ? "none" : "inline-flex";
   if (follow) $("#jumpn").textContent = "";
@@ -1241,6 +1257,29 @@ async function loadUi() {
   }
 }
 
+// 官方默认：baseUrl 留空时服务端就用这些（与 src/transport.ts 的 endpointOf 一致）
+var PROVIDER_DEFAULTS = {
+  deepseek: { base: "https://api.deepseek.com", model: "deepseek-chat" },
+  anthropic: { base: "https://api.anthropic.com", model: "claude-sonnet-4-20250514" },
+  openai: { base: "https://api.openai.com", model: "gpt-4o" }
+};
+function paintEndpoint() {
+  var pv = $("#c-provider").value;
+  var d = PROVIDER_DEFAULTS[pv] || { base: "", model: "" };
+  var typed = $("#c-base").value.trim();
+  $("#c-base").placeholder = d.base ? ("留空 = " + d.base) : "";
+  $("#c-model").placeholder = d.model;
+  var ep = $("#c-ep");
+  if (ep) ep.textContent = "实际请求：" + (typed || d.base) + "/…（" + pv + "）" +
+    (typed ? "　← 自定义地址（局域网 / 中转 / 自建）" : "　← 官方默认");
+}
+$("#c-provider").addEventListener("change", function () {
+  var d = PROVIDER_DEFAULTS[$("#c-provider").value];
+  if (d && !$("#c-model").value.trim()) $("#c-model").value = d.model;
+  paintEndpoint();
+});
+$("#c-base").addEventListener("input", paintEndpoint);
+
 async function loadConfig() {
   const c = await (await fetch("/api/config")).json();
   $("#c-provider").value = c.provider;
@@ -1256,6 +1295,7 @@ async function loadConfig() {
     b.innerHTML = "// 未配置 API key —— 仅本地推理，云端不会回答 <button id='go-cfg'>去设置</button>";
     $("#go-cfg").onclick = () => show("cfg");
   } else { b.hidden = true; }
+  paintEndpoint();
   return c;
 }
 async function loadPersona(file) {

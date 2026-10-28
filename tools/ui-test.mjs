@@ -120,6 +120,18 @@ check("侧栏分区可折叠", await js(`(() => {
   return hidden === true && sec.querySelector('div').hidden === false;
 })()`));
 
+// 视图切换："回到最新"是对话专用的；滚回对话时不该跳回顶部
+await js(`(() => { document.querySelector("#side .item[data-view=chat]").click(); return true; })()`);
+await sleep(400);
+const scrolled = await js(`(() => { const el=document.querySelector("#scroll");
+  el.scrollTop = Math.max(0, el.scrollHeight - el.clientHeight - 400);
+  el.dispatchEvent(new Event("scroll")); return Math.round(el.scrollTop); })()`);
+await js(`document.querySelector("#side .item[data-view=cfg]").click()`); await sleep(500);
+check("设置里不出现「回到最新」", (await js(`getComputedStyle(document.querySelector("#jump")).display`)) === "none");
+await js(`document.querySelector("#side .item[data-view=chat]").click()`); await sleep(700);
+const back = await js(`Math.round(document.querySelector("#scroll").scrollTop)`);
+check("切回对话保住滚动位置", Math.abs(back - scrolled) <= 8, `${scrolled} → ${back}`);
+
 ws.close(); proc.kill();
 let bad = 0;
 for (const [n, ok, d] of out) { console.log(`${ok ? "✅" : "❌"} ${n}${d ? "  — " + String(d).slice(0, 70) : ""}`); if (!ok) bad++; }
