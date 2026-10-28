@@ -2,8 +2,12 @@
  * 单页（零前端依赖、零构建）。
  *
  * 排列参照 pi-web：左侧栏（会话/工具/记忆/设置）+ 右侧主列（对话）+ 底部输入。
- * 视觉参照《流浪地球》FUI：黑底、青细线、等宽小标、角标、读数。
- * 色值采样自参考截图：底 #0b0e0b，青 #0f97a4，高光 #7fe6f2。
+ * 视觉参照《流浪地球》FUI：黑底、**白色细线**、等宽小标、角标、读数。
+ * 配色分工（这一条改过一次，写清楚免得再错）：
+ *   结构（框线/分隔/小标/日期头）= 近白 #e9f0f2 的各档透明度
+ *   强调（在线、激活、数据条、引用、工具运行中）= 青 #0f97a4 / #7fe6f2
+ *   告警 = 琥珀（待确认 / 用户侧）/ 红（被拒）
+ * 之前把青色当成壁纸用在所有框线上：一屏只有一种颜色，层次没了，10px 青字也更难读。
  *
  * 17 §4 的硬约束不变：没有「新对话」；时间空白可见；状态是"醒着/距上次"。
  * 07 §4 的克制不变：不做点赞/计数徽章——读数只显示系统量。
@@ -31,8 +35,11 @@ export const PAGE = `<!doctype html>
 <style>
   :root {
     --void:#0b0e0b; --panel:#0e1512; --panel2:rgba(16,24,21,.72);
-    --line:rgba(15,151,164,.34); --line-dim:rgba(15,151,164,.14);
-    --cyan:#0f97a4; --cyan-hi:#7fe6f2; --fg:#dbeff0; --dim:#8fadb0;
+    /* 参照图的框线/小标其实是**白**的，青色只标"在动的东西"（数据/在线/激活）。
+       之前把青色当成壁纸：一屏只有一种颜色，层次没了，10px 小字也更难读。 */
+    --ink:#e9f0f2; --ink-dim:#b9c6c9;
+    --line:rgba(233,240,242,.30); --line-dim:rgba(233,240,242,.13);
+    --cyan:#0f97a4; --cyan-hi:#7fe6f2; --fg:#e9f0f2; --dim:#9fb0b3;
     --amber:#ffb454; --red:#ff5f56; --ok:#7fd18b;
     --mono:ui-monospace,"Cascadia Mono",Consolas,"Noto Sans Mono",monospace;
     --rail:252px;
@@ -108,7 +115,7 @@ export const PAGE = `<!doctype html>
   aside { grid-area:side; border-right:1px solid var(--line-dim); overflow-y:auto;
           background:linear-gradient(180deg, rgba(12,19,16,.9), rgba(11,14,11,.6)); padding:14px 12px 30px; }
   .sec { margin-bottom:20px; }
-  .sec h3 { margin:0 0 8px; font:10px/1 var(--mono); letter-spacing:.18em; color:var(--cyan);
+  .sec h3 { margin:0 0 8px; font:10px/1 var(--mono); letter-spacing:.18em; color:var(--ink-dim);
             display:flex; align-items:center; gap:8px; }
   .sec h3::after { content:""; flex:1; height:1px; background:var(--line-dim); }
   .item { display:block; width:100%; text-align:left; background:transparent; border:1px solid transparent;
@@ -129,7 +136,7 @@ export const PAGE = `<!doctype html>
   aside { min-height:0; }
   .col { max-width:840px; margin:0 auto; }
   .day { display:flex; align-items:center; gap:10px; margin:26px 0 12px;
-         font:10px/1 var(--mono); letter-spacing:.16em; color:var(--cyan); }
+         font:10px/1 var(--mono); letter-spacing:.16em; color:var(--ink); }
   .day::after { content:""; flex:1; height:1px; background:var(--line-dim); }
   .gap { display:flex; align-items:center; gap:12px; margin:16px 0; font:10px/1 var(--mono);
          letter-spacing:.14em; color:rgba(111,143,146,.9); }
@@ -219,7 +226,7 @@ export const PAGE = `<!doctype html>
         border:1px solid var(--cyan); pointer-events:none; }
   .panelbox::before { top:-1px; left:-1px; border-right:0; border-bottom:0; }
   .panelbox::after { right:-1px; bottom:-1px; border-left:0; border-top:0; }
-  .panelbox > h2 { margin:0 0 12px; font:10px/1 var(--mono); letter-spacing:.18em; color:var(--cyan); }
+  .panelbox > h2 { margin:0 0 12px; font:10px/1 var(--mono); letter-spacing:.18em; color:var(--ink); }
   label { display:block; font:10px/1 var(--mono); letter-spacing:.1em; color:var(--dim); margin:14px 0 6px; }
   .two { display:flex; gap:12px; } .two > * { flex:1; }
   .acts { margin-top:16px; display:flex; gap:12px; align-items:center; }
@@ -241,7 +248,7 @@ export const PAGE = `<!doctype html>
   .frame i:nth-child(2) { top:-1px; right:-1px; border-left:0; border-bottom:0; }
   .frame i:nth-child(3) { bottom:-1px; left:-1px; border-right:0; border-top:0; }
   .frame i:nth-child(4) { bottom:-1px; right:-1px; border-left:0; border-top:0; }
-  .frame b { position:absolute; font:9px/1 var(--mono); letter-spacing:.2em; color:rgba(15,151,164,.5); }
+  .frame b { position:absolute; font:9px/1 var(--mono); letter-spacing:.2em; color:rgba(233,240,242,.32); }
   .frame b.bl { bottom:5px; left:10px; } .frame b.br { bottom:5px; right:10px; }
   @media (max-width: 860px) {
     body { grid-template-columns:1fr; grid-template-areas:"head" "main"; }
@@ -272,7 +279,7 @@ export const PAGE = `<!doctype html>
 
   /* ── 气泡：两侧一眼分得开（之前两边都是淡框，长消息看着像没有气泡）── */
   .body { background:rgba(18,28,24,.92); border:1px solid var(--line-dim);
-          border-left:2px solid var(--cyan); padding:12px 15px; display:inline-block; max-width:100%; }
+          border-left:2px solid var(--line); padding:12px 15px; display:inline-block; max-width:100%; }
   /* 关键：inline-block 上的 margin-left:auto 不生效（auto 只作用于块级盒子），
      所以用户气泡一直贴在左边缘。改成 block + fit-content 才真的靠右。 */
   .row.user .body { background:rgba(38,28,14,.92); border-color:rgba(255,180,84,.34);
@@ -281,7 +288,7 @@ export const PAGE = `<!doctype html>
 
   /* ── 侧栏分区可折叠（MEMORY / DOCS / ACTIONS）────── */
   .sec h3 button { all:unset; cursor:pointer; display:flex; align-items:center; gap:8px; width:100%;
-                   font:10px/1 var(--mono); letter-spacing:.18em; color:var(--cyan); }
+                   font:10px/1 var(--mono); letter-spacing:.18em; color:var(--ink-dim); }
   .sec h3 button::after { content:"−"; margin-left:auto; color:var(--dim); font-size:12px; letter-spacing:0; }
   .sec.collapsed h3 button::after { content:"+"; }
   .sec h3 button .n { color:var(--dim); letter-spacing:0; }
@@ -289,8 +296,8 @@ export const PAGE = `<!doctype html>
   /* ── 证据链（P0 #1/#2）：召回行 + 可点引用 ──────────── */
   .recall { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin:0 0 6px;
             font:10px/1.4 var(--mono); color:var(--dim); }
-  .recall b { color:var(--cyan); font-weight:400; letter-spacing:.1em; }
-  .cite { font:10px/1 var(--mono); color:var(--cyan-hi); border:1px solid var(--line-dim);
+  .recall b { color:var(--ink-dim); font-weight:400; letter-spacing:.1em; }
+  .cite { font:10px/1 var(--mono); color:var(--cyan-hi); border:1px solid var(--line);
           padding:3px 6px; cursor:pointer; white-space:nowrap; }
   .cite:hover { background:rgba(15,151,164,.12); border-color:var(--line); }
   .cite.missing { color:var(--dim); text-decoration:line-through; cursor:default; }
@@ -331,7 +338,7 @@ export const PAGE = `<!doctype html>
 
   /* ── 工具/动作列表折叠（P2 #20）────────────────────── */
   .fold { display:flex; align-items:center; gap:8px; width:100%; background:transparent; border:0;
-          color:var(--cyan); font:10px/1 var(--mono); letter-spacing:.18em; padding:2px 0 6px; cursor:pointer; }
+          color:var(--ink-dim); font:10px/1 var(--mono); letter-spacing:.18em; padding:2px 0 6px; cursor:pointer; }
   .fold::after { content:""; flex:1; height:1px; background:var(--line-dim); }
   .fold .n { color:var(--dim); letter-spacing:0; }
 
@@ -355,7 +362,7 @@ export const PAGE = `<!doctype html>
   /* ── 记忆编辑（P1 #9）──────────────────────────────── */
   #mv-edit { width:100%; min-height:96px; resize:vertical; }
   .rowmini { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:8px 0 0; }
-  .rowmini label { font:10px/1 var(--mono); color:var(--cyan); letter-spacing:.1em; }
+  .rowmini label { font:10px/1 var(--mono); color:var(--ink-dim); letter-spacing:.1em; }
   .rowmini select { font:11px/1 var(--mono); background:rgba(8,13,11,.8); color:var(--fg);
                     border:1px solid var(--line-dim); padding:5px 6px; }
 
@@ -919,13 +926,13 @@ async function doSearch(q) {
   try { j = await (await fetch("/api/search?q=" + encodeURIComponent(q))).json(); } catch (e) { $("#sv-meta").textContent = "搜索失败"; return; }
   $("#sv-meta").textContent = "「" + q + "」· 记忆 " + j.mem.length + " 条 · 文档 " + j.docs.length + " 段";
   $("#sv-mem").innerHTML = j.mem.length
-    ? "<h3 style='font:10px/1 var(--mono);color:var(--cyan);letter-spacing:.18em;margin:12px 0 6px'>MEMORY</h3>" + j.mem.map(function (h) {
+    ? "<h3 style='font:10px/1 var(--mono);color:var(--ink-dim);letter-spacing:.18em;margin:12px 0 6px'>MEMORY</h3>" + j.mem.map(function (h) {
       return "<button class='hit' data-view='memview' data-mem='" + h.id + "'>" + escapeHtml(h.text.slice(0, 90)) +
         "<span class='m'>" + h.stage + " · " + h.weight.toFixed(2) + " · " + (h.sensitivity === "shareable" ? "可发送" : "仅本地") + " · mem:" + h.id + "</span></button>";
     }).join("")
     : "";
   $("#sv-docs").innerHTML = j.docs.length
-    ? "<h3 style='font:10px/1 var(--mono);color:var(--cyan);letter-spacing:.18em;margin:14px 0 6px'>DOCS</h3>" + j.docs.map(function (h) {
+    ? "<h3 style='font:10px/1 var(--mono);color:var(--ink-dim);letter-spacing:.18em;margin:14px 0 6px'>DOCS</h3>" + j.docs.map(function (h) {
       return "<button class='hit' data-cite='" + escapeHtml(h.cite) + "'>" + escapeHtml(h.text.slice(0, 90)) +
         "<span class='m'>" + escapeHtml(h.title) + " › " + escapeHtml(h.headingPath || "—") + " · " + (h.sensitivity === "shareable" ? "可发送" : "仅本地") + "</span></button>";
     }).join("")

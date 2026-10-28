@@ -94,9 +94,14 @@ check("favicon 指向 /icon.svg 且能取到", (await js(`(async () => {
   return t.includes('viewBox="0 0 512 512"') && t.includes("M453.004");
 })()`)) === true);
 
-check("头像用同一个 symbol", await js(`(() => {
-  const u = document.querySelector(".row.agent .av svg use");
-  return !!u && u.getAttribute("href") === "#whale";
+// 头像：默认是鲸尾 symbol；用户传了自定义图之后就是 <img>（两种都算对）
+check("头像默认鲸尾 / 自定义为图片", await js(`(() => {
+  const av = document.querySelector(".row.agent .av");
+  if (!av) return false;
+  const use = av.querySelector("svg use");
+  const img = av.querySelector("img.avi");
+  return (!!use && use.getAttribute("href") === "#whale") ||
+         (!!img && String(img.getAttribute("src")).indexOf("/avatar/agent") === 0);
 })()`));
 check("换头像框立即生效", await js(`(() => {
   const s = document.querySelector("#a-frame");
