@@ -819,6 +819,7 @@ export function createWebServer(deps: WebDeps) {
             for await (const ev of agent) {
               if (aborted) break;
               if (ev.type === "delta") { full += ev.text; send({ type: "delta", text: ev.text }); }
+              else if (ev.type === "notice") send({ type: "notice", text: ev.text });
               else if (ev.type === "tool") send({ type: "tool", id: ev.id, name: ev.name, args: ev.args });
               else if (ev.type === "tool_result") {
                 used.push({ name: ev.name, args: "", result: ev.result, ms: ev.ms });

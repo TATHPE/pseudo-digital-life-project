@@ -770,3 +770,12 @@ test("面板摄入：候选列表只列未摄入的，编码不对不装成 E_NO
     assert.equal(((await outside.json()) as any).error, "E_OUTSIDE_HOME");
   } finally { srv.close(); }
 });
+
+test("没 key 时说真话：本地兜底要有 notice，banner 不能写「仅本地推理」", () => {
+  assert.ok(PAGE.includes('class=\'notice\'') || PAGE.includes("class='notice'"), "要能显示「本地模型回答」");
+  assert.ok(!PAGE.includes("仅本地推理，云端不会回答"), "那句是假的：没 key 时聊天直接 401");
+  assert.ok(PAGE.includes("本地那个小模型在硬撑"), "现在的说法：本地小模型兜底");
+  // 两个「路径」必须能区分：一个是云端地址，一个是本地文件
+  assert.ok(PAGE.includes("接入地址 · 云端 API 的 baseUrl"), "设置里的 baseUrl 要说清是云端地址");
+  assert.ok(PAGE.includes("加文档 · 本地文件路径（和云端无关）"), "加文档要说清是本地文件");
+});

@@ -18,6 +18,7 @@ import { record, checkBudget, estimateCost, spentToday } from "../budget.ts";
 import { createWebServer } from "../web/server.ts";
 import { execute } from "../execute.ts";
 import { createStreamTransport, createChatTransport } from "../transport.ts";
+import { withFallback } from "../agent.ts";
 import { createToolRegistry } from "../tools.ts";
 import { attachMcp, loadMcpConfig } from "../mcp.ts";
 import { startup } from "../startup.ts";
@@ -259,9 +260,13 @@ async function main(): Promise<void> {
             });
           } catch { /* 记账失败不影响回答 */ }
         } });
-        return (messages: unknown[], tools: any) => t.chat("express", messages, {
-          containsMemory: false, purpose: "agent", maxTokens: 1200, tools,
-        });
+        const localRole = c.roles["night"]?.kind === "local" ? "night"
+          : c.roles["route"]?.kind === "local" ? "route" : null;
+        return (messages: unknown[], tools: any) => withFallback(
+          () => t.chat("express", messages, { containsMemory: false, purpose: "agent", maxTokens: 1200, tools }),
+          // 本地兜底不给工具：1.5B 用工具的结果比不用更糟
+          localRole ? () => t.chat(localRole, messages, { containsMemory: false, purpose: "agent-local", maxTokens: 600 }) : null,
+        );
       };
       const toolCtx = () => ({ db: d.db, embedder: getEmbedder(), home: HOME, now: () => new Date() });
       const registry = createToolRegistry({ db: d.db, policy, ctx: toolCtx(), external: externals });

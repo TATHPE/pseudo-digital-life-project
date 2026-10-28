@@ -324,6 +324,7 @@ export const PAGE = `<!doctype html>
   .recall { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin:0 0 6px;
             font:10px/1.4 var(--mono); color:var(--dim); }
   .recall b { color:var(--ink-dim); font-weight:400; letter-spacing:.1em; }
+  .notice { font:10px/1.4 var(--mono); color:var(--amber); border:1px solid rgba(255,180,84,.45); padding:2px 6px; }
   .cite { font:10px/1 var(--mono); color:var(--ink); font-weight:700; border:1px solid var(--line);
           padding:3px 6px; cursor:pointer; white-space:nowrap; }
   .cite:hover { background:var(--ink); color:#000; }
@@ -440,9 +441,9 @@ export const PAGE = `<!doctype html>
   <!-- 内容在前、参考在后：TOOLS 有 16 项，放在中间会把 DOCS / MEMORY 挤到折叠线以下 -->
   <div class="sec" data-sec="docs"><h3><button type="button" data-tog="docs">DOCS <span class="n" id="doccount"></span></button></h3><div id="doclist"></div>
     <div class="ingest">
-      <label class="ilab">加文档 · 填 data/ 内的路径</label>
+      <label class="ilab">加文档 · 本地文件路径（和云端无关）</label>
       <select id="dlg-pick" class="searchbox"></select>
-      <input id="dlg-path" class="searchbox" placeholder="或直接粘路径，如 sources/我的笔记.pdf" autocomplete="off">
+      <input id="dlg-path" class="searchbox" placeholder="data/ 里的相对路径，如 sources/我的笔记.pdf" autocomplete="off">
       <div class="rowmini">
         <label title="勾上：这些文档的片段会随简报发给云端模型。不勾：只在本机检索，模型读不到原文"><input type="checkbox" id="dlg-share"> 允许进云端</label>
         <button id="dlg-go">摄入</button>
@@ -536,7 +537,7 @@ export const PAGE = `<!doctype html>
             </select></div>
           <div><label>model</label><input id="c-model" placeholder="deepseek-chat"></div>
         </div>
-        <label>baseUrl（接入地址 · 留空 = 官方默认）</label>
+        <label>接入地址 · 云端 API 的 baseUrl（留空 = 官方默认）</label>
         <input id="c-base" placeholder="留空即用官方端点（deepseek → https://api.deepseek.com）">
         <p class="hint" id="c-ep">…</p>
         <label>api key（保存后只显示指纹）</label><input id="c-key" type="password" placeholder="sk-…" autocomplete="off">
@@ -1305,7 +1306,8 @@ async function loadConfig() {
   const b = $("#banner");
   if (!c.hasKey) {
     b.hidden = false;
-    b.innerHTML = "// 未配置 API key —— 仅本地推理，云端不会回答 <button id='go-cfg'>去设置</button>";
+    // 以前这里写「仅本地推理」——那是假话：没有 key 时聊天直接 401，本地只有兜底模型回一句
+    b.innerHTML = "// 还没配云端 key —— 现在是你本地那个小模型在硬撑（质量差），点这里配 <button id='go-cfg'>去设置</button>";
     $("#go-cfg").onclick = () => show("cfg");
   } else { b.hidden = true; }
   paintEndpoint();
@@ -1402,6 +1404,9 @@ $("#composer").onsubmit = async (e) => {
           // 证据链（P0 #1）：这一轮它到底调了哪几条记忆/文档
           cites = d.cites || []; omitted = d.omitted || 0; omittedDocs = d.omittedDocs || 0;
           recallBox.innerHTML = recallHtml(cites, omitted, omittedDocs);
+        }
+        if (d.type === "notice") {
+          recallBox.insertAdjacentHTML("beforeend", "<span class='notice'>" + escapeHtml(d.text) + "</span>");
         }
         if (d.type === "delta") { acc += d.text; box.innerHTML = escapeHtml(acc) + "<span class='cursor'></span>"; }
         if (d.type === "tool") {

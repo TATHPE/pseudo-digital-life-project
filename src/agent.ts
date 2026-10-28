@@ -11,7 +11,31 @@ export type AgentEvent =
   | { type: "tool_result"; id: string; name: string; result: string; ms: number }
   | { type: "phase"; step: number; note: string }
   | { type: "done"; steps: number; finish: string }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string }
+  | { type: "notice"; text: string };
+
+/**
+ * 云端失败 → 本地兜底（13 §5 的降级链，之前 fallbackChain 写了却从没被调用）。
+ *
+ * 两条纪律：
+ *  - **已经吐过字就不再切换**：两段话拼在一起会变成一句假话
+ *  - 切换时必须留一条 notice，否则用户会以为云端在答（"不假装" 的第一条）
+ */
+export async function* withFallback(
+  primary: () => AsyncGenerator<ChatEvent, void, void>,
+  backup: (() => AsyncGenerator<ChatEvent, void, void>) | null,
+  notice = "云端不可用，这条用本地模型回答",
+): AsyncGenerator<ChatEvent, void, void> {
+  let spoke = false;
+  try {
+    for await (const ev of primary()) { if (ev.type === "delta") spoke = true; yield ev; }
+    return;
+  } catch (e) {
+    if (spoke || !backup) throw e;
+    yield { type: "notice", text: notice };
+    yield* backup();
+  }
+}
 
 export interface ChatFn {
   (messages: unknown[], tools: ReturnType<ToolRegistry["schema"]>): AsyncGenerator<ChatEvent, void, void>;

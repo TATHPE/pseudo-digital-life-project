@@ -262,6 +262,7 @@ export function createStreamTransport(
 export type ChatEvent =
   | { type: "delta"; text: string }
   | { type: "tool_calls"; calls: Array<{ id: string; name: string; args: string }> }
+  | { type: "notice"; text: string }
   | { type: "done"; finish: string };
 
 export interface ChatOpts extends CallOpts {
