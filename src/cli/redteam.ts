@@ -13,6 +13,7 @@ import { TEMPLATES, issueToken, renderTemplate } from "../shell.ts";
 export interface Case { id: number; name: string; expect: "block" | "allow"; run: () => Promise<{ ok: boolean; detail: string }> }
 
 export async function runRedteam(home: string): Promise<{ pass: number; total: number; rows: Array<[number, string, boolean, string]> }> {
+  const began = Date.now();
   mkdirSync(join(home, "workspace"), { recursive: true });
   const db = openDb(join(home, "memory.db")).db;
   const policy = await loadPolicy(home);
@@ -120,5 +121,14 @@ export async function runRedteam(home: string): Promise<{ pass: number; total: n
     if (good) pass++;
     rows.push([c.id, c.name, good, res.detail]);
   }
+  // T3 用例会真的落待确认卡——演练完要收干净，只清这轮产生的，别动你手上真在等的那些
+  try {
+    const { listPending, updatePending } = await import("../confirm.ts");
+    for (const pend of listPending(home, new Date(), true)) {
+      if (pend.status === "pending" && Date.parse(pend.created_at) >= began - 1000) {
+        updatePending(home, pend.id, { status: "rejected", result: "红队演练产生的提案，已自动清理" });
+      }
+    }
+  } catch { /* 清理失败不影响结论 */ }
   return { pass, total: cases.length, rows };
 }

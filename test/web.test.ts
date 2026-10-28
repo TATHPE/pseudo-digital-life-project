@@ -8,6 +8,7 @@ import { openDb } from "../src/db.ts";
 import { remember } from "../src/store.ts";
 import { createWebServer, looksMojibake } from "../src/web/server.ts";
 import { execute } from "../src/execute.ts";
+import { ingestFile } from "../src/ingest.ts";
 import { loadPolicy } from "../src/policy.ts";
 import { PAGE } from "../src/web/page.ts";
 import { AVATAR_FRAMES } from "../src/web/avatar.ts";
@@ -439,4 +440,44 @@ test("部署配置不漂移：compose 的 healthcheck 打的是我们真的在�
   assert.ok(m && Number(m[1]) >= 22, `Dockerfile 基础镜像 Node 版本太低：${m && m[1]}`);
   // 重启策略：被杀 ≤10s 自愈
   assert.match(compose, /restart:\s*unless-stopped/);
+});
+
+test("文档：/api/docs 列出摄入的文档，点开能看到块，忘掉后消失", async () => {
+  const dir = tmp();
+  const d = openDb(join(dir, "m.db"));
+  mkdirSync(join(dir, "sources"), { recursive: true });
+  writeFileSync(join(dir, "sources", "k.md"), "# 领地\n\n它自己划的圈。\n\n## 边界\n\n越界即降级。" + "内容".repeat(60));
+  const policy = await loadPolicy(dir);
+  const srv = createWebServer({
+    db: d.db, inboxDir: join(dir, "inbox"), home: dir, policy,
+    getTransport: () => { throw new Error("no model"); }, getEmbedder: () => null,
+    getConfig: () => ({ ollama: "", roles: { express: { provider: "deepseek", model: "x", embed: { provider: "ollama", model: "bge-m3" } } } }),
+  });
+  await new Promise<void>((r) => srv.listen(0, "127.0.0.1", () => r()));
+  const base = `http://127.0.0.1:${(srv.address() as AddressInfo).port}`;
+  try {
+    const ing = await ingestFile(d.db, join(dir, "sources", "k.md"), { home: dir });
+    assert.equal(ing.skipped, false);
+
+    const list = await (await fetch(`${base}/api/docs`)).json() as any[];
+    assert.equal(list.length, 1);
+    assert.equal(list[0].title, "领地");
+
+    const one = await (await fetch(`${base}/api/docs/${list[0].id}`)).json() as any;
+    assert.equal(one.doc.n_chunks, ing.chunks);
+    assert.ok(one.chunks.length >= 1);
+    assert.ok(one.chunks.some((c: any) => c.heading_path === "领地 > 边界"));
+
+    const forget = await fetch(`${base}/api/docs/${list[0].id}/forget`, {
+      method: "POST", headers: { "x-jj": "1", "content-type": "application/json" }, body: "{}",
+    });
+    assert.equal(forget.status, 200);
+    assert.equal(((await forget.json()) as any).chunks, ing.chunks);
+    assert.equal(((await (await fetch(`${base}/api/docs`)).json()) as any[]).length, 0);
+
+    const noCsrf = await fetch(`${base}/api/docs/${list[0].id}/forget`, {
+      method: "POST", headers: { "content-type": "application/json" }, body: "{}",
+    });
+    assert.equal(noCsrf.status, 403);
+  } finally { srv.close(); }
 });

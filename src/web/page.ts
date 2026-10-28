@@ -246,6 +246,7 @@ export const PAGE = `<!doctype html>
   <div class="sec" id="pendsec" hidden><h3>PENDING · 待确认</h3><div id="pendlist"></div></div>
   <div class="sec"><h3>SESSIONS</h3><div id="sesslist"></div></div>
   <div class="sec"><h3>TOOLS</h3><div id="toollist"><button class="item on" data-view="chat">对话<span class="m">与鲸鲸说话</span></button></div></div>
+  <div class="sec"><h3>DOCS</h3><div id="doclist"></div></div>
   <div class="sec"><h3>MEMORY</h3><div id="memlist"></div></div>
   <div class="sec"><h3>CONFIG</h3>
     <button class="item" data-view="cfg">设置<span class="m">接口 / 人格</span></button>
@@ -275,6 +276,18 @@ export const PAGE = `<!doctype html>
         <div class="acts">
           <button id="mv-forget" class="primary">忘记这条</button>
           <span id="mv-msg" class="hint"></span>
+        </div>
+      </div>
+    </div>
+
+    <div id="docview" hidden>
+      <div class="panelbox">
+        <h2 id="dv-title">DOC</h2>
+        <p class="hint" id="dv-meta"></p>
+        <div id="dv-chunks"></div>
+        <div class="acts">
+          <button id="dv-forget" class="primary">忘掉这篇</button>
+          <span id="dv-msg" class="hint"></span>
         </div>
       </div>
     </div>
@@ -362,7 +375,7 @@ let view = "chat", TOOLS = [], MEMS = [];
 
 function show(v) {
   view = v;
-  for (const id of ["chat", "cfg", "toolview", "memview"]) $("#" + id).hidden = id !== v;
+  for (const id of ["chat", "cfg", "toolview", "memview", "docview"]) $("#" + id).hidden = id !== v;
   $("#composer").style.display = v === "chat" ? "" : "none";
   for (const b of document.querySelectorAll("#side .item")) {
     b.classList.toggle("on", b.dataset.view === v);
@@ -452,6 +465,43 @@ $("#pendlist").onclick = async (e) => {
     msg.textContent = j.ok ? (btn.dataset.act === "confirm" ? "已执行" : "已拒绝") : (j.error || "FAILED");
   } catch (err) { msg.textContent = "网络错误"; }
   await pending(); await timeline(); await state();
+};
+// ── DOCS：摄入过的文档（点击看分块）──────────────────────────
+async function docs() {
+  let list = [];
+  try { list = await (await fetch("/api/docs")).json(); } catch (e) { return; }
+  const box = $("#doclist");
+  if (!list || !list.length) {
+    box.innerHTML = "<div class='hint' style='padding:4px 2px'>还没有文档。终端里：<br>jingjing ingest data/sources</div>";
+    return;
+  }
+  box.innerHTML = list.map((d) =>
+    "<button class='item' data-view='docview' data-doc='" + escapeHtml(d.id) + "'>" +
+    escapeHtml(d.title || d.id) + "<span class='m'>" + d.chunks + " 块 · " + escapeHtml(d.converter || "") + "</span></button>").join("");
+}
+async function openDoc(id) {
+  show("docview");
+  $("#dv-title").textContent = "DOC · " + id;
+  $("#dv-meta").textContent = "…";
+  $("#dv-chunks").innerHTML = "";
+  const j = await (await fetch("/api/docs/" + id)).json();
+  if (!j || !j.doc) { $("#dv-meta").textContent = j.error || "E_NO_DOC"; return; }
+  $("#dv-title").textContent = j.doc.title || id;
+  $("#dv-meta").textContent = (j.doc.rel_path || "") + " · " + j.doc.n_chunks + " 块 · " + (j.doc.converter || "") + " · " + (j.doc.bytes || 0) + " 字节";
+  $("#dv-chunks").innerHTML = (j.chunks || []).map((c) =>
+    "<div class='ck'><div class='ck-h'>#" + c.ord + "　" + escapeHtml(c.heading_path || "(无章节)") + "　<span class='ck-t'>" + c.n_tokens + " tok</span></div>" +
+    "<pre class='ck-b'>" + escapeHtml(c.text.slice(0, 1200)) + (c.text.length > 1200 ? String.fromCharCode(10) + "…（截断）" : "") + "</pre></div>").join("");
+}
+$("#dv-forget").onclick = async () => {
+  const id = $("#dv-title").textContent.startsWith("DOC · ") ? $("#dv-title").textContent.slice(6) : "";
+  const meta = $("#dv-meta").textContent;
+  const realId = (meta && $("#dv-title").textContent.match(/^DOC · (doc_[0-9a-f]+)$/) ? $("#dv-title").textContent.slice(6) : "");
+  const target = realId || id;
+  if (!target) return;
+  const j = await (await fetch("/api/docs/" + target + "/forget", { method: "POST", headers: H, body: "{}" })).json();
+  const m = $("#dv-msg");
+  if (j.ok) { m.className = "ok"; m.textContent = "已忘掉 " + j.chunks + " 块"; await docs(); show("chat"); }
+  else { m.className = "err"; m.textContent = j.error || "FAILED"; }
 };
 async function sessions() {
   const blocks = await (await fetch("/api/timeline")).json();
@@ -554,6 +604,7 @@ document.addEventListener("click", (e) => {
   if (v === "cfg") { show("cfg"); loadConfig().then(() => loadPersona($("#p-file").value)); return; }
   if (v === "toolview") { openTool(Number(t.dataset.tool)); return; }
   if (v === "memview") { openMemory(Number(t.dataset.mem)); return; }
+  if (v === "docview") { openDoc(t.dataset.doc); return; }
   show("chat");
   if (t.dataset.day) jumpToDay(t.dataset.day);
 });
@@ -638,6 +689,6 @@ $("#composer").onsubmit = async (e) => {
   }
   await timeline(); await state(); await memories();
 };
-state(); timeline(); sessions(); tools(); memories(); loadConfig(); loadUi(); pending(); setInterval(() => { state(); pending(); }, 30000);
+state(); timeline(); sessions(); tools(); memories(); docs(); loadConfig(); loadUi(); pending(); setInterval(() => { state(); pending(); }, 30000);
 </script>
 </body></html>`;

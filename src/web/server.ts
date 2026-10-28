@@ -16,6 +16,7 @@ import { writeFileConfig, readFileConfig, resolveConfig } from "../configfile.ts
 import { AVATAR_FRAMES, DEFAULT_AVATAR, isAvatarFrame } from "./avatar.ts";
 import { getPending, listPending, updatePending } from "../confirm.ts";
 import { readStateSafe } from "../deploy/slot.ts";
+import { listDocs, forgetDoc } from "../ingest.ts";
 import { meta } from "../db.ts";
 import { execute } from "../execute.ts";
 import { loadPolicy, type Policy } from "../policy.ts";
@@ -294,6 +295,35 @@ export function createWebServer(deps: WebDeps) {
         return;
       }
 
+      if (req.method === "GET" && url.pathname === "/api/docs") {
+        json(res, 200, listDocs(deps.db, 200));
+        return;
+      }
+      const docIdRe = url.pathname.match(/^\/api\/docs\/(doc_[0-9a-f]+)$/);
+      if (req.method === "GET" && docIdRe) {
+        const id = String(docIdRe[1]);
+        const doc = deps.db.prepare(
+          `SELECT id,title,rel_path,n_chunks,bytes,converter,created_at FROM documents WHERE id=? AND deleted_at IS NULL`,
+        ).get(id) as Record<string, unknown> | undefined;
+        if (!doc) { json(res, 404, { error: "E_NO_DOC" }); return; }
+        const chunks = deps.db.prepare(
+          `SELECT ord,heading_path,text,n_tokens FROM chunks
+            WHERE doc_id=? AND deleted_at IS NULL ORDER BY ord`,
+        ).all(id);
+        json(res, 200, { doc, chunks });
+        return;
+      }
+      const docForget = url.pathname.match(/^\/api\/docs\/(doc_[0-9a-f]+)\/forget$/);
+      if (req.method === "POST" && docForget) {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
+        const n = forgetDoc(deps.db, String(docForget[1]), now());
+        appendEvent(deps.inboxDir, {
+          v: 1, id: newEventId(), ts: now().toISOString(), kind: "doc_forget", actor: "user",
+          payload: { docId: String(docForget[1]), chunks: n },
+        });
+        json(res, 200, { ok: true, chunks: n });
+        return;
+      }
       if (req.method === "GET" && url.pathname === "/api/pending") {
         // 待确认的 T3 提案（面板上那张卡）：带确切 argv，人看完才能点
         json(res, 200, listPending(deps.home, now()).map((p) => ({

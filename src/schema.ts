@@ -1,5 +1,5 @@
 /** M0 schema（02 §4 + 18 §1 的 outage/审计） */
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 
 export const MIGRATION_001 = `
 PRAGMA journal_mode=WAL;
@@ -13,14 +13,21 @@ CREATE TABLE IF NOT EXISTS meta (
 
 CREATE TABLE IF NOT EXISTS documents (
   id TEXT PRIMARY KEY, uri TEXT NOT NULL, sha256 TEXT NOT NULL UNIQUE,
-  title TEXT, md_path TEXT, created_at TEXT NOT NULL, deleted_at TEXT
+  title TEXT, md_path TEXT, created_at TEXT NOT NULL, deleted_at TEXT,
+  -- v7：摄入管道（02 §4/§5）
+  rel_path TEXT, mime TEXT, bytes INTEGER, converter TEXT, meta_json TEXT,
+  n_chunks INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS chunks (
   id INTEGER PRIMARY KEY, doc_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
   ord INTEGER NOT NULL, heading_path TEXT NOT NULL DEFAULT '',
   text TEXT NOT NULL, text_bigram TEXT NOT NULL DEFAULT '',
-  n_tokens INTEGER NOT NULL DEFAULT 0, sha256 TEXT
+  n_tokens INTEGER NOT NULL DEFAULT 0, sha256 TEXT,
+  -- v7：两阶段检索用 BLOB 向量（vec0 是暴力扫描，只留给量小的记忆）
+  embedding BLOB,
+  -- v7：重摄入不原地改，旧块只标时间（02 §5.3 可回滚）
+  deleted_at TEXT
 );
 CREATE UNIQUE INDEX IF NOT EXISTS ux_chunks ON chunks(doc_id, ord);
 

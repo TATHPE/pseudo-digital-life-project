@@ -77,9 +77,11 @@ export function safePath(home: string, p: string, mustExist = true): string {
 const MAX_READ = 64 * 1024;
 const maxList = 200;
 
-import { search } from "./retrieve.ts";
+import { search, searchDocs } from "./retrieve.ts";
 import { remember } from "./store.ts";
 import { renderTemplate, templateCatalog, templateById, planRun, runArgv } from "./shell.ts";
+import { listDocs } from "./ingest.ts";
+import { dedupeTitle } from "./chunk.ts";
 import { spawnSync } from "node:child_process";
 
 /** docker 模式超时后清容器（客户端被杀不等于容器停了） */
@@ -270,6 +272,33 @@ export const verbs: VerbDef[] = [
         payload: { text, proactive: true, reason: "notify" },
       });
       return "已通知";
+    },
+  },
+  {
+    name: "doc.search", tier: "T0", reversible: true,
+    description: "在摄入过的文档块里检索（先 BM25 再向量，返回 doc:<id>#<ord> 引用）",
+    params: S({ q: { type: "string" }, k: { type: "number" } }, ["q"]),
+    target: () => "internal",
+    async run(a, ctx) {
+      if (!ctx.db) throw new Error("E_NO_DB");
+      const r = await searchDocs(ctx.db, ctx.embedder ?? null, String(a.q ?? ""), { k: Number(a.k ?? 5) });
+      if (!r.hits.length) return "（没有相关文档块）";
+      const NL = String.fromCharCode(10);
+      return r.hits.map((h) =>
+        "[" + h.cite + "] " + h.title + (dedupeTitle(h.headingPath, h.title) ? " › " + dedupeTitle(h.headingPath, h.title) : "") + NL + h.text.slice(0, 600),
+      ).join(NL + NL);
+    },
+  },
+  {
+    name: "doc.list", tier: "T0", reversible: true,
+    description: "列出已摄入的文档（标题 / 块数 / 转换器）",
+    params: S({}),
+    target: () => "internal",
+    async run(_a, ctx) {
+      if (!ctx.db) throw new Error("E_NO_DB");
+      const docs = listDocs(ctx.db, 50);
+      if (!docs.length) return "（还没有摄入任何文档：jingjing ingest <路径>）";
+      return docs.map((d) => d.id + " " + d.title + " ｜ " + d.chunks + " 块 ｜ " + (d.rel_path ?? "")).join(String.fromCharCode(10));
     },
   },
   {

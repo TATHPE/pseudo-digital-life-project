@@ -38,6 +38,17 @@ export function openDb(path: string): Db {
       ensureColumn(db, "exec_audit", "capability", "TEXT");
       ensureColumn(db, "exec_audit", "host_profile", "TEXT");
     }
+    if (Number(cur.value) < 7) {
+      // 摄入管道（02 §5）：文档多了元信息，块多了向量与删除标记
+      ensureColumn(db, "documents", "rel_path", "TEXT");
+      ensureColumn(db, "documents", "mime", "TEXT");
+      ensureColumn(db, "documents", "bytes", "INTEGER");
+      ensureColumn(db, "documents", "converter", "TEXT");
+      ensureColumn(db, "documents", "meta_json", "TEXT");
+      ensureColumn(db, "documents", "n_chunks", "INTEGER NOT NULL DEFAULT 0");
+      ensureColumn(db, "chunks", "embedding", "BLOB");
+      ensureColumn(db, "chunks", "deleted_at", "TEXT");
+    }
     db.prepare("UPDATE meta SET value=? WHERE key='schema_version'").run(String(SCHEMA_VERSION));
   }
   return { db, vecLoaded, path };

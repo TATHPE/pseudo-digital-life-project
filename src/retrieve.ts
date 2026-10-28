@@ -184,3 +184,109 @@ export function jaccard(a: string, b: string): number {
   for (const x of A) if (B.has(x)) inter++;
   return inter / (A.size + B.size - inter);
 }
+
+// ── 文档块检索（02 §7.1 的同一套两阶段，作用在 chunks 上）────────────
+
+export interface DocHit {
+  chunkId: number;
+  docId: string;
+  ord: number;
+  title: string;
+  headingPath: string;
+  text: string;
+  score: number;
+  cosine?: number;
+  /** 引用格式：doc:<doc_id>#<ord>（与 mem:<id> 对称） */
+  cite: string;
+}
+
+/**
+ * 先 FTS(bigram) 出候选，再只对候选算 cosine。
+ * 不用 vec0：40k 块时暴力扫描要 150 ms+（README 实测），两阶段把读放大降下来。
+ */
+export async function searchDocs(
+  db: DatabaseSync, embedder: Embedder | null, query: string, opts: { k?: number; candidates?: number } = {},
+): Promise<{ hits: DocHit[]; meta: SearchMeta }> {
+  const k = opts.k ?? 6;
+  const lim = opts.candidates ?? 800;
+  const degraded: string[] = [];
+  const t0 = performance.now();
+  const q = ftsQuery(query);
+
+  let ranked: Array<{ id: number; score: number }> = [];
+  if (q) {
+    ranked = db.prepare(
+      `SELECT rowid AS id, bm25(chunks_fts) AS score FROM chunks_fts
+        WHERE chunks_fts MATCH ? ORDER BY score LIMIT ?`,
+    ).all(q, lim) as typeof ranked;
+  }
+
+  const meta = new Map<number, { docId: string; ord: number; title: string; headingPath: string; text: string }>();
+  if (ranked.length) {
+    const got = db.prepare(
+      `SELECT c.id, c.doc_id, c.ord, c.heading_path, c.text, d.title
+         FROM chunks c JOIN documents d ON d.id = c.doc_id
+        WHERE c.deleted_at IS NULL AND d.deleted_at IS NULL
+          AND c.id IN (SELECT value FROM json_each(?))`,
+    ).all(JSON.stringify(ranked.map((r) => r.id))) as Array<{
+      id: number; doc_id: string; ord: number; heading_path: string; text: string; title: string | null;
+    }>;
+    for (const g of got) {
+      meta.set(g.id, { docId: g.doc_id, ord: g.ord, title: g.title ?? "", headingPath: g.heading_path, text: g.text });
+    }
+  }
+  const rows = ranked.filter((r) => meta.has(r.id));
+  const t1 = performance.now();
+
+  // 候选重排（只读候选行的 embedding）
+  const cos = new Map<number, number>();
+  if (embedder && rows.length) {
+    let qv: Float32Array | null = null;
+    try { qv = (await embedder.embed([query]))[0] ?? null; } catch { degraded.push("E_EMBED_DOWN"); }
+    if (qv) {
+      const got = db.prepare(
+        `SELECT id, embedding FROM chunks
+          WHERE embedding IS NOT NULL AND id IN (SELECT value FROM json_each(?))`,
+      ).all(JSON.stringify(rows.map((r) => r.id))) as Array<{ id: number; embedding: Uint8Array }>;
+      for (const g of got) cos.set(g.id, dot(qv, toF32(g.embedding)));
+    } else degraded.push("E_EMBED_EMPTY");
+  } else if (!embedder) degraded.push("no_embedder");
+  const t2 = performance.now();
+
+  const bmRank = new Map(rows.map((r, i) => [r.id, i + 1]));
+  const cosRank = new Map([...cos.entries()].sort((a, b) => b[1] - a[1]).map(([id], i) => [id, i + 1]));
+  const K = 60;
+  const fused: DocHit[] = rows.map((r) => {
+    const m = meta.get(r.id)!;
+    const rrf = 1 / (K + (bmRank.get(r.id) ?? lim)) + (cosRank.has(r.id) ? 1 / (K + cosRank.get(r.id)!) : 0);
+    return {
+      chunkId: r.id, docId: m.docId, ord: m.ord, title: m.title, headingPath: m.headingPath,
+      text: m.text, score: rrf, ...(cos.has(r.id) ? { cosine: cos.get(r.id) } : {}),
+      cite: `doc:${m.docId}#${m.ord}`,
+    };
+  });
+
+  // MMR：同一篇文档里相邻两块内容高度重叠，不去冗余就会"返回三条其实是一条"
+  const pool = fused.slice();
+  const picked: DocHit[] = [];
+  while (pool.length && picked.length < k) {
+    let best = -Infinity, bi = 0;
+    for (let i = 0; i < pool.length; i++) {
+      const cand = at(pool, i);
+      let maxSim = 0;
+      for (const p of picked) maxSim = Math.max(maxSim, jaccard(cand.text, p.text));
+      const mmr = 0.7 * cand.score - 0.3 * maxSim;
+      if (mmr > best) { best = mmr; bi = i; }
+    }
+    picked.push(at(pool.splice(bi, 1), 0));
+  }
+  const t3 = performance.now();
+
+  return {
+    hits: picked,
+    meta: {
+      stage1Ms: +(t1 - t0).toFixed(1), stage2Ms: +(t2 - t1).toFixed(1),
+      totalMs: +(t3 - t0).toFixed(1), candidates: rows.length, degraded,
+    },
+  };
+}

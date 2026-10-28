@@ -455,6 +455,48 @@ async function main(): Promise<void> {
       process.exitCode = r.ok ? 0 : 1;
       return;
     }
+    case "ingest": {
+      // jingjing ingest <路径> [--scope x] [--no-embed] [--rebuild]
+      const target = rest.find((x) => !x.startsWith("--"));
+      if (!target) { console.log("用法: jingjing ingest <文件或目录> [--scope x] [--no-embed]"); process.exitCode = 1; return; }
+      const { ingestPath, sourcesDir } = await import("../ingest.ts");
+      const d = openDb(dbFile);
+      const cfg = resolveConfig(HOME);
+      const useEmbed = !rest.includes("--no-embed");
+      const embedder = useEmbed ? createEmbedder("ollama", { baseUrl: cfg.ollama, model: cfg.roles.embed!.model }) : null;
+      const scopeArg = rest.indexOf("--scope");
+      const scope = scopeArg >= 0 ? rest[scopeArg + 1] : undefined;
+      const r = await ingestPath(d.db, target, {
+        home: HOME, root: sourcesDir(HOME), embedder,
+        ...(scope ? { scope } : {}),
+        force: rest.includes("--rebuild"),
+      });
+      for (const x of r.results) {
+        const status = x.skipped ? "skipped" : x.degraded.some((g) => g.startsWith("E_")) ? "FAILED" : "ok";
+        console.log(`${status.padEnd(8)} ${x.file}  ${x.chunks} 块 ${x.tokens} tok${x.skipped ? "" : `  ${x.ms}ms`}${x.degraded.length ? "  " + x.degraded.join(" ") : ""}`);
+      }
+      console.log(`合计 ${r.total.files} 个文件 · ${r.total.chunks} 块 · 跳过 ${r.total.skipped} · 失败 ${r.total.failed}`);
+      process.exitCode = r.total.failed ? 1 : 0;
+      return;
+    }
+    case "docs": {
+      const { listDocs } = await import("../ingest.ts");
+      const d = openDb(dbFile);
+      const rows = listDocs(d.db, 200);
+      if (!rows.length) { console.log("（还没有摄入任何文档）"); return; }
+      for (const x of rows) console.log(`${x.id}  ${String(x.chunks).padStart(4)} 块  ${(x.converter ?? "").padEnd(12)} ${x.title}`);
+      console.log(`共 ${rows.length} 篇 · ${rows.reduce((n, x) => n + x.chunks, 0)} 块`);
+      return;
+    }
+    case "forget-doc": {
+      const { forgetDoc } = await import("../ingest.ts");
+      const id = rest.find((x) => !x.startsWith("--"));
+      if (!id) { console.log("用法: jingjing forget-doc <doc_id>"); process.exitCode = 1; return; }
+      const d = openDb(dbFile);
+      const n = forgetDoc(d.db, id);
+      console.log(`已忘掉 ${id}（${n} 块）：文档与块标 deleted_at，FTS 行已删`);
+      return;
+    }
     case "export": {
       // 搬家第一步：导出一致快照（先停面板；不停也能导，只是 inbox 尾部可能多几条）
       const { exportHome, defaultExportDir } = await import("../handoff.ts");
@@ -514,7 +556,12 @@ ${r.pass}/${r.total} 拦截/放行符合预期`);
       const d = openDb(dbFile);
       const policy = await import("../policy.ts").then((m) => m.loadPolicy(HOME));
       const args = rest[1] ? JSON.parse(rest[1]) : {};
-      const r = await execute({ db: d.db, policy, ctx: { home: HOME, now: () => new Date() } }, name, args, { approved: rest.includes("--yes") });
+      // db / embedder 必须给：memory.search、doc.search 这类 verb 没它就直接 E_NO_DB
+      const cfg0 = resolveConfig(HOME);
+      const emb = rest.includes("--no-embed") ? null
+        : createEmbedder("ollama", { baseUrl: cfg0.ollama, model: cfg0.roles.embed!.model });
+      const r = await execute({ db: d.db, policy, ctx: { home: HOME, now: () => new Date(), db: d.db, embedder: emb } },
+        name, args, { approved: rest.includes("--yes") });
       console.log(JSON.stringify(r, null, 2));
       process.exitCode = r.ok ? 0 : 1;
       return;
