@@ -151,7 +151,8 @@ test("令牌过期后会被扫掉（不无限堆积）", () => {
   const t = issueToken(home, { verb: "shell.run", template: "node.run_script", digest, cwd: home, now: T0, ttlMs: 1000 });
   const p = join(tokensDir(home), t.token + ".json");
   assert.ok(existsSync(p));
-  const n = sweepTokens(home, at(1000 + 3_600_000 * 2));
+  // 用**明确的远期**时间：sweep 会拿文件 mtime 跟 now 比，拿“真实时间 + 1h”会随时钟漂移而翻车
+  const n = sweepTokens(home, at(1000 + 86_400_000 * 3));
   assert.equal(n, 1);
   assert.equal(existsSync(p), false);
 });

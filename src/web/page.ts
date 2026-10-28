@@ -22,6 +22,8 @@ export const PAGE = `<!doctype html>
 <title>鲸鲸</title>
 <!-- PWA（19 §7.5）：装到桌面后是独立窗口，不是浏览器标签页 -->
 <link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" type="image/svg+xml" href="/icon.svg">
+<link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
 <link rel="apple-touch-icon" href="/icon-180.png">
 <meta name="theme-color" content="#0b0e0b">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -261,6 +263,31 @@ export const PAGE = `<!doctype html>
     /* 底部装饰标签会和输入框叠在一起，手机上直接不要 */
     .frame b { display:none; }
   }
+  /* ── 自定义头像 ────────────────────────────────── */
+  .av .avi { width:100%; height:100%; object-fit:cover; display:block; }
+  .avav { display:flex; align-items:center; gap:10px; margin:6px 0 10px; }
+  .avav .av { width:40px; height:40px; flex:none; }
+  .avav .av .ico { width:26px; height:26px; }
+  .avav .acts { display:flex; gap:8px; flex-wrap:wrap; }
+  .avav .acts button { font:10px/1 var(--mono); padding:6px 9px; cursor:pointer; background:transparent;
+                        color:var(--fg); border:1px solid var(--line-dim); }
+  .avav .acts button:hover { border-color:var(--line); }
+  .avav input[type=file] { display:none; }
+
+  /* ── 气泡：两侧一眼分得开（之前两边都是淡框，长消息看着像没有气泡）── */
+  .body { background:rgba(18,28,24,.92); border:1px solid var(--line-dim);
+          border-left:2px solid var(--cyan); padding:12px 15px; display:inline-block; max-width:100%; }
+  .row.user .body { background:rgba(38,28,14,.92); border-color:rgba(255,180,84,.34);
+                    border-left:0; border-right:2px solid var(--amber);
+                    margin-left:auto; max-width:82%; text-align:left; }
+
+  /* ── 侧栏分区可折叠（MEMORY / DOCS / ACTIONS）────── */
+  .sec h3 button { all:unset; cursor:pointer; display:flex; align-items:center; gap:8px; width:100%;
+                   font:10px/1 var(--mono); letter-spacing:.18em; color:var(--cyan); }
+  .sec h3 button::after { content:"−"; margin-left:auto; color:var(--dim); font-size:12px; letter-spacing:0; }
+  .sec.collapsed h3 button::after { content:"+"; }
+  .sec h3 button .n { color:var(--dim); letter-spacing:0; }
+
   /* ── 证据链（P0 #1/#2）：召回行 + 可点引用 ──────────── */
   .recall { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin:0 0 6px;
             font:10px/1.4 var(--mono); color:var(--dim); }
@@ -362,14 +389,14 @@ export const PAGE = `<!doctype html>
   <div class="sec"><input id="q" class="searchbox" placeholder="搜记忆 / 文档…（Ctrl+K）" autocomplete="off"></div>
   <div class="sec"><h3>最近</h3><div id="sesslist"></div></div>
   <!-- 内容在前、参考在后：TOOLS 有 16 项，放在中间会把 DOCS / MEMORY 挤到折叠线以下 -->
-  <div class="sec"><h3>DOCS</h3><div id="doclist"></div>
+  <div class="sec" data-sec="docs"><h3><button type="button" data-tog="docs">DOCS <span class="n" id="doccount"></span></button></h3><div id="doclist"></div>
     <div class="ingest">
       <input id="dlg-path" class="searchbox" placeholder="sources/笔记.md" autocomplete="off">
       <div class="rowmini"><label><input type="checkbox" id="dlg-share"> 允许进云端</label><button id="dlg-go">摄入</button></div>
       <span id="dlg-msg" class="hint"></span>
     </div></div>
-  <div class="sec"><h3>MEMORY</h3><div id="memlist"></div></div>
-  <div class="sec"><h3>ACTIONS</h3><div id="auditlist"></div></div>
+  <div class="sec" data-sec="mem"><h3><button type="button" data-tog="mem">MEMORY <span class="n" id="memcount"></span></button></h3><div id="memlist"></div></div>
+  <div class="sec" data-sec="actions"><h3><button type="button" data-tog="actions">ACTIONS <span class="n" id="actcount"></span></button></h3><div id="auditlist"></div></div>
   <div class="sec"><button class="fold" id="foldtools">TOOLS <span class="n" id="toolcount"></span></button><div id="toollist" hidden><button class="item on" data-view="chat">对话<span class="m">与鲸鲸说话</span></button></div></div>
   <div class="sec"><h3>CONFIG</h3>
     <button class="item" data-view="cfg">设置<span class="m">接口 / 人格</span></button>
@@ -482,6 +509,20 @@ export const PAGE = `<!doctype html>
       </div>
 
       <div class="panelbox">
+        <h2>AVATAR · 头像</h2>
+        <p class="hint">只收 png / jpeg / webp（会验文件头，不信声明的类型）；SVG 不收 —— 它能带脚本。</p>
+        <div class="avav"><span class="av" id="pv-agent"><svg class="ico" aria-hidden="true"><use href="#whale" /></svg></span>
+          <div><div class="hint">鲸鲸</div>
+            <div class="acts"><button type="button" id="up-agent">选图片</button><input type="file" id="f-agent" accept="image/png,image/jpeg,image/webp">
+              <button type="button" id="rm-agent">恢复默认</button></div></div></div>
+        <div class="avav"><span class="av" id="pv-user">U</span>
+          <div><div class="hint">我</div>
+            <div class="acts"><button type="button" id="up-user">选图片</button><input type="file" id="f-user" accept="image/png,image/jpeg,image/webp">
+              <button type="button" id="rm-user">恢复默认</button></div></div></div>
+        <span id="av-msg" class="hint"></span>
+      </div>
+
+      <div class="panelbox">
         <h2>APPEARANCE · 外观</h2>
         <div class="two">
           <div><label>头像框</label>
@@ -515,17 +556,6 @@ const H = { "x-jj": "1", "content-type": "application/json" };
 const WHALE = "<svg class='ico' aria-hidden='true'><use href='#whale' /></svg>";
 let view = "chat", TOOLS = [], MEMS = [];
 
-// 标签页图标：直接用页面里那一个鲸鱼 symbol，不另存一份 path（免得两处逐渐不一致）
-(function favicon() {
-  const s = document.getElementById("whale");
-  if (!s) return;
-  const C = "#0f97a4";
-  const svg = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='" + C + "' color='" + C + "'>" + s.innerHTML + "</svg>";
-  const l = document.createElement("link");
-  l.rel = "icon";
-  l.href = "data:image/svg+xml," + encodeURIComponent(svg);
-  document.head.appendChild(l);
-})();
 
 function show(v) {
   view = v;
@@ -569,7 +599,7 @@ function rowHtml(b) {
   const tools = (b.tools || []).join("");
   const recall = isUser ? "" : recallHtml(b.cites || [], b.omitted || 0, b.omittedDocs || 0);
   const resend = isUser ? " <span class='hintacts'><button class='resend'>重发</button></span>" : "";
-  return "<div class='row " + b.role + "'><div class='av'>" + (isUser ? "U" : WHALE) + "</div><div>" +
+  return "<div class='row " + b.role + "'><div class='av'>" + avHtml(isUser) + "</div><div>" +
     "<div class='meta'>" + (isUser ? "USER · " : "") + clock(b.ts) + resend + "</div>" +
     recall +
     "<div class='body md'>" + body + tools + "</div></div></div>";
@@ -631,6 +661,7 @@ async function docs() {
   let list = [];
   try { list = await (await fetch("/api/docs")).json(); } catch (e) { return; }
   const box = $("#doclist");
+  var dc = $("#doccount"); if (dc) dc.textContent = (list ? list.length : 0) + " 篇";
   if (!list || !list.length) {
     box.innerHTML = "<div class='hint' style='padding:4px 2px'>还没有文档。终端里：<br>jingjing ingest data/sources</div>";
     return;
@@ -744,6 +775,75 @@ async function usage() {
 // ── 审计：侧栏常驻刷新 ────────────────────────────────
 async function auditTick() { await audit(); }
 
+// ── 头像：默认用鲸尾/U，上传后用图片（P1）────────────────
+var AV = { agent: null, user: null };
+function avHtml(isUser) {
+  var role = isUser ? "user" : "agent";
+  if (AV[role]) return "<img class='avi' alt='' src='" + AV[role] + "'>";
+  return isUser ? "U" : WHALE;
+}
+async function loadAvatars() {
+  try {
+    var j = await (await fetch("/api/avatars")).json();
+    AV.agent = j.agent ? j.agent.url : null;
+    AV.user = j.user ? j.user.url : null;
+  } catch (e) { /* 离线就都用默认 */ }
+  paintPreview();
+}
+function paintPreview() {
+  var a = $("#pv-agent"), u = $("#pv-user");
+  if (!a || !u) return;
+  a.innerHTML = avHtml(false);
+  u.innerHTML = avHtml(true);
+}
+async function uploadAvatar(role, file) {
+  if (!file) return;
+  var msg = $("#av-msg");
+  if (file.size > 512 * 1024) { msg.className = 'err'; msg.textContent = '图片太大（≤512KB）'; return; }
+  var dataUrl = await new Promise(function (res, rej) {
+    var r = new FileReader();
+    r.onload = function () { res(String(r.result)); };
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+  var j = await (await fetch("/api/avatar", { method: "POST", headers: H, body: JSON.stringify({ role: role, dataUrl: dataUrl }) })).json();
+  if (j.ok) {
+    AV[role] = j.url; paintPreview(); await timeline();
+    msg.className = 'ok'; msg.textContent = '已更换（' + role + '）';
+  } else { msg.className = 'err'; msg.textContent = (j.error || 'FAILED') + (j.hint ? ' · ' + j.hint : ''); }
+}
+async function resetAvatar(role, btn) {
+  var j = await (await fetch("/api/avatar?role=" + role, { method: "DELETE", headers: H })).json();
+  if (j.ok) { AV[role] = null; paintPreview(); await timeline();
+    var msg = $('#av-msg'); msg.className = 'ok'; msg.textContent = '已恢复默认'; }
+}
+["agent", "user"].forEach(function (role) {
+  $("#up-" + role).onclick = function () { $("#f-" + role).click(); };
+  $("#f-" + role).onchange = function (e) { uploadAvatar(role, e.target.files && e.target.files[0]); };
+  $("#rm-" + role).onclick = function () { resetAvatar(role); };
+});
+
+// ── 侧栏分区折叠（MEMORY / DOCS / ACTIONS）──────────────
+var SECT = (function () {
+  try { return JSON.parse(localStorage.getItem('jj-sections') || '{}'); } catch (e) { return {}; }
+})();
+function applySections() {
+  document.querySelectorAll(".sec[data-sec]").forEach(function (el) {
+    var k = el.dataset.sec;
+    el.classList.toggle('collapsed', !!SECT[k]);
+    var body = el.querySelector('div');
+    if (body) body.hidden = !!SECT[k];
+  });
+}
+document.addEventListener("click", function (e) {
+  var b = e.target.closest('[data-tog]');
+  if (!b) return;
+  var k = b.dataset.tog;
+  SECT[k] = !SECT[k];
+  try { localStorage.setItem('jj-sections', JSON.stringify(SECT)); } catch (err) { /* 隐私模式 */ }
+  applySections();
+});
+
 // ── 证据：召回行 + 可点引用（P0 #1/#2）──────────────────
 function recallHtml(cites, omitted, omittedDocs) {
   if ((!cites || !cites.length) && !omitted && !omittedDocs) return "";
@@ -781,6 +881,7 @@ document.addEventListener("keydown", function (e) {
 async function audit() {
   var rows = [];
   try { rows = await (await fetch("/api/audit?limit=40")).json(); } catch (e) { return; }
+  var ac = $("#actcount"); if (ac) ac.textContent = (rows ? rows.length : 0) + " 条";
   var box = $("#auditlist");
   if (!rows || !rows.length) { box.innerHTML = "<div class='hint' style='padding:4px 2px'>还没有动作</div>"; return; }
   box.innerHTML = rows.slice(0, 8).map(function (r) {
@@ -975,6 +1076,7 @@ const renderTools = () => tools();
 async function memories() {
   const rows = await (await fetch("/api/memories")).json();
   MEMS = rows;
+  var mc = $("#memcount"); if (mc) mc.textContent = rows.length + " 条";
   $("#memlist").innerHTML = rows.slice(0, 8).map((r) =>
     "<button class='item' data-view='memview' data-mem='" + r.id + "'>" +
     "<span class='preview'>" + escapeHtml(r.text) + "</span>" +
@@ -1100,7 +1202,7 @@ $("#composer").onsubmit = async (e) => {
   el.insertAdjacentHTML("beforeend", rowHtml({ role: "user", ts: new Date().toISOString(), text }));
   const id = "live-" + Date.now();
   el.insertAdjacentHTML("beforeend",
-    "<div class='row agent' id='" + id + "'><div class='av'>" + WHALE + "</div><div>" +
+    "<div class='row agent' id='" + id + "'><div class='av'>" + avHtml(false) + "</div><div>" +
     "<div class='meta'>处理中…</div><div class='recall'></div><div class='body md'><span class='cursor'></span></div></div></div>");
   const box = document.querySelector("#" + id + " .md");
   const meta = document.querySelector("#" + id + " .meta");
@@ -1171,7 +1273,7 @@ if ("serviceWorker" in navigator && (location.protocol === "https:" || location.
 }
 // 手机上侧栏是抽屉：没有这个按钮，SESSIONS/DOCS/MEMORY/TOOLS/CONFIG 全都不可达
 $("#menu").onclick = (e) => { e.stopPropagation(); $("#side").classList.toggle("open"); };
-state(); timeline(); sessions(); tools(); memories(); docs(); audit(); loadConfig(); loadUi(); pending(); metaLine(); usage();
+loadAvatars(); applySections(); state(); timeline(); sessions(); tools(); memories(); docs(); audit(); loadConfig(); loadUi(); pending(); metaLine(); usage();
 setInterval(() => { state(); pending(); audit(); }, 30000);
 setInterval(metaLine, 60000);
 </script>

@@ -581,3 +581,89 @@ test("接口：/api/audit 只回字段不泄漏，/api/search 空查询直接返
     assert.ok(u.budgetUsd > 0);
   } finally { srv.close(); }
 });
+
+test("favicon：静态 /icon.svg 里的 viewBox 必须是符号自己的（之前写死 24×24 导致标签页空白）", async () => {
+  const { srv, base } = await start();
+  try {
+    const svg = await (await fetch(`${base}/icon.svg`)).text();
+    assert.match(svg, /viewBox="0 0 512 512"/, "viewBox 必须和 symbol 一致");
+    assert.ok(svg.includes("M453.004"), "要真的是那条鲸尾路径");
+    assert.match(svg, /color="#0f97a4"/, "currentColor 需要 color 才有颜色");
+    assert.match(svg, /^<svg xmlns=/, "必须是独立 SVG 文档");
+    assert.ok(PAGE.includes('rel="icon" type="image/svg+xml" href="/icon.svg"'), "head 里要有静态图标链接");
+    assert.ok(!PAGE.includes("function favicon()"), "不要再靠运行时拼 data URI");
+  } finally { srv.close(); }
+});
+
+test("头像：上传验收文件头（伪造 mime 也不行），SVG 一律拒，删除后回落默认", async () => {
+  const dir = tmp();
+  const d = openDb(join(dir, "m.db"));
+  const srv = createWebServer({
+    db: d.db, inboxDir: join(dir, "inbox"), home: dir,
+    getTransport: () => { throw new Error("no model"); }, getEmbedder: () => null,
+    getConfig: () => ({ ollama: "", roles: { express: { provider: "deepseek", model: "x", embed: { provider: "ollama", model: "bge-m3" } } } }),
+  });
+  await new Promise<void>((r) => srv.listen(0, "127.0.0.1", () => r()));
+  const base = `http://127.0.0.1:${(srv.address() as AddressInfo).port}`;
+  const H = { "x-jj": "1", "content-type": "application/json" };
+  try {
+    // 一个 1×1 的真 PNG（67 字节）
+    const png = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==",
+      "base64",
+    );
+    const up = await fetch(`${base}/api/avatar`, {
+      method: "POST", headers: H,
+      body: JSON.stringify({ role: "agent", dataUrl: "data:image/png;base64," + png.toString("base64") }),
+    });
+    assert.equal(up.status, 200, await up.text());
+    const list = await (await fetch(`${base}/api/avatars`)).json() as any;
+    assert.match(String(list.agent.url), /^\/avatar\/agent\?v=/);
+
+    const img = await fetch(`${base}/avatar/agent`);
+    assert.equal(img.status, 200);
+    assert.equal(img.headers.get("content-type"), "image/png");
+    assert.equal(img.headers.get("x-content-type-options"), "nosniff", "上传的二进制必须 nosniff");
+    assert.deepEqual([...new Uint8Array(await img.arrayBuffer()).slice(0, 4)], [0x89, 0x50, 0x4e, 0x47]);
+
+    // 声明成 png，实际是文本 → 必须拒（只信文件头）
+    const fake = await fetch(`${base}/api/avatar`, {
+      method: "POST", headers: H,
+      body: JSON.stringify({ role: "user", dataUrl: "data:image/png;base64," + Buffer.from("not an image at all, really not").toString("base64") }),
+    });
+    assert.equal(fake.status, 400);
+    assert.equal(((await fake.json()) as any).error, "E_BAD_IMAGE");
+
+    // SVG 不在白名单里
+    const svgUp = await fetch(`${base}/api/avatar`, {
+      method: "POST", headers: H,
+      body: JSON.stringify({ role: "user", dataUrl: "data:image/svg+xml;base64," + Buffer.from("<svg/>").toString("base64") }),
+    });
+    assert.equal(svgUp.status, 400);
+
+    // 没有 CSRF 头 → 403
+    const noCsrf = await fetch(`${base}/api/avatar`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ role: "agent", dataUrl: "data:image/png;base64," + png.toString("base64") }),
+    });
+    assert.equal(noCsrf.status, 403);
+
+    // 删掉 → 回落默认（/avatar 404、/api/avatars 为 null）
+    const del = await fetch(`${base}/api/avatar?role=agent`, { method: "DELETE", headers: H });
+    assert.equal(del.status, 200);
+    assert.equal((await fetch(`${base}/avatar/agent`)).status, 404);
+    assert.equal(((await (await fetch(`${base}/api/avatars`)).json()) as any).agent, null);
+  } finally { srv.close(); }
+});
+
+test("面板：头像可换 / 三个分区可折叠 / 气泡两侧不同", () => {
+  assert.ok(PAGE.includes('id="up-agent"') && PAGE.includes('id="up-user"'), "两侧头像都要能换");
+  assert.ok(PAGE.includes('id="rm-agent"'), "要能恢复默认");
+  assert.ok(PAGE.includes("/api/avatar"), "走头像接口");
+  for (const k of ["mem", "docs", "actions"]) {
+    assert.ok(PAGE.includes(`data-sec="${k}"`), `${k} 分区要可折叠`);
+    assert.ok(PAGE.includes(`data-tog="${k}"`));
+  }
+  // 两侧气泡底色不同（不然长消息看着像没有气泡）
+  assert.ok(PAGE.includes(".row.user .body { background:rgba(38,28,14,.92)"), "用户气泡要有自己的底色");
+});

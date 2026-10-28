@@ -45,8 +45,10 @@ const box = await js(`(() => { const r = document.querySelector('#composer').get
   return { top: Math.round(r.top), bottom: Math.round(r.bottom), vh: innerHeight, w: Math.round(r.width) }; })()`);
 check("输入框在视口内", box && box.bottom <= box.vh + 1 && box.top > 0, JSON.stringify(box));
 
-// 侧栏可点：工具 → 工具详情
+// 侧栏可点：工具 → 工具详情（工具列表现在默认折叠，先展开）
 check("工具项可点", await js(`(() => {
+  const fold = document.querySelector('#foldtools');
+  if (fold && document.querySelector('#toollist').hidden) fold.click();
   const b = document.querySelector('#side .item[data-view=toolview]');
   if (!b) return false; b.click();
   return !document.querySelector('#toolview').hidden;
@@ -82,12 +84,16 @@ const after = await js(`document.querySelector('#chat').textContent.length`);
 check("发送后有新内容", after > before, `${before} → ${after}`);
 check("无 JS 运行时错误", errs.length === 0, errs.slice(0, 2).join(" | "));
 
-// 图标：标签页 favicon 真的建出来了（鲸尾 data URI）；头像用的是同一个 symbol
-check("favicon 是鲸尾 data URI", await js(`(() => {
-  const l = document.querySelector("link[rel=icon]");
-  if (!l || !l.href.startsWith("data:image/svg+xml")) return false;
-  return decodeURIComponent(l.href).includes("M453.004");
-})()`));
+// 图标：标签页 favicon 是静态 /icon.svg（以前是运行时 data URI，viewBox 写死导致空白）
+check("favicon 指向 /icon.svg 且能取到", (await js(`(async () => {
+  const l = document.querySelector('link[rel=icon][type="image/svg+xml"]');
+  if (!l) return false;
+  const r = await fetch(l.href);
+  if (!r.ok) return false;
+  const t = await r.text();
+  return t.includes('viewBox="0 0 512 512"') && t.includes("M453.004");
+})()`)) === true);
+
 check("头像用同一个 symbol", await js(`(() => {
   const u = document.querySelector(".row.agent .av svg use");
   return !!u && u.getAttribute("href") === "#whale";
@@ -98,6 +104,15 @@ check("换头像框立即生效", await js(`(() => {
   s.value = "ring";
   s.dispatchEvent(new Event("change"));
   return document.body.dataset.av === "ring";
+})()`));
+check("侧栏分区可折叠", await js(`(() => {
+  const b = document.querySelector('[data-tog=mem]');
+  if (!b) return false;
+  const sec = b.closest('.sec');
+  b.click();
+  const hidden = sec.querySelector('div').hidden;
+  b.click();
+  return hidden === true && sec.querySelector('div').hidden === false;
 })()`));
 
 ws.close(); proc.kill();

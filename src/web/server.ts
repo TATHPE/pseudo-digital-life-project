@@ -7,7 +7,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { PAGE } from "./page.ts";
 import { groupTimeline, gapLabel, type Msg } from "./timeline.ts";
 import { appendEvent, newEventId, readEvents } from "../journal.ts";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { search, searchDocs } from "../retrieve.ts";
 import { buildBrief } from "../brief.ts";
 import { loadPersona } from "../persona.ts";
@@ -19,6 +19,7 @@ import { getPending, listPending, updatePending } from "../confirm.ts";
 import { readStateSafe } from "../deploy/slot.ts";
 import { listDocs, forgetDoc, setDocSensitivity, ingestPath } from "../ingest.ts";
 import { bigramText } from "../text.ts";
+import { atomicWriteFile } from "../fsx.ts";
 import { safePath } from "../verbs.ts";
 import { createTransport, routerFrom } from "../transport.ts";
 import { spentToday } from "../budget.ts";
@@ -142,6 +143,48 @@ const STATIC = join(dirname(fileURLToPath(import.meta.url)), "static");
 /** 图标是构建期生成的 PNG（见 tools/make-icons.mjs），不在运行时画 */
 export const ICON_FILES = ["icon-180.png", "icon-192.png", "icon-512.png"] as const;
 
+/**
+ * 标签页图标：把页面里那一个鲸尾 symbol 的 path 抽出来，拼成独立 SVG。
+ * 以前是前端运行时用 data URI 生成 —— 但 viewBox 写死成 24×24（symbol 是 512×512），
+ * 图标等于画到框外，标签页上什么也没有。现在服务端给矢量图，尺寸天然正确。
+ */
+/** 头像文件：按扩展名探测（一次只留一个） */
+export function avatarFile(home: string, role: "agent" | "user"): { path: string; mime: string; v: number } | null {
+  const mimes: Array<[string, string]> = [["png", "image/png"], ["jpg", "image/jpeg"], ["webp", "image/webp"]];
+  for (const [ext, mime] of mimes) {
+    const p = join(home, "avatars", `${role}.${ext}`);
+    if (existsSync(p)) return { path: p, mime, v: statSync(p).mtimeMs };
+  }
+  return null;
+}
+
+/**
+ * 解析 `data:image/png;base64,...`，并且**验文件头**：
+ * 声明的 mime 是用户说了算的，只有魔数才是真的。SVG 一律拒（它能带脚本）。
+ */
+export function parseImageDataUrl(dataUrl: string): { buf: Buffer; ext: string; mime: string } | null {
+  const m = dataUrl.match(/^data:image\/(png|jpeg|jpg|webp);base64,([A-Za-z0-9+/=]+)$/);
+  if (!m) return null;
+  let buf: Buffer;
+  try { buf = Buffer.from(m[2]!, "base64"); } catch { return null; }
+  if (buf.byteLength < 64) return null;
+  const isPng = buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47;
+  const isJpg = buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff;
+  const isWebp = buf.subarray(0, 4).toString("ascii") === "RIFF" && buf.subarray(8, 12).toString("ascii") === "WEBP";
+  if (isPng) return { buf, ext: "png", mime: "image/png" };
+  if (isJpg) return { buf, ext: "jpg", mime: "image/jpeg" };
+  if (isWebp) return { buf, ext: "webp", mime: "image/webp" };
+  return null;
+}
+
+export function faviconSvg(): string {
+  const m = PAGE.match(/<symbol id="whale" viewBox="([^"]+)">([\s\S]*?)<\/symbol>/);
+  const vb = m?.[1] ?? "0 0 512 512";
+  const body = m?.[2] ?? "";
+  // 两个都设：path 用的是 currentColor，独立 SVG 里它取决于 color（默认黑）
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vb}" fill="#0f97a4" color="#0f97a4">${body}</svg>`;
+}
+
 export function manifestJson(): string {
   return JSON.stringify({
     name: "鲸鲸",
@@ -212,6 +255,63 @@ export function createWebServer(deps: WebDeps) {
         // 注意：SW 必须能从站点根作用域拿到 → 路径就放根，别塞进 /static/
         res.writeHead(200, { "content-type": "text/javascript; charset=utf-8", "cache-control": "no-store" });
         res.end(req.method === "HEAD" ? undefined : serviceWorkerJs());
+        return;
+      }
+      // ── 头像自定义（上传的是图片，不是 SVG：SVG 里能带脚本，直接当图片打开就执行了）──
+      if (req.method === "GET" && url.pathname === "/api/avatars") {
+        json(res, 200, {
+          agent: avatarFile(deps.home, "agent") ? { url: "/avatar/agent?v=" + avatarFile(deps.home, "agent")!.v } : null,
+          user: avatarFile(deps.home, "user") ? { url: "/avatar/user?v=" + avatarFile(deps.home, "user")!.v } : null,
+        });
+        return;
+      }
+      const avServe = url.pathname.match(/^\/avatar\/(agent|user)$/);
+      if ((req.method === "GET" || req.method === "HEAD") && avServe) {
+        const f = avatarFile(deps.home, String(avServe[1]) as "agent" | "user");
+        if (!f) { json(res, 404, { error: "E_NO_AVATAR" }); return; }
+        const buf = readFileSync(f.path);
+        res.writeHead(200, {
+          "content-type": f.mime,
+          "content-length": String(buf.byteLength),
+          // 头像是用户上传的二进制：别让浏览器去猜类型（nosniff），也别让它执行任何东西
+          "x-content-type-options": "nosniff",
+          "content-security-policy": "default-src 'none'",
+          "cache-control": "private, max-age=86400",
+        });
+        res.end(req.method === "HEAD" ? undefined : buf);
+        return;
+      }
+      if (req.method === "POST" && url.pathname === "/api/avatar") {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
+        const body = JSON.parse(await readBody(req)) as { role?: string; dataUrl?: string };
+        const role = body.role === "user" ? "user" : body.role === "agent" ? "agent" : null;
+        if (!role) { json(res, 400, { error: "E_BAD_ROLE" }); return; }
+        const parsed = parseImageDataUrl(String(body.dataUrl ?? ""));
+        if (!parsed) { json(res, 400, { error: "E_BAD_IMAGE", hint: "只收 png / jpeg / webp，且要真的是图片（会查文件头）" }); return; }
+        if (parsed.buf.byteLength > 512 * 1024) { json(res, 400, { error: "E_TOO_BIG", hint: "≤512KB" }); return; }
+        mkdirSync(joinDir(deps.home, "avatars"), { recursive: true });
+        // 一次只留一个文件：换格式时把旧的删掉，免得 /avatar 拿到旧图
+        for (const ext of ["png", "jpg", "webp"]) rmSync(join(deps.home, "avatars", `${role}.${ext}`), { force: true });
+        const path = join(deps.home, "avatars", `${role}.${parsed.ext}`);
+        atomicWriteFile(path, parsed.buf);
+        appendEvent(deps.inboxDir, {
+          v: 1, id: newEventId(), ts: now().toISOString(), kind: "avatar_set", actor: "user",
+          payload: { role, bytes: parsed.buf.byteLength, mime: parsed.mime },
+        });
+        json(res, 200, { ok: true, role, url: `/avatar/${role}?v=${Date.now()}` });
+        return;
+      }
+      if (req.method === "DELETE" && url.pathname === "/api/avatar") {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
+        const role = url.searchParams.get("role") === "user" ? "user" : "agent";
+        for (const ext of ["png", "jpg", "webp"]) rmSync(join(deps.home, "avatars", `${role}.${ext}`), { force: true });
+        json(res, 200, { ok: true, role });
+        return;
+      }
+
+      if ((req.method === "GET" || req.method === "HEAD") && url.pathname === "/icon.svg") {
+        res.writeHead(200, { "content-type": "image/svg+xml; charset=utf-8", "cache-control": "public, max-age=3600" });
+        res.end(req.method === "HEAD" ? undefined : faviconSvg());
         return;
       }
       const icon = url.pathname.match(/^\/icon-(\d+)\.png$/);
