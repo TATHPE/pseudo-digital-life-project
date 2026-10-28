@@ -1,0 +1,127 @@
+import { readFileSync, mkdirSync, existsSync, readdirSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+import { atomicWriteFile } from "./fsx.ts";
+import type { PersonaFiles } from "./types.ts";
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const ROOT = join(HERE, "..");
+
+/** 可编辑的人格文件（面板里能改的六个） */
+export const PERSONA_FILES = ["core", "boundaries", "evidence", "tools", "values", "voice"] as const;
+export type PersonaFile = (typeof PERSONA_FILES)[number];
+
+export const bundledDir = () => join(ROOT, "persona");
+
+export function personaDir(home?: string): string {
+  return home ? join(home, "persona") : join(ROOT, "persona");
+}
+
+/**
+ * 读：home 里有就用 home 的，没有就**回落 bundled**。
+ * 这一条很关键：面板第一次保存 voice 后，core/boundaries/evidence/tools 不能因此变空——
+ * 否则简报的 P1–P4 会整块消失（踩过）。
+ */
+const read = (dir: string, f: string) => {
+  for (const d of [dir, bundledDir()]) {
+    const p = join(d, f + ".md");
+    if (existsSync(p)) return readFileSync(p, "utf8").trimEnd();
+  }
+  return "";
+};
+
+/** 首次写入前把 bundled 的整套 seed 到 home，保证"六个文件齐全" */
+export function seedPersona(home: string): void {
+  const dir = personaDir(home);
+  mkdirSync(dir, { recursive: true });
+  for (const f of PERSONA_FILES) {
+    const dest = join(dir, f + ".md");
+    if (existsSync(dest)) continue;
+    const src = join(bundledDir(), f + ".md");
+    if (existsSync(src)) atomicWriteFile(dest, readFileSync(src, "utf8"));
+  }
+}
+
+export function loadPersona(home?: string): PersonaFiles {
+  const dir = personaDir(home);
+  return {
+    core: read(dir, "core"),
+    boundaries: read(dir, "boundaries"),
+    evidenceOrder: read(dir, "evidence"),
+    toolSchemas: read(dir, "tools").split("\n\n")[0] ?? "",
+    toolDirectory: read(dir, "tools").split("\n\n").slice(1).join("\n\n"),
+  };
+}
+
+export function loadPersonaText(home?: string): Record<PersonaFile, string> {
+  const dir = personaDir(home);
+  const out = {} as Record<PersonaFile, string>;
+  for (const f of PERSONA_FILES) out[f] = read(dir, f);
+  return out;
+}
+
+export interface SaveResult {
+  file: PersonaFile; bytes: number; versionFile: string; changed: boolean;
+}
+
+const MAX_BYTES = 16 * 1024;
+
+/**
+ * 写一个人格文件 + 留"我变了"的记录（18 §4.4）。
+ * 校验：大小上限、禁止控制字符（除换行/制表）、禁止 U+FFFD（编码闸）。
+ */
+export function savePersonaFile(
+  home: string, file: PersonaFile, content: string, now = new Date(), because = "",
+): SaveResult {
+  if (!PERSONA_FILES.includes(file)) throw new Error(`E_PERSONA_FILE: ${file}`);
+  if (Buffer.byteLength(content, "utf8") > MAX_BYTES) throw new Error("E_PERSONA_TOO_BIG");
+  if (content.includes("\uFFFD")) throw new Error("E_ENCODING");
+  for (const ch of content) {
+    if (ch === "\n" || ch === "\t" || ch === "\r") continue;
+    if (ch.charCodeAt(0) < 32) throw new Error("E_CONTROL_CHAR");
+  }
+
+  seedPersona(home);
+  const dir = personaDir(home);
+  const before = read(dir, file);
+  const changed = before !== content.trimEnd();
+  const path = join(dir, file + ".md");
+  atomicWriteFile(path, content.trimEnd() + "\n");
+
+  // versions/：append-only，记"改了什么 + 因为什么"
+  const vdir = join(dir, "versions");
+  mkdirSync(vdir, { recursive: true });
+  const n = readdirSync(vdir).filter((f) => f.startsWith(now.toISOString().slice(0, 10))).length + 1;
+  const vfile = join(vdir, `${now.toISOString().slice(0, 10)}-${n}.md`);
+  const diff = summarize(before, content);
+  atomicWriteFile(vfile, [
+    `# ${now.toISOString()} · persona/${file}.md`,
+    "",
+    changed ? "## 改了什么" : "## 无实际变化（重复保存）",
+    "",
+    changed ? diff : "内容与上一版一致。",
+    "",
+    "## 为什么改（作者填写，L3 判据的原始素材）",
+    "",
+    because.trim() || "（未填写）",
+    "",
+    "## 回滚",
+    "",
+    `把 persona/${file}.md 还原为上一版，或删掉本记录。`,
+    "",
+  ].join("\n"));
+
+  return { file, bytes: Buffer.byteLength(content, "utf8"), versionFile: vfile, changed };
+}
+
+/** 极简 diff：只报"行数变化 + 前几行新增/删除"，不做逐字 */
+export function summarize(before: string, after: string): string {
+  const a = before ? before.split("\n") : [];
+  const b = after ? after.split("\n") : [];
+  const added = b.filter((l) => l.trim() && !a.includes(l));
+  const removed = a.filter((l) => l.trim() && !b.includes(l));
+  const lines: string[] = [`行数：${a.length} → ${b.length}`];
+  if (added.length) lines.push("", "新增：", ...added.slice(0, 8).map((l) => `+ ${l}`));
+  if (removed.length) lines.push("", "删除：", ...removed.slice(0, 8).map((l) => `- ${l}`));
+  return lines.join("\n");
+}

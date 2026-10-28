@@ -1,0 +1,61 @@
+import { DatabaseSync } from "node:sqlite";
+import { createRequire } from "node:module";
+import { MIGRATION_001, SCHEMA_VERSION } from "./schema.ts";
+
+const require = createRequire(import.meta.url);
+
+export interface Db {
+  db: DatabaseSync;
+  vecLoaded: boolean;
+  path: string;
+}
+
+export function openDb(path: string): Db {
+  const db = new DatabaseSync(path, { allowExtension: true });
+  let vecLoaded = false;
+  try {
+    const v = require("sqlite-vec") as { getLoadablePath(): string };
+    db.loadExtension(v.getLoadablePath());
+    vecLoaded = true;
+  } catch {
+    // 没有扩展也能跑：检索退化为两阶段的"纯 BM25 + 内存重排"
+  }
+  db.exec(MIGRATION_001);
+  // 40k 行基准里，这两条把 FTS 排序从 12 ms 稳到 3–10 ms（i/o 抖动变小）
+  try { db.exec("PRAGMA mmap_size=268435456; PRAGMA cache_size=-40000;"); } catch { /* 平台不支持则忽略 */ }
+  if (vecLoaded) {
+    try { db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS vec_memories USING vec0(memory_id INTEGER PRIMARY KEY, embedding FLOAT[512])`); } catch { vecLoaded = false; }
+  }
+  // 迁移：001 是幂等的 CREATE IF NOT EXISTS；后续版本在 SCHEMA_VERSION 推进时补
+  const cur = db.prepare("SELECT value FROM meta WHERE key='schema_version'").get() as { value?: string } | undefined;
+  if (!cur) {
+    db.prepare("INSERT INTO meta(key,value) VALUES(?,?)").run("schema_version", String(SCHEMA_VERSION));
+    db.prepare("INSERT INTO meta(key,value) VALUES(?,?)").run("created_at", new Date().toISOString());
+  } else if (Number(cur.value) < SCHEMA_VERSION) {
+    // 新增表全部 IF NOT EXISTS，所以"重跑 001"等价于迁移
+    db.prepare("UPDATE meta SET value=? WHERE key='schema_version'").run(String(SCHEMA_VERSION));
+  }
+  return { db, vecLoaded, path };
+}
+
+export function meta(db: DatabaseSync, key: string): string | undefined {
+  return (db.prepare("SELECT value FROM meta WHERE key=?").get(key) as { value?: string } | undefined)?.value;
+}
+
+export function setMeta(db: DatabaseSync, key: string, value: string): void {
+  db.prepare("INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(key, value);
+}
+
+/** 启动自检（18 §1.3）：quick_check + 指纹。integrity_check 太重，只在 unclean 时跑 */
+export function selfCheck(d: Db): { ok: boolean; notes: string[] } {
+  const notes: string[] = [];
+  const qc = d.db.prepare("PRAGMA quick_check").get() as Record<string, string>;
+  const okQuick = Object.values(qc)[0] === "ok";
+  if (!okQuick) notes.push(`quick_check: ${Object.values(qc)[0]}`);
+  const sv = meta(d.db, "schema_version");
+  if (sv !== String(SCHEMA_VERSION)) notes.push(`schema_version ${sv} != ${SCHEMA_VERSION}（拒绝启动，02 §4.3）`);
+  if (!d.vecLoaded) notes.push("sqlite-vec 未加载：向量检索降级");
+  return { ok: okFull(notes), notes };
+}
+
+const okFull = (notes: string[]) => !notes.some((n) => n.includes("拒绝启动") || n.startsWith("quick_check"));

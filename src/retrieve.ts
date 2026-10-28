@@ -1,0 +1,186 @@
+/**
+ * 两阶段检索（02 §7.1 实测修订 / 12 §9.1）
+ *
+ * ① BM25/FTS5(bigram) 出候选（不碰向量）
+ * ② 只对候选算 cosine + MMR
+ *
+ * 为什么：vec0 是暴力扫描，40k×1024 维实测 155–195 ms（超预算），
+ * 两阶段把"读 164 MB"降到"读 2000×2 KB ≈ 4 MB"。
+ */
+import type { DatabaseSync } from "node:sqlite";
+import type { Embedder } from "./embed.ts";
+import { ftsQuery } from "./text.ts";
+import { at } from "./assert.ts";
+import { bigrams } from "./text.ts";
+import type { Stage } from "./decay.ts";
+
+export interface Hit {
+  id: number; text: string; score: number;
+  stage: Stage; weight: number; cite: string;
+  relevance: number;          // 0..1，用于 fading 的"话题直接命中"判断
+  via: "active" | "fading" | "flashback";
+  bm25Rank?: number; cosRank?: number; cosine?: number;
+}
+
+export interface SearchOpts {
+  k?: number;               // 返回条数，默认 8
+  candidates?: number;      // 第一段候选数，默认 1000
+  activeMin?: number;       // active 注入门槛（保留给调用方覆盖，默认 0.35 生效于 stage）
+  fadingMin?: number;       // fading 最低权重，默认 0.15
+  fadingRelevance?: number; // fading 需"话题直接命中"，默认 0.45
+  flashbackCap?: number;    // dormant 强线索唤醒上限，默认 2
+  mmrLambda?: number;       // 默认 0.7
+}
+
+export interface SearchMeta {
+  stage1Ms: number; stage2Ms: number; totalMs: number;
+  candidates: number; degraded: string[];
+}
+
+const dot = (a: Float32Array, b: Float32Array) => {
+  let s = 0; const n = Math.min(a.length, b.length);
+  for (let i = 0; i < n; i++) s += (a[i] ?? 0) * (b[i] ?? 0);
+  return s;
+};
+const toF32 = (blob: Uint8Array) => new Float32Array(blob.buffer, blob.byteOffset, blob.byteLength / 4);
+
+export async function search(
+  db: DatabaseSync, embedder: Embedder | null, query: string, opts: SearchOpts = {},
+): Promise<{ hits: Hit[]; meta: SearchMeta }> {
+  const k = opts.k ?? 8;
+  const lim = opts.candidates ?? 1000;
+  const activeMin = opts.activeMin ?? 0.35;
+  const fadingMin = opts.fadingMin ?? 0.15;
+  const fadingRel = opts.fadingRelevance ?? 0.45;
+  const flashCap = opts.flashbackCap ?? 2;
+  const lam = opts.mmrLambda ?? 0.7;
+  const degraded: string[] = [];
+  const t0 = performance.now();
+
+  // ── ① 关键词候选：先只取 id + bm25（绝不 join 宽行）─────────
+  // 实测：`JOIN memories` 会把 text+embedding(2KB/行) 一起拉出来，
+  // 4000 候选 = 8MB 读，单这一步就 57 ms。所以拆成"先取 id，再取需要的列"。
+  const q = ftsQuery(query);
+  let ranked: Array<{ id: number; score: number }> = [];
+  if (q) {
+    ranked = db.prepare(`
+      SELECT memory_id AS id, bm25(memories_fts) AS score
+      FROM memories_fts WHERE memories_fts MATCH ?
+      ORDER BY score LIMIT ?`).all(q, lim) as typeof ranked;
+  }
+
+  // 元数据按 id 批量取（不含 embedding）。
+  // 用 json_each(?) 而不是 IN (?,?,…)——后者要为每个 chunk 重新 prepare 一个
+  // 500 参数的语句，实测占掉 20 ms；json_each 只要一个参数、一条语句。
+  const metaById = new Map<number, { text: string; stage: Stage; weight: number }>();
+  if (ranked.length) {
+    const got = db.prepare(
+      `SELECT id,text,stage,weight FROM memories
+       WHERE status='active' AND id IN (SELECT value FROM json_each(?))`,
+    ).all(JSON.stringify(ranked.map((r) => r.id))) as Array<{ id: number; text: string; stage: Stage; weight: number }>;
+    for (const g of got) metaById.set(g.id, { text: g.text, stage: g.stage, weight: g.weight });
+  }
+  const rows = ranked
+    .filter((r) => metaById.has(r.id))
+    .map((r) => ({ id: r.id, score: r.score, ...metaById.get(r.id)! }));
+
+  const t1 = performance.now();
+
+  // ── ② 候选重排：cosine ───────────────────────
+  let qv: Float32Array | null = null;
+  if (embedder && rows.length) {
+    try { qv = (await embedder.embed([query]))[0] ?? null; } catch { degraded.push("E_EMBED_DOWN"); }
+    if (!qv) degraded.push("E_EMBED_EMPTY");
+  } else if (!embedder) degraded.push("no_embedder");
+
+  const cos = new Map<number, number>();
+  if (qv && rows.length) {
+    const got = db.prepare(
+      `SELECT id, embedding FROM memories
+       WHERE embedding IS NOT NULL AND id IN (SELECT value FROM json_each(?))`,
+    ).all(JSON.stringify(rows.map((r) => r.id))) as Array<{ id: number; embedding: Uint8Array }>;
+    for (const g of got) cos.set(g.id, dot(qv, toF32(g.embedding)));
+    // 索引坏了要显式降级，不能假装有向量
+    const vecErr = db.prepare("SELECT value FROM meta WHERE key='vec_error'").get() as { value?: string } | undefined;
+    if (vecErr?.value) degraded.push("vec_index_broken");
+  }
+  const t2 = performance.now();
+
+  // ── 融合：RRF(k=60) + 权重 ───────────────────
+  const bmRank = new Map(rows.map((r, i) => [r.id, i + 1]));
+  const cosSorted = [...cos.entries()].sort((a, b) => b[1] - a[1]);
+  const cosRank = new Map(cosSorted.map(([id], i) => [id, i + 1]));
+  const K = 60;
+  const fused: Hit[] = rows.map((r, i) => {
+    const rrf = 1 / (K + (bmRank.get(r.id) ?? lim)) + (cosRank.has(r.id) ? 1 / (K + cosRank.get(r.id)!) : 0);
+    const c = cos.get(r.id);
+    // relevance：有向量就用 cosine 映射到 0..1；降级时用名次近似
+    const relevance = c !== undefined ? clamp01((c + 1) / 2) : clamp01(1 - i / Math.max(1, rows.length));
+    return {
+      id: r.id, text: r.text, stage: r.stage, weight: r.weight, relevance,
+      via: "active" as const,
+      score: rrf * (0.6 + 0.4 * r.weight),
+      cite: `mem:${r.id}`, bm25Rank: bmRank.get(r.id), cosRank: cosRank.get(r.id), cosine: c,
+    };
+  });
+
+  // ── 三道闸（01 §6）：不是"一刀切阈值"，而是按 stage 走不同门 ──
+  const injectable: Hit[] = [];
+  let flashUsed = 0;
+  for (const h of fused) {
+    if (h.stage === "active") { injectable.push({ ...h, via: "active" }); continue; }
+    if (h.stage === "fading" && h.weight >= fadingMin && h.relevance >= fadingRel) {
+      injectable.push({ ...h, via: "fading" }); continue;
+    }
+    if (h.stage === "dormant" && flashUsed < flashCap && flashbackHit(query, h.text)) {
+      flashUsed++;
+      // 强线索唤醒：仅本轮有效，权重临时抬到 0.5（01 §6.1），不写库
+      injectable.push({ ...h, via: "flashback", weight: Math.max(h.weight, 0.5), score: h.score * 1.2 });
+    }
+  }
+  if (!injectable.length) degraded.push(fused.length ? "all_below_threshold" : "no_candidates");
+
+  // ── MMR 去冗余 ──────────────────────────────
+  const pool = injectable.slice(0, Math.max(k * 3, 30));
+  const picked: Hit[] = [];
+  while (pool.length && picked.length < k) {
+    let best = -Infinity, bi = 0;
+    for (let i = 0; i < pool.length; i++) {
+      const cand = at(pool, i);
+      let maxSim = 0;
+      for (const p of picked) maxSim = Math.max(maxSim, jaccard(cand.text, p.text));
+      const mmr = lam * cand.score - (1 - lam) * maxSim;
+      if (mmr > best) { best = mmr; bi = i; }
+    }
+    picked.push(at(pool.splice(bi, 1), 0));
+  }
+  const t3 = performance.now();
+
+  return {
+    hits: picked,
+    meta: {
+      stage1Ms: +(t1 - t0).toFixed(1), stage2Ms: +(t2 - t1).toFixed(1),
+      totalMs: +(t3 - t0).toFixed(1), candidates: rows.length, degraded,
+    },
+  };
+}
+
+/** 强线索：查询里的 bigram 出现在记忆原文里（专名/地点/作品名都可命中） */
+export function flashbackHit(query: string, text: string): boolean {
+  const q = new Set(bigrams(query).filter((t) => t.length >= 2));
+  if (!q.size) return false;
+  for (const t of bigrams(text)) if (t.length >= 2 && q.has(t)) return true;
+  return false;
+}
+
+const clamp01 = (x: number) => (x < 0 ? 0 : x > 1 ? 1 : x);
+
+/** MMR 用的便宜相似度：字面 bigram 重叠（不额外算 embedding） */
+export function jaccard(a: string, b: string): number {
+  const A = new Set(a.match(/[\u4e00-\u9fff]{2}|[a-z]{2,}/gi) ?? []);
+  const B = new Set(b.match(/[\u4e00-\u9fff]{2}|[a-z]{2,}/gi) ?? []);
+  if (!A.size || !B.size) return 0;
+  let inter = 0;
+  for (const x of A) if (B.has(x)) inter++;
+  return inter / (A.size + B.size - inter);
+}

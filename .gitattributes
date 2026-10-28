@@ -1,0 +1,6 @@
+# 统一 LF（本项目全部源文件都是 LF；Windows 上 CRLF 会让每次 diff 都像是改过）
+* text=auto eol=lf
+
+# 二进制/生成物不加属性
+*.png binary
+*.db binary

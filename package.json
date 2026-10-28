@@ -1,0 +1,26 @@
+{
+  "name": "jingjing",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "鲸鲸 · 伪数字生命（记忆 + 衰减 + 人格）",
+  "engines": {
+    "node": ">=22.6"
+  },
+  "scripts": {
+    "test": "node --test \"test/*.test.ts\"",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm test",
+    "brief": "node src/cli/brief-demo.ts",
+    "ui:test": "node tools/ui-test.mjs",
+    "ui:shot": "node tools/ui-shot.mjs"
+  },
+  "dependencies": {
+    "casbin": "^5.51.1",
+    "sqlite-vec": "^0.1.9"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "typescript": "^7.0.2"
+  }
+}
