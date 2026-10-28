@@ -49,6 +49,9 @@ export function openDb(path: string): Db {
       ensureColumn(db, "chunks", "embedding", "BLOB");
       ensureColumn(db, "chunks", "deleted_at", "TEXT");
     }
+    if (Number(cur.value) < 8) {
+      ensureColumn(db, "documents", "sensitivity", "TEXT NOT NULL DEFAULT 'local_only'");
+    }
     db.prepare("UPDATE meta SET value=? WHERE key='schema_version'").run(String(SCHEMA_VERSION));
   }
   return { db, vecLoaded, path };

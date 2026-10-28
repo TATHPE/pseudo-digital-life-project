@@ -55,6 +55,11 @@ export function timeLine(input: BriefInput): string {
 }
 
 function recallLine(m: MemoryLine): string {
+  // 文档块：不是“我记得”，是“书里写着”——两种来源在提示里必须一眼能分
+  if (m.source === "doc") {
+    const where = m.headingPath ? " · " + m.headingPath : "";
+    return `- [文档${where}] ${m.text}（cite: ${m.id}）`;
+  }
   const tag = m.layer === "contract" ? "契约" : "叙事";
   return `- [${tag} · ${m.kind} · ${m.stage} ${m.weight.toFixed(2)}] ${m.text}（cite: ${m.id}）`;
 }

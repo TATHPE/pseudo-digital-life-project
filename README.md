@@ -28,7 +28,8 @@ node src/cli/jingjing.ts shell node.run_script --slots '{"script":"a.mjs"}' --ye
 node src/cli/jingjing.ts verb fs.list '{"path":"workspace"}'   # 手动调能力
 node src/cli/jingjing.ts beat --dry-run  # 心跳判定（不写库不发消息）
 node src/cli/jingjing.ts serve 7700 --beat  # 面板 + 每 60s 一次心跳
-node src/cli/jingjing.ts ingest data/sources   # 摄入：md/txt 直读，pdf/docx/… 走 markitdown
+node src/cli/jingjing.ts ingest data/sources   # 摄入：md/txt 直读，pdf/docx/… 走 markitdown（默认仅本地）
+node src/cli/jingjing.ts ingest data/sources --shareable  # 同意这些文档进云端简报（默认不）
 node src/cli/jingjing.ts docs         # 已摄入的文档与块数
 node src/cli/jingjing.ts export       # 搬家：导出一致快照 → exports/<时间>/（校验清单里的 sha256）
 node src/cli/jingjing.ts import <dir> --force  # 搬到新 home（旧目录自动改名备份，然后补跑衰减）
@@ -71,6 +72,7 @@ node src/cli/brief-demo.ts --full     # M1.1：第 1 轮 vs 第 100 轮简报
 | `src/handoff.ts` | 搬家：`VACUUM INTO` 一致快照 + sha256 清单 + 校验后 staging 替换 + 补跑衰减 | `19 §7.4` |
 | `src/chunk.ts` | 分块：标题栈 heading_path、代码/表格永不切、400–800 tok、15% 重叠、小块合并 | `02 §5.2` |
 | `src/ingest.ts` | 摄入：markitdown（子进程、路径只进 argv）→ 分块 → 索引；sha256 幂等、旧块标 deleted_at | `02 §5.1/§5.3` |
+| `src/recall.ts` | P10 召回装配 + **隐私闸门**：只有 shareable 进简报，其余只报个数 | `02 §10.1`、`13 §10` |
 | `src/tools.ts` | **唯一工具面**：verb + MCP 全走 execute；点号→下划线别名 | `11 §5.6` |
 | `src/policy.ts` | casbin 策略（allow/deny × advise/enforce） | `04 §4` |
 | `src/execute.ts` | 策略 → 执行 → 审计，一处不落 | `04 §4` |

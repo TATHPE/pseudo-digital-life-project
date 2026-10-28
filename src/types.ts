@@ -10,6 +10,10 @@ export interface MemoryLine {
   weight: number;      // 0..1，由 decay.ts 算出（01 §4）
   text: string;
   sensitivity?: "local_only" | "shareable";
+  /** 来自记忆还是文档块（P10 里两种来源要能区分：一个是我认定的，一个是书上写的） */
+  source?: "memory" | "doc";
+  /** 文档块专用：章节路径（已去掉与标题重复的首段） */
+  headingPath?: string;
 }
 
 /** 断电/停机类型（18 §2.1） */

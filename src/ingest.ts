@@ -116,6 +116,8 @@ export interface IngestOpts {
   embedder?: Embedder | null;
   /** 文件没变也重跑（重建索引用） */
   force?: boolean;
+  /** 敏感度：默认 local_only（02 §10.1：磁盘/文档摄入不出网）；要分享得显式标 */
+  sensitivity?: "local_only" | "shareable";
 }
 
 export interface IngestResult {
@@ -200,14 +202,16 @@ export async function ingestFile(db: DatabaseSync, file: string, o: IngestOpts):
     }
   }
 
+  const sensitivity = o.sensitivity === "shareable" ? "shareable" : "local_only";
   db.prepare(
-    `INSERT INTO documents(id,uri,sha256,title,md_path,created_at,deleted_at,rel_path,mime,bytes,converter,meta_json,n_chunks)
-     VALUES(?,?,?,?,?,?,NULL,?,?,?,?,?,?)
+    `INSERT INTO documents(id,uri,sha256,title,md_path,created_at,deleted_at,rel_path,mime,bytes,converter,meta_json,n_chunks,sensitivity)
+     VALUES(?,?,?,?,?,?,NULL,?,?,?,?,?,?,?)
      ON CONFLICT(sha256) DO UPDATE SET deleted_at=NULL, n_chunks=excluded.n_chunks,
        title=excluded.title, md_path=excluded.md_path, meta_json=excluded.meta_json`,
   ).run(id, `file:${rel}`, sha, docTitle, mdPath, now.toISOString(), rel,
     mimeOf(extname(file).toLowerCase()), st.size, converter,
-    JSON.stringify({ blocks: stats.blocks, sections: stats.sections, avgTokens: stats.avgTokens }), chunks.length);
+    JSON.stringify({ blocks: stats.blocks, sections: stats.sections, avgTokens: stats.avgTokens }), chunks.length,
+    sensitivity);
 
   let inserted = 0;
   for (let i = 0; i < chunks.length; i++) {
@@ -292,18 +296,31 @@ export interface DocRow {
   bytes: number | null;
   converter: string | null;
   created_at: string;
+  sensitivity: "local_only" | "shareable";
 }
 
 export function listDocs(db: DatabaseSync, limit = 100): DocRow[] {
   const rows = db.prepare(
-    `SELECT id, title, rel_path, n_chunks AS chunks, bytes, converter, created_at
+    `SELECT id, title, rel_path, n_chunks AS chunks, bytes, converter, created_at,
+            COALESCE(sensitivity, 'local_only') AS sensitivity
        FROM documents WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT ?`,
   ).all(limit) as Array<Record<string, unknown>>;
   return rows.map((r) => ({
     id: String(r.id), title: String(r.title ?? ""), rel_path: r.rel_path ? String(r.rel_path) : null,
     chunks: Number(r.chunks ?? 0), bytes: r.bytes === null || r.bytes === undefined ? null : Number(r.bytes),
     converter: r.converter ? String(r.converter) : null, created_at: String(r.created_at),
+    sensitivity: r.sensitivity === "shareable" ? "shareable" : "local_only",
   }));
+}
+
+/** 改一篇文档的敏感度（面板里的“可发送 / 仅本地”开关） */
+export function setDocSensitivity(
+  db: DatabaseSync, id: string, value: "local_only" | "shareable", now = new Date(),
+): boolean {
+  const r = db.prepare("UPDATE documents SET sensitivity=? WHERE id=? AND deleted_at IS NULL")
+    .run(value === "shareable" ? "shareable" : "local_only", id);
+  void now;
+  return Number(r.changes) > 0;
 }
 
 /** 忘掉一篇文档：块与文档标 deleted_at，FTS 行真删（不让它再被召回） */

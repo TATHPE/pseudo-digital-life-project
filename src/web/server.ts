@@ -16,7 +16,8 @@ import { writeFileConfig, readFileConfig, resolveConfig } from "../configfile.ts
 import { AVATAR_FRAMES, DEFAULT_AVATAR, isAvatarFrame } from "./avatar.ts";
 import { getPending, listPending, updatePending } from "../confirm.ts";
 import { readStateSafe } from "../deploy/slot.ts";
-import { listDocs, forgetDoc } from "../ingest.ts";
+import { listDocs, forgetDoc, setDocSensitivity } from "../ingest.ts";
+import { recallForBrief, omissionNote } from "../recall.ts";
 import { meta } from "../db.ts";
 import { execute } from "../execute.ts";
 import { loadPolicy, type Policy } from "../policy.ts";
@@ -313,6 +314,22 @@ export function createWebServer(deps: WebDeps) {
         json(res, 200, { doc, chunks });
         return;
       }
+      const docSens = url.pathname.match(/^\/api\/docs\/(doc_[0-9a-f]+)\/sensitivity$/);
+      if (req.method === "POST" && docSens) {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
+        const body = JSON.parse(await readBody(req)) as { value?: string };
+        if (body.value !== "shareable" && body.value !== "local_only") {
+          json(res, 400, { error: "E_BAD_SENSITIVITY" }); return;
+        }
+        const ok = setDocSensitivity(deps.db, String(docSens[1]), body.value, now());
+        if (!ok) { json(res, 404, { error: "E_NO_DOC" }); return; }
+        appendEvent(deps.inboxDir, {
+          v: 1, id: newEventId(), ts: now().toISOString(), kind: "doc_sensitivity", actor: "user",
+          payload: { docId: String(docSens[1]), value: body.value },
+        });
+        json(res, 200, { ok: true, value: body.value });
+        return;
+      }
       const docForget = url.pathname.match(/^\/api\/docs\/(doc_[0-9a-f]+)\/forget$/);
       if (req.method === "POST" && docForget) {
         const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
@@ -384,16 +401,10 @@ export function createWebServer(deps: WebDeps) {
 
         // 召回 → 简报。云端只收 shareable；local_only 只报个数（13 §10）
         const emb = deps.getEmbedder();
-        const hits = emb ? (await search(deps.db, emb, text, { k: 6 })).hits : [];
-        const shareable = hits.filter((h) => {
-          const row = deps.db.prepare("SELECT sensitivity FROM memories WHERE id=?").get(h.id) as { sensitivity?: string } | undefined;
-          return row?.sensitivity === "shareable";
-        });
-        const omitted = hits.length - shareable.length;
-        const recalled: MemoryLine[] = shareable.map((h) => ({
-          id: `mem:${h.id}`, layer: "narrative", kind: "episode", stage: h.stage,
-          weight: h.weight, text: h.text, sensitivity: "shareable",
-        }));
+        // 召回装配在 recall.ts 里（隐私闸门所在：只有 shareable 会进简报）
+        const rc = await recallForBrief(deps.db, emb, text, { memK: 6, docK: 4 });
+        const omitted = rc.omittedMem;
+        const recalled: MemoryLine[] = rc.recalled;
         const contracts = (deps.db.prepare(
           `SELECT text FROM memories WHERE layer='contract' AND status='active' ORDER BY importance DESC LIMIT 15`)
           .all() as Array<{ text: string }>).map((r) => r.text);
@@ -406,7 +417,7 @@ export function createWebServer(deps: WebDeps) {
           lastSeenAt: last ? new Date(last.ts) : null,
           outage: pending,
           state: { energy: selfState.energy, closeness: selfState.closeness, mood: selfState.mood ?? undefined },
-          user: (omitted > 0 ? `（另有 ${omitted} 条本地记忆未发送，如需可说明"这部分我只能在本地记得"）` + String.fromCharCode(10) : "") + text,
+          user: (() => { const note = omissionNote(omitted, rc.omittedDocs); return note ? note + String.fromCharCode(10) : ""; })() + text,
         });
 
         res.writeHead(200, {
@@ -414,7 +425,7 @@ export function createWebServer(deps: WebDeps) {
           "cache-control": "no-store", connection: "keep-alive",
         });
         const send = (o: unknown) => res.write(`data: ${JSON.stringify(o)}` + String.fromCharCode(10, 10));
-        send({ type: "brief", tokens: brief.tokens, prefix: brief.prefixHash, confidence: brief.confidence, omitted, recall: recalled.length });
+        send({ type: "brief", tokens: brief.tokens, prefix: brief.prefixHash, confidence: brief.confidence, omitted, omittedDocs: rc.omittedDocs, recall: recalled.length, recallDocs: recalled.filter((r) => r.source === "doc").length });
 
         let full = "";
         const used: ToolUse[] = [];

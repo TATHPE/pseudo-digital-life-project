@@ -286,6 +286,7 @@ export const PAGE = `<!doctype html>
         <p class="hint" id="dv-meta"></p>
         <div id="dv-chunks"></div>
         <div class="acts">
+          <button id="dv-sens">标为可发送</button>
           <button id="dv-forget" class="primary">忘掉这篇</button>
           <span id="dv-msg" class="hint"></span>
         </div>
@@ -477,7 +478,7 @@ async function docs() {
   }
   box.innerHTML = list.map((d) =>
     "<button class='item' data-view='docview' data-doc='" + escapeHtml(d.id) + "'>" +
-    escapeHtml(d.title || d.id) + "<span class='m'>" + d.chunks + " 块 · " + escapeHtml(d.converter || "") + "</span></button>").join("");
+    escapeHtml(d.title || d.id) + "<span class='m'>" + d.chunks + " 块 · " + (d.sensitivity === "shareable" ? "可发送" : "仅本地") + "</span></button>").join("");
 }
 async function openDoc(id) {
   show("docview");
@@ -487,11 +488,31 @@ async function openDoc(id) {
   const j = await (await fetch("/api/docs/" + id)).json();
   if (!j || !j.doc) { $("#dv-meta").textContent = j.error || "E_NO_DOC"; return; }
   $("#dv-title").textContent = j.doc.title || id;
+  $("#dv-sens").dataset.doc = id;
+  dvSens = j.doc.sensitivity === "shareable" ? "shareable" : "local_only";
+  paintSens();
   $("#dv-meta").textContent = (j.doc.rel_path || "") + " · " + j.doc.n_chunks + " 块 · " + (j.doc.converter || "") + " · " + (j.doc.bytes || 0) + " 字节";
   $("#dv-chunks").innerHTML = (j.chunks || []).map((c) =>
     "<div class='ck'><div class='ck-h'>#" + c.ord + "　" + escapeHtml(c.heading_path || "(无章节)") + "　<span class='ck-t'>" + c.n_tokens + " tok</span></div>" +
     "<pre class='ck-b'>" + escapeHtml(c.text.slice(0, 1200)) + (c.text.length > 1200 ? String.fromCharCode(10) + "…（截断）" : "") + "</pre></div>").join("");
 }
+// 敏感度开关：默认「仅本地」，点了才会进云端简报（02 §10.1）
+let dvSens = "local_only";
+function paintSens() {
+  const b = $("#dv-sens");
+  b.textContent = dvSens === "shareable" ? "当前：可发送（点一下改回仅本地）" : "当前：仅本地（点一下标为可发送）";
+  b.className = dvSens === "shareable" ? "primary" : "";
+}
+$("#dv-sens").onclick = async () => {
+  const m = $("#dv-title").textContent.match(/^DOC · (doc_[0-9a-f]+)$/);
+  const id = m ? m[1] : $("#dv-sens").dataset.doc;
+  if (!id) return;
+  const next = dvSens === "shareable" ? "local_only" : "shareable";
+  const j = await (await fetch("/api/docs/" + id + "/sensitivity", { method: "POST", headers: H, body: JSON.stringify({ value: next }) })).json();
+  const msg = $("#dv-msg");
+  if (j.ok) { dvSens = j.value; paintSens(); msg.className = "ok"; msg.textContent = "已保存"; await docs(); }
+  else { msg.className = "err"; msg.textContent = j.error || "FAILED"; }
+};
 $("#dv-forget").onclick = async () => {
   const id = $("#dv-title").textContent.startsWith("DOC · ") ? $("#dv-title").textContent.slice(6) : "";
   const meta = $("#dv-meta").textContent;

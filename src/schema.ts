@@ -1,5 +1,5 @@
 /** M0 schema（02 §4 + 18 §1 的 outage/审计） */
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 
 export const MIGRATION_001 = `
 PRAGMA journal_mode=WAL;
@@ -16,7 +16,9 @@ CREATE TABLE IF NOT EXISTS documents (
   title TEXT, md_path TEXT, created_at TEXT NOT NULL, deleted_at TEXT,
   -- v7：摄入管道（02 §4/§5）
   rel_path TEXT, mime TEXT, bytes INTEGER, converter TEXT, meta_json TEXT,
-  n_chunks INTEGER NOT NULL DEFAULT 0
+  n_chunks INTEGER NOT NULL DEFAULT 0,
+  -- v8：文档也分敏感度，默认 local_only（02 §10.1：磁盘/文档摄入不出网）
+  sensitivity TEXT NOT NULL DEFAULT 'local_only'
 );
 
 CREATE TABLE IF NOT EXISTS chunks (

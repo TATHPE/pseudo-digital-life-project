@@ -194,6 +194,8 @@ export interface DocHit {
   title: string;
   headingPath: string;
   text: string;
+  /** 文档敏感度：local_only 的块绝不进云端简报（02 §10.1） */
+  sensitivity: "local_only" | "shareable";
   score: number;
   cosine?: number;
   /** 引用格式：doc:<doc_id>#<ord>（与 mem:<id> 对称） */
@@ -221,18 +223,23 @@ export async function searchDocs(
     ).all(q, lim) as typeof ranked;
   }
 
-  const meta = new Map<number, { docId: string; ord: number; title: string; headingPath: string; text: string }>();
+  const meta = new Map<number, { docId: string; ord: number; title: string; headingPath: string; text: string; sensitivity: "local_only" | "shareable" }>();
   if (ranked.length) {
     const got = db.prepare(
-      `SELECT c.id, c.doc_id, c.ord, c.heading_path, c.text, d.title
+      `SELECT c.id, c.doc_id, c.ord, c.heading_path, c.text, d.title,
+              COALESCE(d.sensitivity, 'local_only') AS sensitivity
          FROM chunks c JOIN documents d ON d.id = c.doc_id
         WHERE c.deleted_at IS NULL AND d.deleted_at IS NULL
           AND c.id IN (SELECT value FROM json_each(?))`,
     ).all(JSON.stringify(ranked.map((r) => r.id))) as Array<{
-      id: number; doc_id: string; ord: number; heading_path: string; text: string; title: string | null;
+      id: number; doc_id: string; ord: number; heading_path: string; text: string;
+      title: string | null; sensitivity: string;
     }>;
     for (const g of got) {
-      meta.set(g.id, { docId: g.doc_id, ord: g.ord, title: g.title ?? "", headingPath: g.heading_path, text: g.text });
+      meta.set(g.id, {
+        docId: g.doc_id, ord: g.ord, title: g.title ?? "", headingPath: g.heading_path, text: g.text,
+        sensitivity: g.sensitivity === "shareable" ? "shareable" : "local_only",
+      });
     }
   }
   const rows = ranked.filter((r) => meta.has(r.id));
@@ -261,7 +268,7 @@ export async function searchDocs(
     const rrf = 1 / (K + (bmRank.get(r.id) ?? lim)) + (cosRank.has(r.id) ? 1 / (K + cosRank.get(r.id)!) : 0);
     return {
       chunkId: r.id, docId: m.docId, ord: m.ord, title: m.title, headingPath: m.headingPath,
-      text: m.text, score: rrf, ...(cos.has(r.id) ? { cosine: cos.get(r.id) } : {}),
+      text: m.text, sensitivity: m.sensitivity, score: rrf, ...(cos.has(r.id) ? { cosine: cos.get(r.id) } : {}),
       cite: `doc:${m.docId}#${m.ord}`,
     };
   });

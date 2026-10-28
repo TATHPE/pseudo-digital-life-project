@@ -470,6 +470,7 @@ async function main(): Promise<void> {
         home: HOME, root: sourcesDir(HOME), embedder,
         ...(scope ? { scope } : {}),
         force: rest.includes("--rebuild"),
+        sensitivity: rest.includes("--shareable") ? "shareable" : "local_only",
       });
       for (const x of r.results) {
         const status = x.skipped ? "skipped" : x.degraded.some((g) => g.startsWith("E_")) ? "FAILED" : "ok";
@@ -484,7 +485,7 @@ async function main(): Promise<void> {
       const d = openDb(dbFile);
       const rows = listDocs(d.db, 200);
       if (!rows.length) { console.log("（还没有摄入任何文档）"); return; }
-      for (const x of rows) console.log(`${x.id}  ${String(x.chunks).padStart(4)} 块  ${(x.converter ?? "").padEnd(12)} ${x.title}`);
+      for (const x of rows) console.log(`${x.id}  ${String(x.chunks).padStart(4)} 块  ${(x.converter ?? "").padEnd(12)} ${x.sensitivity === "shareable" ? "可发送" : "仅本地"}  ${x.title}`);
       console.log(`共 ${rows.length} 篇 · ${rows.reduce((n, x) => n + x.chunks, 0)} 块`);
       return;
     }
