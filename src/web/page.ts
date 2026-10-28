@@ -42,7 +42,35 @@ export const PAGE = `<!doctype html>
     --cyan:#0f97a4; --cyan-hi:#7fe6f2; --fg:#e9f0f2; --dim:#9fb0b3;
     --amber:#ffb454; --red:#ff5f56; --ok:#7fd18b;
     --mono:ui-monospace,"Cascadia Mono",Consolas,"Noto Sans Mono",monospace;
-    --rail:252px;
+    --rail:252px; --head:56px; --readh:40px;
+
+    /* ── 仪表带：照参照图的"标签 / 读数 / 单位"三件套，一格一读数 ── */
+  }
+  #readoutbar { grid-area:readout; display:flex; align-items:stretch; gap:0; overflow:hidden;
+                background:rgba(8,11,10,.94); border-bottom:1px solid var(--line-dim); }
+  .ro { display:flex; flex-direction:column; justify-content:center; gap:1px;
+        padding:3px 12px; border-right:1px solid var(--line-dim); min-width:0; flex:none; }
+  .ro:first-child { padding-left:18px; }
+  .ro-l { font:8px/1 var(--mono); letter-spacing:.22em; color:var(--dim); white-space:nowrap; }
+  .ro-v { font:13px/1 var(--mono); color:var(--ink); letter-spacing:.04em; white-space:nowrap; }
+  .ro-v .u { font-size:9px; color:var(--dim); margin-left:3px; letter-spacing:0; }
+  .ro-w { flex:1 1 auto; min-width:0; }
+  /* 分段条：参照图里的刻度条 */
+  .segs { display:flex; gap:1px; height:6px; align-items:stretch; margin-top:2px; min-width:120px; }
+  .segs i { flex:1; background:rgba(233,240,242,.22); }
+  .segs i.on { background:var(--cyan); box-shadow:0 0 5px rgba(15,151,164,.6); }
+  .segs i.hot { background:var(--amber); }
+
+  /* ── 底部 ticker：一条横贯的状态带（手机上隐藏）── */
+  .ticker { display:flex; align-items:center; gap:8px; padding:5px 26px; overflow:hidden;
+            border-top:1px solid var(--line-dim); background:rgba(8,11,10,.94); }
+  .ticker .tk { font:9px/1 var(--mono); letter-spacing:.1em; color:var(--ink-dim);
+                border:1px solid var(--line-dim); padding:4px 7px; white-space:nowrap; }
+  .ticker .tk b { color:var(--ink); font-weight:400; }
+  .ticker .tk.warn { color:var(--amber); border-color:rgba(255,180,84,.4); }
+  .ticker .tk.bad { color:var(--red); border-color:rgba(255,95,86,.45); }
+  .ticker .tk.fade { opacity:.55; }
+  {
   }
   * { box-sizing:border-box; }
   /* hidden 属性必须压过类里的 display（.badge{display:inline-flex} 会让 hidden 失效，实测咬过） */
@@ -84,8 +112,8 @@ export const PAGE = `<!doctype html>
   body {
     margin:0; color:var(--fg); background:var(--void);
     font:15px/1.72 -apple-system,"Segoe UI","Microsoft YaHei","PingFang SC","Noto Sans SC",sans-serif;
-    display:grid; grid-template-rows:56px 1fr; grid-template-columns:var(--rail) 1fr;
-    grid-template-areas:"head head" "side main"; height:100vh; overflow:hidden;
+    display:grid; grid-template-rows:var(--head) var(--readh) 1fr; grid-template-columns:var(--rail) 1fr;
+    grid-template-areas:"head head" "readout readout" "side main"; height:100vh; overflow:hidden;
     background-image:
       radial-gradient(900px 420px at 60% -140px, rgba(15,151,164,.14), transparent 70%),
       repeating-linear-gradient(0deg, rgba(15,151,164,.05) 0 1px, transparent 1px 36px),
@@ -251,9 +279,10 @@ export const PAGE = `<!doctype html>
   .frame b { position:absolute; font:9px/1 var(--mono); letter-spacing:.2em; color:rgba(233,240,242,.32); }
   .frame b.bl { bottom:5px; left:10px; } .frame b.br { bottom:5px; right:10px; }
   @media (max-width: 860px) {
-    body { grid-template-columns:1fr; grid-template-areas:"head" "main"; }
+    body { grid-template-columns:1fr; grid-template-rows:var(--head) 1fr; grid-template-areas:"head" "main"; }
+    #readoutbar, .ticker { display:none; }
     /* 抽屉：手机上不能是半透明的——聊天内容会透出来，看不出哪层在上 */
-    aside { position:fixed; z-index:12; top:56px; bottom:0; left:0; width:82vw; max-width:320px;
+    aside { position:fixed; z-index:12; top:var(--head); bottom:0; left:0; width:82vw; max-width:320px;
             transform:translateX(-102%); transition:.22s; border-right:1px solid var(--line);
             background:var(--void); }
     aside.open { transform:none; }
@@ -382,11 +411,22 @@ export const PAGE = `<!doctype html>
 <header>
   <button id="menu" aria-label="菜单" title="菜单">≡</button>
   <span class="brand" aria-label="鲸鲸"><svg class="ico" role="img" aria-hidden="false"><use href="#whale" /></svg></span>
-  <span class="hud" title=""><i class="dot"></i><span id="state">…</span><span id="statetext"></span><span id="readout"></span></span>
+  <span class="hud" title=""><i class="dot"></i><span id="state">…</span><span id="statetext"></span></span>
   <span id="pendbadge" class="badge" hidden>0</span>
-  <span class="chip" id="metachip" title="release · schema · 冻结状态">…</span>
   <span class="chip" id="modelchip">…</span>
 </header>
+
+<!-- 仪表带：参照图的"读数字段"。全部来自真实接口，没有装饰数字 -->
+<div id="readoutbar" aria-label="系统读数">
+  <div class="ro"><span class="ro-l">MEMORY</span><span class="ro-v" id="ro-mem">…</span></div>
+  <div class="ro"><span class="ro-l">ACTIVE</span><span class="ro-v" id="ro-act">…</span></div>
+  <div class="ro"><span class="ro-l">DOCS</span><span class="ro-v" id="ro-doc">…</span></div>
+  <div class="ro"><span class="ro-l">CHUNKS</span><span class="ro-v" id="ro-chunks">…</span></div>
+  <div class="ro ro-w"><span class="ro-l">ENERGY</span><span class="ro-v" id="ro-energy">…</span><div class="segs" id="ro-segs"></div></div>
+  <div class="ro"><span class="ro-l">TODAY</span><span class="ro-v" id="ro-usd">…</span></div>
+  <div class="ro"><span class="ro-l">RELEASE</span><span class="ro-v" id="ro-rel">…</span></div>
+  <div class="ro"><span class="ro-l">UPTIME</span><span class="ro-v" id="ro-up">…</span></div>
+</div>
 </header>
 
 <aside id="side">
@@ -548,6 +588,7 @@ export const PAGE = `<!doctype html>
     </div>
   </div></div>
 
+  <div class="ticker" id="ticker"></div>
   <form id="composer"><div class="wrap">
     <span class="prompt">&gt;</span>
     <textarea id="m" rows="1" placeholder="说点什么…（Enter 发送 · Shift+Enter 换行）"></textarea>
@@ -596,8 +637,23 @@ async function state() {
       String(s.outage.to).slice(5, 16).replace("T", " ") + " —— 那段我没有经历";
   }
   const g = (k) => (s.memories || []).find((m) => m.stage === k);
-  $("#readout").textContent = "MEM " + (((g("active") || {}).c || 0) + ((g("fading") || {}).c || 0)) +
-    " · ACT " + ((g("active") || {}).c || 0);
+  // 读数进仪表带（原来那行拼在 hud 里，现在 hud 只留一句话状态）
+  var mem = ((g("active") || {}).c || 0) + ((g("fading") || {}).c || 0) + ((g("dormant") || {}).c || 0);
+  var act = (g("active") || {}).c || 0;
+  var e1 = $("#ro-mem"); if (e1) e1.innerHTML = mem + "<span class='u'>条</span>";
+  var e2 = $("#ro-act"); if (e2) e2.innerHTML = act + "<span class='u'>条</span>";
+  var en = (s.state && typeof s.state.energy === "number") ? s.state.energy : null;
+  var e3 = $("#ro-energy");
+  if (e3 && en !== null) {
+    e3.innerHTML = Math.round(en * 100) + "<span class='u'>%</span>";
+    var segs = $("#ro-segs");
+    if (segs) {
+      var n = 14, on = Math.round(en * n);
+      var html = "";
+      for (var i = 0; i < n; i++) html += "<i class='" + (i < on ? (en < 0.25 ? "hot" : "on") : "") + "'></i>";
+      segs.innerHTML = html;
+    }
+  }
 }
 function rowHtml(b) {
   const isUser = b.role === "user";
@@ -780,6 +836,48 @@ async function usage() {
 
 // ── 审计：侧栏常驻刷新 ────────────────────────────────
 async function auditTick() { await audit(); }
+
+// ── 仪表带 + ticker（照参照图的读数字段，但每个数都来自真接口）──
+async function readout() {
+  var h = null, u = null, docs = null, last = null;
+  try {
+    var rs = await Promise.all([
+      fetch("/health").then(function (r) { return r.json(); }).catch(function () { return null; }),
+      fetch("/api/usage").then(function (r) { return r.json(); }).catch(function () { return null; }),
+      fetch("/api/docs").then(function (r) { return r.json(); }).catch(function () { return null; }),
+      fetch("/api/audit?limit=1").then(function (r) { return r.json(); }).catch(function () { return null; }),
+    ]);
+    h = rs[0]; u = rs[1]; docs = rs[2]; last = rs[3];
+  } catch (e) { /* 离线时保持上一次读数 */ }
+
+  var docN = docs ? docs.length : 0;
+  var chunkN = docs ? docs.reduce(function (n, d) { return n + (d.chunks || 0); }, 0) : 0;
+  var set = function (id, html) { var el = $(id); if (el) el.innerHTML = html; };
+  set("#ro-doc", docN + "<span class='u'>篇</span>");
+  set("#ro-chunks", chunkN + "<span class='u'>块</span>");
+  if (u) set("#ro-usd", "$" + Number(u.todayUsd || 0).toFixed(3) + "<span class='u'>/" + (u.budgetUsd || 2) + "</span>");
+  if (h) {
+    set("#ro-rel", (h.release ? String(h.release).slice(4, 8) + "·" + String(h.release).slice(-4) : "—"));
+    var up = Number(h.uptimeS || 0);
+    var upText = up >= 3600 ? Math.floor(up / 3600) + "h" + Math.floor((up % 3600) / 60) + "m" : Math.floor(up / 60) + "m";
+    set("#ro-up", upText);
+  }
+
+  // ticker：最近一个动作 / 待确认 / 降级或冻结 —— 都是"现在是什么状态"
+  var tk = [];
+  if (last && last.rows && last.rows.length) {
+    var a = last.rows[0];
+    var cls = a.decision === "allowed" ? "" : a.decision === "needs_confirm" ? " warn" : " bad";
+    tk.push("<span class='tk" + cls + "'>最近 <b>" + escapeHtml(a.verb) + "</b> " + escapeHtml(a.decision) + "</span>");
+  }
+  var pn = Number(($("#pendbadge") || {}).textContent || 0);
+  if (pn > 0) tk.push("<span class='tk warn'>待确认 <b>" + pn + "</b></span>");
+  if (h && h.frozen) tk.push("<span class='tk warn'>自我更新冻结</span>");
+  if (h && h.degraded && h.degraded.length) tk.push("<span class='tk bad'>降级 " + escapeHtml(h.degraded.join(",")) + "</span>");
+  if (h && last && typeof last.total === "number") tk.push("<span class='tk fade'>动作累计 <b>" + last.total + "</b></span>");
+  if (u) tk.push("<span class='tk fade'>今日调用 <b>" + u.calls + "</b></span>");
+  var tb = $("#ticker"); if (tb) tb.innerHTML = tk.join("");
+}
 
 // ── 头像：默认用鲸尾/U，上传后用图片（P1）────────────────
 var AV = { agent: null, user: null };
@@ -984,19 +1082,6 @@ $("#foldtools").onclick = function () {
 };
 
 // ── 版本 / 冻结状态（P0 #4）────────────────────────────
-async function metaLine() {
-  try {
-    var h = await (await fetch("/health")).json();
-    var rel = h.release ? String(h.release).slice(4, 8) + "·" + String(h.release).slice(-4) : "未发布";
-    $("#metachip").textContent = "v" + h.schema + " · " + rel;
-    $("#metachip").title = "schema " + h.schema + " · release " + (h.release || "—") +
-      (h.frozen ? " · 自我更新冻结至 " + h.frozen : "") +
-      (h.degraded && h.degraded.length ? " · " + h.degraded.join(",") : "");
-    $("#metachip").style.borderColor = h.degraded && h.degraded.length ? "rgba(255,95,86,.55)"
-      : h.frozen ? "rgba(255,180,84,.55)" : "";
-    $("#metachip").style.color = h.frozen ? "var(--amber)" : "";
-  } catch (e) { $("#metachip").textContent = "离线"; }
-}
 
 // ── 待确认角标（P1 #10）────────────────────────────────
 var lastPendCount = 0, titleTimer = null, flashLeft = 0;
@@ -1283,8 +1368,7 @@ if ("serviceWorker" in navigator && (location.protocol === "https:" || location.
 }
 // 手机上侧栏是抽屉：没有这个按钮，SESSIONS/DOCS/MEMORY/TOOLS/CONFIG 全都不可达
 $("#menu").onclick = (e) => { e.stopPropagation(); $("#side").classList.toggle("open"); };
-loadAvatars(); applySections(); state(); timeline(); sessions(); tools(); memories(); docs(); audit(); loadConfig(); loadUi(); pending(); metaLine(); usage();
-setInterval(() => { state(); pending(); audit(); }, 30000);
-setInterval(metaLine, 60000);
+loadAvatars(); applySections(); state(); timeline(); sessions(); tools(); memories(); docs(); audit(); readout(); loadConfig(); loadUi(); pending(); usage();
+setInterval(() => { state(); pending(); audit(); readout(); }, 20000);
 </script>
 </body></html>`;

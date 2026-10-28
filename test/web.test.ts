@@ -553,7 +553,7 @@ test("面板 UX 契约：P0/P1 的入口都在页面里（防止以后被改没�
   assert.ok(PAGE.includes('data-cite'), "引用要变成可点元素");
   assert.ok(PAGE.includes("recallHtml"), "召回行渲染函数要在");
   assert.ok(PAGE.includes('id="auditlist"') && PAGE.includes('id="auditview"'), "动作审计入口");
-  assert.ok(PAGE.includes('id="metachip"'), "版本/冻结状态 chip");
+  // 版本/冻结/降级现在进仪表带（原来那个 chip 已并入读数格）
   assert.ok(!PAGE.includes("details class='tool' open"), "工具卡不该默认展开");
   // P1：摄入 / 停止 / 搜索 / 记忆纠错 / 角标 / 测连接 / 用量
   assert.ok(PAGE.includes('id="dlg-path"') && PAGE.includes('id="dlg-go"'), "面板内摄入");
@@ -688,4 +688,29 @@ test("侧栏里写着“点开看全部/查看全部”的东西，必须真的�
     "“查看全部”必须是一个带 data-view 的 button，而不是一句 hint 文案",
   );
   assert.ok(!PAGE.includes("条近况，点开看全部"), "那句点不动的纯文案已删掉");
+});
+
+test("仪表带与 ticker：8 个读数格 + 分段条 + 底部状态带（数字必须来自接口）", async () => {
+  const { srv, base } = await start();
+  try {
+    // 读数格的存在性
+    for (const id of ["ro-mem", "ro-act", "ro-doc", "ro-chunks", "ro-energy", "ro-usd", "ro-rel", "ro-up"]) {
+      assert.ok(PAGE.includes(`id="${id}"`), `缺读数格 ${id}`);
+    }
+    assert.ok(PAGE.includes('class="segs" id="ro-segs"'), "能量要有分段刻度条");
+    assert.ok(PAGE.includes('id="ticker"'), "底部 ticker");
+
+    // 数字来源：这些接口都必须真的在服务
+    const s = await (await fetch(`${base}/api/state`)).json() as any;
+    assert.ok(Array.isArray(s.memories), "MEM/ACT 来自 /api/state");
+    const u = await (await fetch(`${base}/api/usage`)).json() as any;
+    assert.equal(typeof u.todayUsd, "number", "TODAY 来自 /api/usage");
+    const docs = await (await fetch(`${base}/api/docs`)).json() as any[];
+    assert.ok(Array.isArray(docs), "DOCS/CHUNKS 来自 /api/docs");
+    const h = await (await fetch(`${base}/health`)).json() as any;
+    assert.ok("release" in h && "uptimeS" in h, "RELEASE/UPTIME 来自 /health");
+
+    // 手机上仪表带与 ticker 必须收起（窄屏会挤成一行糊）
+    assert.ok(PAGE.includes("#readoutbar, .ticker { display:none; }"), "手机上收起");
+  } finally { srv.close(); }
 });
