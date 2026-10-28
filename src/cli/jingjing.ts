@@ -3,7 +3,7 @@
 import { mkdirSync, appendFileSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { openDb, selfCheck, meta } from "../db.ts";
+import { openDb, selfCheck, meta, setMeta } from "../db.ts";
 import { remember, tickDecay, getRow } from "../store.ts";
 import { search } from "../retrieve.ts";
 import { at } from "../assert.ts";
@@ -21,6 +21,8 @@ import { createStreamTransport, createChatTransport } from "../transport.ts";
 import { createToolRegistry } from "../tools.ts";
 import { attachMcp, loadMcpConfig } from "../mcp.ts";
 import { startup } from "../startup.ts";
+import { applyRelease, hasRelease, readStateSafe } from "../deploy/slot.ts";
+import { bootAttempt, markHealthy } from "../deploy/watchdog.ts";
 import { createStore as createSecretStore } from "../auth.ts";
 import { resolveConfig } from "../configfile.ts";
 
@@ -175,11 +177,33 @@ async function main(): Promise<void> {
       const cfg = defaultConfig();
       const d = openDb(dbFile);
       const boot = markStart(HOME);
+      // A/B 双槽（18 §4.3）：先应用 active 版本的载荷，再记一次「我要启动了」。
+      // listen 成功之后上报健康——看门狗就靠这两条标记判断这次启动到底成没成。
+      const dep = readStateSafe(HOME);
+      const release = dep.corrupt ? null : dep.state.active;
+      if (dep.corrupt) console.log("⚠ deploy/state.json 损坏：本次不做回滚保护（版本事实源读不到）");
+      if (release && hasRelease(HOME, release)) {
+        if (!dep.corrupt && dep.state.applied !== release) {
+          try {
+            const w = applyRelease(HOME, release);
+            console.log(`版本 ${release}：应用 ${w.written.length} 个文件`);
+          } catch (e) {
+            console.log(`⚠ 版本 ${release} 无法应用（${String(e).slice(0, 100)}）→ 保持上一版载荷`);
+          }
+        }
+        try { bootAttempt(HOME, release); } catch { /* 版本目录被删 → 退化为单槽 */ }
+      }
       const boot1 = startup({ db: d.db, inboxDir: inbox, home: HOME, cleanLastShutdown: boot.clean });
       if (boot1.outage) {
         console.log(`断电/停机：${boot1.outage.kind} ${boot1.outage.from.toISOString().slice(0, 16)} → ${boot1.outage.to.toISOString().slice(0, 16)}（已记一笔）`);
       }
       console.log(`补算衰减 ${boot1.decayed} 条 · inbox ${boot1.inbox.events} 事件（隔离 ${boot1.inbox.quarantined}）`);
+      // embedding 指纹（02 §6 / 18 §1.3）：换模型或换量化都会让它变，
+      // 变了就说明「检索结果和以前不可比」。不是装饰字段。
+      try {
+        const e = defaultConfig().roles.embed;
+        if (e) setMeta(d.db, "embed_model", `${e.provider}:${e.model}`);
+      } catch { /* 记录失败不影响启动 */ }
       const store = createSecretStore(join(HOME, "secrets"));
       const keys: Record<string, string> = {};
       for (const p of ["deepseek", "anthropic", "openai"] as Provider[]) {
@@ -231,6 +255,7 @@ async function main(): Promise<void> {
       });
       srv.listen(port, "127.0.0.1", () => {
         console.log(`鲸鲸面板: http://127.0.0.1:${port}  (store=${store.kind}, express=${cfg.roles.express!.provider}/${cfg.roles.express!.model})`);
+        if (release) { try { markHealthy(HOME, release); } catch { /* 单槽模式 */ } }
       });
 
       // 可选：心跳（01 §10）。默认不开——没有主动性的需求时，安静就是最好的行为。

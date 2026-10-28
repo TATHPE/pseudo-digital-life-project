@@ -13,7 +13,8 @@
     "check": "npm run typecheck && npm test",
     "brief": "node src/cli/brief-demo.ts",
     "ui:test": "node tools/ui-test.mjs",
-    "ui:shot": "node tools/ui-shot.mjs"
+    "ui:shot": "node tools/ui-shot.mjs",
+    "deploy": "node src/cli/deploy.ts"
   },
   "dependencies": {
     "casbin": "^5.51.1",
