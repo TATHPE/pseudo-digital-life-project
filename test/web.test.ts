@@ -52,7 +52,7 @@ test("GET / 返回单页；/api/state 给出一句话状态", async () => {
   const { srv, base } = await start();
   try {
     const html = await (await fetch(`${base}/`)).text();
-    assert.match(html, /<title>鲸鲸/);
+    assert.ok(html.includes("<title>Pseudo Digital Life Project</title>"), "标签页标题");
     // FUI 视觉：黑底 + 采样得到的青色 + 角标面板（不是站酷的亮橙站皮肤）
     assert.ok(html.includes("--void:#0b0e0b"), "底色应是参考图采样的 #0b0e0b");
     assert.ok(html.includes("--cyan:#0f97a4"), "主色应是采样得到的 #0f97a4");

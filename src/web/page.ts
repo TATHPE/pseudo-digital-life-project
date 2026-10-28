@@ -24,7 +24,7 @@ export const PAGE = `<!doctype html>
 <html lang="zh-CN"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>鲸鲸</title>
+<title>Pseudo Digital Life Project</title>
 <!-- PWA（19 §7.5）：装到桌面后是独立窗口，不是浏览器标签页 -->
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" type="image/svg+xml" href="/icon.svg">
@@ -597,6 +597,8 @@ export const PAGE = `<!doctype html>
 <script>
 const $ = (s) => document.querySelector(s);
 const NL2 = String.fromCharCode(10, 10);
+// 标签页标题：待确认闪烁时也要闪回这个名字
+const TITLE = 'Pseudo Digital Life Project';
 const H = { "x-jj": "1", "content-type": "application/json" };
 const WHALE = "<svg class='ico' aria-hidden='true'><use href='#whale' /></svg>";
 let view = "chat", TOOLS = [], MEMS = [];
@@ -1094,8 +1096,8 @@ function paintPendBadge(n) {
     var on = false;
     titleTimer = setInterval(function () {
       on = !on;
-      document.title = on ? "● 有待确认" : "鲸鲸";
-      if (!on) { flashLeft--; if (flashLeft <= 0) { clearInterval(titleTimer); document.title = "鲸鲸"; } }
+      document.title = on ? "● 有待确认" : TITLE;
+      if (!on) { flashLeft--; if (flashLeft <= 0) { clearInterval(titleTimer); document.title = TITLE; } }
     }, 700);
   }
   lastPendCount = n;
