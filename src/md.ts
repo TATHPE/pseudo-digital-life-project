@@ -3,13 +3,23 @@ export function esc(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
+/** 引用 → 可点的胶囊（P0 #2）：`mem:12` / `doc:doc_xxx#3`
+ *  注意：只能在 inline() 里做（代码块里的 cite 是字面量，不该变链接）*/
+function citeify(t: string): string {
+  const linkify = (s: string) => s
+    .replace(/\b(mem:\d+)\b/g, (_m, a) => `<span class="cite" data-cite="${a}" role="button" tabindex="0">${a}</span>`)
+    .replace(/\b(doc:doc_[0-9a-f]{8,}#\d+)\b/g, (_m, a) => `<span class="cite" data-cite="${a}" role="button" tabindex="0">${a}</span>`);
+  // 代码片段里的 mem:12 是字面量，不能变成链接 → 按 <code> 切开，只处理外面那段
+  return t.split(/(<code>[\s\S]*?<\/code>)/).map((p, i) => (i % 2 ? p : linkify(p))).join("");
+}
+
 function inline(s: string): string {
   let t = esc(s);
   t = t.replace(/`([^`]+)`/g, (_m, a) => `<code>${a}</code>`);
   t = t.replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>");
   t = t.replace(/(^|\s)\*([^*]+)\*(?=\s|$)/g, "$1<i>$2</i>");
   t = t.replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, (_m, a, u) => `<a href="${u}" target="_blank" rel="noreferrer">${a}</a>`);
-  return t;
+  return citeify(t);
 }
 
 /** 返回 HTML 片段；代码块带语言标记便于样式 */

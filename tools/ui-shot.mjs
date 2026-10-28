@@ -9,7 +9,8 @@ if (rest[0] && (rest[0].startsWith("http") || rest[0].startsWith("file:"))) url 
 const w = rest[0] ?? "1440", h = rest[1] ?? "940";
 const EDGE = "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe";
 const r = spawnSync(EDGE, [
-  "--headless=new", "--disable-gpu", "--no-sandbox", "--hide-scrollbars",
+  "--headless=new", "--disable-gpu", "--no-sandbox",
+  `--user-data-dir=${process.env.TEMP || "/tmp"}/jj-edge-${Date.now()}`, "--hide-scrollbars",
   "--virtual-time-budget=6000", `--window-size=${w},${h}`,
   `--screenshot=${out}`, url,
 ], { stdio: "ignore" });

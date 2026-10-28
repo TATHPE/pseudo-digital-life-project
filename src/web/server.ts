@@ -7,8 +7,8 @@ import type { DatabaseSync } from "node:sqlite";
 import { PAGE } from "./page.ts";
 import { groupTimeline, gapLabel, type Msg } from "./timeline.ts";
 import { appendEvent, newEventId, readEvents } from "../journal.ts";
-import { readFileSync } from "node:fs";
-import { search } from "../retrieve.ts";
+import { existsSync, readFileSync } from "node:fs";
+import { search, searchDocs } from "../retrieve.ts";
 import { buildBrief } from "../brief.ts";
 import { loadPersona } from "../persona.ts";
 import { expenseLine } from "./state.ts";
@@ -17,7 +17,11 @@ import { writeFileConfig, readFileConfig, resolveConfig } from "../configfile.ts
 import { AVATAR_FRAMES, DEFAULT_AVATAR, isAvatarFrame } from "./avatar.ts";
 import { getPending, listPending, updatePending } from "../confirm.ts";
 import { readStateSafe } from "../deploy/slot.ts";
-import { listDocs, forgetDoc, setDocSensitivity } from "../ingest.ts";
+import { listDocs, forgetDoc, setDocSensitivity, ingestPath } from "../ingest.ts";
+import { bigramText } from "../text.ts";
+import { safePath } from "../verbs.ts";
+import { createTransport, routerFrom } from "../transport.ts";
+import { spentToday } from "../budget.ts";
 import { recallForBrief, omissionNote } from "../recall.ts";
 import { meta } from "../db.ts";
 import { execute } from "../execute.ts";
@@ -74,19 +78,27 @@ const json = (res: ServerResponse, code: number, obj: unknown) => {
 };
 
 interface ToolUse { name: string; args: string; result: string; ms: number }
-interface MsgEx extends Msg { tools?: ToolUse[] }
+interface MsgEx extends Msg {
+  tools?: ToolUse[];
+  cites?: string[];
+  omitted?: number;
+  omittedDocs?: number;
+}
 
 function messages(db: DatabaseSync, inboxDir: string): MsgEx[] {
   const { events } = readEvents(inboxDir);
   return events
     .filter((e) => e.kind === "utterance" || e.kind === "agent_reply")
     .map((e) => {
-      const p = (e.payload ?? {}) as { text?: string; tools?: ToolUse[] };
+      const p = (e.payload ?? {}) as { text?: string; tools?: ToolUse[]; cites?: string[]; omitted?: number; omittedDocs?: number };
       return {
         ts: e.ts,
         role: e.kind === "utterance" ? ("user" as const) : ("agent" as const),
         text: String(p.text ?? ""),
         ...(p.tools?.length ? { tools: p.tools } : {}),
+        ...(p.cites?.length ? { cites: p.cites } : {}),
+        ...(p.omitted ? { omitted: p.omitted } : {}),
+        ...(p.omittedDocs ? { omittedDocs: p.omittedDocs } : {}),
       };
     });
 }
@@ -235,6 +247,154 @@ export function createWebServer(deps: WebDeps) {
         });
         return;
       }
+      // ── P0/P1 的支撑接口：动作审计 / 搜索 / 记忆纠错 / 面板内摄入 / 测连接 / 用量 ──
+      if (req.method === "GET" && url.pathname === "/api/audit") {
+        const limit = Math.min(200, Number(url.searchParams.get("limit") ?? 60) || 60);
+        const rows = deps.db.prepare(
+          `SELECT ts,verb,tier,decision,deny_reason,duration_ms,capability,host_profile,cwd
+             FROM exec_audit ORDER BY rowid DESC LIMIT ?`,
+        ).all(limit) as Array<Record<string, unknown>>;
+        json(res, 200, rows.map((r) => ({
+          ts: String(r.ts), verb: String(r.verb), tier: String(r.tier), decision: String(r.decision),
+          reason: r.deny_reason ? String(r.deny_reason) : null,
+          ms: Number(r.duration_ms ?? 0), capability: r.capability ? String(r.capability) : null,
+          host: r.host_profile ? String(r.host_profile) : null,
+        })));
+        return;
+      }
+
+      if (req.method === "GET" && url.pathname === "/api/search") {
+        const q = (url.searchParams.get("q") ?? "").trim();
+        if (!q) { json(res, 200, { mem: [], docs: [] }); return; }
+        const emb = deps.getEmbedder();
+        const mem = emb ? (await search(deps.db, emb, q, { k: 8 })).hits : [];
+        const docs = emb ? (await searchDocs(deps.db, emb, q, { k: 6 })).hits : [];
+        const sens = new Map<number, string>();
+        if (mem.length) {
+          const got = deps.db.prepare(
+            `SELECT id, sensitivity FROM memories WHERE id IN (SELECT value FROM json_each(?))`,
+          ).all(JSON.stringify(mem.map((h) => h.id))) as Array<{ id: number; sensitivity?: string }>;
+          for (const g of got) sens.set(Number(g.id), g.sensitivity ?? "local_only");
+        }
+        json(res, 200, {
+          mem: mem.map((h) => ({
+            id: h.id, text: h.text, stage: h.stage, weight: h.weight,
+            sensitivity: sens.get(h.id) ?? "local_only",
+          })),
+          docs: docs.map((h) => ({
+            cite: h.cite, docId: h.docId, ord: h.ord, title: h.title,
+            headingPath: h.headingPath, text: h.text.slice(0, 300),
+            sensitivity: h.sensitivity,
+          })),
+        });
+        return;
+      }
+
+      const memEdit = url.pathname.match(/^\/api\/memories\/(\d+)$/);
+      if (req.method === "PUT" && memEdit) {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
+        const body = JSON.parse(await readBody(req)) as {
+          text?: string; importance?: number; sensitivity?: string;
+        };
+        const id = Number(memEdit[1]);
+        const cur = deps.db.prepare("SELECT text,importance,sensitivity FROM memories WHERE id=? AND status='active'")
+          .get(id) as { text: string; importance: number; sensitivity: string } | undefined;
+        if (!cur) { json(res, 404, { error: "E_NO_MEMORY" }); return; }
+
+        const text = body.text === undefined ? cur.text : String(body.text).trim();
+        if (!text) { json(res, 400, { error: "E_EMPTY" }); return; }
+        if (text.includes("\uFFFD")) { json(res, 400, { error: "E_ENCODING" }); return; }
+        if (Buffer.byteLength(text, "utf8") > 2000) { json(res, 400, { error: "E_TOO_BIG" }); return; }
+        const importance = body.importance === undefined ? cur.importance : Math.max(1, Math.min(5, Math.round(Number(body.importance))));
+        const sensitivity = body.sensitivity === "shareable" ? "shareable"
+          : body.sensitivity === "local_only" ? "local_only" : cur.sensitivity;
+
+        // 纠错也是"变更"：留一条事件，并在面板上说明改了什么（02 §5 / 17 §4）
+        deps.db.prepare("UPDATE memories SET text=?, importance=?, sensitivity=?, updated_at=? WHERE id=?")
+          .run(text, importance, sensitivity, now().toISOString(), id);
+        const vig = bigramText(text);
+        deps.db.prepare("UPDATE memories SET text_bigram=? WHERE id=?").run(vig, id);
+        deps.db.prepare("DELETE FROM memories_fts WHERE memory_id=?").run(id);
+        deps.db.prepare("INSERT INTO memories_fts(memory_id,bigram) VALUES(?,?)").run(id, vig);
+        if (text !== cur.text) {
+          try {
+            const v = deps.getEmbedder();
+            if (v) {
+              const emb = (await v.embed([text]))[0];
+              if (emb) {
+                deps.db.prepare("UPDATE memories SET embedding=? WHERE id=?")
+                  .run(new Uint8Array(emb.buffer, emb.byteOffset, emb.byteLength), id);
+                try { deps.db.prepare("DELETE FROM vec_memories WHERE memory_id=?").run(BigInt(id)); } catch { /* 没有扩展就跳过 */ }
+                try { deps.db.prepare("INSERT INTO vec_memories(memory_id,embedding) VALUES(?,?)").run(BigInt(id), emb); } catch { /* 同上 */ }
+              }
+            }
+          } catch { /* 向量没更新不算失败，检索会退化为纯 BM25 */ }
+        }
+        appendEvent(deps.inboxDir, {
+          v: 1, id: newEventId(), ts: now().toISOString(), kind: "memory_edit", actor: "user",
+          payload: { id, before: cur.text, after: text, importance, sensitivity },
+        });
+        json(res, 200, { ok: true, text, importance, sensitivity });
+        return;
+      }
+
+      if (req.method === "POST" && url.pathname === "/api/ingest") {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
+        const body = JSON.parse(await readBody(req)) as { path?: string; shareable?: boolean };
+        const target = String(body.path ?? "").trim();
+        if (!target) { json(res, 400, { error: "E_NO_PATH" }); return; }
+        // 只允许 home 内的路径（面板不是文件管理器；sources/ 是约定的落点）
+        let abs: string;
+        try {
+          abs = safePath(deps.home, target.endsWith("/") ? target : target, false);
+        } catch { json(res, 400, { error: "E_OUTSIDE_HOME", hint: "路径必须在 data/ 里，例如 sources/我的笔记.md" }); return; }
+        if (!existsSync(abs)) { json(res, 400, { error: "E_NOT_FOUND", hint: abs }); return; }
+        const r = await ingestPath(deps.db, abs, {
+          home: deps.home, root: joinDir(deps.home, "sources"), embedder: deps.getEmbedder(),
+          sensitivity: body.shareable ? "shareable" : "local_only", now: now(),
+        });
+        appendEvent(deps.inboxDir, {
+          v: 1, id: newEventId(), ts: now().toISOString(), kind: "ingest", actor: "user",
+          payload: { path: target, ...r.total },
+        });
+        json(res, 200, { ok: true, ...r.total, results: r.results.map((x) => ({ file: x.file, chunks: x.chunks, skipped: x.skipped, degraded: x.degraded })) });
+        return;
+      }
+
+      if (req.method === "POST" && url.pathname === "/api/test-cloud") {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
+        const cfg = deps.getConfig();
+        const ex = cfg.roles["express"]!;
+        const key = secrets().get(ex.provider as Provider);
+        if (!key) { json(res, 400, { error: "E_NO_KEY", hint: `缺 ${ex.provider} 的 key` }); return; }
+        const t0 = Date.now();
+        try {
+          const r = await createTransport(routerFrom(cfg.roles as never), { apiKeys: { [ex.provider]: key } })
+            .complete("express", [
+              { role: "system", content: "只回答一个字。" },
+              { role: "user", content: "回复：好" },
+            ], { containsMemory: false, maxTokens: 8, purpose: "panel-test" });
+          json(res, 200, { ok: true, ms: Date.now() - t0, reply: r.text.slice(0, 20), model: ex.model });
+        } catch (e) {
+          json(res, 200, { ok: false, ms: Date.now() - t0, error: String((e as Error).message ?? e).slice(0, 200) });
+        }
+        return;
+      }
+
+      if (req.method === "GET" && url.pathname === "/api/usage") {
+        const spent = spentToday(deps.db);
+        const row = deps.db.prepare(
+          `SELECT count(*) n, sum(in_tokens) i, sum(out_tokens) o FROM usage WHERE ts >= date('now','localtime')`,
+        ).get() as { n?: number; i?: number; o?: number };
+        json(res, 200, {
+          todayUsd: +spent.toFixed(6),
+          calls: Number(row.n ?? 0),
+          inTokens: Number(row.i ?? 0),
+          outTokens: Number(row.o ?? 0),
+          budgetUsd: deps.budgetUsd ?? 2,
+        });
+        return;
+      }
       if (req.method === "GET" && url.pathname === "/api/state") {
         const msgs = messages(deps.db, deps.inboxDir);
         const last = msgs.length ? msgs[msgs.length - 1]! : null;
@@ -260,7 +420,13 @@ export function createWebServer(deps: WebDeps) {
           if (b.type !== "msg") return b;
           const src = (messages(deps.db, deps.inboxDir) as MsgEx[]).find((m) => m.ts === b.ts && m.role === "agent");
           const html = b.role === "agent" ? renderMarkdown(b.text) : null;
-          return { ...b, ...(html ? { html } : {}), ...(src?.tools ? { tools: src.tools.map(toolCardHtml) } : {}) };
+          return {
+            ...b, ...(html ? { html } : {}),
+            ...(src?.tools ? { tools: src.tools.map(toolCardHtml) } : {}),
+            ...(src?.cites ? { cites: src.cites } : {}),
+            ...(src?.omitted ? { omitted: src.omitted } : {}),
+            ...(src?.omittedDocs ? { omittedDocs: src.omittedDocs } : {}),
+          };
         });
         json(res, 200, out);
         return;
@@ -511,8 +677,16 @@ export function createWebServer(deps: WebDeps) {
           "content-type": "text/event-stream; charset=utf-8",
           "cache-control": "no-store", connection: "keep-alive",
         });
-        const send = (o: unknown) => res.write(`data: ${JSON.stringify(o)}` + String.fromCharCode(10, 10));
-        send({ type: "brief", tokens: brief.tokens, prefix: brief.prefixHash, confidence: brief.confidence, omitted, omittedDocs: rc.omittedDocs, recall: recalled.length, recallDocs: recalled.filter((r) => r.source === "doc").length });
+        const send = (o: unknown) => { try { res.write(`data: ${JSON.stringify(o)}` + String.fromCharCode(10, 10)); } catch { /* 已断开 */ } };
+        // 用户点“停止”/关页面时浏览器会断开；服务端必须跟着停，否则只是“看不见”，token 照烧
+        let aborted = false;
+        res.on("close", () => { aborted = true; });
+        send({
+          type: "brief", tokens: brief.tokens, prefix: brief.prefixHash, confidence: brief.confidence,
+          omitted, omittedDocs: rc.omittedDocs, recall: recalled.length,
+          recallDocs: recalled.filter((r) => r.source === "doc").length,
+          cites: recalled.map((r) => r.id),
+        });
 
         let full = "";
         const used: ToolUse[] = [];
@@ -521,6 +695,7 @@ export function createWebServer(deps: WebDeps) {
           if (chat) {
             const agent = runAgent({ chat, tools: deps.tools! }, brief.text, text);
             for await (const ev of agent) {
+              if (aborted) break;
               if (ev.type === "delta") { full += ev.text; send({ type: "delta", text: ev.text }); }
               else if (ev.type === "tool") send({ type: "tool", id: ev.id, name: ev.name, args: ev.args });
               else if (ev.type === "tool_result") {
@@ -531,13 +706,13 @@ export function createWebServer(deps: WebDeps) {
               else if (ev.type === "done") send({ type: "done", steps: ev.steps });
             }
           } else if (deps.reply) {
-            for await (const d of deps.reply(brief.text, text)) { full += d; send({ type: "delta", text: d }); }
+            for await (const d of deps.reply(brief.text, text)) { if (aborted) break; full += d; send({ type: "delta", text: d }); }
             send({ type: "done", steps: 1 });
           } else {
             const gen = deps.getTransport().completeStream("express",
               [{ role: "system", content: brief.text }, { role: "user", content: text }],
               { containsMemory: false, purpose: "express", maxTokens: 512 });
-            for await (const d of gen) { full += d; send({ type: "delta", text: d }); }
+            for await (const d of gen) { if (aborted) break; full += d; send({ type: "delta", text: d }); }
             send({ type: "done", steps: 1 });
           }
         } catch (e) {
@@ -546,7 +721,12 @@ export function createWebServer(deps: WebDeps) {
         if (full) {
           appendEvent(deps.inboxDir, {
             v: 1, id: newEventId(), ts: now().toISOString(), kind: "agent_reply", actor: "agent",
-            payload: { text: full, tools: used },
+            payload: {
+              text: full, tools: used,
+              ...(recalled.length ? { cites: recalled.map((r) => r.id) } : {}),
+              ...(omitted ? { omitted } : {}),
+              ...(rc.omittedDocs ? { omittedDocs: rc.omittedDocs } : {}),
+            },
           });
         }
         res.end();

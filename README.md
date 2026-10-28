@@ -148,6 +148,7 @@ node src/cli/brief-demo.ts --full     # M1.1：第 1 轮 vs 第 100 轮简报
 - [x] **M3 大部分**：夜间整备（游标/抽取/冲突/归并）、自传（反推引用+摘录兜底）、领地
 - [x] **M3 完成**：夜间整备 / 自传 / 领地 / eval harness（四门全绿）
 - [x] **M5 完成**：能力目录 + casbin 策略 + 红队 21 例 + A/B 双槽与自动回滚 + **T3 shell.run**
+- [x] **面板可用性**：证据链（召回行 + 可点引用）/ 动作审计 / 搜索 / 面板内摄入 / 记忆纠错 / 停止生成 / 快捷键
 - [x] T3 的**面板确认按钮**（侧栏“待确认”卡 → 服务端现签现用令牌）
 - [x] **容器沙箱**（`JJ_SHELL_SANDBOX=docker`：`--network=none --read-only --cap-drop=ALL`，引擎不在就拒跑）
 - [ ] Job Object / bwrap / 降权 / 低完整性（Windows 上要原生模块）

@@ -540,3 +540,44 @@ test("写操作守卫：同源放行（Tailscale/手机），跨站仍然 403", 
   const noCsrf = { headers: { host: "127.0.0.1:7700" } } as unknown as Parameters<typeof writeGuarded>[0];
   assert.equal(writeGuarded(noCsrf).ok, false);
 });
+
+test("面板 UX 契约：P0/P1 的入口都在页面里（防止以后被改没）", () => {
+  // P0：证据链 / 审计 / 版本 / 工具默认折叠
+  assert.ok(PAGE.includes('data-cite'), "引用要变成可点元素");
+  assert.ok(PAGE.includes("recallHtml"), "召回行渲染函数要在");
+  assert.ok(PAGE.includes('id="auditlist"') && PAGE.includes('id="auditview"'), "动作审计入口");
+  assert.ok(PAGE.includes('id="metachip"'), "版本/冻结状态 chip");
+  assert.ok(!PAGE.includes("details class='tool' open"), "工具卡不该默认展开");
+  // P1：摄入 / 停止 / 搜索 / 记忆纠错 / 角标 / 测连接 / 用量
+  assert.ok(PAGE.includes('id="dlg-path"') && PAGE.includes('id="dlg-go"'), "面板内摄入");
+  assert.ok(PAGE.includes('id="stop"') && PAGE.includes("AbortController"), "能停止生成");
+  assert.ok(PAGE.includes('id="q"') && PAGE.includes("/api/search"), "搜索");
+  assert.ok(PAGE.includes('id="mv-edit"') && PAGE.includes('id="mv-save"'), "记忆可纠错");
+  assert.ok(PAGE.includes('id="pendbadge"'), "待确认角标");
+  assert.ok(PAGE.includes('id="c-test"'), "测试连接");
+  assert.ok(PAGE.includes('id="c-usage"') && PAGE.includes("/api/usage"), "今日花费");
+  // P2：多行输入 / 回到最新 / 快捷键 / 时间戳无秒
+  assert.match(PAGE, /<textarea id="m"/, "输入框应可多行");
+  assert.ok(PAGE.includes('id="jump"'), "回到最新");
+  assert.ok(PAGE.includes('e.key.toLowerCase() === "k"'), "Ctrl+K 搜索");
+  assert.ok(!PAGE.includes("p(d.getSeconds())"), "时间戳不该带秒");
+  // [hidden] 必须压过类里的 display（角标曾经因此永远显示）
+  assert.ok(PAGE.includes("[hidden] { display:none !important; }"));
+});
+
+test("接口：/api/audit 只回字段不泄漏，/api/search 空查询直接返回", async () => {
+  const { srv, base } = await start();
+  try {
+    const a = await (await fetch(`${base}/api/audit?limit=5`)).json() as any[];
+    assert.ok(Array.isArray(a));
+    if (a.length) {
+      assert.ok("verb" in a[0] && "decision" in a[0] && "ts" in a[0]);
+      assert.ok(!("argv_json" in a[0]), "审计列表不要回原始 argv 全文");
+    }
+    const s = await (await fetch(`${base}/api/search?q=`)).json() as any;
+    assert.deepEqual(s, { mem: [], docs: [] });
+    const u = await (await fetch(`${base}/api/usage`)).json() as any;
+    assert.equal(typeof u.todayUsd, "number");
+    assert.ok(u.budgetUsd > 0);
+  } finally { srv.close(); }
+});

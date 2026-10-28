@@ -5,7 +5,8 @@ const PORT = 9333;
 const [VW, VH] = (process.env.UI_VIEWPORT ?? '1440x900').split('x').map(Number);
 import { spawn } from "node:child_process";
 
-const proc = spawn(EDGE, ["--headless=new", "--disable-gpu", "--no-sandbox", "--hide-scrollbars",
+const proc = spawn(EDGE, ["--headless=new", "--disable-gpu", "--no-sandbox",
+  `--user-data-dir=${process.env.TEMP || "/tmp"}/jj-edge-${Date.now()}`, "--hide-scrollbars",
   `--remote-debugging-port=${PORT}`, `--window-size=${VW},${VH}`, "about:blank"], { stdio: "ignore" });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let target;
