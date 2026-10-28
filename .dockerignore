@@ -1,0 +1,14 @@
+# 构建上下文 = 仓库根（compose.yaml 的 context: ..）
+# 只需要 src/ persona/ tools/ package*.json tsconfig.json —— 其余一律不进上下文。
+node_modules
+data
+tmp
+docker
+test
+.git
+.gitignore
+.gitattributes
+*.md
+*.db
+*.db-wal
+*.db-shm

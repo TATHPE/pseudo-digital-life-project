@@ -28,9 +28,12 @@ node src/cli/jingjing.ts shell node.run_script --slots '{"script":"a.mjs"}' --ye
 node src/cli/jingjing.ts verb fs.list '{"path":"workspace"}'   # 手动调能力
 node src/cli/jingjing.ts beat --dry-run  # 心跳判定（不写库不发消息）
 node src/cli/jingjing.ts serve 7700 --beat  # 面板 + 每 60s 一次心跳
+node src/cli/jingjing.ts export       # 搬家：导出一致快照 → exports/<时间>/（校验清单里的 sha256）
+node src/cli/jingjing.ts import <dir> --force  # 搬到新 home（旧目录自动改名备份，然后补跑衰减）
+docker compose -f docker/compose.yaml up -d  # 容器里跑（数据卷 ./data，只映射宿主回环）
 node src/cli/jingjing.ts usage        # 今日花费与按角色/模型拆分
 node src/cli/jingjing.ts serve 7700   # 本地面板 http://127.0.0.1:7700
-npm run ui:test                       # headless Edge 真点真发（CDP），9 项断言
+npm run ui:test                       # headless Edge 真点真发（CDP），12 项断言
 npm run ui:shot tmp/shot.png          # 截一张图肉眼验收
 node src/cli/brief-demo.ts --full     # M1.1：第 1 轮 vs 第 100 轮简报
 ```
@@ -63,6 +66,7 @@ node src/cli/brief-demo.ts --full     # M1.1：第 1 轮 vs 第 100 轮简报
 | `src/verbs.ts` | 能力目录（T 档/参数/目标）+ `safePath` 真实路径校验 | `04 §3` |
 | `src/shell.ts` | **T3**：命令模板（占位符独占 argv 元素）+ 一次性令牌（argv_sha256/cwd/120s/单次）+ 超时杀进程树 + 环境白名单 + 可选容器沙箱 | `04 §4.1/§5.2/§6` |
 | `src/confirm.ts` | 待确认卡（面板侧栏）：按指纹去重、15 min 时效、不存令牌 | `04 §4.1` |
+| `src/handoff.ts` | 搬家：`VACUUM INTO` 一致快照 + sha256 清单 + 校验后 staging 替换 + 补跑衰减 | `19 §7.4` |
 | `src/tools.ts` | **唯一工具面**：verb + MCP 全走 execute；点号→下划线别名 | `11 §5.6` |
 | `src/policy.ts` | casbin 策略（allow/deny × advise/enforce） | `04 §4` |
 | `src/execute.ts` | 策略 → 执行 → 审计，一处不落 | `04 §4` |
@@ -122,7 +126,7 @@ node src/cli/brief-demo.ts --full     # M1.1：第 1 轮 vs 第 100 轮简报
 ## 未做（M0 剩余 / M1 剩余）
 
 - [x] embedding 走真 Ollama `bge-m3`（`fake` 仍保留给基准与单测）
-- [ ] 摄入管道 ingest → chunk → heading path（`02 §5`）
+- [ ] 摄入管道 ingest → chunk → heading path（`02 §5`）—— **这是最大的剩余空白：`chunks` 表至今是空的**
 - [x] `provider.ts` 角色路由 + `assertLocalOnly`（记忆类角色全 local）
 - [x] `transport.ts` 接真 Ollama（`complete` / `embed` 批量）+ 出站 span
 - [ ] 云端 transport 的真实鉴权（现在 anthropic 分支用的是 Bearer，需换成 `x-api-key` + `anthropic-version`）

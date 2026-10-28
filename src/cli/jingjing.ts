@@ -259,8 +259,12 @@ async function main(): Promise<void> {
         db: d.db, inboxDir: inbox, home: HOME, getTransport, getEmbedder, getConfig,
         tools: registry, getChat, pendingOutage: boot1.outage,
       });
-      srv.listen(port, "127.0.0.1", () => {
-        console.log(`鲸鲸面板: http://127.0.0.1:${port}  (store=${store.kind}, express=${cfg.roles.express!.provider}/${cfg.roles.express!.model})`);
+      // 绑哪里：默认只绑回环。容器里必须绑 0.0.0.0（否则宿主通过端口映射也访问不到，
+      // 因为容器的 127.0.0.1 不是宿主的 127.0.0.1）；而 compose 只把 0.0.0.0 映射到
+      // **宿主回环** 127.0.0.1:7700，所以对外仍然进不来。两步一起才是安全的。
+      const bind = process.env.JJ_BIND ?? "127.0.0.1";
+      srv.listen(port, bind, () => {
+        console.log(`鲸鲸面板: http://${bind === "0.0.0.0" ? "127.0.0.1" : bind}:${port}  (store=${store.kind}, express=${cfg.roles.express!.provider}/${cfg.roles.express!.model})`);
         if (release) { try { markHealthy(HOME, release); } catch { /* 单槽模式 */ } }
       });
 
@@ -451,6 +455,43 @@ async function main(): Promise<void> {
       process.exitCode = r.ok ? 0 : 1;
       return;
     }
+    case "export": {
+      // 搬家第一步：导出一致快照（先停面板；不停也能导，只是 inbox 尾部可能多几条）
+      const { exportHome, defaultExportDir } = await import("../handoff.ts");
+      const out = rest.find((x) => !x.startsWith("--")) ?? defaultExportDir(HOME);
+      const r = exportHome(HOME, out);
+      console.log("导出 " + r.files + " 个文件 / " + (r.bytes / 1048576).toFixed(1) + " MB → " + r.outDir);
+      console.log(JSON.stringify(r.manifest.counts));
+      console.log("不带：secrets/（DPAPI 绑本机）、tokens/、pending/、snapshots/");
+      return;
+    }
+    case "verify-export": {
+      const { verifyExport } = await import("../handoff.ts");
+      const dir = rest.find((x) => !x.startsWith("--"));
+      if (!dir) { console.log("用法: jingjing verify-export <导出目录>"); process.exitCode = 1; return; }
+      const v = verifyExport(dir);
+      console.log(JSON.stringify({ ok: v.ok, files: v.manifest ? Object.keys(v.manifest.files).length : 0, counts: v.manifest?.counts, problems: v.problems.slice(0, 10) }, null, 2));
+      process.exitCode = v.ok ? 0 : 1;
+      return;
+    }
+    case "import": {
+      // 搬家第三步：校验 → staging → 换进来 → 补跑
+      const { importHome } = await import("../handoff.ts");
+      const dir = rest.find((x) => !x.startsWith("--"));
+      if (!dir) { console.log("用法: jingjing import <导出目录> [--force]"); process.exitCode = 1; return; }
+      try {
+        const r = importHome(dir, HOME, { force: rest.includes("--force") });
+        console.log("导入 " + r.files + " 个文件 → " + HOME);
+        if (r.backup) console.log("旧目录已备份：" + r.backup);
+        console.log("补算衰减 " + r.decayed + " 条 · inbox " + r.inbox.events + " 事件 · 记忆 " + r.counts.memories + " 条");
+        console.log("⚠ secrets/ 没搬过来：需要时重新 auth set <provider>");
+      } catch (e) {
+        console.error(String((e as Error).message ?? e));
+        process.exitCode = 1;
+      }
+      return;
+    }
+
     case "templates": {
       const { templateCatalog } = await import("../shell.ts");
       for (const t of templateCatalog()) console.log(`${t.id.padEnd(20)} [${t.tier}] ${t.description}`);

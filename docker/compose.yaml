@@ -1,0 +1,57 @@
+# 鲸鲸 · PC 上先跑（19 §7）
+#
+#   docker compose -f docker/compose.yaml up -d
+#   docker compose -f docker/compose.yaml logs -f
+#
+# 三条不妥协的：
+#  - **数据卷挂出去**（./data:/app/data）：容器可删、可重建，记忆在卷里
+#  - **只映射到宿主回环**（127.0.0.1:7700）：面板没有登录，不能对局域网裸奔。
+#    要手机上用，走 Tailscale（19 §7.5），别改这条。
+#  - **healthcheck 打 /health**：轻量探针（不跑 quick_check），10s 一次
+services:
+  jingjing:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: jingjing:dev
+    container_name: jingjing
+    restart: unless-stopped
+    ports:
+      # 只绑回环。要换端口改左边这个数字。
+      - "127.0.0.1:7700:7700"
+    volumes:
+      # 记忆、人格、发布槽、inbox —— 全在宿主上
+      - ../data:/app/data
+    environment:
+      # 云端 L2：key 不进环境变量（会在 `docker inspect` 里泄漏）。
+      # 用 `docker compose exec jingjing node src/cli/jingjing.ts auth set deepseek` 在容器内写 DPAPI/文件。
+      TZ: Asia/Shanghai
+      # 心跳默认不开（D-E）；要开就把下面这行的注释去掉并改 CMD
+      # JJ_BEAT: "1"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:7700/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging:
+      # 不给日志限额，容器跑一周就能把磁盘写满
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # 可选：本机 Ollama（若你想让模型也进容器）
+  #   docker compose -f docker/compose.yaml --profile ollama up -d
+  # 不启用也行：鲸鲸默认连宿主上的 127.0.0.1:11434（见 data/config.json 的 ollama 字段）。
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["ollama"]
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:11434:11434"
+    volumes:
+      - ollama:/root/.ollama
+
+volumes:
+  ollama:

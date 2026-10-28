@@ -414,3 +414,29 @@ test("待确认：拒绝就是不执行，且之后不能再确认", async () =>
     assert.ok(!tl.some((b) => b.type === "msg" && String(b.text).includes("SHOULD-NOT-RUN")));
   } finally { srv.close(); }
 });
+
+test("GET /health：给 compose 用的轻量探针（不跑 quick_check）", async () => {
+  const { srv, base } = await start();
+  try {
+    const h = await (await fetch(`${base}/health`)).json() as any;
+    assert.equal(h.ok, true);
+    assert.equal(h.schema, String(Number(h.schema)));
+    assert.ok(typeof h.memories === "number");
+    assert.ok(Array.isArray(h.degraded));
+  } finally { srv.close(); }
+});
+
+test("部署配置不漂移：compose 的 healthcheck 打的是我们真的在服务的 /health", () => {
+  const dir = join(process.cwd(), "docker");
+  const compose = readFileSync(join(dir, "compose.yaml"), "utf8");
+  const dockerfile = readFileSync(join(dir, "Dockerfile"), "utf8");
+  // 探针路径必须存在（服务端路由 vs compose 配置，两边对得上）
+  assert.ok(compose.includes("/health"), "compose 的 healthcheck 应打 /health");
+  // 数据卷必须挂出去（容器可删，数据在卷）
+  assert.match(compose, /\.\/data:\/app\/data/);
+  // Node 版本必须满足 package.json 的 engines（>=22.6）
+  const m = dockerfile.match(/FROM\s+node:(\d+)/);
+  assert.ok(m && Number(m[1]) >= 22, `Dockerfile 基础镜像 Node 版本太低：${m && m[1]}`);
+  // 重启策略：被杀 ≤10s 自愈
+  assert.match(compose, /restart:\s*unless-stopped/);
+});

@@ -15,6 +15,8 @@ import { loadPersonaText, savePersonaFile, PERSONA_FILES, type PersonaFile } fro
 import { writeFileConfig, readFileConfig, resolveConfig } from "../configfile.ts";
 import { AVATAR_FRAMES, DEFAULT_AVATAR, isAvatarFrame } from "./avatar.ts";
 import { getPending, listPending, updatePending } from "../confirm.ts";
+import { readStateSafe } from "../deploy/slot.ts";
+import { meta } from "../db.ts";
 import { execute } from "../execute.ts";
 import { loadPolicy, type Policy } from "../policy.ts";
 import { createStore, fingerprint, type Provider } from "../auth.ts";
@@ -123,6 +125,25 @@ export function createWebServer(deps: WebDeps) {
         // 面板会被频繁改样式：禁止缓存，避免"我改了但你还看旧页面"
         res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
         res.end(req.method === "HEAD" ? undefined : PAGE);
+        return;
+      }
+      // 健康检查（19 §7.3 / compose healthcheck）：只回答“能不能服务”，不做重活（不跑 quick_check）
+      if (req.method === "GET" && url.pathname === "/health") {
+        const dep = readStateSafe(deps.home);
+        const degraded: string[] = [];
+        if (dep.corrupt) degraded.push("deploy_state_corrupt");
+        let memories = 0;
+        try { memories = Number((deps.db.prepare("SELECT count(*) c FROM memories WHERE status='active'").get() as { c?: number })?.c ?? 0); }
+        catch { degraded.push("db_unreadable"); }
+        json(res, 200, {
+          ok: true,
+          schema: meta(deps.db, "schema_version") ?? null,
+          release: dep.state.active,
+          frozen: dep.state.freezeUntil && Date.parse(dep.state.freezeUntil) > now().getTime() ? dep.state.freezeUntil : null,
+          memories,
+          uptimeS: Math.round(process.uptime()),
+          degraded,
+        });
         return;
       }
       if (req.method === "GET" && url.pathname === "/api/state") {
