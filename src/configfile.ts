@@ -13,6 +13,8 @@ export interface FileConfig {
   plan?: { provider?: string; model?: string };
   budget?: { dailyUsd?: number };
   persona?: { name?: string };
+  /** 外观偏好（头像框）——与模型配置分开放，清理接口配置时不会被意外抹掉 */
+  ui?: { avatar?: string };
 }
 
 let cache: { at: number; cfg: FileConfig } | null = null;
@@ -37,6 +39,7 @@ export function writeFileConfig(home: string, patch: FileConfig): FileConfig {
     plan: { ...(cur.plan ?? {}), ...(patch.plan ?? {}) },
     budget: { ...(cur.budget ?? {}), ...(patch.budget ?? {}) },
     persona: { ...(cur.persona ?? {}), ...(patch.persona ?? {}) },
+    ui: { ...(cur.ui ?? {}), ...(patch.ui ?? {}) },
   };
   atomicWriteFile(join(home, "config.json"), JSON.stringify(next, null, 2) + "\n");
   cache = null;

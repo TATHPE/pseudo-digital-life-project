@@ -129,3 +129,14 @@ node src/cli/brief-demo.ts --full     # M1.1：第 1 轮 vs 第 100 轮简报
 - [x] **M2 完成**：断电检测/记忆/提示、self_state、补算衰减、三种时间措辞
 - [x] **M3 大部分**：夜间整备（游标/抽取/冲突/归并）、自传（反推引用+摘录兜底）、领地
 - [x] **M3 完成**：夜间整备 / 自传 / 领地 / eval harness（四门全绿）
+
+## 图标署名（CC BY 3.0，不可删）
+
+标签页 favicon 与面板头像用的是同一个内联 SVG（`src/web/page.ts` 里的 `#whale` symbol）：
+
+- **Whale Tail** — Lorc，[game-icons.net](https://game-icons.net/1x1/lorc/whale-tail.html)
+- 许可：**CC BY 3.0**（https://creativecommons.org/licenses/by/3.0/）
+- 改动：无（原样 512×512 单路径，只用 `currentColor` 上色）
+
+CC BY 3.0 要求保留署名 —— **这一节不要删**；要换图标就同时换掉这里。
+候选与对比过程见 `tmp/wref/compare5.png`（临时目录，可删）。

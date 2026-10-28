@@ -8,6 +8,7 @@ import { openDb } from "../src/db.ts";
 import { remember } from "../src/store.ts";
 import { createWebServer, looksMojibake } from "../src/web/server.ts";
 import { PAGE } from "../src/web/page.ts";
+import { AVATAR_FRAMES } from "../src/web/avatar.ts";
 import { groupTimeline, gapLabel } from "../src/web/timeline.ts";
 import { expenseLine } from "../src/web/state.ts";
 import type { AddressInfo } from "node:net";
@@ -227,5 +228,60 @@ test("配置：GET 不回显 key，只给指纹；PUT 写 key 后 hasKey 变 tru
     const cfgRaw = readFileSync(join(dir, "config.json"), "utf8");
     assert.ok(!cfgRaw.includes("abcdefgh12345678"));
     assert.match(cfgRaw, /deepseek-chat/);
+  } finally { srv.close(); }
+});
+
+test("图标：鲸鱼 symbol 在页面里，品牌不再用「鲸鲸」文字，也不再有 JJ-OS", () => {
+  assert.ok(PAGE.includes('<symbol id="whale"'), "要有一个可复用的鲸鱼 symbol");
+  assert.ok(!PAGE.includes("JJ-OS"), "JJ-OS 这个文字要删掉（标题/角标/品牌）");
+  assert.ok(!PAGE.includes('<span class="brand">鲸鲸'), "品牌位应该是图标，不是文字");
+  assert.ok(PAGE.includes("aria-label=\"鲸鲸\""), "图标要有可读名字");
+  // 消息行头像：鲸鱼图标 + USER，不再出现「鲸」字头像
+  assert.ok(!PAGE.includes("\"<div class='av'>鲸</div>"), "头像框里的「鲸」字要被图标替掉");
+  assert.ok(PAGE.includes("href='#whale'"), "消息行头像用同一个 symbol");
+});
+
+test("头像框：可换的五种帧与共用的白名单一致（防两处生成代码漂移）", () => {
+  for (const f of AVATAR_FRAMES) {
+    assert.ok(PAGE.includes(`body[data-av="${f}"]`), `缺 ${f} 的 CSS`);
+    assert.ok(PAGE.includes(`<option value="${f}">`), `缺 ${f} 的选项`);
+  }
+  // 选项数量必须等于白名单（多一个没 CSS、少一个选不到）
+  const opts = PAGE.match(/<option value="(plain|bare|ring|cut|glow)">/g) ?? [];
+  assert.equal(opts.length, AVATAR_FRAMES.length);
+});
+
+test("GET/PUT /api/ui：默认 plain，存得住，白名单外拒绝，无 CSRF 头 403", async () => {
+  const { srv, base, dir } = await start();
+  try {
+    const a = await (await fetch(`${base}/api/ui`)).json() as any;
+    assert.equal(a.avatar, "plain");
+    assert.deepEqual(a.frames, [...AVATAR_FRAMES]);
+
+    const ok = await fetch(`${base}/api/ui`, {
+      method: "PUT",
+      headers: { "x-jj": "1", "content-type": "application/json" },
+      body: JSON.stringify({ avatar: "ring" }),
+    });
+    assert.equal(ok.status, 200);
+    assert.equal((await (await fetch(`${base}/api/ui`)).json() as any).avatar, "ring");
+    // 落盘在 config.json 的 ui.avatar（换浏览器也跟着走）
+    assert.equal(JSON.parse(readFileSync(join(dir, "config.json"), "utf8")).ui.avatar, "ring");
+
+    const bad = await fetch(`${base}/api/ui`, {
+      method: "PUT",
+      headers: { "x-jj": "1", "content-type": "application/json" },
+      body: JSON.stringify({ avatar: "<script>" }),
+    });
+    assert.equal(bad.status, 400);
+    assert.equal((await bad.json() as any).error, "E_BAD_FRAME");
+
+    const noCsrf = await fetch(`${base}/api/ui`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ avatar: "cut" }),
+    });
+    assert.equal(noCsrf.status, 403);
+    assert.equal((await (await fetch(`${base}/api/ui`)).json() as any).avatar, "ring", "被拒的写不能生效");
   } finally { srv.close(); }
 });

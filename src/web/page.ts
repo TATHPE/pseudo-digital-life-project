@@ -8,6 +8,10 @@
  * 17 §4 的硬约束不变：没有「新对话」；时间空白可见；状态是"醒着/距上次"。
  * 07 §4 的克制不变：不做点赞/计数徽章——读数只显示系统量。
  *
+ * 图标：鲸尾「Whale Tail」 by Lorc — https://game-icons.net/1x1/lorc/whale-tail.html
+ *   许可 CC BY 3.0（https://creativecommons.org/licenses/by/3.0/）—— 使用时必须保留本条署名。
+ *   原图为 512×512 单路径，未改形状；只用 currentColor 上色。
+ *
  * 本文件是"生成代码"：模板字符串里的反斜杠会被吃掉一次，
  * 所以**不用任何反斜杠转义**（换行用 String.fromCharCode(10)），并有测试跑 node --check。
  */
@@ -15,7 +19,7 @@ export const PAGE = `<!doctype html>
 <html lang="zh-CN"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>鲸鲸 · JJ-OS</title>
+<title>鲸鲸</title>
 <style>
   :root {
     --void:#0b0e0b; --panel:#0e1512; --panel2:rgba(16,24,21,.72);
@@ -68,8 +72,10 @@ export const PAGE = `<!doctype html>
   }
   header { grid-area:head; display:flex; align-items:center; gap:14px; padding:0 18px;
            background:rgba(11,14,11,.9); border-bottom:1px solid var(--line-dim); }
-  .brand { font-size:16px; font-weight:600; letter-spacing:.14em; color:#eafcff; }
-  .brand small { font:10px/1 var(--mono); color:var(--cyan); letter-spacing:.16em; margin-left:8px; }
+  .brand { display:flex; align-items:center; gap:10px; color:#eafcff; }
+  .brand .ico { width:26px; height:26px; color:var(--cyan-hi);
+                filter:drop-shadow(0 0 6px rgba(127,230,242,.35)); }
+  .ico { display:block; fill:currentColor; }
   .hud { display:inline-flex; align-items:center; gap:9px; font:11px/1 var(--mono); letter-spacing:.06em;
          color:var(--dim); border:1px solid var(--line-dim); background:rgba(8,13,11,.7); padding:6px 11px;
          white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:44vw; }
@@ -117,11 +123,22 @@ export const PAGE = `<!doctype html>
   .row.user .av { order:2; }
   .row.user > div:nth-child(2) { order:1; }
   .row.user .meta { text-align:right; }
-  /* 用 text-align + line-height 居中，别用 grid 居中单个 CJK 字形（实测会偏出框） */
-  .av { width:28px; height:28px; border:1px solid var(--line-dim); display:block;
-        text-align:center; line-height:26px; font-size:12px;
+  /* 头像：图标放进框里居中用 flex（文字也用同一套，别用 line-height 兼管两者） */
+  .av { width:28px; height:28px; border:1px solid var(--line-dim); display:flex;
+        align-items:center; justify-content:center; font-size:12px;
         font-family:"Microsoft YaHei","PingFang SC",var(--mono); color:var(--cyan); }
+  .av .ico { width:20px; height:20px; }
   .row.user .av { color:var(--amber); border-color:rgba(255,180,84,.3); }
+  /* ── 头像框（可更换，存在 data/config.json 的 ui.avatar）── */
+  body[data-av="plain"] .av { border-radius:0; }
+  body[data-av="bare"] .av { border-color:transparent; }
+  body[data-av="ring"] .av { border-radius:50%; }
+  body[data-av="cut"] .av { clip-path:polygon(7px 0,100% 0,100% calc(100% - 7px),calc(100% - 7px) 100%,0 100%,0 7px); }
+  body[data-av="glow"] .av { box-shadow:0 0 0 1px rgba(15,151,164,.18), 0 0 10px rgba(15,151,164,.35);
+                             animation:avglow 3.2s ease-in-out infinite; }
+  @keyframes avglow { 0%,100%{box-shadow:0 0 0 1px rgba(15,151,164,.18), 0 0 10px rgba(15,151,164,.3)}
+                      50%{box-shadow:0 0 0 1px rgba(127,230,242,.5), 0 0 16px rgba(127,230,242,.45)} }
+  .avprev { display:flex; align-items:center; gap:10px; padding:4px 0; }
   .meta { font:10px/1 var(--mono); letter-spacing:.12em; color:var(--dim); margin:2px 0 7px; }
   .row.user .meta { color:rgba(255,180,84,.75); }
   .body { background:var(--panel2); border:1px solid var(--line-dim);
@@ -204,10 +221,11 @@ export const PAGE = `<!doctype html>
     .chip { display:none; }
   }
 </style></head>
-<body>
-<div class="frame"><i></i><i></i><i></i><i></i><b class="bl">JJ-OS · LOCAL · 127.0.0.1</b><b class="br">MEMORY CORE</b></div>
+<body data-av="plain">
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><symbol id="whale" viewBox="0 0 512 512"><path fill="currentColor" d="M453.004 35.117c-65.314 46.61-189.755 41.018-213.559 125.426C184.41 101.41 98.625 83.031 21.771 63.209c6.532 139.103 71.38 147.437 192.44 194.547c23.71 25.786 29.786 49.93 19.254 82.705c46.403 5.1 71.504 15.468 106.754 27.742c-.708-71.67-25.14-108.928-75.518-175.035c11.058 4.233 44.979 37.02 56.578 58.607c109.419-42.421 147.64-112.074 131.725-216.658M180.178 353.9c-60.89-.24-114.034 19.49-158.426 74.221c167.075-48.84 292.003-13.21 471.893 7.895c-118.936-38.752-224.474-81.763-313.467-82.116m98.043 77.844c-99.28.255-206.34 18.738-256.866 63.139c168.002-26.61 356.801-28.408 470.8-4.967c1.102-35.337-101.418-58.46-213.934-58.172"/></symbol></svg>
+<div class="frame"><i></i><i></i><i></i><i></i><b class="bl">LOCAL · 127.0.0.1</b><b class="br">MEMORY CORE</b></div>
 <header>
-  <span class="brand">鲸鲸<small>JJ-OS v0.2</small></span>
+  <span class="brand" aria-label="鲸鲸"><svg class="ico" role="img" aria-hidden="false"><use href="#whale" /></svg></span>
   <span class="hud"><i class="dot"></i><span id="state">…</span><span id="readout"></span></span>
   <span class="chip" id="modelchip">…</span>
 </header>
@@ -283,6 +301,24 @@ export const PAGE = `<!doctype html>
         <textarea id="p-text" spellcheck="false"></textarea>
         <div class="acts"><button id="p-save" class="primary">保存人格</button><span id="p-msg" class="hint"></span></div>
       </div>
+
+      <div class="panelbox">
+        <h2>APPEARANCE · 外观</h2>
+        <div class="two">
+          <div><label>头像框</label>
+            <select id="a-frame">
+              <option value="plain">plain · 直角细框</option>
+              <option value="bare">bare · 无框</option>
+              <option value="ring">ring · 圆</option>
+              <option value="cut">cut · 切角</option>
+              <option value="glow">glow · 呼吸光</option>
+            </select></div>
+          <div><label>预览</label>
+            <div class="avprev"><span class="av"><svg class="ico" aria-hidden="true"><use href="#whale" /></svg></span>
+            <span class="hint">选完立即生效并保存</span></div></div>
+        </div>
+        <p class="hint">存到 data/config.json（ui.avatar），换浏览器/换机器也跟着走<span id="a-msg"></span></p>
+      </div>
     </div>
   </div></div>
 
@@ -296,7 +332,20 @@ export const PAGE = `<!doctype html>
 const $ = (s) => document.querySelector(s);
 const NL2 = String.fromCharCode(10, 10);
 const H = { "x-jj": "1", "content-type": "application/json" };
+const WHALE = "<svg class='ico' aria-hidden='true'><use href='#whale' /></svg>";
 let view = "chat", TOOLS = [], MEMS = [];
+
+// 标签页图标：直接用页面里那一个鲸鱼 symbol，不另存一份 path（免得两处逐渐不一致）
+(function favicon() {
+  const s = document.getElementById("whale");
+  if (!s) return;
+  const C = "#0f97a4";
+  const svg = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='" + C + "' color='" + C + "'>" + s.innerHTML + "</svg>";
+  const l = document.createElement("link");
+  l.rel = "icon";
+  l.href = "data:image/svg+xml," + encodeURIComponent(svg);
+  document.head.appendChild(l);
+})();
 
 function show(v) {
   view = v;
@@ -336,8 +385,8 @@ function rowHtml(b) {
   const isUser = b.role === "user";
   const body = isUser ? escapeHtml(b.text).replace(/&lt;br&gt;/g, "<br>") : (b.html || escapeHtml(b.text));
   const tools = (b.tools || []).join("");
-  return "<div class='row " + b.role + "'><div class='av'>" + (isUser ? "U" : "鲸") + "</div><div>" +
-    "<div class='meta'>" + (isUser ? "USER" : "鲸鲸") + " · " + clock(b.ts) + "</div>" +
+  return "<div class='row " + b.role + "'><div class='av'>" + (isUser ? "U" : WHALE) + "</div><div>" +
+    "<div class='meta'>" + (isUser ? "USER · " : "") + clock(b.ts) + "</div>" +
     "<div class='body md'>" + body + tools + "</div></div></div>";
 }
 function escapeHtml(s) {
@@ -418,6 +467,18 @@ async function openMemory(id) {
 function scrollBottom() {
   const s = $("#scroll"); s.scrollTop = s.scrollHeight;
 }
+async function loadUi() {
+  try {
+    const u = await (await fetch("/api/ui")).json();
+    const av = u && u.avatar ? u.avatar : "plain";
+    document.body.dataset.av = av;
+    const s = $("#a-frame");
+    if (s) s.value = av;
+  } catch (e) {
+    // 面板照常能用：外观是装饰，读不到就不改
+  }
+}
+
 async function loadConfig() {
   const c = await (await fetch("/api/config")).json();
   $("#c-provider").value = c.provider;
@@ -451,6 +512,15 @@ document.addEventListener("click", (e) => {
   if (t.dataset.day) jumpToDay(t.dataset.day);
 });
 $("#p-file").onchange = (e) => loadPersona(e.target.value);
+// 头像框：改完立刻套上（不等服务端），再把选择存住
+$("#a-frame").onchange = async (e) => {
+  const v = e.target.value;
+  document.body.dataset.av = v;
+  const j = await (await fetch("/api/ui", { method: "PUT", headers: H, body: JSON.stringify({ avatar: v }) })).json();
+  const m = $("#a-msg");
+  if (j.ok) { m.className = "ok"; m.textContent = "  · SAVED"; }
+  else { m.className = "err"; m.textContent = "  · " + (j.error || "FAILED"); }
+};
 // 移动端：点主区域收起抽屉
 document.addEventListener("click", (e) => {
   const side = $("#side");
@@ -483,8 +553,8 @@ $("#composer").onsubmit = async (e) => {
   el.insertAdjacentHTML("beforeend", rowHtml({ role: "user", ts: new Date().toISOString(), text }));
   const id = "live-" + Date.now();
   el.insertAdjacentHTML("beforeend",
-    "<div class='row agent' id='" + id + "'><div class='av'>鲸</div><div>" +
-    "<div class='meta'>鲸鲸 · 处理中…</div><div class='body md'><span class='cursor'></span></div></div></div>");
+    "<div class='row agent' id='" + id + "'><div class='av'>" + WHALE + "</div><div>" +
+    "<div class='meta'>处理中…</div><div class='body md'><span class='cursor'></span></div></div></div>");
   const box = document.querySelector("#" + id + " .md");
   const meta = document.querySelector("#" + id + " .meta");
   let acc = "";
@@ -501,7 +571,7 @@ $("#composer").onsubmit = async (e) => {
         const d = JSON.parse(mm[1]);
         if (d.type === "delta") { acc += d.text; box.innerHTML = escapeHtml(acc) + "<span class='cursor'></span>"; }
         if (d.type === "tool") {
-          meta.textContent = "鲸鲸 · 调用 " + d.name;
+          meta.textContent = "调用 " + d.name;
           box.insertAdjacentHTML("beforeend",
             "<details class='tool' open><summary><span class='tn'>" + escapeHtml(d.name) + "</span>" +
             "<span class='tms'>运行中…</span></summary><pre class='targs'>" + escapeHtml(d.args || "") + "</pre></details>");
@@ -513,7 +583,7 @@ $("#composer").onsubmit = async (e) => {
             last.insertAdjacentHTML("beforeend", "<pre class='tres'>" + escapeHtml(d.result) + "</pre>"); }
         }
         if (d.type === "error") box.insertAdjacentHTML("beforeend", "<div class='sys'>E: " + escapeHtml(d.message) + "</div>");
-        if (d.type === "done") { meta.textContent = "鲸鲸 · " + clock(new Date().toISOString()); }
+        if (d.type === "done") { meta.textContent = clock(new Date().toISOString()); }
       }
       scrollBottom();
     }
@@ -522,6 +592,6 @@ $("#composer").onsubmit = async (e) => {
   }
   await timeline(); await state(); await memories();
 };
-state(); timeline(); sessions(); tools(); memories(); loadConfig(); setInterval(state, 30000);
+state(); timeline(); sessions(); tools(); memories(); loadConfig(); loadUi(); setInterval(state, 30000);
 </script>
 </body></html>`;

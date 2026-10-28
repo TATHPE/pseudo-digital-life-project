@@ -76,6 +76,24 @@ const after = await js(`document.querySelector('#chat').textContent.length`);
 check("发送后有新内容", after > before, `${before} → ${after}`);
 check("无 JS 运行时错误", errs.length === 0, errs.slice(0, 2).join(" | "));
 
+// 图标：标签页 favicon 真的建出来了（鲸尾 data URI）；头像用的是同一个 symbol
+check("favicon 是鲸尾 data URI", await js(`(() => {
+  const l = document.querySelector("link[rel=icon]");
+  if (!l || !l.href.startsWith("data:image/svg+xml")) return false;
+  return decodeURIComponent(l.href).includes("M453.004");
+})()`));
+check("头像用同一个 symbol", await js(`(() => {
+  const u = document.querySelector(".row.agent .av svg use");
+  return !!u && u.getAttribute("href") === "#whale";
+})()`));
+check("换头像框立即生效", await js(`(() => {
+  const s = document.querySelector("#a-frame");
+  if (!s) return false;
+  s.value = "ring";
+  s.dispatchEvent(new Event("change"));
+  return document.body.dataset.av === "ring";
+})()`));
+
 ws.close(); proc.kill();
 let bad = 0;
 for (const [n, ok, d] of out) { console.log(`${ok ? "✅" : "❌"} ${n}${d ? "  — " + String(d).slice(0, 70) : ""}`); if (!ok) bad++; }

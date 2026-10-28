@@ -12,7 +12,8 @@ import { buildBrief } from "../brief.ts";
 import { loadPersona } from "../persona.ts";
 import { expenseLine } from "./state.ts";
 import { loadPersonaText, savePersonaFile, PERSONA_FILES, type PersonaFile } from "../persona.ts";
-import { writeFileConfig, resolveConfig } from "../configfile.ts";
+import { writeFileConfig, readFileConfig, resolveConfig } from "../configfile.ts";
+import { AVATAR_FRAMES, DEFAULT_AVATAR, isAvatarFrame } from "./avatar.ts";
 import { createStore, fingerprint, type Provider } from "../auth.ts";
 import type { ToolRegistry } from "../tools.ts";
 import { runAgent, type ChatFn } from "../agent.ts";
@@ -200,6 +201,20 @@ export function createWebServer(deps: WebDeps) {
           model: cfg.roles["express"]!.model,
           hasKey: Boolean(secrets().get(cfg.roles["express"]!.provider as Provider)),
         });
+        return;
+      }
+      if (req.method === "GET" && url.pathname === "/api/ui") {
+        const av = readFileConfig(deps.home).ui?.avatar;
+        json(res, 200, { avatar: isAvatarFrame(av) ? av : DEFAULT_AVATAR, frames: AVATAR_FRAMES });
+        return;
+      }
+      if (req.method === "PUT" && url.pathname === "/api/ui") {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
+        const body = JSON.parse(await readBody(req)) as { avatar?: string };
+        // 白名单：外观偏好也是写操作，不能让面板把任意字符串塞进 config.json
+        if (!isAvatarFrame(body.avatar)) { json(res, 400, { error: "E_BAD_FRAME" }); return; }
+        writeFileConfig(deps.home, { ui: { avatar: body.avatar } });
+        json(res, 200, { ok: true, avatar: body.avatar });
         return;
       }
       if (req.method === "GET" && url.pathname === "/api/persona") {
