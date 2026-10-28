@@ -31,9 +31,16 @@ async function start() {
     now: () => new Date("2026-10-28T12:00:00Z"),
     reply: async function* () { yield "在。"; yield "（本地桩）"; },
   });
-  await new Promise<void>((r) => srv.listen(0, "127.0.0.1", () => r()));
-  const port = (srv.address() as AddressInfo).port;
-  return { srv, port, base: `http://127.0.0.1:${port}`, dir };
+  // fetch 规范禁用了一批端口（6665–6669、10080 …），而这台机器的动态端口范围里就有它们：
+  // listen(0) 万一落在那里，undici 会直接 “bad port” —— 不是代码错，是环境。重试一次即可。
+  const BLOCKED = new Set([0, 6665, 6666, 6667, 6668, 6669, 10080]);
+  for (let attempt = 0; ; attempt++) {
+    await new Promise<void>((r) => srv.listen(0, "127.0.0.1", () => r()));
+    const port = (srv.address() as AddressInfo).port;
+    if (!BLOCKED.has(port)) return { srv, port, base: `http://127.0.0.1:${port}`, dir };
+    await new Promise<void>((r) => srv.close(() => r()));
+    if (attempt > 8) throw new Error(`E_BAD_PORT: 连续撞到禁用端口 ${port}`);
+  }
 }
 
 test("页面里没有「新对话」——重置人格的入口不该存在", () => {
@@ -568,11 +575,12 @@ test("面板 UX 契约：P0/P1 的入口都在页面里（防止以后被改没�
 test("接口：/api/audit 只回字段不泄漏，/api/search 空查询直接返回", async () => {
   const { srv, base } = await start();
   try {
-    const a = await (await fetch(`${base}/api/audit?limit=5`)).json() as any[];
-    assert.ok(Array.isArray(a));
-    if (a.length) {
-      assert.ok("verb" in a[0] && "decision" in a[0] && "ts" in a[0]);
-      assert.ok(!("argv_json" in a[0]), "审计列表不要回原始 argv 全文");
+    const a = await (await fetch(`${base}/api/audit?limit=5`)).json() as any;
+    assert.ok(Array.isArray(a.rows), "返回 { total, rows }");
+    assert.equal(typeof a.total, "number", "要带上总数（只给最近 N 条却让人以为是全部，也是说谎）");
+    if (a.rows.length) {
+      assert.ok("verb" in a.rows[0] && "decision" in a.rows[0] && "ts" in a.rows[0]);
+      assert.ok(!("argv_json" in a.rows[0]), "审计列表不要回原始 argv 全文");
     }
     const s = await (await fetch(`${base}/api/search?q=`)).json() as any;
     assert.deepEqual(s, { mem: [], docs: [] });
@@ -671,4 +679,13 @@ test("面板：头像可换 / 三个分区可折叠 / 气泡两侧不同", () =>
   assert.ok(userBody.includes("margin-left:auto"), "用户气泡要 auto 左边距");
   assert.ok(userBody.includes("width:fit-content"), "否则 auto 边距不起作用，气泡会贴在左边");
   assert.ok(userBody.includes("display:block"), "inline-block 上的 auto 边距无效");
+});
+
+test("侧栏里写着“点开看全部/查看全部”的东西，必须真的是按钮（不是 hint）", () => {
+  // 这条是踩过的坑：文案让用户去点，但它是个 <div class=hint>，根本点不动。
+  assert.ok(
+    PAGE.includes("data-view='auditview'><span class='preview'>查看全部"),
+    "“查看全部”必须是一个带 data-view 的 button，而不是一句 hint 文案",
+  );
+  assert.ok(!PAGE.includes("条近况，点开看全部"), "那句点不动的纯文案已删掉");
 });

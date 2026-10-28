@@ -355,12 +355,17 @@ export function createWebServer(deps: WebDeps) {
           `SELECT ts,verb,tier,decision,deny_reason,duration_ms,capability,host_profile,cwd
              FROM exec_audit ORDER BY rowid DESC LIMIT ?`,
         ).all(limit) as Array<Record<string, unknown>>;
-        json(res, 200, rows.map((r) => ({
-          ts: String(r.ts), verb: String(r.verb), tier: String(r.tier), decision: String(r.decision),
-          reason: r.deny_reason ? String(r.deny_reason) : null,
-          ms: Number(r.duration_ms ?? 0), capability: r.capability ? String(r.capability) : null,
-          host: r.host_profile ? String(r.host_profile) : null,
-        })));
+        // 带上总数：只回“最近 N 条”却让人以为是全部，也是一种说谎
+        const total = Number((deps.db.prepare("SELECT count(*) c FROM exec_audit").get() as { c?: number })?.c ?? 0);
+        json(res, 200, {
+          total,
+          rows: rows.map((r) => ({
+            ts: String(r.ts), verb: String(r.verb), tier: String(r.tier), decision: String(r.decision),
+            reason: r.deny_reason ? String(r.deny_reason) : null,
+            ms: Number(r.duration_ms ?? 0), capability: r.capability ? String(r.capability) : null,
+            host: r.host_profile ? String(r.host_profile) : null,
+          })),
+        });
         return;
       }
 

@@ -455,6 +455,7 @@ export const PAGE = `<!doctype html>
       <div class="panelbox">
         <h2>动作 · ACTIONS</h2>
         <p class="hint">来自 exec_audit：每一次能力调用（含被拒）都在这里。被拒的也留痕，这是"越权为零"能被验证的地方。</p>
+        <p class="hint" id="av-meta"></p>
         <div id="av-list"></div>
       </div>
     </div>
@@ -877,9 +878,9 @@ document.addEventListener("keydown", function (e) {
 
 // ── 动作审计（P0 #3）────────────────────────────────────
 async function audit() {
-  var rows = [];
-  try { rows = await (await fetch("/api/audit?limit=40")).json(); } catch (e) { return; }
-  var ac = $("#actcount"); if (ac) ac.textContent = (rows ? rows.length : 0) + " 条";
+  var rows = [], total = 0;
+  try { var j = await (await fetch("/api/audit?limit=40")).json(); rows = j.rows || []; total = j.total || rows.length; } catch (e) { return; }
+  var ac = $("#actcount"); if (ac) ac.textContent = total + " 条";
   var box = $("#auditlist");
   if (!rows || !rows.length) { box.innerHTML = "<div class='hint' style='padding:4px 2px'>还没有动作</div>"; return; }
   box.innerHTML = rows.slice(0, 8).map(function (r) {
@@ -887,13 +888,17 @@ async function audit() {
     return "<button class='item' data-view='auditview' title='" + escapeHtml(r.verb + " " + (r.reason || r.decision)) + "'>" +
       escapeHtml(r.verb) + "<span class='m'><span class='" + cls + "'>" + escapeHtml(r.decision) + "</span> · " +
       escapeHtml(r.tier) + " · " + clock(r.ts) + "</span></button>";
-  }).join("") + "<div class='hint' style='padding:4px 2px'>共 " + rows.length + " 条近况，点开看全部</div>";
+  }).join("") +
+    // 这行必须是真的控件：以前写成 hint，写着“点开看全部”却点不动
+    "<button class='item' data-view='auditview'><span class='preview'>查看全部（最近 " + rows.length + " / 共 " + total + " 条）</span>" +
+    "<span class='m'>exec_audit · 含被拒绝的调用</span></button>";
 }
 async function openAudit() {
   show("auditview");
-  var rows = [];
-  try { rows = await (await fetch("/api/audit?limit=80")).json(); } catch (e) { rows = []; }
-  $("#av-list").innerHTML = rows.map(function (r) {
+  var rows = [], total = 0;
+  try { var j2 = await (await fetch("/api/audit?limit=80")).json(); rows = j2.rows || []; total = j2.total || rows.length; } catch (e) { rows = []; }
+  var am = $("#av-meta"); if (am) am.textContent = "exec_audit 共 " + total + " 条 · 下面显示最近 " + rows.length + " 条（含被拒绝的）";
+  $("#av-list").innerHTML = (rows || []).map(function (r) {
     var cls = r.decision === "allowed" ? "d-ok" : r.decision === "needs_confirm" ? "d-wait" : "d-no";
     return "<div class='arow'><span class='t'>" + escapeHtml(clock(r.ts)) + "</span>" +
       "<span class='v'>" + escapeHtml(r.verb) + "</span>" +
