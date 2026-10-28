@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createTransport, assertAllLoopback, isLoopback, hostOf, EndpointError } from "../src/transport.ts";
+import { createTransport, createChatTransport, assertAllLoopback, isLoopback, hostOf, EndpointError } from "../src/transport.ts";
 import { createRouter, PrivacyError, type RoleConfig } from "../src/provider.ts";
 import { at } from "../src/assert.ts";
 
@@ -85,4 +85,47 @@ test("hostOf / isLoopback 的边界", () => {
   assert.ok(isLoopback("http://[::1]:11434"));
   assert.ok(!isLoopback("https://api.anthropic.com"));
   assert.ok(!isLoopback("not a url"));
+});
+
+test("流式调用会把真实 usage 抛出来（记帐用，不估）", async () => {
+  const sse = [
+    'data: {"choices":[{"delta":{"content":"在"},"index":0}]}',
+    "",
+    'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":37,"completion_tokens":5}}',
+    "",
+    "data: [DONE]",
+    "",
+  ].join("\n");
+  const body = new ReadableStream({
+    start(c) { c.enqueue(new TextEncoder().encode(sse)); c.close(); },
+  });
+  const seen: any[] = [];
+  const stub = (async () => ({ ok: true, status: 200, body } as any)) as any;
+  const t = createChatTransport(createRouter(CFG), {
+    fetchImpl: stub,
+    onUsage: (u) => seen.push(u),
+  });
+  const out: string[] = [];
+  for await (const ev of t.chat("express", [{ role: "user", content: "hi" }], {
+    containsMemory: false, purpose: "t", maxTokens: 16,
+  })) if (ev.type === "delta") out.push(ev.text);
+
+  assert.equal(out.join(""), "在");
+  assert.equal(seen.length, 1, "应该回调一次");
+  assert.deepEqual(
+    { role: seen[0].role, provider: seen[0].provider, in: seen[0].inTokens, out: seen[0].outTokens },
+    { role: "express", provider: "anthropic", in: 37, out: 5 },   // provider 跟着角色配置走
+  );
+});
+
+test("流里没有 usage 时不编造：onUsage 一次都不调", async () => {
+  const sse = 'data: {"choices":[{"delta":{"content":"x"},"finish_reason":"stop"}]}' + "\n\ndata: [DONE]\n\n";
+  const body = new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode(sse)); c.close(); } });
+  let called = 0;
+  const t = createChatTransport(createRouter(CFG), {
+    fetchImpl: (async () => ({ ok: true, status: 200, body } as any)) as any,
+    onUsage: () => { called++; },
+  });
+  for await (const _ of t.chat("express", [{ role: "user", content: "hi" }], { containsMemory: false })) { /* drain */ }
+  assert.equal(called, 0, "拿不到真实 token 就不写账（否则「今日花费」是假读数）");
 });

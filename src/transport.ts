@@ -62,6 +62,8 @@ export function endpointOf(c: RoleConfig): string {
 }
 
 export interface TransportOpts {
+  /** 流结束时把真实 token 用量抛出来（记账用；不猜、不估） */
+  onUsage?: (u: { role: string; provider: string; model: string; inTokens: number; outTokens: number }) => void;
   fetchImpl?: typeof fetch;
   apiKeys?: Partial<Record<string, string>>;
   clock?: () => number;
@@ -288,7 +290,9 @@ export function createChatTransport(router: Router, opts: TransportOpts = {}) {
     }
     const body = c.provider === "ollama"
       ? { model: c.model, messages, stream: true, ...(o.tools ? { tools: o.tools } : {}) }
-      : { model: c.model, messages, stream: true, max_tokens: o.maxTokens ?? 1024, ...(o.tools ? { tools: o.tools, tool_choice: "auto" } : {}) };
+      : { model: c.model, messages, stream: true, max_tokens: o.maxTokens ?? 1024, ...(o.tools ? { tools: o.tools, tool_choice: "auto" } : {}),
+          // 让 provider 在最后一个 chunk 里带 usage：不打开的话，流式调用永远拿不到真实 token 数
+          ...(c.provider === "deepseek" || c.provider === "openai" ? { stream_options: { include_usage: true } } : {}) };
 
     const t0 = clock();
     const r = await f(url, { method: "POST", headers, body: JSON.stringify(body), signal: o.signal });
@@ -299,6 +303,7 @@ export function createChatTransport(router: Router, opts: TransportOpts = {}) {
     let buf = "";
     const acc = new Map<number, { id: string; name: string; args: string }>();
     let finish = "";
+    let inTok = 0, outTok = 0;
     try {
       for (;;) {
         const { done, value } = await reader.read();
@@ -325,7 +330,11 @@ export function createChatTransport(router: Router, opts: TransportOpts = {}) {
               cur.args += tc.function?.arguments ?? "";
               acc.set(i, cur);
             }
-            if (j.done) finish = j.done_reason ?? "stop";
+            if (j.done) {
+              finish = j.done_reason ?? "stop";
+              inTok = Number(j.prompt_eval_count ?? inTok);
+              outTok = Number(j.eval_count ?? outTok);
+            }
           } else {
             const ch = (j.choices ?? [])[0] ?? {};
             const d = ch.delta ?? {};
@@ -339,6 +348,7 @@ export function createChatTransport(router: Router, opts: TransportOpts = {}) {
               acc.set(i, cur);
             }
             if (ch.finish_reason) finish = ch.finish_reason;
+            if (j.usage) { inTok = Number(j.usage.prompt_tokens ?? inTok); outTok = Number(j.usage.completion_tokens ?? outTok); }
           }
         }
       }
@@ -351,6 +361,9 @@ export function createChatTransport(router: Router, opts: TransportOpts = {}) {
     }
     if (acc.size) {
       yield { type: "tool_calls", calls: [...acc.entries()].sort((a, b) => a[0] - b[0]).map(([, v]) => v) };
+    }
+    if (inTok || outTok) {
+      try { opts.onUsage?.({ role, provider: c.provider, model: c.model, inTokens: inTok, outTokens: outTok }); } catch { /* 记账失败不影响回答 */ }
     }
     yield { type: "done", finish: finish || (acc.size ? "tool_calls" : "stop") };
   }

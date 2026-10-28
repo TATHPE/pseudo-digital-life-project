@@ -248,7 +248,17 @@ async function main(): Promise<void> {
         const c = getConfig();
         const ks: Record<string, string> = {};
         for (const p of ["deepseek", "anthropic", "openai"] as Provider[]) { const k = store.get(p); if (k) ks[p] = k; }
-        const t = createChatTransport(routerFrom(c.roles as any), { apiKeys: ks });
+        // 记账：流结束时 transport 会抛出真实 token 数（不估）。之前这里没接，
+        // 所以「今日花费」几乎永远是 $0，预算闸也形同虚设。
+        const t = createChatTransport(routerFrom(c.roles as any), { apiKeys: ks, onUsage: (u) => {
+          try {
+            record(d.db, {
+              ts: new Date().toISOString(), role: u.role, provider: u.provider, model: u.model,
+              inTokens: u.inTokens, cachedTokens: 0, outTokens: u.outTokens,
+              usd: +estimateCost(u.provider, u.model, { inTokens: u.inTokens, outTokens: u.outTokens }).toFixed(6),
+            });
+          } catch { /* 记账失败不影响回答 */ }
+        } });
         return (messages: unknown[], tools: any) => t.chat("express", messages, {
           containsMemory: false, purpose: "agent", maxTokens: 1200, tools,
         });
@@ -274,8 +284,14 @@ async function main(): Promise<void> {
         const draft = async (r: { kind: string; text: string }) => {
           let out = "";
           const prompt = "把下面这条主动开口的理由，写成一句自然的中文（≤40字，不要解释，不要客套）：" + String.fromCharCode(10) + r.text;
-          for await (const ev of createChatTransport(routerFrom(getConfig().roles as any), { apiKeys: keys })
-            .chat("express", [{ role: "user", content: prompt }], { containsMemory: false, purpose: "beat-draft", maxTokens: 120 })) {
+          const bt = createChatTransport(routerFrom(getConfig().roles as any), { apiKeys: keys, onUsage: (u) => {
+            try {
+              record(d.db, { ts: new Date().toISOString(), role: u.role, provider: u.provider, model: u.model,
+                inTokens: u.inTokens, cachedTokens: 0, outTokens: u.outTokens,
+                usd: +estimateCost(u.provider, u.model, { inTokens: u.inTokens, outTokens: u.outTokens }).toFixed(6) });
+            } catch { /* ignore */ }
+          } });
+          for await (const ev of bt.chat("express", [{ role: "user", content: prompt }], { containsMemory: false, purpose: "beat-draft", maxTokens: 120 })) {
             if (ev.type === "delta") out += ev.text;
           }
           return out;
