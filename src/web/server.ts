@@ -7,6 +7,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { PAGE } from "./page.ts";
 import { groupTimeline, gapLabel, type Msg } from "./timeline.ts";
 import { appendEvent, newEventId, readEvents } from "../journal.ts";
+import { readFileSync } from "node:fs";
 import { search } from "../retrieve.ts";
 import { buildBrief } from "../brief.ts";
 import { loadPersona } from "../persona.ts";
@@ -27,7 +28,8 @@ import { runAgent, type ChatFn } from "../agent.ts";
 import { renderMarkdown, esc } from "../md.ts";
 import { loadState, advance, describe } from "../state.ts";
 import type { Outage } from "../types.ts";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 const joinDir = (a: string, b: string) => join(a, b);
 import type { StreamTransport } from "../transport.ts";
 import type { Embedder } from "../embed.ts";
@@ -101,19 +103,79 @@ export function toolCardHtml(t: ToolUse): string {
 /**
  * 本地面板的写操作守卫：
  *  - 必须带 `x-jj: 1`（跨站的表单/图片发不出自定义头，浏览器会先发 preflight）
- *  - Origin 若存在，必须是回环
- * 目的：防止你浏览的恶意网页偷偷 POST 到 127.0.0.1:7700 写 key 或改人格。
+ *  - Origin 若存在，必须是**回环**或**与本机 Host 同源**
+ *
+ * 为什么要允许“同源”：手机通过 Tailscale 访问时 Origin 是 `https://xxx.ts.net`，
+ * 既不是回环也不是跳站——只认回环的话，手机能看但什么都不能做（发消息/改设置全 403）。
+ * 同源不削弱防护：跳站页面无法把 Origin 伪造成我们的 Host（浏览器写真实来源），
+ * 而自定义头 `x-jj` 仍让跨站请求过不去（预检不放行）。
  */
 export function writeGuarded(req: IncomingMessage): { ok: boolean; reason?: string } {
   const origin = req.headers.origin;
   if (origin) {
     try {
-      const h = new URL(origin).hostname;
-      if (!["127.0.0.1", "localhost", "::1", "[::1]"].includes(h)) return { ok: false, reason: "E_ORIGIN" };
+      const o = new URL(origin);
+      const loopback = ["127.0.0.1", "localhost", "::1", "[::1]"].includes(o.hostname);
+      const sameOrigin = typeof req.headers.host === "string" && o.host === req.headers.host;
+      if (!loopback && !sameOrigin) return { ok: false, reason: "E_ORIGIN" };
     } catch { return { ok: false, reason: "E_ORIGIN" }; }
   }
   if (req.headers["x-jj"] !== "1") return { ok: false, reason: "E_CSRF" };
   return { ok: true };
+}
+
+// ── PWA（19 §7.5）：manifest / 图标 / 离线壳 ───────────────
+
+const STATIC = join(dirname(fileURLToPath(import.meta.url)), "static");
+/** 图标是构建期生成的 PNG（见 tools/make-icons.mjs），不在运行时画 */
+export const ICON_FILES = ["icon-180.png", "icon-192.png", "icon-512.png"] as const;
+
+export function manifestJson(): string {
+  return JSON.stringify({
+    name: "鲸鲸",
+    short_name: "鲸鲸",
+    description: "本地记忆 + 人格 + 断电感知",
+    start_url: "/",
+    scope: "/",
+    display: "standalone",
+    background_color: "#0b0e0b",
+    theme_color: "#0b0e0b",
+    lang: "zh-CN",
+    icons: [
+      { src: "/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+      { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+      { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
+    ],
+  }, null, 2);
+}
+
+/**
+ * service worker：只缓存**外壳**（页面/图标/manifest）。
+ * `/api/*` 一律不缓存——面板的价值在于“现在是什么状态”，缓存它等于擒谎。
+ * 离线时它只能把一个空壳打开，所以页面自己必须说清楚“现在连不上”。
+ */
+export function serviceWorkerJs(): string {
+  return [
+    "const CACHE = 'jj-shell-v1';",
+    "const SHELL = ['/', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png'];",
+    "self.addEventListener('install', (e) => {",
+    "  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));",
+    "});",
+    "self.addEventListener('activate', (e) => {",
+    "  e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim()));",
+    "});",
+    "self.addEventListener('fetch', (e) => {",
+    "  const u = new URL(e.request.url);",
+    "  if (e.request.method !== 'GET') return;",
+    "  if (u.pathname.startsWith('/api/')) return;",
+    "  if (u.pathname === '/health') return;",
+    "  if (e.request.mode === 'navigate') {",
+    "    e.respondWith(fetch(e.request).catch(() => caches.match('/')));",
+    "    return;",
+    "  }",
+    "  e.respondWith(caches.match(e.request).then((r) => r || fetch(e.request)));",
+    "});",
+  ].join(String.fromCharCode(10));
 }
 
 export function createWebServer(deps: WebDeps) {
@@ -127,6 +189,31 @@ export function createWebServer(deps: WebDeps) {
         // 面板会被频繁改样式：禁止缓存，避免"我改了但你还看旧页面"
         res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
         res.end(req.method === "HEAD" ? undefined : PAGE);
+        return;
+      }
+      if ((req.method === "GET" || req.method === "HEAD") && url.pathname === "/manifest.webmanifest") {
+        res.writeHead(200, { "content-type": "application/manifest+json; charset=utf-8", "cache-control": "no-store" });
+        res.end(req.method === "HEAD" ? undefined : manifestJson());
+        return;
+      }
+      if ((req.method === "GET" || req.method === "HEAD") && url.pathname === "/sw.js") {
+        // 注意：SW 必须能从站点根作用域拿到 → 路径就放根，别塞进 /static/
+        res.writeHead(200, { "content-type": "text/javascript; charset=utf-8", "cache-control": "no-store" });
+        res.end(req.method === "HEAD" ? undefined : serviceWorkerJs());
+        return;
+      }
+      const icon = url.pathname.match(/^\/icon-(\d+)\.png$/);
+      if ((req.method === "GET" || req.method === "HEAD") && icon) {
+        const name = `icon-${icon[1]}.png`;
+        if (!(ICON_FILES as readonly string[]).includes(name)) { json(res, 404, { error: "E_NO_ICON" }); return; }
+        const buf = readFileSync(join(STATIC, name));
+        res.writeHead(200, {
+          "content-type": "image/png",
+          "content-length": String(buf.byteLength),
+          // 图标内容由构建期生成、文件名带尺寸 → 可以长缓存
+          "cache-control": "public, max-age=86400",
+        });
+        res.end(req.method === "HEAD" ? undefined : buf);
         return;
       }
       // 健康检查（19 §7.3 / compose healthcheck）：只回答“能不能服务”，不做重活（不跑 quick_check）

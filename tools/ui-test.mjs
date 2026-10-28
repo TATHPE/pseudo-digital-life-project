@@ -2,10 +2,11 @@
 const URL_PAGE = process.argv[2] ?? "http://127.0.0.1:7700/";
 const EDGE = "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe";
 const PORT = 9333;
+const [VW, VH] = (process.env.UI_VIEWPORT ?? '1440x900').split('x').map(Number);
 import { spawn } from "node:child_process";
 
 const proc = spawn(EDGE, ["--headless=new", "--disable-gpu", "--no-sandbox", "--hide-scrollbars",
-  `--remote-debugging-port=${PORT}`, "--window-size=1440,900", "about:blank"], { stdio: "ignore" });
+  `--remote-debugging-port=${PORT}`, `--window-size=${VW},${VH}`, "about:blank"], { stdio: "ignore" });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let target;
 for (let i = 0; i < 40; i++) {
@@ -29,6 +30,10 @@ const send = (method, params = {}) => new Promise((res) => { const i = ++id; pen
 const js = async (expr) => (await send("Runtime.evaluate", { expression: expr, awaitPromise: true, returnByValue: true }))?.result?.value;
 
 await send("Runtime.enable"); await send("Page.enable");
+// 指定 UI_VIEWPORT 时用设备模拟（--window-size 在 Windows 上会被 DPI 缩放成别的尺寸）
+if (process.env.UI_VIEWPORT) {
+  await send("Emulation.setDeviceMetricsOverride", { width: VW, height: VH, deviceScaleFactor: 2, mobile: true });
+}
 await send("Page.navigate", { url: URL_PAGE }); await sleep(2500);
 
 const out = [];

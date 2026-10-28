@@ -37,6 +37,7 @@ docker compose -f docker/compose.yaml up -d  # 容器里跑（数据卷 ./data�
 node src/cli/jingjing.ts usage        # 今日花费与按角色/模型拆分
 node src/cli/jingjing.ts serve 7700   # 本地面板 http://127.0.0.1:7700
 npm run ui:test                       # headless Edge 真点真发（CDP），12 项断言
+UI_VIEWPORT=390x844 node tools/ui-test.mjs http://127.0.0.1:7700/   # 手机尺寸同一套断言
 npm run ui:shot tmp/shot.png          # 截一张图肉眼验收
 node src/cli/brief-demo.ts --full     # M1.1：第 1 轮 vs 第 100 轮简报
 ```
@@ -73,6 +74,7 @@ node src/cli/brief-demo.ts --full     # M1.1：第 1 轮 vs 第 100 轮简报
 | `src/chunk.ts` | 分块：标题栈 heading_path、代码/表格永不切、400–800 tok、15% 重叠、小块合并 | `02 §5.2` |
 | `src/ingest.ts` | 摄入：markitdown（子进程、路径只进 argv）→ 分块 → 索引；sha256 幂等、旧块标 deleted_at | `02 §5.1/§5.3` |
 | `src/recall.ts` | P10 召回装配 + **隐私闸门**：只有 shareable 进简报，其余只报个数 | `02 §10.1`、`13 §10` |
+| `src/web/static/icon-*.png` | PWA 图标（构建期用 headless Edge 从同一个鲸尾 symbol 渲染） | `19 §7.5` |
 | `src/tools.ts` | **唯一工具面**：verb + MCP 全走 execute；点号→下划线别名 | `11 §5.6` |
 | `src/policy.ts` | casbin 策略（allow/deny × advise/enforce） | `04 §4` |
 | `src/execute.ts` | 策略 → 执行 → 审计，一处不落 | `04 §4` |

@@ -18,8 +18,15 @@
 export const PAGE = `<!doctype html>
 <html lang="zh-CN"><head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>鲸鲸</title>
+<!-- PWA（19 §7.5）：装到桌面后是独立窗口，不是浏览器标签页 -->
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icon-180.png">
+<meta name="theme-color" content="#0b0e0b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="鲸鲸">
 <style>
   :root {
     --void:#0b0e0b; --panel:#0e1512; --panel2:rgba(16,24,21,.72);
@@ -60,6 +67,10 @@ export const PAGE = `<!doctype html>
   button:disabled { opacity:.45; cursor:not-allowed; }
   select option { background:#0e1512; color:var(--fg); }
   html, body { height:100%; }
+  /* 刘海屏/圆角屏：内容不能钻到状态栏或手势条底下（viewport-fit=cover 之后必须自己补） */
+  header { padding-top:env(safe-area-inset-top); }
+  #composer { padding-bottom:max(0px, env(safe-area-inset-bottom)); }
+  aside { padding-bottom:calc(30px + env(safe-area-inset-bottom)); }
   body {
     margin:0; color:var(--fg); background:var(--void);
     font:15px/1.72 -apple-system,"Segoe UI","Microsoft YaHei","PingFang SC","Noto Sans SC",sans-serif;
@@ -84,6 +95,10 @@ export const PAGE = `<!doctype html>
          animation:breathe 3.4s ease-in-out infinite; }
   @keyframes breathe { 0%,100%{opacity:1} 50%{opacity:.35} }
   .tname { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #menu { display:none; align-items:center; justify-content:center; width:34px; height:34px; flex:none;
+          background:transparent; border:1px solid var(--line-dim); color:var(--cyan-hi); cursor:pointer;
+          font:16px/1 var(--mono); padding:0; }
+  #menu:hover { border-color:var(--line); background:rgba(15,151,164,.08); }
   .chip { margin-left:auto; font:10px/1 var(--mono); letter-spacing:.1em; color:var(--cyan);
           border:1px solid var(--line-dim); padding:6px 10px; }
   /* ── 侧栏 ───────────────────────────────── */
@@ -227,16 +242,24 @@ export const PAGE = `<!doctype html>
   .frame b.bl { bottom:5px; left:10px; } .frame b.br { bottom:5px; right:10px; }
   @media (max-width: 860px) {
     body { grid-template-columns:1fr; grid-template-areas:"head" "main"; }
+    /* 抽屉：手机上不能是半透明的——聊天内容会透出来，看不出哪层在上 */
     aside { position:fixed; z-index:12; top:56px; bottom:0; left:0; width:82vw; max-width:320px;
-            transform:translateX(-102%); transition:.22s; border-right:1px solid var(--line); }
+            transform:translateX(-102%); transition:.22s; border-right:1px solid var(--line);
+            background:var(--void); }
     aside.open { transform:none; }
+    /* 遮罩用 box-shadow 而不是伪元素：伪元素 z-index:-1 会被 aside 自己的背景盖住，等于没有 */
+    aside.open { box-shadow:0 0 0 100vmax rgba(0,0,0,.5); }
     .chip { display:none; }
+    #menu { display:inline-flex; }
+    /* 底部装饰标签会和输入框叠在一起，手机上直接不要 */
+    .frame b { display:none; }
   }
 </style></head>
 <body data-av="plain">
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><symbol id="whale" viewBox="0 0 512 512"><path fill="currentColor" d="M453.004 35.117c-65.314 46.61-189.755 41.018-213.559 125.426C184.41 101.41 98.625 83.031 21.771 63.209c6.532 139.103 71.38 147.437 192.44 194.547c23.71 25.786 29.786 49.93 19.254 82.705c46.403 5.1 71.504 15.468 106.754 27.742c-.708-71.67-25.14-108.928-75.518-175.035c11.058 4.233 44.979 37.02 56.578 58.607c109.419-42.421 147.64-112.074 131.725-216.658M180.178 353.9c-60.89-.24-114.034 19.49-158.426 74.221c167.075-48.84 292.003-13.21 471.893 7.895c-118.936-38.752-224.474-81.763-313.467-82.116m98.043 77.844c-99.28.255-206.34 18.738-256.866 63.139c168.002-26.61 356.801-28.408 470.8-4.967c1.102-35.337-101.418-58.46-213.934-58.172"/></symbol></svg>
 <div class="frame"><i></i><i></i><i></i><i></i><b class="bl">LOCAL · 127.0.0.1</b><b class="br">MEMORY CORE</b></div>
 <header>
+  <button id="menu" aria-label="菜单" title="菜单">≡</button>
   <span class="brand" aria-label="鲸鲸"><svg class="ico" role="img" aria-hidden="false"><use href="#whale" /></svg></span>
   <span class="hud"><i class="dot"></i><span id="state">…</span><span id="readout"></span></span>
   <span class="chip" id="modelchip">…</span>
@@ -711,6 +734,12 @@ $("#composer").onsubmit = async (e) => {
   }
   await timeline(); await state(); await memories();
 };
+// PWA：注册离线壳。注册失败不能影响面板本身（手机上走 http 时浏览器会直接拒绝）
+if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost" || location.hostname === "127.0.0.1")) {
+  navigator.serviceWorker.register("/sw.js").catch(function () { /* 忽略：离线壳是增强，不是前提 */ });
+}
+// 手机上侧栏是抽屉：没有这个按钮，SESSIONS/DOCS/MEMORY/TOOLS/CONFIG 全都不可达
+$("#menu").onclick = (e) => { e.stopPropagation(); $("#side").classList.toggle("open"); };
 state(); timeline(); sessions(); tools(); memories(); docs(); loadConfig(); loadUi(); pending(); setInterval(() => { state(); pending(); }, 30000);
 </script>
 </body></html>`;

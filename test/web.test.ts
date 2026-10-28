@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openDb } from "../src/db.ts";
 import { remember } from "../src/store.ts";
-import { createWebServer, looksMojibake } from "../src/web/server.ts";
+import { createWebServer, looksMojibake, writeGuarded } from "../src/web/server.ts";
 import { execute } from "../src/execute.ts";
 import { ingestFile } from "../src/ingest.ts";
 import { loadPolicy } from "../src/policy.ts";
@@ -480,4 +480,63 @@ test("文档：/api/docs 列出摄入的文档，点开能看到块，忘掉后�
     });
     assert.equal(noCsrf.status, 403);
   } finally { srv.close(); }
+});
+
+test("PWA：manifest / 图标 / sw.js 都能取到，且 manifest 里的图标路径真的存在", async () => {
+  const { srv, base } = await start();
+  try {
+    const m = await fetch(`${base}/manifest.webmanifest`);
+    assert.equal(m.status, 200);
+    assert.match(String(m.headers.get("content-type")), /manifest\+json/);
+    const man = await m.json() as any;
+    assert.equal(man.name, "鲸鲸");
+    assert.equal(man.display, "standalone");
+    assert.equal(man.start_url, "/");
+    assert.equal(man.theme_color, "#0b0e0b");
+    assert.ok(Array.isArray(man.icons) && man.icons.length >= 2);
+
+    // manifest 里写的每个图标必须真能取到 PNG（否则装到桌面是个空白图）
+    for (const icon of man.icons) {
+      const r = await fetch(base + icon.src);
+      assert.equal(r.status, 200, icon.src);
+      assert.equal(r.headers.get("content-type"), "image/png");
+      const buf = new Uint8Array(await r.arrayBuffer());
+      assert.deepEqual([...buf.slice(0, 4)], [0x89, 0x50, 0x4e, 0x47], `${icon.src} 不是 PNG`);
+      assert.ok(buf.length > 500, `${icon.src} 太小`);
+    }
+
+    // 不存在的尺寸 → 404（别把任意文件名映射到同一张图）
+    assert.equal((await fetch(`${base}/icon-999.png`)).status, 404);
+
+    const sw = await (await fetch(`${base}/sw.js`)).text();
+    assert.match(sw, /jj-shell-v1/, "缓存名要对得上");
+    assert.ok(sw.includes("'/api/'"), "API 不该被缓存");
+    assert.ok(sw.includes("caches.match('/')"), "离线时至少要把壳打开");
+  } finally { srv.close(); }
+});
+
+test("页面 head：PWA 元信息齐（manifest / theme-color / apple-touch-icon / 安全区）", () => {
+  assert.ok(PAGE.includes('rel="manifest" href="/manifest.webmanifest"'));
+  assert.ok(PAGE.includes('name="theme-color"'));
+  assert.ok(PAGE.includes('rel="apple-touch-icon"'));
+  assert.ok(PAGE.includes("viewport-fit=cover"), "刘海屏要自己控制安全区");
+  assert.ok(PAGE.includes("env(safe-area-inset-bottom)"), "手势条会压住输入框");
+  assert.ok(PAGE.includes('navigator.serviceWorker.register("/sw.js")'));
+});
+
+test("写操作守卫：同源放行（Tailscale/手机），跨站仍然 403", async () => {
+  // 同源：Origin 的 host 与 Host 头一致 → 这是“页面自己发的”，必须放行，
+  // 否则手机通过 Tailscale 打开时连发消息都做不了
+  const mk = (origin: string | undefined, host: string) => {
+    const headers: Record<string, string> = { host, "x-jj": "1" };
+    if (origin !== undefined) headers.origin = origin;
+    return { headers } as unknown as Parameters<typeof writeGuarded>[0];
+  };
+  assert.equal(writeGuarded(mk("https://jj.tail1234.ts.net", "jj.tail1234.ts.net")).ok, true);
+  assert.equal(writeGuarded(mk("http://127.0.0.1:7700", "127.0.0.1:7700")).ok, true);
+  assert.equal(writeGuarded(mk("https://evil.example.com", "jj.tail1234.ts.net")).ok, false, "跨站必须拒");
+  assert.equal(writeGuarded(mk("null", "127.0.0.1:7700")).ok, false);
+  // 没 Origin（curl / 原生脚本）也要求 x-jj
+  const noCsrf = { headers: { host: "127.0.0.1:7700" } } as unknown as Parameters<typeof writeGuarded>[0];
+  assert.equal(writeGuarded(noCsrf).ok, false);
 });
