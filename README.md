@@ -61,7 +61,8 @@ node src/cli/brief-demo.ts --full     # M1.1：第 1 轮 vs 第 100 轮简报
 | `src/mcp.ts` | MCP stdio 客户端（initialize / tools/list / tools/call） | `11 §3` |
 | `src/md.ts` | Markdown → HTML（先转义，代码块优先，链接只放 http(s)） | `17 §5.5` |
 | `src/verbs.ts` | 能力目录（T 档/参数/目标）+ `safePath` 真实路径校验 | `04 §3` |
-| `src/shell.ts` | **T3**：命令模板（占位符独占 argv 元素）+ 一次性令牌（argv_sha256/cwd/120s/单次）+ 超时杀进程树 + 环境白名单 | `04 §4.1/§5.2/§6` |
+| `src/shell.ts` | **T3**：命令模板（占位符独占 argv 元素）+ 一次性令牌（argv_sha256/cwd/120s/单次）+ 超时杀进程树 + 环境白名单 + 可选容器沙箱 | `04 §4.1/§5.2/§6` |
+| `src/confirm.ts` | 待确认卡（面板侧栏）：按指纹去重、15 min 时效、不存令牌 | `04 §4.1` |
 | `src/tools.ts` | **唯一工具面**：verb + MCP 全走 execute；点号→下划线别名 | `11 §5.6` |
 | `src/policy.ts` | casbin 策略（allow/deny × advise/enforce） | `04 §4` |
 | `src/execute.ts` | 策略 → 执行 → 审计，一处不落 | `04 §4` |
@@ -135,8 +136,9 @@ node src/cli/brief-demo.ts --full     # M1.1：第 1 轮 vs 第 100 轮简报
 - [x] **M3 大部分**：夜间整备（游标/抽取/冲突/归并）、自传（反推引用+摘录兜底）、领地
 - [x] **M3 完成**：夜间整备 / 自传 / 领地 / eval harness（四门全绿）
 - [x] **M5 完成**：能力目录 + casbin 策略 + 红队 21 例 + A/B 双槽与自动回滚 + **T3 shell.run**
-- [ ] T3 的**面板确认按钮**（现在只能在终端 `--yes`）
-- [ ] 真正的沙箱（Job Object / bwrap / 降权）——现在只有模板白名单 + 杀进程树 + 环境白名单
+- [x] T3 的**面板确认按钮**（侧栏“待确认”卡 → 服务端现签现用令牌）
+- [x] **容器沙箱**（`JJ_SHELL_SANDBOX=docker`：`--network=none --read-only --cap-drop=ALL`，引擎不在就拒跑）
+- [ ] Job Object / bwrap / 降权 / 低完整性（Windows 上要原生模块）
 
 ## 图标署名（CC BY 3.0，不可删）
 

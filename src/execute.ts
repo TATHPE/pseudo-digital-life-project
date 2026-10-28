@@ -13,6 +13,7 @@ import { verbByName, type VerbCtx, type VerbDef } from "./verbs.ts";
 import type { Policy } from "./policy.ts";
 import { newEventId } from "./journal.ts";
 import { argvSha256, consumeToken, hostProfile, issueToken } from "./shell.ts";
+import { recordPending } from "./confirm.ts";
 
 export interface ExecResult {
   ok: boolean;
@@ -75,7 +76,7 @@ export async function execute(
   }
 
   // ── T3：先把参数渲染成确切 argv，再谈令牌 ──────────────────
-  let proposal: { argv: string[]; cwd: string; template: string } | null = null;
+  let proposal: { argv: string[]; cwd: string; template: string; profile?: string } | null = null;
   let digest = "";
   let tokenId: string | undefined;
   if (tier === "T3") {
@@ -91,12 +92,23 @@ export async function execute(
       return { ok: false, output: `E_NO_CAPABILITY: ${verb} 是 T3 但没有 argv 渲染器，无法签发令牌`, tier: tier, strength: auth.strength, verb, ms: 0, code: "E_NO_CAPABILITY" };
     }
     digest = argvSha256(proposal.argv, proposal.cwd);
+    // 人不在终端时，把"这次想跑什么"留在面板上（否则这张拒绝就是一张废纸）
+    const remember = () => {
+      try {
+        recordPending(home, {
+          verb: def!.name, template: proposal!.template,
+          args: { template: String(args.template ?? ""), slots: (args.slots ?? {}) },
+          argv: proposal!.argv, cwd: proposal!.cwd, digest, source: "agent", now: new Date(ts),
+        });
+      } catch { /* 记不下不影响拒绝本身 */ }
+    };
 
     const given = String(opts.token ?? args.token ?? "");
     if (given) {
       const c = consumeToken(home, given, { verb: def.name, digest }, new Date(ts));
       if (!c.ok) {
         audit("denied", c.code, tier, 0, { argv: proposal.argv, cwd: proposal.cwd, profile: hostProfile() });
+        remember();
         return {
           ok: false, output: `${c.code}: 令牌无效（${def.name} ${proposal.template}）——需要重新确认`,
           tier: tier, strength: auth.strength, verb, ms: 0, code: c.code, needsConfirm: true,
@@ -118,6 +130,7 @@ export async function execute(
       tokenId = t.token;
     } else {
       audit("needs_confirm", "E_NEEDS_CONFIRM", tier, 0, { argv: proposal.argv, cwd: proposal.cwd, profile: hostProfile() });
+      remember();
       return {
         ok: false,
         output: `E_NEEDS_CONFIRM: ${verb} 需要你确认（档位 T3）` + String.fromCharCode(10) +
@@ -141,7 +154,8 @@ export async function execute(
 
   const extra = {
     argv: proposal?.argv, cwd: proposal?.cwd,
-    capability: tokenId, profile: tier === "T3" ? hostProfile() : undefined,
+    capability: tokenId,
+    profile: tier === "T3" ? (proposal?.profile ?? hostProfile()) : undefined,
   };
   try {
     const out = await def.run(args, deps.ctx);

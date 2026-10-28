@@ -9,8 +9,8 @@ import { loadPolicy } from "../src/policy.ts";
 import { execute } from "../src/execute.ts";
 import { SCHEMA_VERSION } from "../src/schema.ts";
 import {
-  TEMPLATES, argvSha256, cleanEnv, consumeToken, issueToken, renderTemplate, runArgv, sweepTokens,
-  templateById, tokensDir,
+  TEMPLATES, argvSha256, cleanEnv, consumeToken, issueToken, planRun, renderTemplate, runArgv, sweepTokens,
+  templateById, tokensDir, dockerAvailable, _resetDockerProbe,
 } from "../src/shell.ts";
 
 const H = () => mkdtempSync(join(tmpdir(), "jj-shell-"));
@@ -299,4 +299,79 @@ test("schema v6：老库（v5 无新列）打开后自动补列", () => {
   d.db.close();
   void readFileSync;
   void templateById;
+});
+
+// ── 沙箱（04 §6.4）：要了容器就关笼子里；引擎不在就拒跑，绝不偷偷降级 ──
+
+test("planRun：默认直跑，provenance 记在 profile 里", () => {
+  const home = H();
+  mkdirSync(join(home, "workspace"), { recursive: true });
+  writeFileSync(join(home, "workspace", "s.mjs"), "");
+  const r = renderTemplate(home, "node.run_script", { script: "s.mjs" });
+  const p = planRun(r, { env: {} });
+  assert.equal(p.kind, "direct");
+  assert.deepEqual(p.argv, ["node", "s.mjs"]);
+  assert.match(p.profile, /^direct\/node/);
+});
+
+test("planRun：要了 docker 就构造出关笼子的 argv", () => {
+  const home = H();
+  mkdirSync(join(home, "workspace"), { recursive: true });
+  writeFileSync(join(home, "workspace", "s.mjs"), "");
+  const r = renderTemplate(home, "node.run_script", { script: "s.mjs" });
+  const p = planRun(r, { env: { JJ_SHELL_SANDBOX: "docker", JJ_SHELL_IMAGE: "node:24-alpine" }, dockerOk: () => true });
+
+  assert.equal(p.kind, "docker");
+  assert.equal(p.argv[0], "docker");
+  for (const must of ["run", "--rm", "--network=none", "--read-only", "--cap-drop=ALL", "--tmpfs"]) {
+    assert.ok(p.argv.includes(must), `argv 缺 ${must}: ${p.argv.join(" ")}`);
+  }
+  assert.ok(p.argv.includes("no-new-privileges"));
+  // 只挂 workspace，工作目录 /w
+  const vi = p.argv.indexOf("-v");
+  assert.match(p.argv[vi + 1]!, /\/w$/);
+  assert.equal(p.argv[p.argv.indexOf("-w") + 1], "/w");
+  // 二进制必须走 --entrypoint（否则镜像自带 entrypoint 会吃掉它）
+  const ei = p.argv.indexOf("--entrypoint");
+  assert.equal(p.argv[ei + 1], "node");
+  assert.ok(p.argv.indexOf("node:24-alpine") > ei, "镜像要在 --entrypoint 之后");
+  assert.deepEqual(p.argv.slice(p.argv.indexOf("node:24-alpine") + 1), ["s.mjs"]);
+  assert.match(p.profile, /^docker:node:24-alpine$/);
+  assert.match(String(p.container), /^jj-[0-9a-f]{8}-/);
+});
+
+test("planRun：要了沙箱但引擎不在 → 拒跑（不静默降级）", () => {
+  const home = H();
+  const r = renderTemplate(home, "node.version");
+  assert.throws(
+    () => planRun(r, { env: { JJ_SHELL_SANDBOX: "docker" }, dockerOk: () => false }),
+    /E_SANDBOX_UNAVAILABLE/,
+  );
+});
+
+test("planRun：显式允许才降级，且 profile 里留下痕迹", () => {
+  const home = H();
+  const r = renderTemplate(home, "node.version");
+  const p = planRun(r, { env: { JJ_SHELL_SANDBOX: "docker", JJ_SHELL_ALLOW_DIRECT: "1" }, dockerOk: () => false });
+  assert.equal(p.kind, "direct");
+  assert.ok(p.profile.endsWith("(降级)"), p.profile);
+  assert.match(String(p.note), /显式降级/);
+});
+
+test("execute：沙箱不可用时连确认都不给（先拒，再谈确认）", async () => {
+  const { ex } = await rigEx();
+  process.env.JJ_SHELL_SANDBOX = "docker";
+  delete process.env.JJ_SHELL_ALLOW_DIRECT;
+  _resetDockerProbe();
+  try {
+    // 本机引擎若真在跑，这条断言就不成立——那时跳过
+    if (dockerAvailable()) return;
+    const r = await ex("shell.run", { template: "node.version" });
+    assert.equal(r.ok, false);
+    assert.equal(r.code, "E_SANDBOX_UNAVAILABLE");
+    assert.equal(r.needsConfirm, undefined, "不该先让人确认");
+  } finally {
+    delete process.env.JJ_SHELL_SANDBOX;
+    _resetDockerProbe();
+  }
 });

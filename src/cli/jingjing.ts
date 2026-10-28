@@ -198,6 +198,12 @@ async function main(): Promise<void> {
         console.log(`断电/停机：${boot1.outage.kind} ${boot1.outage.from.toISOString().slice(0, 16)} → ${boot1.outage.to.toISOString().slice(0, 16)}（已记一笔）`);
       }
       console.log(`补算衰减 ${boot1.decayed} 条 · inbox ${boot1.inbox.events} 事件（隔离 ${boot1.inbox.quarantined}）`);
+      // 待确认卡 / 令牌都留一天就够；启动时清一次，避免目录无界增长
+      try {
+        const { sweepPending } = await import("../confirm.ts");
+        const { sweepTokens } = await import("../shell.ts");
+        sweepPending(HOME); sweepTokens(HOME);
+      } catch { /* 清理失败不影响启动 */ }
       // embedding 指纹（02 §6 / 18 §1.3）：换模型或换量化都会让它变，
       // 变了就说明「检索结果和以前不可比」。不是装饰字段。
       try {

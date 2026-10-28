@@ -14,6 +14,9 @@ import { expenseLine } from "./state.ts";
 import { loadPersonaText, savePersonaFile, PERSONA_FILES, type PersonaFile } from "../persona.ts";
 import { writeFileConfig, readFileConfig, resolveConfig } from "../configfile.ts";
 import { AVATAR_FRAMES, DEFAULT_AVATAR, isAvatarFrame } from "./avatar.ts";
+import { getPending, listPending, updatePending } from "../confirm.ts";
+import { execute } from "../execute.ts";
+import { loadPolicy, type Policy } from "../policy.ts";
 import { createStore, fingerprint, type Provider } from "../auth.ts";
 import type { ToolRegistry } from "../tools.ts";
 import { runAgent, type ChatFn } from "../agent.ts";
@@ -43,6 +46,8 @@ export interface WebDeps {
   /** 测试可注入：把"模型回复"换成生成器 */
   reply?: (brief: string, user: string) => AsyncGenerator<string>;
   budgetUsd?: number;
+  /** T3 确认要过策略；不传就现加载（测试里省事） */
+  policy?: Policy;
 }
 
 const readBody = (req: IncomingMessage): Promise<string> =>
@@ -268,6 +273,52 @@ export function createWebServer(deps: WebDeps) {
         return;
       }
 
+      if (req.method === "GET" && url.pathname === "/api/pending") {
+        // 待确认的 T3 提案（面板上那张卡）：带确切 argv，人看完才能点
+        json(res, 200, listPending(deps.home, now()).map((p) => ({
+          id: p.id, verb: p.verb, template: p.template, argv: p.argv, cwd: p.cwd,
+          status: p.status, created_at: p.created_at, expires_at: p.expires_at,
+          expired: Date.parse(p.expires_at) <= now().getTime(), result: p.result ?? null,
+        })));
+        return;
+      }
+      const pendId = url.pathname.match(/^\/api\/pending\/(pnd_[0-9a-z]+)$/);
+      if (req.method === "POST" && pendId) {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
+        const body = JSON.parse(await readBody(req)) as { action?: string };
+        const p = getPending(deps.home, String(pendId[1]));
+        if (!p) { json(res, 404, { error: "E_PENDING_NOT_FOUND" }); return; }
+        if (p.status !== "pending") { json(res, 409, { error: `E_PENDING_${p.status.toUpperCase()}` }); return; }
+
+        if (body.action === "reject") {
+          updatePending(deps.home, p.id, { status: "rejected", result: "你拒绝了这一条" });
+          json(res, 200, { ok: true, status: "rejected" });
+          return;
+        }
+        if (body.action !== "confirm") { json(res, 400, { error: "E_BAD_ACTION" }); return; }
+        if (Date.parse(p.expires_at) <= now().getTime()) {
+          updatePending(deps.home, p.id, { status: "rejected", result: "确认窗口已过期（15 分钟）" });
+          json(res, 409, { error: "E_PENDING_EXPIRED" });
+          return;
+        }
+
+        // 确认 = 服务端现场签发一枚绑这条 argv 的令牌、立即用掉。页面拿不到令牌。
+        const policy = deps.policy ?? await loadPolicy(deps.home);
+        const r = await execute({ db: deps.db, policy, ctx: { home: deps.home, now } },
+          p.verb, p.args, { approved: true });
+        const output = r.output.slice(0, 4000);
+        updatePending(deps.home, p.id, { status: r.ok ? "done" : "failed", result: output.slice(0, 1500) });
+        // 结果要说出来（并且是白纸黑字“按你的确认跑的”），否则刷新后就没了
+        const say = `已按你的确认执行：${p.argv.join(" ")}` + String.fromCharCode(10) +
+          `（${r.ok ? "成功" : "失败"} · ${r.ms}ms${r.capability ? ` · 令牌 ${r.capability}` : ""}）` +
+          String.fromCharCode(10) + String.fromCharCode(10) + output;
+        appendEvent(deps.inboxDir, {
+          v: 1, id: newEventId(), ts: now().toISOString(), kind: "agent_reply", actor: "agent",
+          payload: { text: say, tools: [{ name: "shell.run", args: JSON.stringify(p.args), result: output.slice(0, 1200), ms: r.ms }] },
+        });
+        json(res, 200, { ok: r.ok, status: r.ok ? "done" : "failed", output: output.slice(0, 2000), capability: r.capability ?? null });
+        return;
+      }
       if (req.method === "POST" && url.pathname === "/api/say") {
         const body = JSON.parse(await readBody(req)) as { text?: string };
         const text = (body.text ?? "").trim();

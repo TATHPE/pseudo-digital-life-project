@@ -79,7 +79,14 @@ const maxList = 200;
 
 import { search } from "./retrieve.ts";
 import { remember } from "./store.ts";
-import { renderTemplate, templateCatalog, templateById, runArgv } from "./shell.ts";
+import { renderTemplate, templateCatalog, templateById, planRun, runArgv } from "./shell.ts";
+import { spawnSync } from "node:child_process";
+
+/** docker 模式超时后清容器（客户端被杀不等于容器停了） */
+function killContainer(name: string): void {
+  try { spawnSync("docker", ["rm", "-f", name], { stdio: "ignore", windowsHide: true, timeout: 5000 }); }
+  catch { /* 引擎没了就算了，runArgv 已经杀过本地客户端 */ }
+}
 
 export const verbs: VerbDef[] = [
   {
@@ -281,15 +288,25 @@ export const verbs: VerbDef[] = [
     capability(a, ctx) {
       const r = renderTemplate(ctx.home, String(a.template ?? ""),
         (a.slots && typeof a.slots === "object" ? a.slots : {}) as Record<string, unknown>);
-      return { argv: r.argv, cwd: r.cwd, template: r.template };
+      // 沙箱决策在这里就做完（要了容器但引擎不在 → 直接拒，不让它走到"确认了才发现"）
+      const plan = planRun(r);
+      return { argv: plan.argv, cwd: plan.cwd, template: r.template, profile: plan.profile };
     },
     async run(a, ctx) {
       // 令牌已在 execute 里校验并标记 used；这里只管“跑”
       const r = renderTemplate(ctx.home, String(a.template ?? ""),
         (a.slots && typeof a.slots === "object" ? a.slots : {}) as Record<string, unknown>);
-      const res = await runArgv(r.argv, { cwd: r.cwd, timeoutMs: r.timeoutMs });
+      const plan = planRun(r);
+      const res = await runArgv(plan.argv, {
+        cwd: plan.cwd, timeoutMs: r.timeoutMs,
+        // docker 模式下被我们杀掉：客户端死了容器还会活着，必须手动清
+        onKill: plan.container
+          ? () => { void killContainer(plan.container!); }
+          : undefined,
+      });
       const head = `exit=${res.code ?? res.signal} ${res.ms}ms` +
-        (res.timedOut ? " 超时已杀" : "") + (res.truncated ? " 输出已截断" : "");
+        (res.timedOut ? " 超时已杀" : "") + (res.truncated ? " 输出已截断" : "") +
+        (plan.note ? ` ｜ ${plan.note}` : "");
       const body = [res.stdout.trimEnd(), res.stderr.trimEnd()].filter(Boolean).join(String.fromCharCode(10));
       if (res.timedOut) throw new Error(`E_TIMEOUT: ${head}${body ? String.fromCharCode(10) + body : ""}`);
       return `${head}${body ? String.fromCharCode(10) + body : ""}`;

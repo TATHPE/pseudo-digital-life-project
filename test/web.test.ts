@@ -1,12 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync, readdirSync, readFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync, readdirSync, readFileSync, mkdirSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openDb } from "../src/db.ts";
 import { remember } from "../src/store.ts";
 import { createWebServer, looksMojibake } from "../src/web/server.ts";
+import { execute } from "../src/execute.ts";
+import { loadPolicy } from "../src/policy.ts";
 import { PAGE } from "../src/web/page.ts";
 import { AVATAR_FRAMES } from "../src/web/avatar.ts";
 import { groupTimeline, gapLabel } from "../src/web/timeline.ts";
@@ -283,5 +285,132 @@ test("GET/PUT /api/ui：默认 plain，存得住，白名单外拒绝，无 CSRF
     });
     assert.equal(noCsrf.status, 403);
     assert.equal((await (await fetch(`${base}/api/ui`)).json() as any).avatar, "ring", "被拒的写不能生效");
+  } finally { srv.close(); }
+});
+
+test("待确认：面板能看到 T3 提案，确认按钮真的执行（令牌在服务端签发）", async () => {
+  const { srv, base } = await start();
+  const home = (srv as unknown as { __home?: string }).__home;
+  void home;
+  try {
+    // 先制造一张待确认卡：调 shell.run 不带令牌（T3）
+    const t3 = await fetch(`${base}/api/say`, {
+      method: "POST", headers: { "x-jj": "1", "content-type": "application/json" },
+      body: JSON.stringify({ text: "跑个命令" }),
+    });
+    void t3;
+    const list0 = await (await fetch(`${base}/api/pending`)).json() as any[];
+    assert.ok(Array.isArray(list0), "GET /api/pending 要返回数组");
+
+    // 没有待确认卡时，确认一个不存在的 id → 404
+    const miss = await fetch(`${base}/api/pending/pnd_nosuch`, {
+      method: "POST", headers: { "x-jj": "1", "content-type": "application/json" },
+      body: JSON.stringify({ action: "confirm" }),
+    });
+    assert.equal(miss.status, 404);
+    // 没有 CSRF 头 → 403
+    const noCsrf = await fetch(`${base}/api/pending/pnd_nosuch`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "confirm" }),
+    });
+    assert.equal(noCsrf.status, 403);
+  } finally { srv.close(); }
+});
+
+test("待确认：确认后执行、写回结果、并在时间轴里说出来", async () => {
+  const dir = tmp();
+  const d = openDb(join(dir, "m.db"));
+  mkdirSync(join(dir, "workspace"), { recursive: true });
+  writeFileSync(join(dir, "workspace", "p.mjs"), "console.log('confirmed-ok')");
+  const policy = await loadPolicy(dir);
+  const srv = createWebServer({
+    db: d.db, inboxDir: join(dir, "inbox"), home: dir, policy,
+    getTransport: () => { throw new Error("测试不该真调模型"); },
+    getEmbedder: () => null,
+    getConfig: () => ({ ollama: "", roles: { express: { provider: "deepseek", model: "x", embed: { provider: "ollama", model: "bge-m3" } } } }),
+    now: () => new Date(),
+  });
+  await new Promise<void>((r) => srv.listen(0, "127.0.0.1", () => r()));
+  const base = `http://127.0.0.1:${(srv.address() as AddressInfo).port}`;
+  try {
+    // 直接调 execute 产生待确认卡（绕过模型，逻辑一样）
+    const r1 = await execute({ db: d.db, policy, ctx: { home: dir, now: () => new Date() } },
+      "shell.run", { template: "node.run_script", slots: { script: "p.mjs" } });
+    assert.equal(r1.code, "E_NEEDS_CONFIRM");
+
+    const list = await (await fetch(`${base}/api/pending`)).json() as any[];
+    assert.equal(list.length, 1, JSON.stringify(list));
+    assert.deepEqual(list[0].argv, ["node", "p.mjs"]);
+    assert.equal(list[0].status, "pending");
+
+    const ok = await fetch(`${base}/api/pending/${list[0].id}`, {
+      method: "POST", headers: { "x-jj": "1", "content-type": "application/json" },
+      body: JSON.stringify({ action: "confirm" }),
+    });
+    const j = await ok.json() as any;
+    assert.equal(ok.status, 200, JSON.stringify(j));
+    assert.equal(j.ok, true, j.output);
+    assert.match(String(j.output), /confirmed-ok/);
+    assert.match(String(j.capability), /^cap_/);
+
+    // 卡变成 done，且有结果
+    const after = await (await fetch(`${base}/api/pending`)).json() as any[];
+    assert.equal(after[0].status, "done");
+    assert.match(String(after[0].result), /confirmed-ok/);
+
+    // 再说一次“确认” → 409（不能重复执行）
+    const again = await fetch(`${base}/api/pending/${list[0].id}`, {
+      method: "POST", headers: { "x-jj": "1", "content-type": "application/json" },
+      body: JSON.stringify({ action: "confirm" }),
+    });
+    assert.equal(again.status, 409);
+
+    // 时间轴里有一条“已按你的确认执行”
+    const tl = await (await fetch(`${base}/api/timeline`)).json() as any[];
+    const said = tl.filter((b) => b.type === "msg").map((b) => b.text).join("\n");
+    assert.match(said, /已按你的确认执行/);
+    assert.match(said, /confirmed-ok/);
+  } finally { srv.close(); }
+});
+
+test("待确认：拒绝就是不执行，且之后不能再确认", async () => {
+  const dir = tmp();
+  const d = openDb(join(dir, "m.db"));
+  mkdirSync(join(dir, "workspace"), { recursive: true });
+  writeFileSync(join(dir, "workspace", "q.mjs"), "console.log('SHOULD-NOT-RUN')");
+  const policy = await loadPolicy(dir);
+  const srv = createWebServer({
+    db: d.db, inboxDir: join(dir, "inbox"), home: dir, policy,
+    getTransport: () => { throw new Error("no model"); },
+    getEmbedder: () => null,
+    getConfig: () => ({ ollama: "", roles: { express: { provider: "deepseek", model: "x", embed: { provider: "ollama", model: "bge-m3" } } } }),
+  });
+  await new Promise<void>((r) => srv.listen(0, "127.0.0.1", () => r()));
+  const base = `http://127.0.0.1:${(srv.address() as AddressInfo).port}`;
+  try {
+    await execute({ db: d.db, policy, ctx: { home: dir, now: () => new Date() } },
+      "shell.run", { template: "node.run_script", slots: { script: "q.mjs" } });
+    const list = await (await fetch(`${base}/api/pending`)).json() as any[];
+    const id = list[0].id;
+
+    const no = await fetch(`${base}/api/pending/${id}`, {
+      method: "POST", headers: { "x-jj": "1", "content-type": "application/json" },
+      body: JSON.stringify({ action: "reject" }),
+    });
+    assert.equal(no.status, 200);
+    const after = await (await fetch(`${base}/api/pending`)).json() as any[];
+    assert.equal(after[0].status, "rejected");
+
+    const late = await fetch(`${base}/api/pending/${id}`, {
+      method: "POST", headers: { "x-jj": "1", "content-type": "application/json" },
+      body: JSON.stringify({ action: "confirm" }),
+    });
+    assert.equal(late.status, 409);
+
+    // 没跑：审计里没有 allowed 的 shell.run，时间轴里也没有那句话
+    const rows = d.db.prepare("SELECT decision FROM exec_audit WHERE verb='shell.run'").all() as any[];
+    assert.ok(!rows.some((r) => r.decision === "allowed"), "被拒绝的提案不该执行");
+    const tl = await (await fetch(`${base}/api/timeline`)).json() as any[];
+    assert.ok(!tl.some((b) => b.type === "msg" && String(b.text).includes("SHOULD-NOT-RUN")));
   } finally { srv.close(); }
 });

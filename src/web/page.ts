@@ -139,6 +139,18 @@ export const PAGE = `<!doctype html>
   @keyframes avglow { 0%,100%{box-shadow:0 0 0 1px rgba(15,151,164,.18), 0 0 10px rgba(15,151,164,.3)}
                       50%{box-shadow:0 0 0 1px rgba(127,230,242,.5), 0 0 16px rgba(127,230,242,.45)} }
   .avprev { display:flex; align-items:center; gap:10px; padding:4px 0; }
+  /* 待确认卡（T3）：不是普通过知——它后面跟着一条会真的执行的命令 */
+  .pend { border:1px solid rgba(255,180,84,.34); background:rgba(255,180,84,.06); padding:7px 8px; margin-bottom:6px; }
+  .pend .cmd { display:block; font:11px/1.5 var(--mono); color:var(--amber); word-break:break-all; }
+  .pend .dir { display:block; font:9px/1.4 var(--mono); color:var(--dim); word-break:break-all; margin-top:3px; }
+  .pend .fp { display:block; font:9px/1.4 var(--mono); color:rgba(111,143,146,.7); }
+  .pend .acts { display:flex; gap:6px; margin-top:7px; }
+  .pend .acts button { font:10px/1 var(--mono); letter-spacing:.06em; padding:5px 9px; cursor:pointer;
+                       background:transparent; color:var(--fg); border:1px solid var(--line-dim); }
+  .pend .acts button.ok { color:var(--amber); border-color:rgba(255,180,84,.5); }
+  .pend .acts button.ok:hover { background:rgba(255,180,84,.12); }
+  .pend .acts button.no:hover { background:rgba(15,151,164,.08); }
+  .pend .msg { display:block; font:9px/1.4 var(--mono); color:var(--dim); margin-top:5px; }
   .meta { font:10px/1 var(--mono); letter-spacing:.12em; color:var(--dim); margin:2px 0 7px; }
   .row.user .meta { color:rgba(255,180,84,.75); }
   .body { background:var(--panel2); border:1px solid var(--line-dim);
@@ -231,6 +243,7 @@ export const PAGE = `<!doctype html>
 </header>
 
 <aside id="side">
+  <div class="sec" id="pendsec" hidden><h3>PENDING · 待确认</h3><div id="pendlist"></div></div>
   <div class="sec"><h3>SESSIONS</h3><div id="sesslist"></div></div>
   <div class="sec"><h3>TOOLS</h3><div id="toollist"><button class="item on" data-view="chat">对话<span class="m">与鲸鲸说话</span></button></div></div>
   <div class="sec"><h3>MEMORY</h3><div id="memlist"></div></div>
@@ -407,6 +420,39 @@ async function timeline() {
   }
   scrollBottom();
 }
+// 待确认的 T3：侧栏一张卡。确认 = 服务端现场签发令牌并执行，页面拿不到令牌。
+async function pending() {
+  let list = [];
+  try { list = await (await fetch("/api/pending")).json(); } catch (e) { return; }
+  const sec = $("#pendsec"), box = $("#pendlist");
+  const open = (list || []).filter((p) => p.status === "pending" && !p.expired);
+  sec.hidden = open.length === 0;
+  if (!open.length) { box.innerHTML = ""; return; }
+  box.innerHTML = open.map((p) =>
+    "<div class='pend' data-pend='" + p.id + "'>" +
+    "<span class='cmd'>" + escapeHtml(p.argv.join(" ")) + "</span>" +
+    "<span class='dir'>" + escapeHtml(p.cwd) + "</span>" +
+    "<span class='fp'>指纹 " + escapeHtml(String(p.digest || "").slice(0, 8)) + " · 15 分钟内有效</span>" +
+    "<div class='acts'><button class='ok' data-act='confirm'>确认执行</button>" +
+    "<button class='no' data-act='reject'>拒绝</button></div>" +
+    "<span class='msg'></span></div>").join("");
+}
+$("#pendlist").onclick = async (e) => {
+  const btn = e.target.closest("button[data-act]");
+  if (!btn) return;
+  const card = btn.closest("[data-pend]");
+  const id = card.dataset.pend;
+  const msg = card.querySelector(".msg");
+  btn.disabled = true;
+  msg.textContent = "处理中…";
+  try {
+    const j = await (await fetch("/api/pending/" + id, {
+      method: "POST", headers: H, body: JSON.stringify({ action: btn.dataset.act }),
+    })).json();
+    msg.textContent = j.ok ? (btn.dataset.act === "confirm" ? "已执行" : "已拒绝") : (j.error || "FAILED");
+  } catch (err) { msg.textContent = "网络错误"; }
+  await pending(); await timeline(); await state();
+};
 async function sessions() {
   const blocks = await (await fetch("/api/timeline")).json();
   const days = blocks.filter((b) => b.type === "day");
@@ -592,6 +638,6 @@ $("#composer").onsubmit = async (e) => {
   }
   await timeline(); await state(); await memories();
 };
-state(); timeline(); sessions(); tools(); memories(); loadConfig(); loadUi(); setInterval(state, 30000);
+state(); timeline(); sessions(); tools(); memories(); loadConfig(); loadUi(); pending(); setInterval(() => { state(); pending(); }, 30000);
 </script>
 </body></html>`;

@@ -297,12 +297,86 @@ export function hostProfile(): string {
   return `direct/node${process.versions.node}-${process.platform}-${process.arch}`;
 }
 
+// ── 可选沙箱：容器化宿主（04 §6.4）────────────────────────────
+//
+// 为什么要有它：模板 + 令牌只保证"只跑这几条命令"，不保证"跑坏了关在笼子里"。
+// 真正能收窄爆炸半径的是容器（`--network=none --read-only --cap-drop=ALL`）。
+//
+// 一条硬规矩（04 §4.0）：**降级必须显式**。
+// 要了沙箱但 Docker 引擎不在 → 拒跑（E_SANDBOX_UNAVAILABLE），
+// **不会** 悄悄改成直跑；只有 `JJ_SHELL_ALLOW_DIRECT=1` 时才能降，且审计里记一笔。
+
+export interface RunPlan {
+  kind: "direct" | "docker";
+  argv: string[];
+  cwd: string;
+  /** 写进 exec_audit.host_profile */
+  profile: string;
+  /** docker 模式下的容器名（超时要用它 rm -f，否则容器会成孤儿） */
+  container?: string;
+  note?: string;
+}
+
+let dockerMemo: boolean | null = null;
+/** 引擎在不在（结果进程内缓存：一次 T3 调用不该卡两次 docker version） */
+export function dockerAvailable(): boolean {
+  if (dockerMemo !== null) return dockerMemo;
+  try {
+    const r = spawnSync("docker", ["version", "--format", "{{.Server.Version}}"],
+      { stdio: "ignore", windowsHide: true, timeout: 4000 });
+    dockerMemo = r.status === 0;
+  } catch { dockerMemo = false; }
+  return dockerMemo;
+}
+
+/** 仅供测试：清掉“引擎在不在”的缓存 */
+export function _resetDockerProbe(): void { dockerMemo = null; }
+
+export function planRun(
+  r: Rendered,
+  o: { env?: Record<string, string | undefined>; dockerOk?: () => boolean } = {},
+): RunPlan {
+  const env = o.env ?? process.env;
+  const mode = (env.JJ_SHELL_SANDBOX ?? "direct").toLowerCase();
+  const direct = (note?: string): RunPlan => ({
+    kind: "direct", argv: r.argv, cwd: r.cwd,
+    profile: note ? `${hostProfile()}(降级)` : hostProfile(),
+    ...(note ? { note } : {}),
+  });
+
+  if (mode !== "docker" && mode !== "container") return direct();
+
+  const ok = (o.dockerOk ?? dockerAvailable)();
+  if (!ok) {
+    if (env.JJ_SHELL_ALLOW_DIRECT === "1") return direct("沙箱不可用，按 JJ_SHELL_ALLOW_DIRECT=1 显式降级为直跑");
+    throw new Error("E_SANDBOX_UNAVAILABLE: 要了沙箱但 Docker 引擎不可用（启动引擎，或显式设 JJ_SHELL_ALLOW_DIRECT=1 降级）");
+  }
+
+  const image = env.JJ_SHELL_IMAGE ?? "node:24-alpine";
+  const container = `jj-${r.digest.slice(0, 8)}-${Date.now().toString(36).slice(-4)}`;
+  const argv = [
+    "docker", "run", "--rm", "--init",
+    "--name", container,
+    "--network=none",                 // 不出网
+    "--read-only",                    // 根文件系统只读
+    "--tmpfs", "/tmp",               // 但 /tmp 给个内存盘（node/python 都要用）
+    "--cap-drop=ALL",                 // 不给任何 capability
+    "--security-opt", "no-new-privileges",
+    "-v", `${toPosix(normalize(r.cwd))}:/w`, "-w", "/w",   // 只把 workspace 挂进去，可写
+    ...(process.platform === "win32" ? [] : ["--user", `${process.getuid?.() ?? 1000}:${process.getgid?.() ?? 1000}`]),
+    "--entrypoint", r.argv[0]!, image, ...r.argv.slice(1),
+  ];
+  return { kind: "docker", argv, cwd: r.cwd, profile: `docker:${image}`, container };
+}
+
 export interface RunOpts {
   cwd: string;
   timeoutMs?: number;
   maxBytes?: number;
   env?: Record<string, string>;
   now?: () => number;
+  /** 被我们主动杀掉时调用（超时 / 输出爆炸）——docker 模式要在这里 rm -f 容器 */
+  onKill?: () => void;
 }
 
 export interface RunResult {
@@ -353,7 +427,7 @@ export async function runArgv(argv: string[], o: RunOpts): Promise<RunResult> {
       errBytes += b;
     }
     if (outBytes + errBytes > maxBytes * 8) {
-      truncated = true; killed = true; killTree(child.pid ?? 0);
+      truncated = true; killed = true; killTree(child.pid ?? 0); o.onKill?.();
     }
   };
   child.stdout?.setEncoding("utf8");
@@ -368,9 +442,9 @@ export async function runArgv(argv: string[], o: RunOpts): Promise<RunResult> {
 
   const timer = setTimeout(() => {
     timedOut = true; killed = true;
-    killTree(child.pid ?? 0);
+    killTree(child.pid ?? 0); o.onKill?.();
     // 兜底：2s 后还没退就再补一刀硬杀
-    const hard = setTimeout(() => killTree(child.pid ?? 0), 2000);
+    const hard = setTimeout(() => { killTree(child.pid ?? 0); o.onKill?.(); }, 2000);
     (hard as { unref?: () => void }).unref?.();
   }, timeoutMs);
 
