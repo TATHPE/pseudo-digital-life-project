@@ -78,8 +78,9 @@ export async function search(
   if (ranked.length) {
     const got = db.prepare(
       `SELECT id,text,stage,weight,sensitivity FROM memories
-       WHERE status='active' AND id IN (SELECT value FROM json_each(?))`,
-    ).all(JSON.stringify(ranked.map((r) => r.id))) as Array<{ id: number; text: string; stage: Stage; weight: number; sensitivity?: string }>;
+       WHERE status='active' AND (valid_to IS NULL OR julianday(valid_to) > julianday(?))
+         AND id IN (SELECT value FROM json_each(?))`,
+    ).all(new Date().toISOString(), JSON.stringify(ranked.map((r) => r.id))) as Array<{ id: number; text: string; stage: Stage; weight: number; sensitivity?: string }>;
     for (const g of got) metaById.set(g.id, { text: g.text, stage: g.stage, weight: g.weight, ...(g.sensitivity ? { sensitivity: g.sensitivity } : {}) });
   }
   const rows = ranked

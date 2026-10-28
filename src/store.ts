@@ -63,6 +63,25 @@ export function getRow(db: DatabaseSync, id: number): MemoryRow | undefined {
 }
 
 /** 夜间 / 断电补算统一走这里（01 §11.1）：只重算"可能变了"的行 */
+/**
+ * 还没过期的契约层记忆（P6 用）。
+ *
+ * 为什么必须有这个函数：库里有 `valid_to` 这一列（承诺的约定时间 / 事实的有效期），
+ * 但之前简报的 P6 只按 `status='active'` 取 —— 于是**已经了结的承诺每轮还在喂给模型**，
+ * 它就一直提。用户说"我吃了"之后，那句「提醒他今晚 8 点吃药」被 nightly 关了（valid_to 落上），
+ * 但 P6 照样带着它，模型当然反复提。
+ *
+ * 时间比较一律走 julianday（18 §5.2）：库里 `...Z` 与 `...+08:00` 混存，字符串比较会判错。
+ */
+export function openContracts(db: DatabaseSync, now: Date, limit = 15): Array<{ id: number; text: string }> {
+  return db.prepare(
+    `SELECT id,text FROM memories
+      WHERE layer='contract' AND status='active'
+        AND (valid_to IS NULL OR julianday(valid_to) > julianday(?))
+      ORDER BY importance DESC, id ASC LIMIT ?`,
+  ).all(now.toISOString(), limit) as Array<{ id: number; text: string }>;
+}
+
 export function tickDecay(db: DatabaseSync, now = new Date(), minGapDays = 0.5): number {
   const rows = db.prepare(`SELECT id,layer,kind,weight,stage,recall_count,last_decay_at,w0
     FROM memories WHERE status='active' AND layer='narrative'

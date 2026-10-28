@@ -25,6 +25,7 @@ import { createTransport, routerFrom } from "../transport.ts";
 import { spentToday } from "../budget.ts";
 import { recallForBrief, omissionNote } from "../recall.ts";
 import { meta } from "../db.ts";
+import { openContracts } from "../store.ts";
 import { execute } from "../execute.ts";
 import { loadPolicy, type Policy } from "../policy.ts";
 import { createStore, fingerprint, type Provider } from "../auth.ts";
@@ -780,9 +781,8 @@ export function createWebServer(deps: WebDeps) {
         const rc = await recallForBrief(deps.db, emb, text, { memK: 6, docK: 4 });
         const omitted = rc.omittedMem;
         const recalled: MemoryLine[] = rc.recalled;
-        const contracts = (deps.db.prepare(
-          `SELECT text FROM memories WHERE layer='contract' AND status='active' ORDER BY importance DESC LIMIT 15`)
-          .all() as Array<{ text: string }>).map((r) => r.text);
+        // 只取**还没过期**的契约：已了结的承诺不该每轮继续喂给模型（否则它会反复提）
+        const contracts = openContracts(deps.db, now()).map((r) => r.text);
         const last = messages(deps.db, deps.inboxDir).slice(0, -1).pop();
         const pending = deps.pendingOutage ?? null;
         deps.pendingOutage = null;                     // 只报告一次（18 §2.3）

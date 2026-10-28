@@ -101,3 +101,30 @@ test("rebase 只在参数变更时用：压回 w0 后立刻取权重应回到原
   const after = weight({ ...m, w0: rb.w0, lastDecayAt: at(0) }, at(0));
   assert.ok(Math.abs(after - before) < 1e-3, `after=${after} before=${before}`);
 });
+
+test("过期契约不再进简报：了结的承诺不该反复被提（valid_to 用 julianday 判）", async () => {
+  const { mkdtempSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { openDb } = await import("../src/db.ts");
+  const { remember, openContracts } = await import("../src/store.ts");
+
+  const home = mkdtempSync(join(tmpdir(), "jj-vt-"));
+  const db = openDb(join(home, "m.db")).db;
+  const now = new Date("2026-10-28T15:00:00Z");
+
+  // ① 已了结的承诺（valid_to 在过去，故意用 +08:00 写法验时间比较）
+  const done = remember(db, { layer: "contract", kind: "promise", text: "提醒他今晚 8 点吃药" });
+  db.prepare("UPDATE memories SET valid_to=? WHERE id=?").run("2026-10-28T18:13:11+08:00", done);
+  // ② 还没到点的承诺
+  const future = remember(db, { layer: "contract", kind: "promise", text: "周五提醒他交房租" });
+  db.prepare("UPDATE memories SET valid_to=? WHERE id=?").run("2026-10-31T20:00:00+08:00", future);
+  // ③ 长期有效的契约
+  remember(db, { layer: "contract", kind: "promise", text: "不要在工作时段主动打扰" });
+
+  const open = openContracts(db, now);
+  const texts = open.map((r) => r.text);
+  assert.ok(!texts.some((t) => t.includes("吃药")), `已了结的还在：${texts.join(" / ")}`);
+  assert.ok(texts.some((t) => t.includes("房租")), "没到点的要留着");
+  assert.ok(texts.some((t) => t.includes("工作时段")), "无期限的契约要留着");
+});
