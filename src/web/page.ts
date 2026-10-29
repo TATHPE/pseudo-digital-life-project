@@ -140,21 +140,21 @@ export const PAGE = `<!doctype html>
   #menu:hover { border-color:var(--ink); background:rgba(233,240,242,.10); }
   .chip { margin-left:auto; font:10px/1 var(--mono); letter-spacing:.1em; color:var(--ink); font-weight:700;
           border:1px solid var(--line); background:#000; padding:6px 10px; }
-  /* ── 侧栏 ───────────────────────────────── */
-  aside { grid-area:side; border-right:1px solid var(--line-dim); overflow-y:auto;
-          background:linear-gradient(180deg, rgba(12,19,16,.9), rgba(11,14,11,.6)); padding:14px 12px 30px; }
-  .sec { margin-bottom:20px; }
-  .sec h3 { margin:0 0 8px; font:10px/1 var(--mono); letter-spacing:.18em; color:var(--ink-dim);
+  /* ── 侧栏：纯黑 + 白细线 + 格子状条目（照参照图的“框装读数”）── */
+  aside { grid-area:side; border-right:1px solid var(--line); overflow-y:auto;
+          background:#000; padding:12px 10px 30px; }
+  .sec { margin-bottom:14px; }
+  .sec h3 { margin:0 0 6px; font:10px/1 var(--mono); letter-spacing:.18em; color:var(--ink); font-weight:700;
             display:flex; align-items:center; gap:8px; }
-  .sec h3::after { content:""; flex:1; height:1px; background:var(--line-dim); }
-  .item { display:block; width:100%; text-align:left; background:transparent; border:1px solid transparent;
-          color:var(--fg); padding:6px 9px; cursor:pointer; font:12px/1.5 inherit;
+  .sec h3::after { content:""; flex:1; height:1px; background:transparent; }
+  .item { display:block; width:100%; text-align:left; background:#000; border:1px solid var(--line-dim);
+          color:var(--ink); padding:5px 9px; margin-bottom:2px; cursor:pointer; font:12px/1.5 inherit;
           overflow:hidden; }
-  .item:hover { border-color:var(--line); background:rgba(233,240,242,.06); }
+  .item:hover { border-color:var(--ink); background:rgba(233,240,242,.07); }
   .item .m { display:block; font:10px/1.5 var(--mono); color:var(--ink-dim); letter-spacing:.04em;
              overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .item .preview { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .item.on { border-color:var(--ink); background:rgba(233,240,242,.10); }
+  .item.on { border-color:var(--ink); background:rgba(233,240,242,.12); box-shadow:inset 2px 0 0 var(--ink); }
   .bar { display:block; height:2px; background:rgba(233,240,242,.18); margin-top:5px; }
   .bar i { display:block; height:100%; background:var(--ink); box-shadow:0 0 8px rgba(233,240,242,.45); }
   .tier { font:9px/1 var(--mono); color:var(--ink-dim); font-weight:700; border:1px solid var(--line); padding:2px 4px; margin-left:6px; }
@@ -337,8 +337,8 @@ export const PAGE = `<!doctype html>
   .badge.dim2 { background:var(--ink); color:#000; }
 
   /* ── 搜索（P1 #8）──────────────────────────────────── */
-  .searchbox { width:100%; background:rgba(8,13,11,.8); border:1px solid var(--line-dim); color:var(--fg);
-               font:12px/1.4 inherit; padding:6px 8px; }
+  .searchbox { width:100%; background:#000; border:1px solid var(--line); color:var(--ink);
+               font:600 12px/1.4 inherit; padding:6px 8px; }
   .searchbox:focus { border-color:var(--line); outline:none; }
   .hit { display:block; width:100%; text-align:left; background:transparent; border:1px solid transparent;
          color:var(--fg); padding:6px 8px; cursor:pointer; font:12px/1.5 inherit; }
@@ -367,10 +367,10 @@ export const PAGE = `<!doctype html>
   #dlg-msg { min-height:12px; }
 
   /* ── 工具/动作列表折叠（P2 #20）────────────────────── */
-  .fold { display:flex; align-items:center; gap:8px; width:100%; background:transparent; border:0;
-          color:var(--ink-dim); font:10px/1 var(--mono); letter-spacing:.18em; padding:2px 0 6px; cursor:pointer; }
-  .fold::after { content:""; flex:1; height:1px; background:var(--line-dim); }
-  .fold .n { color:var(--dim); letter-spacing:0; }
+  .fold { display:flex; align-items:center; gap:8px; width:100%; background:#000; border:1px solid var(--line);
+          color:var(--ink); font:10px/1 var(--mono); letter-spacing:.18em; font-weight:700; padding:5px 8px; margin-bottom:2px; cursor:pointer; }
+  .fold::after { content:""; flex:1; height:1px; background:transparent; }
+  .fold .n { color:var(--ink-dim); letter-spacing:0; }
 
   /* ── 输入区：多行 + 停止（P1 #7 / P2 #16）────────────── */
   #m { resize:none; max-height:180px; overflow-y:auto; line-height:1.6; }
