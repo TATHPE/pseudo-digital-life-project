@@ -49,8 +49,10 @@ export const PAGE = `<!doctype html>
   }
   #readoutbar { grid-area:readout; display:flex; align-items:stretch; gap:0; overflow:hidden;
                 background:rgba(8,11,10,.94); border-bottom:1px solid var(--line-dim); }
-  .ro { display:flex; flex-direction:column; justify-content:center; gap:1px;
+  .ro { position:relative; display:flex; flex-direction:column; justify-content:center; gap:1px;
         padding:3px 12px; border-right:1px solid var(--line-dim); min-width:0; flex:none; }
+  .ro::after { content:""; position:absolute; top:3px; right:3px; width:5px; height:5px;
+               border-top:1px solid var(--line); border-right:1px solid var(--line); }
   .ro:first-child { padding-left:18px; }
   .ro-l { font:8px/1 var(--mono); letter-spacing:.22em; color:var(--ink); font-weight:700; white-space:nowrap; }
   .ro-v { font:13px/1 var(--mono); color:var(--ink); font-weight:700; letter-spacing:.04em; white-space:nowrap; }
@@ -65,8 +67,10 @@ export const PAGE = `<!doctype html>
   /* ── 底部 ticker：一条横贯的状态带（手机上隐藏）── */
   .ticker { display:flex; align-items:center; gap:8px; padding:5px 26px; overflow:hidden;
             border-top:1px solid var(--line-dim); background:rgba(8,11,10,.94); }
-  .ticker .tk { font:9px/1 var(--mono); letter-spacing:.1em; color:var(--ink); font-weight:600;
+  .ticker .tk { position:relative; font:9px/1 var(--mono); letter-spacing:.1em; color:var(--ink); font-weight:600;
                 border:1px solid var(--line); background:#000; padding:4px 7px; white-space:nowrap; }
+  .ticker .tk::after { content:""; position:absolute; top:2px; right:2px; width:4px; height:4px;
+                       border-top:1px solid var(--line); border-right:1px solid var(--line); }
   .ticker .tk b { color:var(--ink); font-weight:700; }
   .ticker .tk.warn { color:var(--amber); border-color:rgba(255,180,84,.4); }
   .ticker .tk.bad { color:var(--red); border-color:rgba(255,95,86,.45); }
@@ -144,12 +148,16 @@ export const PAGE = `<!doctype html>
   aside { grid-area:side; border-right:1px solid var(--line); overflow-y:auto;
           background:#000; padding:12px 10px 30px; }
   .sec { margin-bottom:14px; }
-  .sec h3 { margin:0 0 6px; font:10px/1 var(--mono); letter-spacing:.18em; color:var(--ink); font-weight:700;
+  /* 分区标题：带粗左边的标签条（参照图的 NAVIGATOR 那种） */
+  .sec h3 { margin:0 0 6px; padding:6px 8px; background:#000;
+            border:1px solid var(--line); border-left:3px solid var(--ink);
+            font:10px/1 var(--mono); letter-spacing:.18em; color:var(--ink); font-weight:700;
             display:flex; align-items:center; gap:8px; }
-  .sec h3::after { content:""; flex:1; height:1px; background:transparent; }
-  .item { display:block; width:100%; text-align:left; background:#000; border:1px solid var(--line-dim);
+  .item { position:relative; display:block; width:100%; text-align:left; background:#000; border:1px solid var(--line-dim);
           color:var(--ink); padding:5px 9px; margin-bottom:2px; cursor:pointer; font:12px/1.5 inherit;
           overflow:hidden; }
+  .item::after { content:""; position:absolute; top:3px; right:3px; width:5px; height:5px;
+                 border-top:1px solid var(--line); border-right:1px solid var(--line); pointer-events:none; }
   .item:hover { border-color:var(--ink); background:rgba(233,240,242,.07); }
   .item .m { display:block; font:10px/1.5 var(--mono); color:var(--ink-dim); letter-spacing:.04em;
              overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -367,7 +375,7 @@ export const PAGE = `<!doctype html>
   #dlg-msg { min-height:12px; }
 
   /* ── 工具/动作列表折叠（P2 #20）────────────────────── */
-  .fold { display:flex; align-items:center; gap:8px; width:100%; background:#000; border:1px solid var(--line);
+  .fold { display:flex; align-items:center; gap:8px; width:100%; background:#000; border:1px solid var(--line); border-left:3px solid var(--ink);
           color:var(--ink); font:10px/1 var(--mono); letter-spacing:.18em; font-weight:700; padding:5px 8px; margin-bottom:2px; cursor:pointer; }
   .fold::after { content:""; flex:1; height:1px; background:transparent; }
   .fold .n { color:var(--ink-dim); letter-spacing:0; }
@@ -636,6 +644,11 @@ function show(v) {
       if (chatScroll > 0 && chatScroll < el.scrollHeight - el.clientHeight - 4) el.scrollTop = chatScroll;
       else { el.scrollTop = el.scrollHeight; chatScroll = 0; }
     });
+  } else {
+    // 切到面板（设置/记忆/文档/审计/搜索）时**必须回到顶部**：
+    // 对话是自动贴底的，scrollTop 是个大值；带着它切过去，浏览器会把它夹到底部，
+    // 表现就是"每次点进设置都在最下面"。
+    requestAnimationFrame(function () { $("#scroll").scrollTop = 0; });
   }
   // 侧栏里除了几个导航项，其余都是多选一（工具 / 文档 / 记忆 / 日期）。
   // 只按 data-view 匹配会变成「点了 A，B C D 一起被框」。

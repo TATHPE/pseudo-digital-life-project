@@ -149,6 +149,25 @@ await js(`(() => { const d = document.querySelectorAll("#doclist .item[data-doc]
 const onCount = await js(`({ total: document.querySelectorAll("#side .item.on").length, docs: document.querySelectorAll("#doclist .item.on").length })`);
 check("侧栏同时只有一项被框", onCount.total === 1 && onCount.docs <= 1, JSON.stringify(onCount));
 
+// 切到面板必须回到顶部：对话是自动贴底的，带着 scrollTop 切过去会落到设置的最底部
+check("进设置回到顶部", await js(`(() => {
+  document.querySelector("#side .item[data-view=chat]").click();
+  document.querySelector("#side .item[data-view=cfg]").click();
+  return document.querySelector("#scroll").scrollTop;
+})()`) === 0);
+check("回对话仍贴底", await js(`(async () => {
+  document.querySelector("#side .item[data-view=chat]").click();
+  await new Promise(function (r) { requestAnimationFrame(function () { requestAnimationFrame(r); }); });
+  const el = document.querySelector("#scroll");
+  return el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+})()`) === true);
+check("分区标题是带粗左边的标签条 + 格子有角标", await js(`(() => {
+  const h = document.querySelector(".sec h3");
+  const s = getComputedStyle(h);
+  const tick = getComputedStyle(document.querySelector(".item"), "::after");
+  return s.borderLeftWidth === "3px" && tick.borderTopWidth === "1px";
+})()`));
+
 ws.close(); proc.kill();
 let bad = 0;
 for (const [n, ok, d] of out) { console.log(`${ok ? "✅" : "❌"} ${n}${d ? "  — " + String(d).slice(0, 70) : ""}`); if (!ok) bad++; }
