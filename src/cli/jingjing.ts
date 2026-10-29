@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /** jingjing CLI（M0）：migrate | remember | search | verify | outage | decay | bench */
-import { mkdirSync, appendFileSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { mkdirSync, appendFileSync, readFileSync, writeFileSync, rmSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { openDb, selfCheck, meta, setMeta } from "../db.ts";
@@ -115,6 +115,13 @@ async function bench(rows: number, mode: "real" | "worst"): Promise<void> {
   try { rmSync(file, { force: true }); rmSync(file + "-wal", { force: true }); rmSync(file + "-shm", { force: true }); } catch { /* ignore */ }
   process.exitCode = mode === "real" && !out.gate.pass ? 1 : 0;
 }
+
+/** 取 --name value 的值；没有就返回 undefined */
+const flag = (rest: string[], name: string): string | undefined => {
+  const i = rest.indexOf(name);
+  return i >= 0 ? rest[i + 1] : undefined;
+};
+const has = (rest: string[], name: string): boolean => rest.includes(name);
 
 async function main(): Promise<void> {
   ensureHome();
@@ -553,6 +560,67 @@ async function main(): Promise<void> {
         console.error(String((e as Error).message ?? e));
         process.exitCode = 1;
       }
+      return;
+    }
+
+    case "smoke-tools": {
+      // 工具调用冒烟（P0-1）：换模型之前先问一句"你到底会不会调工具"。
+      //   jingjing smoke-tools                       # 默认跑 night 角色（本地）
+      //   jingjing smoke-tools --model qwen2.5:7b-instruct --n 10
+      //   jingjing smoke-tools --role express        # 用云端角色自己的 provider/端点
+      const { runToolSmoke, describeSmoke, ollamaModels } = await import("../toolsmoke.ts");
+      const cfg = resolveConfig(HOME);
+      const role = (flag(rest, "--role") ?? "night") as string;
+      const base = cfg.roles[role];
+      if (!base) { console.error(`E_NO_ROLE: ${role}`); process.exitCode = 1; return; }
+      const model = flag(rest, "--model") ?? base.model;
+      // 本地角色先看模型装没装：404 会让 10 轮全红，看起来像"模型不会调工具"，其实是根本没装
+      if (base.provider === "ollama") {
+        const have = await ollamaModels(cfg.ollama);
+        if (have === null) { console.error("E_OLLAMA_DOWN: 连不上 " + cfg.ollama); process.exitCode = 2; return; }
+        if (!have.includes(model) && !have.includes(model + ":latest")) {
+          console.error("⚠ Ollama 里没有模型 " + model + "（现有：" + (have.join(", ") || "无") + "）");
+          console.error("  ollama pull " + model + "   # 或换个已装的：--model <name>");
+          process.exitCode = 2; return;
+        }
+      }
+      const n = Number(flag(rest, "--n") ?? 10);
+      const roles = { ...cfg.roles, [role]: { ...base, model } };
+      const store = createStore(join(HOME, "secrets"));
+      const keys: Record<string, string> = {};
+      for (const pv of ["deepseek", "anthropic", "openai"] as Provider[]) { const k = store.get(pv); if (k) keys[pv] = k; }
+
+      // 探针文件：读文件那条用例要它真的存在
+      const probe = join(HOME, "workspace", "smoke-probe.txt");
+      mkdirSync(join(HOME, "workspace"), { recursive: true });
+      if (!existsSync(probe)) writeFileSync(probe, "smoke-probe " + new Date().toISOString().slice(0, 19) + String.fromCharCode(10));
+
+      // 工具面用真实的注册表（不是玩具 schema）：够不了真工具，冒烟就没意义
+      const d = openDb(dbFile);
+      const policy = await import("../policy.ts").then((m) => m.loadPolicy(HOME));
+      const reg = createToolRegistry({ db: d.db, policy, ctx: { home: HOME, now: () => new Date(), db: d.db, embedder: null } });
+      const schema = reg.schema();
+
+      let tokens = { in: 0, out: 0 };
+      const t = createChatTransport(routerFrom(roles as never), { apiKeys: keys, onUsage: (u) => { tokens.in += u.inTokens; tokens.out += u.outTokens; } });
+      const chat = (messages: unknown[], tools: unknown) => t.chat(role as never, messages, {
+        containsMemory: false, purpose: "tool-smoke", maxTokens: 300, tools: tools as never,
+      });
+
+      console.log(`跑 ${n} 轮 × 3 个用例，模型 ${base.provider}/${model}（role=${role}）…`);
+      const r = await runToolSmoke({
+        chat, schema, model,
+        n: Number.isFinite(n) && n > 0 ? n : 10,
+        onAttempt: (a) => {
+          if (!has(rest, "--quiet")) console.log(`  ${a.ok ? "✓" : "✗"} ${a.caseId.padEnd(7)} ${String(a.ms).padStart(5)}ms ${a.ok ? (a.toolName ?? "") : `${a.code} ${a.detail ?? ""}`}`);
+        },
+      });
+      console.log(String.fromCharCode(10) + describeSmoke(r));
+      if (tokens.in || tokens.out) {
+        const usd = estimateCost(base.provider, model, { inTokens: tokens.in, outTokens: tokens.out });
+        console.log(`用量 in ${tokens.in} / out ${tokens.out} tok${usd > 0 ? ` · 约 $${usd.toFixed(4)}` : ""}`);
+      }
+      process.exitCode = r.pass ? 0 : 1;
       return;
     }
 
