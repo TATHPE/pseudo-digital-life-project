@@ -13,7 +13,8 @@ import { buildBrief } from "../brief.ts";
 import { loadPersona } from "../persona.ts";
 import { expenseLine } from "./state.ts";
 import { loadPersonaText, savePersonaFile, PERSONA_FILES, type PersonaFile } from "../persona.ts";
-import { writeFileConfig, readFileConfig, resolveConfig } from "../configfile.ts";
+import { writeFileConfig, readFileConfig, resolveConfig, configSources } from "../configfile.ts";
+import { probeOllama, isInstalled } from "../ollama.ts";
 import { AVATAR_FRAMES, DEFAULT_AVATAR, isAvatarFrame } from "./avatar.ts";
 import { getPending, listPending, updatePending } from "../confirm.ts";
 import { readStateSafe } from "../deploy/slot.ts";
@@ -559,6 +560,41 @@ export function createWebServer(deps: WebDeps) {
       if (req.method === "GET" && url.pathname === "/api/tools") {
         const reg = deps.tools;
         json(res, 200, (reg ? reg.list() : []).map((t) => ({ name: t.name, description: t.description, tier: t.tier, parameters: t.parameters })));
+        return;
+      }
+      // ── 本地模型（C-4）：一个端点、列已装、拿当前生效值，面板据此分两块 ──
+      if (req.method === "GET" && url.pathname === "/api/models") {
+        const cfg = deps.getConfig();
+        const src = configSources(deps.home);
+        const probe = await probeOllama(cfg.ollama);
+        json(res, 200, {
+          endpoint: cfg.ollama,
+          online: probe.online,
+          error: probe.error ?? null,
+          installed: probe.names,
+          roles: ["embed", "route", "extract", "salience", "conflict", "night"].map((r) => ({
+            role: r, model: cfg.roles[r]?.model ?? "", source: src[r] ?? "default",
+            installed: cfg.roles[r]?.model ? isInstalled(probe.names, cfg.roles[r]!.model) : null,
+          })),
+        });
+        return;
+      }
+      if (req.method === "PUT" && url.pathname === "/api/models") {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
+        const body = JSON.parse(await readBody(req)) as { default?: string; night?: string; embed?: string };
+        const patch: Record<string, string> = {};
+        for (const k of ["default", "night", "embed"] as const) {
+          const v = body[k];
+          if (v === undefined) continue;
+          if (typeof v !== "string" || v.length > 120 || /[\u0000-\u001f]/.test(v)) {
+            json(res, 400, { error: "E_BAD_MODEL" }); return;
+          }
+          patch[k] = v;
+        }
+        if (!Object.keys(patch).length) { json(res, 400, { error: "E_NOTHING_TO_DO" }); return; }
+        writeFileConfig(deps.home, { local: patch });
+        const cfg = deps.getConfig();
+        json(res, 200, { ok: true, now: Object.fromEntries(Object.entries(cfg.roles).map(([r, c]) => [r, c.model || null])) });
         return;
       }
       if (req.method === "GET" && url.pathname === "/api/config") {

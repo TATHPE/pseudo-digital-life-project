@@ -9,41 +9,77 @@ export interface AppConfig {
   ollama: string;
 }
 
-export function defaultConfig(env = process.env): AppConfig {
-  const ollama = env.JJ_OLLAMA ?? "http://127.0.0.1:11434";
-  /**
-   * 本地角色**没有默认模型名**（C-5）。
-   *
-   * 2026-10-28 删掉 qwen2.5:1.5b-instruct 之后，默认值还指着它 —— `night` 报的
-   * 「缺模型」报的就是那个已经不存在的名字，会把人引去重新拉一个 1.5B。
-   * 缺就是缺：让 validateRouter 报「缺 provider/model」，让面板与 CLI 说人话。
-   */
-  const small = env.JJ_MODEL_DEFAULT ?? "";
-  const night = env.JJ_MODEL_NIGHT ?? small;   // 自传/反思用；1.5B 会编，建议 ≥3B
-  const embed = env.JJ_MODEL_EMBED ?? "bge-m3";
+/** 纯默认（不读任何环境变量）：本地模型名一律为空，缺就是缺（C-5） */
+export function baseConfig(env: Record<string, string | undefined> = {}): AppConfig {
+  void env;
+  const ollama = "http://127.0.0.1:11434";
   const local = (model: string): RoleConfig => ({ kind: "local", provider: "ollama", model, baseUrl: ollama });
   return {
     ollama,
     roles: {
-      embed:    local(embed),
-      route:    local(small),
-      extract:  local(small),
-      salience: local(small),
-      conflict: local(small),
-      night:    local(night),
-      express:  {
+      embed:    local("bge-m3"),
+      route:    local(""),
+      extract:  local(""),
+      salience: local(""),
+      conflict: local(""),
+      night:    local(""),
+      express: {
         kind: "cloud",
-        provider: (env.JJ_PROVIDER_EXPRESS as "anthropic" | "openai" | "deepseek") ?? "deepseek",
-        model: env.JJ_MODEL_EXPRESS ?? "deepseek-chat",
-        ...(env.JJ_BASE_EXPRESS ? { baseUrl: env.JJ_BASE_EXPRESS } : {}),
+        provider: "deepseek",
+        model: "deepseek-chat",
         maxTokens: 1024,
       },
       plan: {
         kind: "cloud",
-        provider: (env.JJ_PROVIDER_EXPRESS as "anthropic" | "openai" | "deepseek") ?? "deepseek",
-        model: env.JJ_MODEL_PLAN ?? "deepseek-reasoner",
+        provider: "deepseek",
+        model: "deepseek-reasoner",
         maxTokens: 2048,
       },
     },
   };
+}
+
+/**
+ * 环境变量叠加（**永远最后一个应用**：env > config.json > 默认值）。
+ *
+ * 以前 defaultConfig 把 env 和默认值混在一起，而 resolveConfig 又把文件叠在它**后面**，
+ * 于是 config.json 反而盖过了 env —— 和注释里写的优先级相反。
+ */
+export function applyEnv(base: AppConfig, env: Record<string, string | undefined> = process.env): AppConfig {
+  const roles: Record<string, RoleConfig> = { ...base.roles };
+  const ollama = env.JJ_OLLAMA ?? base.ollama;
+
+  const setLocal = (role: string, model: string | undefined) => {
+    if (!model) return;
+    roles[role] = { ...roles[role]!, kind: "local", provider: "ollama", model, baseUrl: ollama };
+  };
+  // 共用变量：JJ_MODEL_DEFAULT 管 4 个记忆角色
+  const small = env.JJ_MODEL_DEFAULT;
+  for (const r of ["route", "extract", "salience", "conflict"]) setLocal(r, small);
+  // night 不单独设时跟随 default
+  setLocal("night", env.JJ_MODEL_NIGHT ?? small);
+  setLocal("embed", env.JJ_MODEL_EMBED);
+
+  // ollama 地址变了，所有本地角色的 baseUrl 要跟着走
+  for (const [r, c] of Object.entries(roles)) {
+    if (c.kind === "local" && c.provider === "ollama") roles[r] = { ...c, baseUrl: ollama };
+  }
+  if (env.JJ_PROVIDER_EXPRESS || env.JJ_MODEL_EXPRESS || env.JJ_BASE_EXPRESS) {
+    const ex = roles["express"]!;
+    roles["express"] = {
+      ...ex,
+      ...(env.JJ_PROVIDER_EXPRESS ? { provider: env.JJ_PROVIDER_EXPRESS as RoleConfig["provider"] } : {}),
+      ...(env.JJ_MODEL_EXPRESS ? { model: env.JJ_MODEL_EXPRESS } : {}),
+      ...(env.JJ_BASE_EXPRESS ? { baseUrl: env.JJ_BASE_EXPRESS } : {}),
+    };
+  }
+  if (env.JJ_MODEL_PLAN) {
+    roles["plan"] = { ...roles["plan"]!, model: env.JJ_MODEL_PLAN };
+  }
+  return { ...base, ollama, roles };
+}
+
+/** 兼容入口：默认值 + 环境变量 */
+export function defaultConfig(env = process.env): AppConfig {
+  return applyEnv(baseConfig(), env);
 }

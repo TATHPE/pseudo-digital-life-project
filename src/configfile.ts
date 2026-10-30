@@ -5,13 +5,21 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { atomicWriteFile } from "./fsx.ts";
-import { defaultConfig, type AppConfig } from "./config.ts";
+import { applyEnv, baseConfig, type AppConfig } from "./config.ts";
 
 export interface FileConfig {
   ollama?: string;
   express?: { provider?: string; model?: string; baseUrl?: string };
   plan?: { provider?: string; model?: string };
   budget?: { dailyUsd?: number };
+  /**
+   * 本地模型（C-4）：沿用「共享默认 + 单个例外」这个已存在的语义，
+   * 不摊成 5 个格子 —— 5 个角色 × N 个模型的下拉框没人会去调。
+   *   default → route / extract / salience / conflict（night 也跟着它，除非单设）
+   *   night   → 自传/反思（建议比 default 大一档）
+   *   embed   → 向量模型（换它必须重建索引，见 docs/22 C-2）
+   */
+  local?: { default?: string; night?: string; embed?: string };
   persona?: { name?: string };
   /** 外观偏好（头像框）——与模型配置分开放，清理接口配置时不会被意外抹掉 */
   ui?: { avatar?: string };
@@ -37,6 +45,7 @@ export function writeFileConfig(home: string, patch: FileConfig): FileConfig {
     ...cur, ...patch,
     express: { ...(cur.express ?? {}), ...(patch.express ?? {}) },
     plan: { ...(cur.plan ?? {}), ...(patch.plan ?? {}) },
+    local: { ...(cur.local ?? {}), ...(patch.local ?? {}) },
     budget: { ...(cur.budget ?? {}), ...(patch.budget ?? {}) },
     persona: { ...(cur.persona ?? {}), ...(patch.persona ?? {}) },
     ui: { ...(cur.ui ?? {}), ...(patch.ui ?? {}) },
@@ -46,13 +55,17 @@ export function writeFileConfig(home: string, patch: FileConfig): FileConfig {
   return next;
 }
 
-/** 合并：env 覆盖文件（环境变量永远赢，方便临时试验） */
-export function resolveConfig(home: string, env = process.env): AppConfig {
-  const base = defaultConfig(env);
+/**
+ * 合并优先级（**这是硬规矩**）：env > data/config.json > 内置默认值。
+ *
+ * 以前是“defaultConfig(env) 之后再把文件叠上去”，结果文件盖过了 env，
+ * 和注释写的优先级正好相反；而且本地角色根本不在文件里，所以既管不了也切不了。
+ */
+export function resolveConfig(home: string, env: Record<string, string | undefined> = process.env): AppConfig {
   const f = readFileConfig(home);
+  const roles = { ...baseConfig().roles };
+
   const ex = f.express ?? {};
-  const pl = f.plan ?? {};
-  const roles = { ...base.roles };
   if (ex.provider || ex.model || ex.baseUrl) {
     roles["express"] = {
       ...roles["express"]!,
@@ -61,6 +74,7 @@ export function resolveConfig(home: string, env = process.env): AppConfig {
       ...(ex.baseUrl ? { baseUrl: ex.baseUrl } : {}),
     };
   }
+  const pl = f.plan ?? {};
   if (pl.provider || pl.model) {
     roles["plan"] = {
       ...roles["plan"]!,
@@ -68,5 +82,34 @@ export function resolveConfig(home: string, env = process.env): AppConfig {
       ...(pl.model ? { model: pl.model } : {}),
     };
   }
-  return { ...base, ollama: f.ollama ?? base.ollama, roles };
+
+  // 本地模型：default 覆盖 4 个记忆角色；night 缺省跟随 default（与 env 语义一致）
+  const lo = f.local ?? {};
+  const small = lo.default;
+  for (const r of ["route", "extract", "salience", "conflict"]) {
+    if (small) roles[r] = { ...roles[r]!, model: small };
+  }
+  const night = lo.night ?? small;
+  if (night) roles["night"] = { ...roles["night"]!, model: night };
+  if (lo.embed) roles["embed"] = { ...roles["embed"]!, model: lo.embed };
+
+  const out: AppConfig = { ollama: f.ollama ?? "http://127.0.0.1:11434", roles };
+  // 最后并 env —— 它永远赢
+  return applyEnv(out, env);
+}
+
+/** 每个本地/云端角色的“这个值从哪来”，给 `jingjing config` 和面板用 */
+export type Source = "env" | "file" | "default";
+export function configSources(home: string, env: Record<string, string | undefined> = process.env): Record<string, Source> {
+  const f = readFileConfig(home);
+  const lo = f.local ?? {};
+  const out: Record<string, Source> = {};
+  for (const r of ["route", "extract", "salience", "conflict"]) {
+    out[r] = env.JJ_MODEL_DEFAULT ? "env" : lo.default ? "file" : "default";
+  }
+  out["night"] = env.JJ_MODEL_NIGHT || env.JJ_MODEL_DEFAULT ? "env" : lo.night || lo.default ? "file" : "default";
+  out["embed"] = env.JJ_MODEL_EMBED ? "env" : lo.embed ? "file" : "default";
+  out["express"] = env.JJ_MODEL_EXPRESS || env.JJ_PROVIDER_EXPRESS || env.JJ_BASE_EXPRESS ? "env" : f.express?.model ? "file" : "default";
+  out["plan"] = env.JJ_MODEL_PLAN ? "env" : f.plan?.model ? "file" : "default";
+  return out;
 }

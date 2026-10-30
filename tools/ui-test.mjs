@@ -163,12 +163,28 @@ check("进设置回到顶部", await js(`(() => {
   document.querySelector("#side .item[data-view=cfg]").click();
   return document.querySelector("#scroll").scrollTop;
 })()`) === 0);
-check("回对话仍贴底", await js(`(async () => {
-  document.querySelector("#side .item[data-view=chat]").click();
-  await new Promise(function (r) { requestAnimationFrame(function () { requestAnimationFrame(r); }); });
+// 切回对话的滚动契约（17 §3）：贴底离开 → 回来仍然贴底；
+// 中途离开 → 回到你离开的那个位置。这里测前半条（后半条上面已测，401 → 401）。
+// 注意：时间轴可能还在拉（fetch），所以轮询到稳定为止，只等两帧会偶发假红。
+const settle = await js(`(async () => {
   const el = document.querySelector("#scroll");
-  return el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-})()`) === true);
+  const gap = () => el.scrollHeight - el.scrollTop - el.clientHeight;
+  document.querySelector("#side .item[data-view=chat]").click();
+  await new Promise(function (r) { setTimeout(r, 400); });
+  el.scrollTop = el.scrollHeight;                       // 先真正贴底
+  await new Promise(function (r) { setTimeout(r, 200); });
+  const wasAtBottom = gap() < 80;
+  document.querySelector("#side .item[data-view=cfg]").click();
+  await new Promise(function (r) { setTimeout(r, 200); });
+  document.querySelector("#side .item[data-view=chat]").click();
+  for (let i = 0; i < 30; i++) {
+    if (gap() < 80) return { ok: true, wasAtBottom };
+    await new Promise(function (r) { setTimeout(r, 100); });
+  }
+  return { ok: false, gap: Math.round(gap()), wasAtBottom };
+})()`);
+check("回对话仍贴底（贴底离开 → 回来贴底）", settle.ok === true, JSON.stringify(settle));
+
 check("分区标题是带粗左边的标签条 + 格子有角标", await js(`(() => {
   const h = document.querySelector(".sec h3");
   const s = getComputedStyle(h);

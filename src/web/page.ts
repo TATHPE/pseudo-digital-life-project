@@ -560,6 +560,20 @@ export const PAGE = `<!doctype html>
       </div>
 
       <div class="panelbox">
+        <h2>LOCAL · 本地模型</h2>
+        <p class="hint" id="m-state">…</p>
+        <div class="two">
+          <div><label>共享默认 · route / extract / salience / conflict</label><select id="m-default"></select></div>
+          <div><label>夜间整理 · 自传与反思</label><select id="m-night"></select></div>
+        </div>
+        <div class="two">
+          <div><label>embedding · 换它必须重建索引</label><select id="m-embed"></select></div>
+          <div><label>&nbsp;</label><button id="m-save" class="primary">保存本地模型</button></div>
+        </div>
+        <p class="hint" id="m-msg"></p>
+      </div>
+
+      <div class="panelbox">
         <h2>PERSONA · 人格</h2>
         <div class="two">
           <div><label>文件</label>
@@ -651,7 +665,13 @@ function show(v) {
     // 切到面板（设置/记忆/文档/审计/搜索）时**必须回到顶部**：
     // 对话是自动贴底的，scrollTop 是个大值；带着它切过去，浏览器会把它夹到底部，
     // 表现就是"每次点进设置都在最下面"。
-    requestAnimationFrame(function () { $("#scroll").scrollTop = 0; });
+    //
+    // 必须**同步**压一次：只靠 rAF 的话，异步内容（设置页要等 /api/config、/api/models）
+    // 落地前的那一两帧能看到错位；headless 下 rAF 还可能更晚。
+    // rAF 里再压一次是为了内容撑高之后仍然在顶。
+    const sc = $("#scroll");
+    sc.scrollTop = 0;
+    requestAnimationFrame(function () { sc.scrollTop = 0; });
   }
   // 侧栏里除了几个导航项，其余都是多选一（工具 / 文档 / 记忆 / 日期）。
   // 只按 data-view 匹配会变成「点了 A，B C D 一起被框」。
@@ -1319,6 +1339,7 @@ $("#c-provider").addEventListener("change", function () {
 $("#c-base").addEventListener("input", paintEndpoint);
 
 async function loadConfig() {
+  loadModels();
   const c = await (await fetch("/api/config")).json();
   $("#c-provider").value = c.provider;
   $("#c-model").value = c.model;
@@ -1337,6 +1358,56 @@ async function loadConfig() {
   paintEndpoint();
   return c;
 }
+// ── 本地模型（C-4）：与云端接口分开管 ─────────────────────
+let MODELS = null;
+function fillModels(el, cur, installed, extraEmpty) {
+  const names = installed.slice();
+  if (cur && !names.includes(cur)) names.unshift(cur);
+  const opts = (extraEmpty ? ["<option value=''>（未配置）</option>"] : [])
+    .concat(names.map(function (n) {
+      // Ollama 的 tag 常带 :latest：bge-m3 与 bge-m3:latest 是同一个模型
+      const missing = (installed.includes(n) || installed.includes(n + ":latest")) ? "" : " · 未安装";
+      return "<option value='" + escapeHtml(n) + "'>" + escapeHtml(n) + missing + "</option>";
+    }));
+  el.innerHTML = opts.join("");
+  el.value = cur || (extraEmpty ? "" : (names[0] || ""));
+}
+async function loadModels(force) {
+  if (MODELS && !force) { paintModels(MODELS); return; }   // 进设置别每次都重新探测
+  $("#m-state").textContent = "查询本地模型…";
+  let m;
+  try { m = await (await fetch("/api/models")).json(); } catch (e) {
+    $("#m-state").textContent = "查不到本地模型（服务没起来？）"; return;
+  }
+  MODELS = m;
+  paintModels(m);
+}
+function paintModels(m) {
+  const byRole = {};
+  (m.roles || []).forEach(function (r) { byRole[r.role] = r; });
+  var envAny = (byRole["route"] && byRole["route"].source === "env") || (byRole["night"] && byRole["night"].source === "env") || (byRole["embed"] && byRole["embed"].source === "env");
+  $("#m-state").textContent = m.online
+    ? "端点 " + m.endpoint + " · 已装 " + (m.installed.length ? m.installed.join(", ") : "（无）") + (envAny ? " · 部分值被 JJ_MODEL_* 环境变量覆盖（改这里不生效）" : "")
+    : "端点 " + m.endpoint + " 连不上：" + (m.error || "") + " —— 先启动 Ollama";
+  fillModels($("#m-default"), (byRole["route"] || {}).model || "", m.installed, true);
+  fillModels($("#m-night"), (byRole["night"] || {}).model || "", m.installed, true);
+  fillModels($("#m-embed"), (byRole["embed"] || {}).model || "", m.installed, true);
+}
+$("#m-save").addEventListener("click", async function () {
+  const btn = this;
+  btn.disabled = true;
+  $("#m-msg").textContent = "保存中…";
+  try {
+    const body = { default: $("#m-default").value, night: $("#m-night").value, embed: $("#m-embed").value };
+    const r = await fetch("/api/models", { method: "PUT", headers: H, body: JSON.stringify(body) });
+    const j = await r.json();
+    $("#m-msg").textContent = j.ok ? "已保存：下次夜间整备与重启面板后生效" : ("失败：" + (j.error || r.status));
+    await loadModels(true);
+  } catch (e) {
+    $("#m-msg").textContent = "保存失败：" + e.message;
+  } finally { btn.disabled = false; }
+});
+
 async function loadPersona(file) {
   const p = await (await fetch("/api/persona")).json();
   $("#p-text").value = p.files[file] || "";

@@ -61,3 +61,33 @@ test("C-5 本地角色默认不写死模型名：缺就是缺，由 validateRout
   const ok = defaultConfig({ JJ_MODEL_DEFAULT: "qwen2.5:7b-instruct" });
   assert.equal(ok.roles["extract"]!.model, "qwen2.5:7b-instruct");
 });
+
+// ── C-4：优先级 env > config.json > 默认值，且本地模型可持久化 ─────────────
+test("C-4 优先级：config.json 写进去的模型会被 env 盖掉（env 永远赢）", async () => {
+  const { resolveConfig, writeFileConfig } = await import("../src/configfile.ts");
+  const { mkdtempSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const home = mkdtempSync(join(tmpdir(), "jj-cfg-"));
+
+  writeFileConfig(home, { local: { default: "qwen2.5:3b", night: "qwen2.5:7b", embed: "bge-m3" } });
+  const fromFile = resolveConfig(home, {});
+  assert.equal(fromFile.roles["extract"]!.model, "qwen2.5:3b", "default 管 4 个记忆角色");
+  assert.equal(fromFile.roles["conflict"]!.model, "qwen2.5:3b");
+  assert.equal(fromFile.roles["night"]!.model, "qwen2.5:7b", "night 可以单设一档");
+  assert.equal(fromFile.roles["embed"]!.model, "bge-m3");
+
+  const withEnv = resolveConfig(home, { JJ_MODEL_DEFAULT: "qwen2.5:14b" });
+  assert.equal(withEnv.roles["extract"]!.model, "qwen2.5:14b", "env 必须盖过文件");
+  assert.equal(withEnv.roles["night"]!.model, "qwen2.5:14b", "没单设 JJ_MODEL_NIGHT 时跟随 DEFAULT");
+});
+
+test("C-4 night 不单设时跟随 default（文件与 env 同一套语义）", async () => {
+  const { resolveConfig, writeFileConfig } = await import("../src/configfile.ts");
+  const { mkdtempSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const home = mkdtempSync(join(tmpdir(), "jj-cfg2-"));
+  writeFileConfig(home, { local: { default: "qwen2.5:7b" } });
+  assert.equal(resolveConfig(home, {}).roles["night"]!.model, "qwen2.5:7b");
+});

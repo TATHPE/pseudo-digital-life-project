@@ -25,7 +25,8 @@ import { startup } from "../startup.ts";
 import { applyRelease, hasRelease, readStateSafe } from "../deploy/slot.ts";
 import { bootAttempt, markHealthy } from "../deploy/watchdog.ts";
 import { createStore as createSecretStore } from "../auth.ts";
-import { resolveConfig, readFileConfig, writeFileConfig } from "../configfile.ts";
+import { resolveConfig, configSources, readFileConfig, writeFileConfig } from "../configfile.ts";
+import { probeOllama, probeChat, probeEmbed, isInstalled } from "../ollama.ts";
 
 const HOME = process.env.JJ_HOME ?? join(process.cwd(), "data");
 const dbFile = join(HOME, "memory.db");
@@ -320,10 +321,82 @@ async function main(): Promise<void> {
       return;
     }
     case "config": {
-      const cfg = defaultConfig();
+      // 显示**生效值**与**来源**：以前这里打的是 defaultConfig()（不读 config.json），
+      // 于是一个叫 config 的命令显示的不是配置 —— “看着有其实没有”的老毛病。
+      const cfg = resolveConfig(HOME);
+      const src = configSources(HOME);
       const problems = validateRouter(cfg.roles as any);
-      console.log(JSON.stringify({ ollama: cfg.ollama, roles: cfg.roles, problems, ok: problems.length === 0 }, null, 2));
+      const rows = Object.entries(cfg.roles).map(([role, c]) => ({
+        role, kind: c.kind, provider: c.provider, model: c.model || null, source: src[role] ?? "default",
+      }));
+      console.log(JSON.stringify({ ollama: cfg.ollama, roles: rows, problems, ok: problems.length === 0 }, null, 2));
+      if (problems.length) {
+        console.error("\n⚠ 上面这些不是“模型坏了”，是“还没配”。装好之后：");
+        console.error("   ollama pull qwen2.5:7b-instruct");
+        console.error("   node src/cli/jingjing.ts models use qwen2.5:7b-instruct");
+      }
       process.exitCode = problems.length ? 1 : 0;
+      return;
+    }
+    case "models": {
+      const op = rest[0] ?? "list";
+      const cfg = resolveConfig(HOME);
+      const src = configSources(HOME);
+      const probe = await probeOllama(cfg.ollama);
+
+      if (op === "list" || op === "ls") {
+        const rows = Object.entries(cfg.roles).map(([role, c]) => ({
+          role, model: c.model || null, source: src[role] ?? "default",
+          installed: c.kind === "local" && c.model ? isInstalled(probe.names, c.model) : null,
+        }));
+        console.log(JSON.stringify({
+          endpoint: cfg.ollama, online: probe.online, error: probe.error ?? null,
+          installed: probe.names, roles: rows,
+        }, null, 2));
+        if (!probe.online) console.error("⚠ Ollama 没在跑（" + cfg.ollama + "）：拉模型/查已装都要它。");
+        process.exitCode = probe.online ? 0 : 1;
+        return;
+      }
+
+      if (op === "use") {
+        const name = rest[1];
+        const roleArg = rest.includes("--role") ? rest[rest.indexOf("--role") + 1] : undefined;
+        if (!name) { console.error("用法: jingjing models use <模型名> [--role night|embed|default]"); process.exitCode = 2; return; }
+        const role = roleArg ?? "default";
+        if (!["default", "night", "embed"].includes(role)) {
+          console.error("E_BAD_ROLE: --role 只收 default / night / embed（共享默认 + 单个例外，不是每角色一个）");
+          process.exitCode = 2; return;
+        }
+        if (probe.online && !isInstalled(probe.names, name)) {
+          console.error(`⚠ Ollama 里没有 ${name}。先 ollama pull ${name}（现在有：${probe.names.join(", ") || "（空）"}）`);
+          process.exitCode = 1; return;
+        }
+        writeFileConfig(HOME, { local: { [role]: name } });
+        const after = resolveConfig(HOME);
+        console.log(JSON.stringify({
+          ok: true, wrote: `config.json local.${role} = ${name}`,
+          now: Object.fromEntries(Object.entries(after.roles).map(([r, c]) => [r, c.model || null])),
+          note: role === "embed" ? "换 embedding 必须重建索引（docs/22 C-2），否则新旧向量不可比" : undefined,
+        }, null, 2));
+        return;
+      }
+
+      if (op === "doctor") {
+        const out: Array<{ role: string; model: string | null; ok: boolean; ms?: number; detail?: string }> = [];
+        for (const [role, c] of Object.entries(cfg.roles)) {
+          if (c.kind !== "local" || c.provider !== "ollama") continue;
+          if (!c.model) { out.push({ role, model: null, ok: false, detail: "未配置模型" }); continue; }
+          const t0 = Date.now();
+          const r = role === "embed" ? await probeEmbed(cfg.ollama, c.model) : await probeChat(cfg.ollama, c.model);
+          out.push({ role, model: c.model, ok: r.ok, ms: Date.now() - t0, ...(r.detail ? { detail: r.detail } : {}) });
+        }
+        console.log(JSON.stringify({ endpoint: cfg.ollama, online: probe.online, results: out }, null, 2));
+        process.exitCode = out.every((o) => o.ok) ? 0 : 1;
+        return;
+      }
+
+      console.error("用法: jingjing models [list | use <名> [--role X] | doctor]");
+      process.exitCode = 2;
       return;
     }
     case "auth": {
@@ -736,3 +809,4 @@ ${r.pass}/${r.total} 拦截/放行符合预期`);
 }
 
 main().catch((e) => { console.error(e); process.exitCode = 1; });
+
