@@ -31,6 +31,10 @@ const CONVERTIBLE = new Set([
 
 const MAX_BYTES = 32 * 1024 * 1024;
 
+/** 支持的扩展名（上传接口与 CLI 共用这一份，别抄两遍） */
+export const SUPPORTED_EXTS: ReadonlySet<string> = new Set([...PASSTHROUGH, ...CONVERTIBLE]);
+export const MAX_INGEST_BYTES = MAX_BYTES;
+
 export const sourcesDir = (home: string) => join(home, "sources");
 export const markdownDir = (home: string) => join(home, "markdown");
 

@@ -777,7 +777,11 @@ test("没 key 时说真话：本地兜底要有 notice，banner 不能写「仅�
   assert.ok(PAGE.includes("本地那个小模型在硬撑"), "现在的说法：本地小模型兜底");
   // 两个「路径」必须能区分：一个是云端地址，一个是本地文件
   assert.ok(PAGE.includes("接入地址 · 云端 API 的 baseUrl"), "设置里的 baseUrl 要说清是云端地址");
-  assert.ok(PAGE.includes("加文档 · 本地文件路径（和云端无关）"), "加文档要说清是本地文件");
+  assert.ok(PAGE.includes("加文档 · 只在本机读取，跟云端无关"), "加文档要说清是本地文件");
+  // 隐私选项与「摄入」按钮不许并列：一个是数据属性，一个是动作
+  const shareLine = PAGE.split(String.fromCharCode(10)).find((l) => l.includes("允许进云端"));
+  assert.ok(shareLine !== undefined, "应有「允许进云端」这一行");
+  assert.ok(!shareLine!.includes("dlg-go"), "「摄入」不能和「允许进云端」挤在同一行");
 });
 
 // ── C-1：面板也能「清除密钥」（key:null，不是空串）───────────────
@@ -801,5 +805,46 @@ test("配置：key:null 清除密钥 → hasKey 变 false，且不能靠空串�
     const after = (await (await fetch(`${base}/api/config`)).json()) as any;
     assert.equal(after.hasKey, false, "清除之后 GET 必须说没有");
     assert.equal(after.keyFingerprint, null);
+  } finally { srv.close(); }
+});
+
+// ── 摄入上传：面板拿不到绝对路径，只能把字节传上来 ────────────────
+test("上传：文件名只能是一个名字（拒路径/..），扩展名白名单，落进 sources/", async () => {
+  const { srv, base, dir } = await start();
+  try {
+    const H = { "x-jj": "1", "content-type": "application/octet-stream" };
+    const up = (name: string, body: string) =>
+      fetch(`${base}/api/ingest/upload?name=${encodeURIComponent(name)}`, { method: "POST", headers: H, body });
+
+    // 拒绝：路径穿越 / 子目录 / 不支持的扩展名 / 空
+    for (const [name, code] of [["../evil.md", "E_BAD_NAME"], ["a/b.md", "E_BAD_NAME"], ["x.exe", "E_UNSUPPORTED"]] as const) {
+      const j = await (await up(name, "x")).json() as any;
+      assert.equal(j.error, code, `${name} 应被拒`);
+    }
+    assert.equal(((await (await up("empty.md", "")).json()) as any).error, "E_EMPTY");
+
+    // 正常：落到 sources/ 下，路径回给前端
+    const j = await (await up("上传测试.md", "# 标题\n\n正文一行。\n")).json() as any;
+    assert.equal(j.ok, true);
+    assert.equal(j.path, "sources/上传测试.md");
+    assert.ok(readFileSync(join(dir, "sources", "上传测试.md"), "utf8").includes("正文一行"));
+
+    // 传完就能走同一条 ingest
+    const ing = await (await fetch(`${base}/api/ingest`, {
+      method: "POST", headers: { "content-type": "application/json", "x-jj": "1" },
+      body: JSON.stringify({ path: j.path }),
+    })).json() as any;
+    assert.equal(ing.ok, true);
+    assert.ok(ing.chunks >= 1);
+  } finally { srv.close(); }
+});
+
+test("上传：没有 x-jj 头就 403（跨站不能往 sources/ 里塞文件）", async () => {
+  const { srv, base } = await start();
+  try {
+    const r = await fetch(`${base}/api/ingest/upload?name=a.md`, {
+      method: "POST", headers: { "content-type": "application/octet-stream" }, body: "x",
+    });
+    assert.equal(r.status, 403);
   } finally { srv.close(); }
 });

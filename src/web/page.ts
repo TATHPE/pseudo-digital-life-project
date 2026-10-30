@@ -364,6 +364,13 @@ export const PAGE = `<!doctype html>
 
   /* ── 面板内摄入（P1 #6）────────────────────────────── */
   #dlg-path.bad { border-color:#d9534f; box-shadow:inset 0 0 0 1px #d9534f; }
+  .ingest #dlg-cands, .ingest #dlg-empty { margin:6px 0 4px; }
+  .ingest #dlg-empty code { color:var(--ink-dim); font:11px/1.6 var(--mono); word-break:break-all; }
+  .ingest .dlg-share { display:flex; gap:6px; align-items:flex-start; margin:8px 0 0;
+                       font:11px/1.5 var(--mono); color:var(--ink-dim); cursor:pointer; }
+  .ingest .dlg-share input { margin-top:2px; }
+  .ingest .acts { margin-top:8px; }
+  .ingest .acts button { width:100%; }
   .ingest { margin-top:6px; display:flex; flex-direction:column; gap:6px; }
   .ilab { font:9px/1.2 var(--mono); letter-spacing:.1em; color:var(--ink-dim); font-weight:700; margin:0; }
   .ingest select { font:11px/1.3 var(--mono); padding:6px 8px; }
@@ -453,16 +460,30 @@ export const PAGE = `<!doctype html>
   <!-- 内容在前、参考在后：TOOLS 有 16 项，放在中间会把 DOCS / MEMORY 挤到折叠线以下 -->
   <div class="sec" data-sec="docs"><h3><button type="button" data-tog="docs">DOCS <span class="n" id="doccount"></span></button></h3><div id="doclist"></div>
     <div class="ingest">
-      <label class="ilab">加文档 · 本地文件路径（和云端无关）</label>
-      <select id="dlg-pick" class="searchbox"></select>
-      <input id="dlg-path" class="searchbox" placeholder="data/ 里的相对路径，如 sources/我的笔记.pdf" autocomplete="off">
+      <label class="ilab">加文档 · 只在本机读取，跟云端无关</label>
+      <!-- 候选优先：sources/ 里有文件就直接选，没有才提示放哪 -->
+      <div id="dlg-cands" hidden>
+        <select id="dlg-pick" class="searchbox"></select>
+      </div>
+      <div id="dlg-empty" class="hint">
+        还没有待摄入的文件。放这里：<br><code id="dlg-dir">data/sources</code>
+      </div>
+      <div class="rowmini">
+        <button type="button" id="dlg-file-btn">选文件…</button>
+        <input type="file" id="dlg-file" hidden multiple accept=".md,.markdown,.txt,.pdf,.docx,.pptx,.xlsx,.html,.htm,.epub,.csv,.json,.xml,.rtf,.ipynb">
+        <span class="hint">或手动填路径 ↓</span>
+      </div>
+      <input id="dlg-path" class="searchbox" placeholder="data/ 里的相对路径，如 sources/笔记.md" autocomplete="off">
       <!-- 提示必须紧贴它抱怨的那个输入框：放在「允许进云端」下面会让人以为
            是复选框有问题（用户实测：“报错为什么在允许进入云端下面”） -->
       <span id="dlg-msg" class="hint"></span>
-      <div class="rowmini">
-        <label title="勾上：这些文档的片段会随简报发给云端模型。不勾：只在本机检索，模型读不到原文"><input type="checkbox" id="dlg-share"> 允许进云端</label>
-        <button id="dlg-go">摄入</button>
-      </div>
+
+      <!-- 隐私选项和按钮**不能并列**：一个是“这条数据能去哪”的属性，
+           一个是“现在开始做”的动作，摆在同一行会被读成同一类东西。 -->
+      <label class="dlg-share" title="勾上：这篇文档的片段会随简报发给云端模型。不勾：只在本机检索，模型永远读不到原文，只报个数">
+        <input type="checkbox" id="dlg-share"> 允许进云端（片段会发给云端模型）
+      </label>
+      <div class="acts"><button id="dlg-go" class="primary">摄入</button></div>
     </div></div>
   <div class="sec" data-sec="mem"><h3><button type="button" data-tog="mem">MEMORY <span class="n" id="memcount"></span></button></h3><div id="memlist"></div></div>
   <div class="sec" data-sec="actions"><h3><button type="button" data-tog="actions">ACTIONS <span class="n" id="actcount"></span></button></h3><div id="auditlist"></div></div>
@@ -807,10 +828,14 @@ async function ingestCandidates() {
   try { list = await (await fetch("/api/ingest/candidates")).json(); } catch (e) { return; }
   var sel = $("#dlg-pick");
   if (!sel) return;
-  sel.innerHTML = (list && list.length)
-    ? "<option value=''>data/sources 里还有 " + list.length + " 个未摄入的文件…</option>" +
+  var has = !!(list && list.length);
+  $("#dlg-cands").hidden = !has;          // 候选优先：有就直接选，没有才提示放哪
+  $("#dlg-empty").hidden = has;
+  if (window.SOURCES_DIR) { var d = $("#dlg-dir"); if (d) d.textContent = window.SOURCES_DIR; }
+  sel.innerHTML = has
+    ? "<option value=''>data/sources 里待摄入的 " + list.length + " 个文件…</option>" +
       list.map(function (x) { return "<option value='" + escapeHtml(x.path) + "'>" + escapeHtml(x.path) + "</option>"; }).join("")
-    : "<option value=''>data/sources 里没有待摄入的文件（放到 " + (window.SOURCES_DIR || "data/sources") + "）</option>";
+    : "";
 }
 async function docs() {
   ingestCandidates();
@@ -819,9 +844,8 @@ async function docs() {
   const box = $("#doclist");
   var dc = $("#doccount"); if (dc) dc.textContent = (list ? list.length : 0) + " 篇";
   if (!list || !list.length) {
-    box.innerHTML = "<div class='hint' style='padding:4px 2px'>还没有文档。两条路：<br>" +
-      "① 把文件放进 " + escapeHtml(window.SOURCES_DIR || "data/sources") + " 再回这里选<br>" +
-      "② 终端：jingjing ingest &lt;路径&gt;</div>";
+    // 路径和“怎么放”由下面的摄入区负责说，这里只报事实（否则同一句话在侧栏里重复三遍）
+    box.innerHTML = "<div class='hint' style='padding:4px 2px'>还没有文档。在下面加一篇。</div>";
     return;
   }
   box.innerHTML = list.map((d) =>
@@ -921,6 +945,26 @@ $("#dlg-go").onclick = async () => {
     msg.textContent = j.error + (j.hint ? " · " + j.hint : "");
   }
 };
+$("#dlg-file-btn").onclick = () => $("#dlg-file").click();
+$("#dlg-file").addEventListener("change", async (e) => {
+  const files = [...(e.target.files || [])];
+  e.target.value = "";
+  if (!files.length) return;
+  const msg = $("#dlg-msg");
+  for (const f of files) {
+    msg.className = "hint";
+    msg.textContent = "上传 " + f.name + "…";
+    let up;
+    try {
+      up = await (await fetch("/api/ingest/upload?name=" + encodeURIComponent(f.name), {
+        method: "POST", headers: { "x-jj": "1", "content-type": "application/octet-stream" }, body: f,
+      })).json();
+    } catch (err) { msg.className = "err"; msg.textContent = "上传失败：" + err.message; return; }
+    if (!up.ok) { msg.className = "err"; msg.textContent = up.error + (up.hint ? " · " + up.hint : ""); return; }
+    $("#dlg-path").value = up.path;
+  }
+  $("#dlg-go").click();                     // 传完直接摄入（路径已填好）
+});
 $("#dlg-pick").addEventListener("change", (e) => {
   if (e.target.value) $("#dlg-path").value = e.target.value;
 });

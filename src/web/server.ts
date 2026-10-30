@@ -7,7 +7,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { PAGE } from "./page.ts";
 import { groupTimeline, gapLabel, type Msg } from "./timeline.ts";
 import { appendEvent, newEventId, readEvents } from "../journal.ts";
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { search, searchDocs } from "../retrieve.ts";
 import { buildBrief } from "../brief.ts";
 import { loadPersona } from "../persona.ts";
@@ -22,6 +22,7 @@ import { listDocs, forgetDoc, setDocSensitivity, ingestPath, collectFiles } from
 import { bigramText } from "../text.ts";
 import { atomicWriteFile } from "../fsx.ts";
 import { safePath } from "../verbs.ts";
+import { SUPPORTED_EXTS, MAX_INGEST_BYTES } from "../ingest.ts";
 import { createTransport, routerFrom } from "../transport.ts";
 import { spentToday } from "../budget.ts";
 import { recallForBrief, omissionNote } from "../recall.ts";
@@ -35,7 +36,7 @@ import { runAgent, type ChatFn } from "../agent.ts";
 import { renderMarkdown, esc } from "../md.ts";
 import { loadState, advance, describe } from "../state.ts";
 import type { Outage } from "../types.ts";
-import { dirname, join, relative } from "node:path";
+import { dirname, extname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 const joinDir = (a: string, b: string) => join(a, b);
 const posixPath = (p: string) => p.split("\\").join("/");
@@ -66,6 +67,20 @@ export interface WebDeps {
 
 const readBody = (req: IncomingMessage): Promise<string> =>
   new Promise((res) => { const c: Buffer[] = []; req.on("data", (d) => c.push(d as Buffer)); req.on("end", () => res(Buffer.concat(c).toString("utf8"))); });
+
+/** 收原始字节（上传用），带大小上限：超了立刻断开，不把内存吃干净 */
+const readRawBody = (req: IncomingMessage, cap: number): Promise<Buffer> =>
+  new Promise((res, rej) => {
+    const c: Buffer[] = [];
+    let n = 0;
+    req.on("data", (d: Buffer) => {
+      n += d.length;
+      if (n > cap) { rej(new Error("E_TOO_BIG")); req.destroy(); return; }
+      c.push(d);
+    });
+    req.on("end", () => res(Buffer.concat(c)));
+    req.on("error", () => rej(new Error("E_UPLOAD")));
+  });
 
 /**
  * 编码闸（本项目的老毛病：GBK 会静默污染记忆，见 README）
@@ -469,6 +484,36 @@ export function createWebServer(deps: WebDeps) {
           .filter((rel) => !done.has(rel))
           .slice(0, 50)
           .map((rel) => ({ rel, path: "sources/" + rel })));
+        return;
+      }
+      // 上传：面板拿不到你电脑上的绝对路径（浏览器不给），所以让浏览器把字节传上来，
+      // 服务端落到约定的 sources/ 再走同一条 ingest。仍然要 writeGuarded + 白名单扩展名 + 大小上限。
+      if (req.method === "POST" && url.pathname === "/api/ingest/upload") {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
+        const raw = String(url.searchParams.get("name") ?? "");
+        // 只收"一个文件名"：不允许路径分隔符、不允许 ..、不允许控制字符
+        const name = raw.trim();
+        if (!name || name.includes("/") || name.includes("\\") || name.includes("..") ||
+            [...name].some((c) => c.codePointAt(0)! < 32) || name.length > 160) {
+          json(res, 400, { error: "E_BAD_NAME", hint: "只要文件名，不要路径" }); return;
+        }
+        const ext = extname(name).toLowerCase();
+        if (!SUPPORTED_EXTS.has(ext)) {
+          json(res, 400, { error: "E_UNSUPPORTED", hint: "支持：" + [...SUPPORTED_EXTS].join(" ") }); return;
+        }
+        let buf: Buffer;
+        try { buf = await readRawBody(req, MAX_INGEST_BYTES); }
+        catch (e) {
+          const code = String((e as Error).message || "E_UPLOAD");
+          json(res, code === "E_TOO_BIG" ? 413 : 400, { error: code, hint: "上限 " + Math.round(MAX_INGEST_BYTES / 1048576) + " MB" });
+          return;
+        }
+        if (!buf.length) { json(res, 400, { error: "E_EMPTY" }); return; }
+        const dir = joinDir(deps.home, "sources");
+        mkdirSync(dir, { recursive: true });
+        const abs = safePath(deps.home, "sources/" + name, false);
+        writeFileSync(abs, buf);
+        json(res, 200, { ok: true, path: "sources/" + name, bytes: buf.length });
         return;
       }
       if (req.method === "POST" && url.pathname === "/api/ingest") {
