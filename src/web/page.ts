@@ -634,6 +634,7 @@ export const PAGE = `<!doctype html>
   </div></form>
 </main>
 <script>
+window.SOURCES_DIR = null;   // 服务端会把它替换成 data/sources 的绝对路径（点“摄入”的人才知道文件该放哪）
 const $ = (s) => document.querySelector(s);
 const NL2 = String.fromCharCode(10, 10);
 // 标签页标题：待确认闪烁时也要闪回这个名字
@@ -806,7 +807,7 @@ async function ingestCandidates() {
   sel.innerHTML = (list && list.length)
     ? "<option value=''>data/sources 里还有 " + list.length + " 个未摄入的文件…</option>" +
       list.map(function (x) { return "<option value='" + escapeHtml(x.path) + "'>" + escapeHtml(x.path) + "</option>"; }).join("")
-    : "<option value=''>data/sources 里没有待摄入的文件</option>";
+    : "<option value=''>data/sources 里没有待摄入的文件（放到 " + (window.SOURCES_DIR || "data/sources") + "）</option>";
 }
 async function docs() {
   ingestCandidates();
@@ -815,7 +816,9 @@ async function docs() {
   const box = $("#doclist");
   var dc = $("#doccount"); if (dc) dc.textContent = (list ? list.length : 0) + " 篇";
   if (!list || !list.length) {
-    box.innerHTML = "<div class='hint' style='padding:4px 2px'>还没有文档。终端里：<br>jingjing ingest data/sources</div>";
+    box.innerHTML = "<div class='hint' style='padding:4px 2px'>还没有文档。两条路：<br>" +
+      "① 把文件放进 " + escapeHtml(window.SOURCES_DIR || "data/sources") + " 再回这里选<br>" +
+      "② 终端：jingjing ingest &lt;路径&gt;</div>";
     return;
   }
   box.innerHTML = list.map((d) =>
@@ -887,7 +890,14 @@ $("#mv-save").onclick = async () => {
 $("#dlg-go").onclick = async () => {
   const p = $("#dlg-path").value.trim();
   const msg = $("#dlg-msg");
-  if (!p) { msg.className = "err"; msg.textContent = "先填路径"; return; }
+  if (!p) {
+    msg.className = "err";
+    const n = $("#dlg-pick") ? $("#dlg-pick").options.length - 1 : 0;
+    msg.textContent = n > 0
+      ? "先从上面的下拉里选一个文件（有 " + n + " 个待摄入）"
+      : "还没有可摄入的文件：把文件放进 " + (window.SOURCES_DIR || "data/sources") + " 再回来，或直接跑 jingjing ingest <路径>（.md/.txt 不需要 Python）";
+    return;
+  }
   msg.className = "hint"; msg.textContent = "摄入中…（转换 + 分块 + 向量）";
   const j = await (await fetch("/api/ingest", {
     method: "POST", headers: H,

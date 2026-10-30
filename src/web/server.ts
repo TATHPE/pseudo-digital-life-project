@@ -250,7 +250,14 @@ export function createWebServer(deps: WebDeps) {
       if ((req.method === "GET" || req.method === "HEAD") && url.pathname === "/") {
         // 面板会被频繁改样式：禁止缓存，避免"我改了但你还看旧页面"
         res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
-        res.end(req.method === "HEAD" ? undefined : PAGE);
+        // 把 sources/ 的**绝对路径**注入页面：用户点了"摄入"却不知道文件该放哪，
+        // 只说 "data/sources" 对 Windows 用户没有意义（那是相对仓库根说的）。
+        const sourcesDir = joinDir(deps.home, "sources");
+        const html = PAGE.replace(
+          "window.SOURCES_DIR = null;",
+          "window.SOURCES_DIR = " + JSON.stringify(sourcesDir) + ";",
+        );
+        res.end(req.method === "HEAD" ? undefined : html);
         return;
       }
       if ((req.method === "GET" || req.method === "HEAD") && url.pathname === "/manifest.webmanifest") {
