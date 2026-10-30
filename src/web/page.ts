@@ -363,6 +363,7 @@ export const PAGE = `<!doctype html>
   .arow .ms { color:var(--dim); }
 
   /* ── 面板内摄入（P1 #6）────────────────────────────── */
+  #dlg-path.bad { border-color:#d9534f; box-shadow:inset 0 0 0 1px #d9534f; }
   .ingest { margin-top:6px; display:flex; flex-direction:column; gap:6px; }
   .ilab { font:9px/1.2 var(--mono); letter-spacing:.1em; color:var(--ink-dim); font-weight:700; margin:0; }
   .ingest select { font:11px/1.3 var(--mono); padding:6px 8px; }
@@ -455,11 +456,13 @@ export const PAGE = `<!doctype html>
       <label class="ilab">加文档 · 本地文件路径（和云端无关）</label>
       <select id="dlg-pick" class="searchbox"></select>
       <input id="dlg-path" class="searchbox" placeholder="data/ 里的相对路径，如 sources/我的笔记.pdf" autocomplete="off">
+      <!-- 提示必须紧贴它抱怨的那个输入框：放在「允许进云端」下面会让人以为
+           是复选框有问题（用户实测：“报错为什么在允许进入云端下面”） -->
+      <span id="dlg-msg" class="hint"></span>
       <div class="rowmini">
         <label title="勾上：这些文档的片段会随简报发给云端模型。不勾：只在本机检索，模型读不到原文"><input type="checkbox" id="dlg-share"> 允许进云端</label>
         <button id="dlg-go">摄入</button>
       </div>
-      <span id="dlg-msg" class="hint"></span>
     </div></div>
   <div class="sec" data-sec="mem"><h3><button type="button" data-tog="mem">MEMORY <span class="n" id="memcount"></span></button></h3><div id="memlist"></div></div>
   <div class="sec" data-sec="actions"><h3><button type="button" data-tog="actions">ACTIONS <span class="n" id="actcount"></span></button></h3><div id="auditlist"></div></div>
@@ -890,14 +893,19 @@ $("#mv-save").onclick = async () => {
 $("#dlg-go").onclick = async () => {
   const p = $("#dlg-path").value.trim();
   const msg = $("#dlg-msg");
+  const markBad = (on) => { const el = $("#dlg-path"); if (el) el.classList.toggle("bad", on); };
   if (!p) {
+    markBad(true);
     msg.className = "err";
     const n = $("#dlg-pick") ? $("#dlg-pick").options.length - 1 : 0;
+    // 侧栏很窄：长句会挤成四行，而且和上面空状态的说明重复。
+    // 这里只说"该做什么"，路径已经在上面写清了。
     msg.textContent = n > 0
-      ? "先从上面的下拉里选一个文件（有 " + n + " 个待摄入）"
-      : "还没有可摄入的文件：把文件放进 " + (window.SOURCES_DIR || "data/sources") + " 再回来，或直接跑 jingjing ingest <路径>（.md/.txt 不需要 Python）";
+      ? "先从上面的下拉里选一个（有 " + n + " 个待摄入）"
+      : "还没有可摄入的文件 —— 见上面的两条路";
     return;
   }
+  markBad(false);
   msg.className = "hint"; msg.textContent = "摄入中…（转换 + 分块 + 向量）";
   const j = await (await fetch("/api/ingest", {
     method: "POST", headers: H,
@@ -915,6 +923,10 @@ $("#dlg-go").onclick = async () => {
 };
 $("#dlg-pick").addEventListener("change", (e) => {
   if (e.target.value) $("#dlg-path").value = e.target.value;
+});
+$("#dlg-path").addEventListener("input", () => {
+  $("#dlg-path").classList.remove("bad");
+  const m = $("#dlg-msg"); if (m && m.className === "err") { m.className = "hint"; m.textContent = ""; }
 });
 $("#dlg-path").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); $("#dlg-go").click(); } });
 
