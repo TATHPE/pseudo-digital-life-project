@@ -26,7 +26,8 @@ import { applyRelease, hasRelease, readStateSafe } from "../deploy/slot.ts";
 import { bootAttempt, markHealthy } from "../deploy/watchdog.ts";
 import { createStore as createSecretStore } from "../auth.ts";
 import { resolveConfig, configSources, readFileConfig, writeFileConfig } from "../configfile.ts";
-import { probeOllama, probeChat, probeEmbed, isInstalled } from "../ollama.ts";
+import { probeChat, probeEmbed, isInstalled } from "../ollama.ts";
+import { preflight, missingFrom } from "../preflight.ts";
 import { indexState, ensureIndexModel } from "../embedindex.ts";
 import { reembed as reembedBuild } from "../reembed.ts";
 
@@ -227,6 +228,9 @@ async function main(): Promise<void> {
           ensureIndexModel(d.db, cur);      // 空库直接盖戳，别让新装用户看到假 stale
         }
       } catch { /* 记录失败不影响启动 */ }
+      // 启动时**火一下**端点探测（不等结果）：这样 /health 在几秒内就能说真话，
+      // 而探针本身不必去敲端口（否则 healthcheck 会被 3 s 超时拖长）。
+      void preflight(resolveConfig(HOME).ollama).catch(() => {});
       const store = createSecretStore(join(HOME, "secrets"));
       const keys: Record<string, string> = {};
       for (const p of ["deepseek", "anthropic", "openai"] as Provider[]) {
@@ -350,7 +354,7 @@ async function main(): Promise<void> {
       const op = rest[0] ?? "list";
       const cfg = resolveConfig(HOME);
       const src = configSources(HOME);
-      const probe = await probeOllama(cfg.ollama);
+      const probe = await preflight(cfg.ollama);       // C-3：统一前置检查（5 分钟缓存）
 
       if (op === "list" || op === "ls") {
         const rows = Object.entries(cfg.roles).map(([role, c]) => ({
@@ -375,7 +379,7 @@ async function main(): Promise<void> {
           console.error("E_BAD_ROLE: --role 只收 default / night / embed（共享默认 + 单个例外，不是每角色一个）");
           process.exitCode = 2; return;
         }
-        if (probe.online && !isInstalled(probe.names, name)) {
+        if (probe.online && missingFrom(probe, [name]).length) {
           console.error(`⚠ Ollama 里没有 ${name}。先 ollama pull ${name}（现在有：${probe.names.join(", ") || "（空）"}）`);
           process.exitCode = 1; return;
         }

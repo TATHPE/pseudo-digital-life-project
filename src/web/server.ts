@@ -14,7 +14,8 @@ import { loadPersona } from "../persona.ts";
 import { expenseLine } from "./state.ts";
 import { loadPersonaText, savePersonaFile, PERSONA_FILES, type PersonaFile } from "../persona.ts";
 import { writeFileConfig, readFileConfig, resolveConfig, configSources } from "../configfile.ts";
-import { probeOllama, isInstalled } from "../ollama.ts";
+import { isInstalled } from "../ollama.ts";
+import { preflight, lastPreflight } from "../preflight.ts";
 import { indexState } from "../embedindex.ts";
 import { AVATAR_FRAMES, DEFAULT_AVATAR, isAvatarFrame } from "./avatar.ts";
 import { getPending, listPending, updatePending } from "../confirm.ts";
@@ -372,6 +373,15 @@ export function createWebServer(deps: WebDeps) {
         try { if (meta(deps.db, "nightly_skipped")) degraded.push("nightly-skipped"); } catch { /* ignore */ }
         // 索引身份（C-2）：换了 embedding 模型却没重建 → 召回不可信，必须让探针看得见
         try {
+          const cfgNow0 = deps.getConfig();
+          const localRoles0 = Object.values(cfgNow0.roles).filter((r) => String((r as { kind?: string }).kind) === "local");
+          if (localRoles0.length) {
+            // 只读缓存，不在这里探头（探针不该拉长探针）
+            const st = lastPreflight(cfgNow0.ollama);
+            if (st && !st.online) degraded.push("ollama-unreachable");
+          }
+        } catch { /* ignore */ }
+        try {
           const cfgNow = deps.getConfig();
           const cur = cfgNow.roles["embed"] ? `${cfgNow.roles["embed"]!.provider}:${cfgNow.roles["embed"]!.model}` : null;
           const ix = indexState(deps.db, cur);
@@ -632,7 +642,7 @@ export function createWebServer(deps: WebDeps) {
       if (req.method === "GET" && url.pathname === "/api/models") {
         const cfg = deps.getConfig();
         const src = configSources(deps.home);
-        const probe = await probeOllama(cfg.ollama);
+        const probe = await preflight(cfg.ollama);        // C-3：统一前置检查（5 分钟按端点缓存）
         json(res, 200, {
           endpoint: cfg.ollama,
           online: probe.online,

@@ -16,6 +16,7 @@ import { createToolRegistry } from "../tools.ts";
 import { makeToolExtractor, NIGHT_TOOLS, type ToolTrace } from "../nightagent.ts";
 import { loadPolicy } from "../policy.ts";
 import { createStore, type Provider } from "../auth.ts";
+import { preflight, describeSkip } from "../preflight.ts";
 
 export interface NightOptions {
   home: string;
@@ -26,28 +27,6 @@ export interface NightOptions {
   now?: Date;
 }
 
-/**
- * 检查角色表里那些本地角色，模型到底装没装（问一次 Ollama 的 /api/tags）。
- * 只检查 kind=local 的；云端角色不做网络探测（也不该在夜间流程里出网）。
- */
-async function missingLocalModels(roles: Record<string, { kind: string; provider: string; model: string }>): Promise<string[]> {
-  const local = Object.values(roles).filter((r) => r.kind === "local" && r.provider === "ollama");
-  const unset = local.filter((r) => !r.model).length;
-  const wanted = [...new Set(local.map((r) => r.model).filter(Boolean))];
-  // 没配模型 ≠ 没装模型：以前默认值指向已删的 qwen2.5:1.5b-instruct，报错会把人引错（C-5）
-  const unsetNote = unset ? [`（未配置本地模型：设 JJ_MODEL_DEFAULT，或用 jingjing models use 写进 config.json）`] : [];
-  if (!wanted.length) return unsetNote;
-  let have: string[] = [];
-  try {
-    const r = await fetch("http://127.0.0.1:11434/api/tags", { signal: AbortSignal.timeout(3000) });
-    const j = await r.json() as { models?: Array<{ name: string }> };
-    have = (j.models ?? []).map((m) => m.name);
-  } catch {
-    return [...unsetNote, "（Ollama 没在跑：http://127.0.0.1:11434 连不上）"];
-  }
-  return [...unsetNote, ...wanted.filter((m) => !have.includes(m) && !have.includes(m + ":latest"))];
-}
-
 export async function runNightCli(opts: NightOptions): Promise<number> {
   const now = opts.now ?? new Date();
   const cfg = resolveConfig(opts.home);
@@ -55,8 +34,13 @@ export async function runNightCli(opts: NightOptions): Promise<number> {
   // 2026-10-28 删掉了 1.5B（它调不动工具）。缺模型是**降级**不是失败（E-6）：
   //   · 能做的部分照做：衰减补算 + advance({night:true})（energy 的唯一恢复点就在这）
   //   · 不能做的部分（抽取/冲突消解/自传）跳过，游标不动，/health 报 nightly-skipped
-  const missing = await missingLocalModels(cfg.roles);
-  const skipReason = missing.length ? `缺本地模型：${missing.join(", ")}` : undefined;
+  // 前置检查统一走 preflight（C-3）：5 分钟按端点缓存、不可达≠失败
+  const localRoles = Object.entries(cfg.roles)
+    .filter(([role, r]) => role !== "embed" && r.kind === "local" && r.provider === "ollama")
+    .map(([role, r]) => ({ role, model: r.model }));
+  const pf = await preflight(cfg.ollama);
+  const why = describeSkip(pf, localRoles);
+  const skipReason = why ?? undefined;
 
   const d = openDb(opts.dbFile);
   // 降级时**不许**建 transport：routerFrom 会对空 model 报 E_CONFIG（这是对的，
