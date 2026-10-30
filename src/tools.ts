@@ -36,13 +36,23 @@ export interface RegistryDeps {
   ctx: VerbCtx;
   /** 外部工具（MCP）：同样要走策略与审计，只是实现不在 verbs 里 */
   external?: Array<ToolSpec & { call(args: Record<string, unknown>): Promise<string> }>;
+  /**
+   * 白名单：只暴露这些 verb（按规范名，如 `memory.search`）。
+   *
+   * 用途是「最小权限面」：夜间整理的模型只需要**只读**能力去核对已有记忆，
+   * 不需要 shell、不需要写文件、更不需要 memory.remember —— 写入由确定性代码做。
+   * 不给这个参数时保持原样（全部 verb），面板照旧拿全量。
+   */
+  allow?: (name: string) => boolean;
 }
 
 export function createToolRegistry(deps: RegistryDeps): ToolRegistry {
   const externals = deps.external ?? [];
+  const mine = deps.allow ? verbs.filter((v) => deps.allow!(v.name)) : verbs;
+  const ext = deps.allow ? externals.filter((e) => deps.allow!(e.name)) : externals;
   const all: ToolSpec[] = [
-    ...verbs.map((v) => ({ name: v.name, description: v.description, parameters: v.params, tier: v.tier })),
-    ...externals.map(({ name, description, parameters, tier }) => ({ name, description, parameters, tier })),
+    ...mine.map((v) => ({ name: v.name, description: v.description, parameters: v.params, tier: v.tier })),
+    ...ext.map(({ name, description, parameters, tier }) => ({ name, description, parameters, tier })),
   ];
 
   const alias = new Map(all.map((t) => [apiName(t.name), t.name]));
@@ -57,29 +67,34 @@ export function createToolRegistry(deps: RegistryDeps): ToolRegistry {
 
     async run(rawName, args) {
       const name = resolve(rawName);
+      // 白名单必须在**执行侧**也生效：只从 schema 里藏起来不算数 ——
+      // 模型硬报一个名字（幻觉/被注入）就能绕过，那就等于没有白名单。
+      if (!all.some((t) => t.name === name)) {
+        return { ok: false, output: `E_NO_CAPABILITY: ${name}`, tier: "?" };
+      }
       // 内部 verb：走完整 execute（策略 + 审计）
-      if (verbs.some((v) => v.name === name)) {
+      if (mine.some((v) => v.name === name)) {
         const r: ExecResult = await execute({ db: deps.db, policy: deps.policy, ctx: deps.ctx }, name, args);
         return { ok: r.ok, output: r.output, tier: r.tier, ...(r.needsConfirm ? { needsConfirm: true } : {}) };
       }
       // 外部工具（MCP）：先策略、后执行、再审计
-      const ext = externals.find((e) => e.name === name);
-      if (!ext) return { ok: false, output: `E_NO_CAPABILITY: ${name}`, tier: "?" };
+      const found = ext.find((e) => e.name === name);
+      if (!found) return { ok: false, output: `E_NO_CAPABILITY: ${name}`, tier: "?" };
       const target = name.startsWith("mcp__") ? name : `ext:${name}`;
-      const auth = await deps.policy.authorize(name, ext.tier as never, target);
+      const auth = await deps.policy.authorize(name, found.tier as never, target);
       const t0 = Date.now();
       if (!auth.allow) {
-        audit(deps, name, ext.tier, target, "denied", auth.reason, Date.now() - t0);
-        return { ok: false, output: `E_DENIED(${auth.reason}): ${name}`, tier: ext.tier };
+        audit(deps, name, found.tier, target, "denied", auth.reason, Date.now() - t0);
+        return { ok: false, output: `E_DENIED(${auth.reason}): ${name}`, tier: found.tier };
       }
       try {
-        const out = await ext.call(args);
-        audit(deps, name, ext.tier, target, "allowed", undefined, Date.now() - t0);
-        return { ok: true, output: out, tier: ext.tier };
+        const out = await found.call(args);
+        audit(deps, name, found.tier, target, "allowed", undefined, Date.now() - t0);
+        return { ok: true, output: out, tier: found.tier };
       } catch (e) {
         const code = String((e as Error).message ?? e).split(":")[0] || "E_TOOL";
-        audit(deps, name, ext.tier, target, "error", code, Date.now() - t0);
-        return { ok: false, output: `E_TOOL(${code}): ${String(e).slice(0, 200)}`, tier: ext.tier };
+        audit(deps, name, found.tier, target, "error", code, Date.now() - t0);
+        return { ok: false, output: `E_TOOL(${code}): ${String(e).slice(0, 200)}`, tier: found.tier };
       }
     },
   };

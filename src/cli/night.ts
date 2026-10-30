@@ -8,10 +8,14 @@ import { runNightly } from "../nightly.ts";
 import { writeAutobiography, listAutobiography } from "../autobio.ts";
 import { ensureTerritory, territoryListing } from "../territory.ts";
 import { loadState, advance, describe } from "../state.ts";
-import { createTransport, routerFrom } from "../transport.ts";
+import { createTransport, createChatTransport, routerFrom } from "../transport.ts";
 import { createEmbedder } from "../embed.ts";
 import { defaultConfig } from "../config.ts";
 import { resolveConfig } from "../configfile.ts";
+import { createToolRegistry } from "../tools.ts";
+import { makeToolExtractor, NIGHT_TOOLS, type ToolTrace } from "../nightagent.ts";
+import { loadPolicy } from "../policy.ts";
+import { createStore, type Provider } from "../auth.ts";
 
 export interface NightOptions {
   home: string;
@@ -62,13 +66,33 @@ export async function runNightCli(opts: NightOptions): Promise<number> {
 
   ensureTerritory(opts.home);
 
+  // ── 抽取：带只读工具循环（P0-2）───────────────────────────
+  // 以前是一次性长 prompt：模型看不到库里已有什么，只能猜 → 必然重复、认不出冲突。
+  // 现在它能先 memory_search 核对一遍再交 JSON。工具白名单写在 nightagent.ts，
+  // **执行侧也校验**（只从 schema 里藏起来不算数）。
+  const toolTrace: ToolTrace[] = [];
   const extract = async (prompt: string): Promise<string> => {
     if (!transport) throw new Error("E_NO_MODEL");
-    // containsMemory=true → 只允许本地角色（19 §0.1 W-A）
-    const r = await transport.complete("extract", [{ role: "user", content: prompt }], {
-      containsMemory: true, purpose: "nightly-extract", maxTokens: 700, temperature: 0.2,
+    const policy = await loadPolicy(opts.home);
+    const store = createStore(join(opts.home, "secrets"));
+    const keys: Record<string, string> = {};
+    for (const p of ["deepseek", "anthropic", "openai"] as Provider[]) { const k = store.get(p); if (k) keys[p] = k; }
+    // 只读白名单：写入永远由 parseCandidates → remember() 的确定性闸门做
+    const allow = new Set<string>(NIGHT_TOOLS);
+    const registry = createToolRegistry({
+      db: d.db, policy, ctx: { home: opts.home, now: () => new Date(), db: d.db, embedder },
+      allow: (n) => allow.has(n),
     });
-    return r.text;
+    const chatTransport = createChatTransport(routerFrom(cfg.roles as never), { apiKeys: keys });
+    const extractor = makeToolExtractor({
+      tools: registry,
+      chat: (messages, tools) => chatTransport.chat("extract", messages, {
+        containsMemory: true, purpose: "nightly-extract", maxTokens: 900, temperature: 0.2,
+        tools: tools as never,
+      }),
+      onTool: (t) => toolTrace.push(t),
+    });
+    return extractor(prompt);
   };
 
   const report = await runNightly({
@@ -93,11 +117,12 @@ export async function runNightCli(opts: NightOptions): Promise<number> {
   if (skipReason) {
     console.error("⚠ 夜间整备降级：" + skipReason);
     console.error("   已做：衰减补算 + 状态推进。未做：抽取 / 冲突消解 / 自传。游标未推进，这轮对话没丢。");
-    console.error("   要让它真整理：ollama pull qwen2.5:7b-instruct，然后 export JJ_MODEL_DEFAULT=qwen2.5:7b-instruct");
+    console.error("   要让它真整理：ollama pull qwen2.5:7b-instruct，然后 jingjing models use qwen2.5:7b-instruct");
   }
 
   const out = {
     skipped: skipReason ?? null,
+    tools: toolTrace.map((t) => ({ name: t.name, ms: t.ms, result: String(t.result).slice(0, 160) })),
     nightly: report,
     autobio: autobio ? { path: autobio.path?.replace(opts.home, "<home>"), bytes: autobio.bytes, cited: autobio.cited, skipped: autobio.skipped } : null,
     territory: territoryListing(opts.home),

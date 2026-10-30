@@ -178,9 +178,12 @@ export async function runNightly(deps: NightlyDeps): Promise<NightlyReport> {
     .slice(0, 6000);
 
   let raw = "";
+  let extractFailed = false;
   try {
     raw = await deps.extract(EXTRACT_PROMPT(transcript));
   } catch (e) {
+    // 抽取失败 ≠ 今天没什么可记的：**游标不能推进**，否则这批对话永久丢掉
+    extractFailed = true;
     notes.push(`E_EXTRACT: ${String(e).slice(0, 120)}`);
   }
 
@@ -255,6 +258,13 @@ export async function runNightly(deps: NightlyDeps): Promise<NightlyReport> {
     }
   }
 
+  if (extractFailed) {
+    report.cursorTo = cursorFrom;                       // 失败就留在原地，下轮重试
+    noteNightlySkip(deps.db, "抽取失败（见 notes.E_EXTRACT）", now);
+    report.decayed = tickDecay(deps.db, now);
+    report.ms = Date.now() - t0;
+    return report;
+  }
   if (report.cursorTo) {
     deps.db.prepare("INSERT INTO meta(key,value) VALUES('nightly_cursor_ts',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value")
       .run(report.cursorTo);

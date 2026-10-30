@@ -108,7 +108,10 @@ test("冲突：同主题不同说法且向量接近 → supersede（旧条归档
   assert.equal(link.rel, "supersedes");
 });
 
-test("抽取失败：不炸、留 note、游标仍推进（不卡死）", async () => {
+// 这条以前断言「失败也推进游标」，理由是“不然每晚卡在同一批”。
+// 实测发现那是**数据丢失**：模型不支持 chat 时 38 条对话被一次跳过。
+// 现在改为失败不推进 —— 没有循环、只有每天一次，重试是正确的；/health 会报 nightly-skipped。
+test("抽取失败：不炸、留 note、游标**不**推进（丢了就找不回来）", async () => {
   const home = H();
   const inbox = seed(home, ["说了点什么"]);
   const d = openDb(join(home, "m.db"));
@@ -119,7 +122,7 @@ test("抽取失败：不炸、留 note、游标仍推进（不卡死）", async 
   });
   assert.equal(r.added, 0);
   assert.ok(r.notes.some((n) => n.includes("E_EXTRACT")));
-  assert.ok(r.cursorTo, "游标要推进，否则每晚都卡在同一批");
+  assert.equal(r.cursorTo, null, "失败必须留在原地，下轮重试");
 });
 
 test("夜间也会衰减：老记忆权重要被重算", async () => {
@@ -240,4 +243,70 @@ test("E-6 降级不能挡住 energy 恢复：advance({night:true}) 仍然有效"
   const { DEFAULTS, step } = await import("../src/state.ts");
   const tired = step({ ...DEFAULTS, energy: 0.1 }, { night: true, silenceDays: 1 });
   assert.ok(tired.energy > 0.3, "夜间必须回能，否则 ENERGY 只会一路滑到 0");
+});
+
+// ── P0-2：整条夜间链路接上工具循环（用假 chat，不需要模型）──────
+test("P0-2 整轮：模型先查库再交 JSON，记忆真的落库（不需要真模型）", async () => {
+  const home = H();
+  const inbox = seed(home, ["提醒我晚上八点吃药", "好，记下了。"]);
+  const d = openDb(join(home, "m.db"));
+  const { makeToolExtractor } = await import("../src/nightagent.ts");
+  const { createToolRegistry } = await import("../src/tools.ts");
+
+  const asked: string[] = [];
+  const registry = createToolRegistry({
+    db: d.db,
+    policy: { authorize: async () => ({ allow: true, reason: "test" }) } as never,
+    ctx: { home, now: () => new Date(), db: d.db, embedder: emb },
+    allow: (n) => n === "memory.search",
+  });
+
+  let round = 0;
+  const chat = async function* () {
+    if (round++ === 0) {
+      yield { type: "tool_calls" as const, calls: [{ id: "c1", name: "memory_search", args: JSON.stringify({ query: "吃药" }) }] };
+      yield { type: "done" as const, finish: "tool_calls" };
+      return;
+    }
+    yield { type: "delta" as const, text: '[{"kind":"promise","layer":"contract","subject":"吃药","text":"提醒他晚上八点吃药","salience":0.9,"reason":"承诺"}]' };
+    yield { type: "done" as const, finish: "stop" };
+  };
+
+  const report = await runNightly({
+    db: d.db, inboxDir: inbox, home, embedder: emb,
+    extract: makeToolExtractor({ chat: chat as never, tools: registry, onTool: (t) => asked.push(t.name) }),
+    now: new Date(Date.UTC(2026, 9, 29, 3)),
+  });
+
+  assert.deepEqual(asked, ["memory_search"], "抽取前必须真的去查了一次已有记忆（trace 记的是模型看到的名字）");
+  assert.equal(report.added, 1, "JSON 要真的落库");
+  assert.ok(report.cursorTo, "成功跑完游标才推进");
+  const row = d.db.prepare("SELECT layer, text FROM memories WHERE status='active'").get() as { layer: string; text: string };
+  assert.equal(row.layer, "contract");
+  assert.match(row.text, /吃药/);
+});
+
+test("P0-2 抽取失败时游标不推进（否则这批对话永久丢失）", async () => {
+  const home = H();
+  const inbox = seed(home, ["这句很重要", "嗯。"]);
+  const d = openDb(join(home, "m.db"));
+  const report = await runNightly({
+    db: d.db, inboxDir: inbox, home, embedder: emb,
+    extract: async () => { throw new Error("E_EXTRACT: 模型挂了"); },
+    now: new Date(Date.UTC(2026, 9, 29, 3)),
+  });
+  assert.equal(report.cursorTo, null, "失败必须留在原地");
+  const row = d.db.prepare("SELECT value FROM meta WHERE key='nightly_cursor_ts'").get();
+  assert.equal(row, undefined, "游标不许落库");
+  assert.ok(report.notes.some((n) => n.startsWith("E_EXTRACT")));
+  // 失败也要让 /health 看得见
+  const skip = d.db.prepare("SELECT value FROM meta WHERE key='nightly_skipped'").get() as { value: string } | undefined;
+  assert.ok(skip?.value.includes("抽取失败"));
+  // 重试成功后游标才推进
+  const ok = await runNightly({
+    db: d.db, inboxDir: inbox, home, embedder: emb,
+    extract: async () => "[]",
+    now: new Date(Date.UTC(2026, 9, 29, 4)),
+  });
+  assert.ok(ok.cursorTo, "成功才推进");
 });
