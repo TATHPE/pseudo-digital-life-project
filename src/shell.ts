@@ -82,7 +82,7 @@ export const TEMPLATES: TemplateDef[] = [
   },
   {
     id: "python.run_script", tier: "T3",
-    description: "跑 workspace/ 下的一个 .py（找不到 python 时用 D:\\LLM\\.venv）",
+    description: "跑 workspace/ 下的一个 .py（JJ_PYTHON / 项目 .venv / PATH 上的 python3）",
     win: ["python", ["-X", "utf8", "{script}"]], linux: ["python3", ["-X", "utf8", "{script}"]],
     slots: { script: { pattern: SCRIPT, must_be_under: "workspace/", max: 96 } },
     timeoutMs: 60_000,
