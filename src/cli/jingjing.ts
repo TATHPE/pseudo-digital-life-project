@@ -415,6 +415,61 @@ async function main(): Promise<void> {
       process.exitCode = 2;
       return;
     }
+    case "links": {
+      // J-5：抽检与一句话拆线。关系必须"送到眼前"，而且**当场能断**。
+      const d = openDb(dbFile);
+      const op = rest[0] ?? "list";
+      const now = new Date();
+      if (op === "list") {
+        const rows = d.db.prepare(`
+          SELECT l.src_id, l.dst_id, l.rel, l.weight, l.why, l.created_at, l.valid_to,
+                 a.text AS a_text, b.text AS b_text
+          FROM memory_links l
+          JOIN memories a ON a.id = l.src_id
+          JOIN memories b ON b.id = l.dst_id
+          WHERE l.valid_to IS NULL OR julianday(l.valid_to) > julianday(?)
+          ORDER BY l.created_at DESC LIMIT ?`).all(now.toISOString(), Number(rest[1] ?? 10)) as Array<{
+            src_id: number; dst_id: number; rel: string; weight: number; why?: string | null;
+            created_at: string; a_text: string; b_text: string;
+          }>;
+        if (!rows.length) { console.log("（还没有任何线）"); return; }
+        rows.forEach((r, i) => {
+          console.log(`L${i + 1}  #${r.src_id} ←→ #${r.dst_id}  [${r.rel}]`);
+          console.log(`    为什么连：${r.why || "（没有理由 —— 这种线本该不存在）"}`);
+          console.log(`    ${r.a_text.slice(0, 40)}  ／  ${r.b_text.slice(0, 40)}`);
+        });
+        console.log(String.fromCharCode(10) + "拆掉哪根：jingjing links cut L<n>");
+        return;
+      }
+      if (op === "cut") {
+        const arg = String(rest[1] ?? "").trim();
+        const idx = Number(arg.replace(/^L/i, ""));
+        if (!Number.isFinite(idx) || idx < 1) { console.error("用法: jingjing links cut L<编号>（编号来自 jingjing links）"); process.exitCode = 2; return; }
+        const rows = d.db.prepare(`
+          SELECT l.src_id, l.dst_id, l.rel FROM memory_links l
+          WHERE l.valid_to IS NULL OR julianday(l.valid_to) > julianday(?)
+          ORDER BY l.created_at DESC LIMIT ?`).all(now.toISOString(), idx) as Array<{ src_id: number; dst_id: number; rel: string }>;
+        const t = rows[idx - 1];
+        if (!t) { console.error("E_NO_LINK: 没有这个编号（先跑 jingjing links 看当前列表）"); process.exitCode = 1; return; }
+        // 作废写止期（历史仍查得到），同时进黑名单（永不自动接回）
+        d.db.prepare("UPDATE memory_links SET valid_to=? WHERE src_id=? AND dst_id=? AND rel=?")
+          .run(now.toISOString(), t.src_id, t.dst_id, t.rel);
+        const key = `${t.src_id}:${t.dst_id}:${t.rel}`;
+        const cur = String((d.db.prepare("SELECT value FROM meta WHERE key='links_blocked'").get() as { value?: string } | undefined)?.value ?? "");
+        const set = new Set(cur.split(String.fromCharCode(10)).filter(Boolean));
+        set.add(key);
+        d.db.prepare("INSERT INTO meta(key,value) VALUES('links_blocked',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value")
+          .run([...set].join(String.fromCharCode(10)));
+        d.db.prepare("INSERT INTO events(ts,kind,actor,target,payload,ok) VALUES(?,?,?,?,?,1)")
+          .run(now.toISOString(), "link_cut", "user", key, "人拆掉了这根线");
+        console.log(JSON.stringify({ ok: true, cut: key, note: "作废写止期 + 进黑名单，夜间不会再自动接回" }, null, 2));
+        return;
+      }
+      console.error("用法: jingjing links [list [n] | cut L<n>]");
+      process.exitCode = 2;
+      return;
+    }
+
     case "reembed": {
       // 换了 embedding 模型之后重建索引（C-2）。不动正文，只重算向量。
       const cfg = resolveConfig(HOME);

@@ -16,7 +16,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { Embedder } from "./embed.ts";
 import type { MemoryLine } from "./types.ts";
-import { search, searchDocs } from "./retrieve.ts";
+import { search, searchDocs, expandByLinks } from "./retrieve.ts";
 import { dedupeTitle } from "./chunk.ts";
 
 export interface RecallOpts {
@@ -47,16 +47,17 @@ export async function recallForBrief(
   // ── 记忆 ────────────────────────────────────────────
   const hits = embedder ? (await search(db, embedder, query, { k: memK })).hits : [];
   // 敏感度、层、种类都从库里现取——别猜（契约层在 P10 里也不能被显示成叙事）
-  const metaById = new Map<number, { layer: "narrative" | "contract"; kind: string; sensitivity?: string; taint?: string }>();
+  const metaById = new Map<number, { layer: "narrative" | "contract"; kind: string; sensitivity?: string; taint?: string; quote?: string | null }>();
   if (hits.length) {
     const got = db.prepare(
-      `SELECT id, layer, kind, sensitivity, taint FROM memories WHERE id IN (SELECT value FROM json_each(?))`,
-    ).all(JSON.stringify(hits.map((h) => h.id))) as Array<{ id: number; layer: string; kind: string; sensitivity?: string; taint?: string }>;
+      `SELECT id, layer, kind, sensitivity, taint, quote FROM memories WHERE id IN (SELECT value FROM json_each(?))`,
+    ).all(JSON.stringify(hits.map((h) => h.id))) as Array<{ id: number; layer: string; kind: string; sensitivity?: string; taint?: string; quote?: string | null }>;
     for (const g of got) {
       metaById.set(Number(g.id), {
         layer: g.layer === "contract" ? "contract" : "narrative", kind: g.kind,
         ...(g.sensitivity ? { sensitivity: g.sensitivity } : {}),
         ...(g.taint ? { taint: g.taint } : {}),
+        ...(g.quote ? { quote: g.quote } : {}),
       });
     }
   }
@@ -72,7 +73,30 @@ export async function recallForBrief(
     recalled.push({
       id: `mem:${h.id}`, layer: m.layer, kind: m.kind, stage: h.stage, weight: h.weight, text: h.text,
       sensitivity: "shareable", source: "memory",
+      ...(m.quote ? { quote: m.quote } : {}),
     });
+  }
+
+  // ── 沿关系一跳（J-1）────────────────────────────────
+  // 之前 memory_links 零处读取，关系层等于不存在。这里只在"已经命中东西"时才扩，
+  // 且邻居同样要过 taint/sensitivity 闸门 —— 不能因为它是"朋友的邻居"就绕过隐私。
+  let omittedLink = 0;
+  if (hits.length) {
+    const near = expandByLinks(db, hits, { k: 2 });
+    for (const h of near) {
+      const row = db.prepare("SELECT sensitivity, taint, layer, kind, quote FROM memories WHERE id=?")
+        .get(h.id) as { sensitivity?: string; taint?: string; layer: string; kind: string; quote?: string | null } | undefined;
+      if (!row) continue;
+      if (row.sensitivity !== "shareable" || (row.taint ?? "trusted") !== "trusted") { omittedLink++; continue; }
+      if (recalled.some((r) => r.id === `mem:${h.id}`)) continue;
+      recalled.push({
+        id: `mem:${h.id}`, layer: row.layer === "contract" ? "contract" : "narrative", kind: row.kind,
+        stage: h.stage, weight: h.weight, text: h.text,
+        sensitivity: "shareable", source: "memory",
+        ...(row.quote ? { quote: row.quote } : {}),
+        ...(h.viaLink ? { viaLink: h.viaLink } : {}),
+      });
+    }
   }
 
   // ── 文档块 ──────────────────────────────────────────
@@ -94,7 +118,7 @@ export async function recallForBrief(
 
   return {
     recalled,
-    omittedMem: hits.length - shareable.length,
+    omittedMem: hits.length - shareable.length + omittedLink,
     omittedDocs,
     meta: {
       memCandidates: hits.length, docCandidates,

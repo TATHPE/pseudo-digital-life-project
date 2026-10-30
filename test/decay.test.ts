@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  weight, classify, reconsolidate, recompute, rebase, isFlashback, days,
+  weight, classify, reconsolidate, recompute, rebase, days,
   paramsFor, lambdaFrom, accessBoost, T, type MemoryDynamics,
 } from "../src/decay.ts";
 
@@ -74,13 +74,9 @@ test("常想起的忘得更慢（λeff 与 accessBoost 同向）", () => {
   assert.ok(accessBoost(1000) <= 1.6);
 });
 
-test("flashback：只有 dormant 且强线索才唤醒", () => {
-  const m = { stage: "dormant" as const, text: "你说过三月要去杭州出差" };
-  assert.ok(isFlashback(m, { entities: ["杭州"] }));
-  assert.ok(!isFlashback(m, { entities: ["上海"] }));
-  assert.ok(!isFlashback({ ...m, stage: "active" }, { entities: ["杭州"] }));
-  assert.ok(isFlashback(m, { anniversary: true }));
-});
+// isFlashback 已删（J-1）：强线索唤醒由 retrieve.flashbackHit 承担（只有一份实现），
+// 行为由 recall.test.ts 的 dormant 用例覆盖。
+
 
 test("锚点语义：w 只取决于 (w0, now−锚点)，tick 不移动锚点 → 不会复活", () => {
   const m = mk({ recallCount: 3 });

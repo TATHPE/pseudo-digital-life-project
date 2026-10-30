@@ -1,5 +1,5 @@
 /** M0 schema（02 §4 + 18 §1 的 outage/审计） */
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 9;
 
 export const MIGRATION_001 = `
 PRAGMA journal_mode=WAL;
@@ -58,6 +58,8 @@ CREATE TABLE IF NOT EXISTS memories (
   source_kind TEXT NOT NULL DEFAULT 'user'
     CHECK (source_kind IN ('user','agent','extract','doc')),
   source_ref TEXT,
+  /** 原话（J-2）：写入时从 journal 取的原句，**不是模型转述**；没有就是 null */
+  quote TEXT,
   w0 REAL NOT NULL DEFAULT 0.55,
   beta REAL NOT NULL DEFAULT 0.85,
   floorw REAL NOT NULL DEFAULT 0.05,
@@ -104,6 +106,10 @@ CREATE TABLE IF NOT EXISTS memory_links (
   dst_id INTEGER NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
   rel TEXT NOT NULL CHECK (rel IN ('supersedes','derived_from','related','contradicts')),
   weight REAL NOT NULL DEFAULT 1.0,
+  /** 为什么连（J-3）：≤20 字，说不出来的边不该建 */
+  why TEXT,
+  /** 止期（J-3）：作废写止期而不删边，历史仍查得到 */
+  valid_to TEXT,
   created_at TEXT NOT NULL,
   PRIMARY KEY (src_id, dst_id, rel)
 );

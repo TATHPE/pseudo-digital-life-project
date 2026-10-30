@@ -59,14 +59,64 @@ export interface NightlyReport {
   notes: string[];
 }
 
-/** 记一笔“今晚没抽”（/health 的 degraded 读它）。成功跑完就清掉。 */
-export function noteNightlySkip(db: DatabaseSync, reason: string, now: Date): void {
+/** 记一笔“今晚没抽”（/health 的 degraded 读它）。成功跑完就清掉。 */export function noteNightlySkip(db: DatabaseSync, reason: string, now: Date): void {
   db.prepare("INSERT INTO meta(key,value) VALUES('nightly_skipped',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value")
     .run(`${now.toISOString()} ${reason}`);
 }
 
 export function clearNightlySkip(db: DatabaseSync): void {
   db.prepare("DELETE FROM meta WHERE key='nightly_skipped'").run();
+}
+
+/**
+ * 原话（J-2）：从当晚的真实对话里找最像这条记忆的那一句。
+ *
+ * 为什么不让模型自己交“原话”：那就不是原话了，是模型再写一遍。
+ * 这里用字面重合挑，且只接受**逐字子串**（宁缺毋滥：挑不出就存 null）。
+ */
+export function pickQuote(events: readonly Event[], memoryText: string): string | null {
+  const target = new Set(bigramsFor(memoryText));
+  if (!target.size) return null;
+  let best: { text: string; score: number } | null = null;
+  for (const e of events) {
+    const t = String((e.payload as { text?: string })?.text ?? "").trim();
+    if (!t || t.length > 120) continue;          // 原话要短，长段落不算“那一句”
+    const b = bigramsFor(t);
+    let hit = 0;
+    for (const x of b) if (target.has(x)) hit++;
+    const score = hit / Math.max(1, Math.min(b.length, target.size));
+    if (score >= 0.34 && (!best || score > best.score)) best = { text: t, score };   // 至少三成字面重合
+  }
+  return best ? best.text.slice(0, 120) : null;
+}
+
+function bigramsFor(s: string): string[] {
+  const out: string[] = [];
+  const t = s.replace(/[\s，。！？、；：""''（）()【】\[\]…—]/g, "");
+  for (let i = 0; i + 2 <= t.length; i++) out.push(t.slice(i, i + 2));
+  return out;
+}
+
+/**
+ * 建边之前先过黑名单（J-5）：人拆过的线**永不自动接回**。
+ * 黑名单存在 meta.links_blocked："src:dst:rel" 一行一个。
+ */
+export function linkIfNew(
+  db: DatabaseSync, src: number, dst: number, rel: string, weight: number, why: string, now: Date,
+): boolean {
+  const key = `${src}:${dst}:${rel}`;
+  const blocked = String(readMeta(db, "links_blocked") ?? "");
+  if (blocked.split(String.fromCharCode(10)).includes(key)) return false;
+  db.prepare(
+    `INSERT INTO memory_links(src_id,dst_id,rel,weight,why,created_at) VALUES(?,?,?,?,?,?)
+     ON CONFLICT(src_id,dst_id,rel) DO UPDATE SET weight=excluded.weight`,
+  ).run(src, dst, rel, weight, String(why || "").slice(0, 20), now.toISOString());
+  return true;
+}
+
+function readMeta(db: DatabaseSync, key: string): string | null {
+  const r = db.prepare("SELECT value FROM meta WHERE key=?").get(key) as { value?: string } | undefined;
+  return r?.value ?? null;
 }
 
 const EXTRACT_PROMPT = (transcript: string): string => [
@@ -235,6 +285,8 @@ export async function runNightly(deps: NightlyDeps): Promise<NightlyReport> {
       sensitivity: "shareable",           // 聊天来源 → 已出过网（19 §0.1）
       sourceKind: "extract",
       sourceRef: c.reason.slice(0, 80),
+      // 原话（J-2）：**从 journal 里逐字取**，不采信模型转述 —— 否则“原话”又变成模型写的
+      quote: pickQuote(fresh, c.text) ?? null,
       embedding: vec,
       now,
     });
@@ -244,13 +296,11 @@ export async function runNightly(deps: NightlyDeps): Promise<NightlyReport> {
     if (verdict === "supersede" && target != null) {
       deps.db.prepare("UPDATE memories SET superseded_by=?, status='archived', updated_at=? WHERE id=?")
         .run(id, now.toISOString(), target);
-      deps.db.prepare("INSERT INTO memory_links(src_id,dst_id,rel,weight,created_at) VALUES(?,?,?,?,?)")
-        .run(id, target, "supersedes", 1, now.toISOString());
+      linkIfNew(deps.db, id, target, "supersedes", 1, "同一件事的新说法", now);
       report.superseded++;
       notes.push(`SUPERSEDE ${c.text.slice(0, 20)}`);
     } else if (verdict === "refine" && target != null) {
-      deps.db.prepare("INSERT INTO memory_links(src_id,dst_id,rel,weight,created_at) VALUES(?,?,?,?,?)")
-        .run(id, target, "derived_from", 0.8, now.toISOString());
+      linkIfNew(deps.db, id, target, "derived_from", 0.8, (c.reason || c.subject || "同一段经历").slice(0, 20), now);
       report.refined++;
       report.added++;
     } else {

@@ -52,6 +52,12 @@ export function openDb(path: string): Db {
     if (Number(cur.value) < 8) {
       ensureColumn(db, "documents", "sensitivity", "TEXT NOT NULL DEFAULT 'local_only'");
     }
+    if (Number(cur.value) < 9) {
+      // J 组：原话层（J-2）+ 关系带 why 与止期（J-3）
+      ensureColumn(db, "memories", "quote", "TEXT");
+      ensureColumn(db, "memory_links", "why", "TEXT");
+      ensureColumn(db, "memory_links", "valid_to", "TEXT");
+    }
     db.prepare("UPDATE meta SET value=? WHERE key='schema_version'").run(String(SCHEMA_VERSION));
   }
   return { db, vecLoaded, path };

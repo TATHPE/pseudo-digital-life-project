@@ -27,6 +27,8 @@ import { SUPPORTED_EXTS, MAX_INGEST_BYTES } from "../ingest.ts";
 import { createTransport, routerFrom } from "../transport.ts";
 import { spentToday } from "../budget.ts";
 import { recallForBrief, omissionNote } from "../recall.ts";
+import { decideSurface, pickSurface, noteSurfaced, usedToday } from "../surface.ts";
+import { reinforce } from "../store.ts";
 import { meta } from "../db.ts";
 import { openContracts } from "../store.ts";
 import { execute } from "../execute.ts";
@@ -893,13 +895,39 @@ export function createWebServer(deps: WebDeps) {
         const emb = deps.getEmbedder();
         // 召回装配在 recall.ts 里（隐私闸门所在：只有 shareable 会进简报）
         const rc = await recallForBrief(deps.db, emb, text, { memK: 6, docK: 4 });
-        const omitted = rc.omittedMem;
+        let omitted = rc.omittedMem;
         const recalled: MemoryLine[] = rc.recalled;
+
         // 只取**还没过期**的契约：已了结的承诺不该每轮继续喂给模型（否则它会反复提）
         const contracts = openContracts(deps.db, now()).map((r) => r.text);
         const last = messages(deps.db, deps.inboxDir).slice(0, -1).pop();
         const pending = deps.pendingOutage ?? null;
         deps.pendingOutage = null;                     // 只报告一次（18 §2.3）
+        // ── 浮现时机（J-4）：不是"每轮都查"，是"挑时机"──────────
+        // 每天 ≤2 条，同一根线 7 天不重复；浮上来的那条带 viaLink（为什么是它）。
+        try {
+          const prev = String(last?.text ?? "").slice(0, 400);
+          const dec = decideSurface({
+            now: now(), lastMsgAt: last ? new Date(last.ts) : null, prevText: prev, text,
+            firstOfDay: !last || new Date(last.ts).toDateString() !== now().toDateString(),
+          }, usedToday(deps.db, now()));
+          if (dec.ok) {
+            const pick = pickSurface(deps.db, now());
+            if (pick) {
+              const row = deps.db.prepare("SELECT sensitivity, taint, layer, kind FROM memories WHERE id=?")
+                .get(pick.id) as { sensitivity?: string; taint?: string; layer: string; kind: string } | undefined;
+              if (row && row.sensitivity === "shareable" && (row.taint ?? "trusted") === "trusted") {
+                recalled.push({
+                  id: `mem:${pick.id}`, layer: row.layer === "contract" ? "contract" : "narrative", kind: row.kind,
+                  stage: "dormant", weight: 0.5, text: pick.text, sensitivity: "shareable", source: "memory",
+                  ...(pick.quote ? { quote: pick.quote } : {}),
+                  viaLink: { from: pick.from, why: pick.why },
+                } as MemoryLine);
+                noteSurfaced(deps.db, now(), pick);
+              }
+            }
+          }
+        } catch { /* 浮现失败不影响正常回答 */ }
         const selfState = advance(deps.db, { turns: 1, silenceDays: last ? (now().getTime() - new Date(last.ts).getTime()) / 86400000 : 0 }, now());
         const brief = buildBrief({
           now: now(), persona: loadPersona(deps.home), contracts, recalled,
@@ -974,6 +1002,15 @@ export function createWebServer(deps: WebDeps) {
             },
           });
         }
+        // 再巩固（J-1）：只有**真的进了装配块**的才算"被想起"（不是被检索到）。
+        // 之前 reconsolidate() 全库零调用 → recall_count 永远 0 → "想一次就更牢"从没生效。
+        try {
+          const ids = recalled.filter((r) => r.source === "memory" && !r.viaLink)
+            .map((r) => Number(String(r.id).replace("mem:", "")))
+            .filter((n) => Number.isFinite(n));
+          if (ids.length) reinforce(deps.db, ids, now());
+        } catch { /* 加固失败不影响回答 */ }
+
         res.end();
         return;
       }

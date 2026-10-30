@@ -1,7 +1,7 @@
 /** 记忆读写（M0 最小面）：remember / 载入候选 / 批量衰减 */
 import type { DatabaseSync } from "node:sqlite";
 import { bigramText } from "./text.ts";
-import { paramsFor, recompute, isKnownKind, type Layer, type Stage } from "./decay.ts";
+import { paramsFor, recompute, reconsolidate, weight, isKnownKind, type Layer, type Stage } from "./decay.ts";
 
 export interface NewMemory {
   layer: Layer; kind: string; text: string;
@@ -11,6 +11,8 @@ export interface NewMemory {
   taint?: "trusted" | "external";
   sourceKind?: "user" | "agent" | "extract" | "doc";
   sourceRef?: string | null;
+  /** 原话（J-2）：必须是 journal 里的原句，不是模型转述 */
+  quote?: string | null;
   w0?: number;
   embedding?: Float32Array | null;
   now?: Date;
@@ -37,12 +39,12 @@ export function remember(db: DatabaseSync, m: NewMemory): number {
   const emb = m.embedding ? new Uint8Array(m.embedding.buffer.slice(0)) : null;
   const r = db.prepare(`
     INSERT INTO memories(layer,kind,scope,subject,text,text_bigram,importance,salience,
-      sensitivity,taint,source_kind,source_ref,w0,beta,floorw,weight,stage,last_decay_at,
+      sensitivity,taint,source_kind,source_ref,quote,w0,beta,floorw,weight,stage,last_decay_at,
       embedding,created_at,updated_at)
-    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
       m.layer, m.kind, m.scope ?? "global", m.subject ?? null, m.text, bigramText(m.text),
       m.importance ?? 3, m.salience ?? 0.3, m.sensitivity ?? "local_only", m.taint ?? "trusted",
-      m.sourceKind ?? "user", m.sourceRef ?? null,
+      m.sourceKind ?? "user", m.sourceRef ?? null, m.quote ?? null,
       w0, p.beta, p.floor, m.layer === "contract" ? 1 : w0,
       m.layer === "contract" ? "active" : "active", now, emb, now, now,
     );
@@ -94,6 +96,42 @@ export function openContracts(db: DatabaseSync, now: Date, limit = 15): Array<{ 
   ).all(now.toISOString(), limit) as Array<{ id: number; text: string }>;
 }
 
+/**
+ * 再巩固（J-1）：**只有真的进了装配块**才调用，不是“被检索到”。
+ *
+ * 之前 `decay.ts:reconsolidate()` 写好了却**全库零调用** —— 于是 recall_count 永远是 0，
+ * accessBoost 恒为 1，“想一次就更牢”从没发生过。
+ *
+ * 同一事务批写；external 来源由 reconsolidate 自己拒绝加权（不动 w0/计数/锚点）。
+ */
+export function reinforce(db: DatabaseSync, ids: readonly number[], now = new Date()): number {
+  if (!ids.length) return 0;
+  const sel = db.prepare("SELECT id,layer,kind,w0,recall_count,last_decay_at,stage,taint FROM memories WHERE id=? AND status='active'");
+  const upd = db.prepare("UPDATE memories SET w0=?,recall_count=?,last_decay_at=?,stage=?,weight=?,updated_at=? WHERE id=?");
+  const ts = now.toISOString();
+  let n = 0;
+  db.exec("BEGIN");
+  try {
+    for (const id of ids) {
+      const r = sel.get(id) as
+        | { id: number; layer: Layer; kind: string; w0: number; recall_count: number; last_decay_at: string; stage: Stage; taint: string }
+        | undefined;
+      if (!r) continue;
+      const before = {
+        id: String(r.id), layer: r.layer, kind: r.kind, w0: r.w0,
+        recallCount: r.recall_count, lastDecayAt: new Date(r.last_decay_at), stage: r.stage,
+        taint: (r.taint === "external" ? "external" : "trusted") as "trusted" | "external",
+      };
+      const after = reconsolidate(before, now);
+      if (after.w0 === before.w0 && after.recallCount === before.recallCount && after.lastDecayAt.getTime() === before.lastDecayAt.getTime()) continue;
+      upd.run(after.w0, after.recallCount, after.lastDecayAt.toISOString(), after.stage, r3(weight(after, now)), ts, id);
+      n++;
+    }
+    db.exec("COMMIT");
+  } catch (e) { db.exec("ROLLBACK"); throw e; }
+  return n;
+}
+
 export function tickDecay(db: DatabaseSync, now = new Date(), minGapDays = 0.5): number {
   const rows = db.prepare(`SELECT id,layer,kind,weight,stage,recall_count,last_decay_at,w0
     FROM memories WHERE status='active' AND layer='narrative'
@@ -119,3 +157,6 @@ export function tickDecay(db: DatabaseSync, now = new Date(), minGapDays = 0.5):
   } catch (e) { db.exec("ROLLBACK"); throw e; }
   return n;
 }
+
+/** 三位小数（只在写库时用） */
+const r3 = (x: number) => Math.round(x * 1000) / 1000;

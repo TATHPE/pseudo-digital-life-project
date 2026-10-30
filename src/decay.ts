@@ -172,14 +172,12 @@ export interface FlashCue {
   date?: Date;             // 今天
 }
 
-export function isFlashback(
-  m: { stage: Stage; text: string },
-  cue: FlashCue,
-): boolean {
-  if (m.stage !== "dormant") return false;
-  const hitEntity = (cue.entities ?? []).some((e) => e.length >= 2 && m.text.includes(e));
-  const hitEmotion = (cue.emotionMatch ?? 0) >= 0.75;
-  return hitEntity || Boolean(cue.anniversary) || hitEmotion;
-}
-
+/**
+ * `isFlashback` 已删（2026-10-30，J-1）。
+ *
+ * 原因：它是**重复实现**——“强线索唤醒”真正在跑的是 `retrieve.ts:flashbackHit()`
+ * （检索时对 dormant 条目做 bigram 命中，每轮≤2）。
+ * 两个版本并存的结果是：读代码的人以为它在生效，而实际上被调用的是另一个；
+ * 保留一份，删掉另一份，比“看起来更全”重要。
+ */
 export const FLASHBACK = { cap: 2, reviveTo: 0.5 } as const;

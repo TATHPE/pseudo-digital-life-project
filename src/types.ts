@@ -14,6 +14,10 @@ export interface MemoryLine {
   source?: "memory" | "doc";
   /** 文档块专用：章节路径（已去掉与标题重复的首段） */
   headingPath?: string;
+  /** 原话（J-2）：写入时从 journal 取的原句 */
+  quote?: string | null;
+  /** 沿一根线过来的（J-1）：来自哪条、为什么连 */
+  viaLink?: { from: number; why: string };
 }
 
 /** 断电/停机类型（18 §2.1） */

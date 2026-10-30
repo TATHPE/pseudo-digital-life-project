@@ -61,7 +61,11 @@ function recallLine(m: MemoryLine): string {
     return `- [文档${where}] ${m.text}（cite: ${m.id}）`;
   }
   const tag = m.layer === "contract" ? "契约" : "叙事";
-  return `- [${tag} · ${m.kind} · ${m.stage} ${m.weight.toFixed(2)}] ${m.text}（cite: ${m.id}）`;
+  // 原话优先（J-2）：想起"奶奶生日"时，先浮出来的应该是那句原话，
+  // 而不是一条抽象的"待办：提醒生日"。
+  const q = m.quote ? String.fromCharCode(12300) + m.quote + String.fromCharCode(12301) + " " : "";
+  const via = m.viaLink ? `（接着 #${m.viaLink.from}：${m.viaLink.why}）` : "";
+  return `- [${tag} · ${m.kind} · ${m.stage} ${m.weight.toFixed(2)}] ${q}${m.text}（cite: ${m.id}）${via}`;
 }
 
 function fit<T>(items: T[], max: number, budget: number, render: (x: T) => string) {

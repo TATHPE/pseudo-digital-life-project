@@ -21,6 +21,10 @@ export interface Hit {
   via: "active" | "fading" | "flashback";
   /** 敏感度：local_only 的原文不许跟着工具结果出网（13 §10） */
   sensitivity?: "local_only" | "shareable";
+  /** 原话（J-2）：先给原话，再给内容 */
+  quote?: string | null;
+  /** 怎么进来的：命中 / 强线索 / **沿一根线过来**（J-1 一跳） */
+  viaLink?: { from: number; why: string };
   bm25Rank?: number; cosRank?: number; cosine?: number;
 }
 
@@ -175,6 +179,58 @@ export function flashbackHit(query: string, text: string): boolean {
   if (!q.size) return false;
   for (const t of bigrams(text)) if (t.length >= 2 && q.has(t)) return true;
   return false;
+}
+
+/**
+ * 沿一根线取邻居（J-1，对应那篇样本的“一跳”）。
+ *
+ * 为什么要它：想起来常常是因为“刚才那句说到了别的，顺着一根线走过去”。
+ * 之前 `memory_links` 只在夜间写得进，**零处读取** —— 关系层等于不存在。
+ *
+ * 三条约束：
+ *   · 只走**有效边**（`valid_to` 为空或未过期），作废的边不能把人带偏；
+ *   · 只扩 active/fading 的邻居（dormant 不靠线强拉，走 flashback 那条路）；
+ *   · 每一步都要能说出“为什么连”（`why`），没有 why 的边不扩。
+ */
+export function expandByLinks(
+  db: DatabaseSync, hits: readonly Hit[], opts: { k?: number; now?: Date } = {},
+): Hit[] {
+  if (!hits.length) return [];
+  const now = opts.now ?? new Date();
+  const cap = opts.k ?? 2;
+  const ids = hits.map((h) => h.id);
+  const rows = db.prepare(`
+    SELECT l.src_id, l.dst_id, l.why, m.id, m.text, m.stage, m.weight, m.sensitivity, m.quote
+    FROM memory_links l
+    JOIN memories m ON m.id = CASE WHEN l.src_id IN (SELECT value FROM json_each(?)) THEN l.dst_id ELSE l.src_id END
+    WHERE (l.src_id IN (SELECT value FROM json_each(?)) OR l.dst_id IN (SELECT value FROM json_each(?)))
+      AND (l.valid_to IS NULL OR julianday(l.valid_to) > julianday(?))
+      AND l.why IS NOT NULL AND l.why <> ''
+      AND m.status = 'active' AND m.stage IN ('active','fading')
+    ORDER BY l.weight DESC, l.created_at DESC
+    LIMIT ?`).all(
+    JSON.stringify(ids), JSON.stringify(ids), JSON.stringify(ids), now.toISOString(), cap * 4,
+  ) as Array<{
+    src_id: number; dst_id: number; why: string; id: number;
+    text: string; stage: Stage; weight: number; sensitivity?: string; quote?: string | null;
+  }>;
+
+  const seen = new Set(ids);
+  const out: Hit[] = [];
+  for (const r of rows) {
+    if (seen.has(r.id)) continue;
+    seen.add(r.id);
+    const from = ids.includes(r.src_id) ? r.src_id : r.dst_id;
+    out.push({
+      id: r.id, text: r.text, score: 0, stage: r.stage, weight: r.weight,
+      cite: `mem:${r.id}`, relevance: 0, via: r.stage === "fading" ? "fading" : "active",
+      ...(r.sensitivity ? { sensitivity: r.sensitivity as "local_only" | "shareable" } : {}),
+      ...(r.quote ? { quote: r.quote } : {}),
+      viaLink: { from, why: String(r.why).slice(0, 20) },
+    });
+    if (out.length >= cap) break;
+  }
+  return out;
 }
 
 const clamp01 = (x: number) => (x < 0 ? 0 : x > 1 ? 1 : x);
