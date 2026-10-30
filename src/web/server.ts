@@ -15,6 +15,7 @@ import { expenseLine } from "./state.ts";
 import { loadPersonaText, savePersonaFile, PERSONA_FILES, type PersonaFile } from "../persona.ts";
 import { writeFileConfig, readFileConfig, resolveConfig, configSources } from "../configfile.ts";
 import { probeOllama, isInstalled } from "../ollama.ts";
+import { indexState } from "../embedindex.ts";
 import { AVATAR_FRAMES, DEFAULT_AVATAR, isAvatarFrame } from "./avatar.ts";
 import { getPending, listPending, updatePending } from "../confirm.ts";
 import { readStateSafe } from "../deploy/slot.ts";
@@ -367,6 +368,14 @@ export function createWebServer(deps: WebDeps) {
         catch { degraded.push("db_unreadable"); }
         // 夜间整备降级是**可见状态**，不是日志里的一行（E-6：否则 energy 滑到 0 也没人知道为什么）
         try { if (meta(deps.db, "nightly_skipped")) degraded.push("nightly-skipped"); } catch { /* ignore */ }
+        // 索引身份（C-2）：换了 embedding 模型却没重建 → 召回不可信，必须让探针看得见
+        try {
+          const cfgNow = deps.getConfig();
+          const cur = cfgNow.roles["embed"] ? `${cfgNow.roles["embed"]!.provider}:${cfgNow.roles["embed"]!.model}` : null;
+          const ix = indexState(deps.db, cur);
+          if (ix.stale) degraded.push("embed-index-stale");
+          if (meta(deps.db, "reembed_error")) degraded.push("reembed-failed");
+        } catch { /* ignore */ }
         json(res, 200, {
           ok: true,
           schema: meta(deps.db, "schema_version") ?? null,
@@ -627,6 +636,12 @@ export function createWebServer(deps: WebDeps) {
           online: probe.online,
           error: probe.error ?? null,
           installed: probe.names,
+          index: (() => {
+            try {
+              const e = cfg.roles["embed"];
+              return indexState(deps.db, e ? `${e.provider}:${e.model}` : null);
+            } catch { return null; }
+          })(),
           roles: ["embed", "route", "extract", "salience", "conflict", "night"].map((r) => ({
             role: r, model: cfg.roles[r]?.model ?? "", source: src[r] ?? "default",
             installed: cfg.roles[r]?.model ? isInstalled(probe.names, cfg.roles[r]!.model) : null,

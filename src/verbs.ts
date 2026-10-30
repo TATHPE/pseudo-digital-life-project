@@ -83,6 +83,7 @@ import { renderTemplate, templateCatalog, templateById, planRun, runArgv } from 
 import { listDocs } from "./ingest.ts";
 import { dedupeTitle } from "./chunk.ts";
 import { resolveConfig } from "./configfile.ts";
+import { indexState } from "./embedindex.ts";
 import { isRemoteRole } from "./transport.ts";
 
 /**
@@ -90,6 +91,21 @@ import { isRemoteRole } from "./transport.ts";
  * 所以「这段原文能不能出网」必须在**工具返回之前**判定，而不是等 transport 抛错——
  * 等它抛错时，文字已经在请求体里了。
  */
+/**
+ * 索引过期提示（C-2）。召回不可信时，结果前面必须有一句 —— 不许静默。
+ * 返回带尾随换行的字符串；没过期就是空串（拼接无副作用）。
+ */
+function staleNote(ctx: VerbCtx): string {
+  if (!ctx.db) return "";
+  try {
+    const e = resolveConfig(ctx.home).roles["embed"];
+    const cur = e && e.model ? `${e.provider}:${e.model}` : null;
+    const ix = indexState(ctx.db, cur);
+    if (!ix.stale) return "";
+    return `（注意：向量索引是用 ${ix.built ?? "未知模型"} 建的，当前配置是 ${ix.current ?? "未配置"}，召回可能不准；跑 jingjing reembed 重建）` + String.fromCharCode(10);
+  } catch { return ""; }
+}
+
 function expressIsRemote(ctx: VerbCtx): boolean {
   try {
     const cfg = resolveConfig(ctx.home);
@@ -127,12 +143,14 @@ export const verbs: VerbDef[] = [
     async run(a, ctx) {
       if (!ctx.db) throw new Error("E_NO_DB");
       if (!ctx.embedder) throw new Error("E_NO_EMBEDDER");
+      // 索引过期时召回不可信 —— 与其悄悄给错结果，不如在结果前面说一句（C-2）
+      const stale = staleNote(ctx);
       const r = await search(ctx.db, ctx.embedder, String(a.q ?? ""), { k: Number(a.k ?? 5) });
       // 云端表达：只回 shareable 的原文；local_only 只报个数
       if (expressIsRemote(ctx)) {
         const ok = r.hits.filter((h) => h.sensitivity === "shareable");
-        if (!ok.length) return r.hits.length ? redacted("本地下", r.hits.length) : "（没有相关记忆）";
-        return ok.map((h) => `[mem:${h.id}] ${h.text}`).join(String.fromCharCode(10));
+        if (!ok.length) return stale + (r.hits.length ? redacted("本地下", r.hits.length) : "（没有相关记忆）");
+        return stale + ok.map((h) => `[mem:${h.id}] ${h.text}`).join(String.fromCharCode(10));
       }
       return r.hits.length ? r.hits.map((h) => `[mem:${h.id}] ${h.text}`).join(String.fromCharCode(10)) : "（没有相关记忆）";
     },

@@ -27,6 +27,8 @@ import { bootAttempt, markHealthy } from "../deploy/watchdog.ts";
 import { createStore as createSecretStore } from "../auth.ts";
 import { resolveConfig, configSources, readFileConfig, writeFileConfig } from "../configfile.ts";
 import { probeOllama, probeChat, probeEmbed, isInstalled } from "../ollama.ts";
+import { indexState, ensureIndexModel } from "../embedindex.ts";
+import { reembed as reembedBuild } from "../reembed.ts";
 
 const HOME = process.env.JJ_HOME ?? join(process.cwd(), "data");
 const dbFile = join(HOME, "memory.db");
@@ -216,8 +218,14 @@ async function main(): Promise<void> {
       // embedding 指纹（02 §6 / 18 §1.3）：换模型或换量化都会让它变，
       // 变了就说明「检索结果和以前不可比」。不是装饰字段。
       try {
-        const e = defaultConfig().roles.embed;
-        if (e) setMeta(d.db, "embed_model", `${e.provider}:${e.model}`);
+        // 必须用 resolveConfig：以前写的是 defaultConfig()（不读 config.json），
+        // 于是用户在面板里换了 embedding，这里的“指纹”还是老的。
+        const e = resolveConfig(HOME).roles.embed;
+        if (e && e.model) {
+          const cur = `${e.provider}:${e.model}`;
+          setMeta(d.db, "embed_model", cur);
+          ensureIndexModel(d.db, cur);      // 空库直接盖戳，别让新装用户看到假 stale
+        }
       } catch { /* 记录失败不影响启动 */ }
       const store = createSecretStore(join(HOME, "secrets"));
       const keys: Record<string, string> = {};
@@ -376,7 +384,9 @@ async function main(): Promise<void> {
         console.log(JSON.stringify({
           ok: true, wrote: `config.json local.${role} = ${name}`,
           now: Object.fromEntries(Object.entries(after.roles).map(([r, c]) => [r, c.model || null])),
-          note: role === "embed" ? "换 embedding 必须重建索引（docs/22 C-2），否则新旧向量不可比" : undefined,
+          note: role === "embed"
+            ? "换了 embedding 必须重建索引，否则新旧向量不可比（检索会悄悄变差）—— 详见 jingjing reembed"
+            : undefined,
         }, null, 2));
         return;
       }
@@ -390,7 +400,13 @@ async function main(): Promise<void> {
           const r = role === "embed" ? await probeEmbed(cfg.ollama, c.model) : await probeChat(cfg.ollama, c.model);
           out.push({ role, model: c.model, ok: r.ok, ms: Date.now() - t0, ...(r.detail ? { detail: r.detail } : {}) });
         }
-        console.log(JSON.stringify({ endpoint: cfg.ollama, online: probe.online, results: out }, null, 2));
+        const d = openDb(dbFile);
+        const ix = indexState(d.db, `${cfg.roles["embed"]?.provider ?? "ollama"}:${cfg.roles["embed"]?.model ?? ""}`);
+        console.log(JSON.stringify({
+          endpoint: cfg.ollama, online: probe.online,
+          index: { ...ix, ok: !ix.stale, hint: ix.stale ? "索引过期：jingjing reembed" : undefined },
+          results: out,
+        }, null, 2));
         process.exitCode = out.every((o) => o.ok) ? 0 : 1;
         return;
       }
@@ -399,6 +415,31 @@ async function main(): Promise<void> {
       process.exitCode = 2;
       return;
     }
+    case "reembed": {
+      // 换了 embedding 模型之后重建索引（C-2）。不动正文，只重算向量。
+      const cfg = resolveConfig(HOME);
+      const model = cfg.roles["embed"]?.model;
+      if (!model) { console.error("E_NO_EMBED_MODEL: 先配 embedding 模型（jingjing models use <名> --role embed）"); process.exitCode = 2; return; }
+      const cur = `${cfg.roles["embed"]!.provider}:${model}`;
+      const d = openDb(dbFile);
+      const st = indexState(d.db, cur);
+      const force = has(rest, "--force");
+      if (!st.stale && !force) {
+        console.log(JSON.stringify({ ok: true, rebuilt: false, why: "索引已是最新", index: st, tip: "要强制重建加 --force" }, null, 2));
+        return;
+      }
+      const embedder = createEmbedder("ollama", { baseUrl: cfg.ollama, model });
+      console.log(JSON.stringify({
+        rebuilding: true, to: cur, from: st.built, vectors: st.vectors,
+        note: "只重算向量，不动正文；失败会整体回滚并保留旧索引",
+      }, null, 2));
+      const r = await reembedBuild({ db: d.db, embedder, model: cur });
+      console.log(JSON.stringify(r, null, 2));
+      if (!r.ok) console.error("重建失败：旧索引保持不变（meta.reembed_error 有原因）");
+      process.exitCode = r.ok ? 0 : 1;
+      return;
+    }
+
     case "auth": {
       const store = createStore(join(HOME, "secrets"));
       const [op, provider] = [rest[0], rest[1] as Provider | undefined];
