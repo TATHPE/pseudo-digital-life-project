@@ -97,3 +97,16 @@ test("门的阈值来自文档，不散落在代码里", () => {
   assert.equal(GATES.abstainF1, 0.9);
   assert.equal(GATES.trapRate, 0);
 });
+
+// ── 空库不许假绿：recall 用例是从“现有记忆”生成的 ──────────────────
+test("空库时 seedCases 生成不出 recall 用例（CLI 据此报“未覆盖”而不是通过）", async () => {
+  const { seedCases } = await import("../src/eval.ts");
+  const { openDb } = await import("../src/db.ts");
+  const { mkdtempSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const d = openDb(join(mkdtempSync(join(tmpdir(), "jj-eval-empty-")), "m.db"));
+  const cases = seedCases(d.db);
+  assert.equal(cases.filter((c) => c.group === "recall").length, 0, "没记忆就没有 recall 用例");
+  assert.ok(cases.every((c) => c.group !== "recall"));
+});
