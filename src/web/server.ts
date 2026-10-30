@@ -15,6 +15,7 @@ import { expenseLine } from "./state.ts";
 import { loadPersonaText, savePersonaFile, PERSONA_FILES, type PersonaFile } from "../persona.ts";
 import { writeFileConfig, readFileConfig, resolveConfig, configSources } from "../configfile.ts";
 import { isInstalled } from "../ollama.ts";
+import { recompute, w0FromImportance, type Stage } from "../decay.ts";
 import { preflight, lastPreflight } from "../preflight.ts";
 import { indexState } from "../embedindex.ts";
 import { AVATAR_FRAMES, DEFAULT_AVATAR, isAvatarFrame } from "./avatar.ts";
@@ -454,8 +455,8 @@ export function createWebServer(deps: WebDeps) {
           text?: string; importance?: number; sensitivity?: string;
         };
         const id = Number(memEdit[1]);
-        const cur = deps.db.prepare("SELECT text,importance,sensitivity FROM memories WHERE id=? AND status='active'")
-          .get(id) as { text: string; importance: number; sensitivity: string } | undefined;
+        const cur = deps.db.prepare("SELECT text,importance,sensitivity,layer FROM memories WHERE id=? AND status='active'")
+          .get(id) as { text: string; importance: number; sensitivity: string; layer: string } | undefined;
         if (!cur) { json(res, 404, { error: "E_NO_MEMORY" }); return; }
 
         const text = body.text === undefined ? cur.text : String(body.text).trim();
@@ -467,8 +468,23 @@ export function createWebServer(deps: WebDeps) {
           : body.sensitivity === "local_only" ? "local_only" : cur.sensitivity;
 
         // 纠错也是"变更"：留一条事件，并在面板上说明改了什么（02 §5 / 17 §4）
-        deps.db.prepare("UPDATE memories SET text=?, importance=?, sensitivity=?, updated_at=? WHERE id=?")
-          .run(text, importance, sensitivity, now().toISOString(), id);
+        // E-3：人改过重要性 → 记下“是人在打分”，并把 w0 跟着重算
+        //（否则改了 importance 权重不变，很迷惑）
+        const layer = cur.layer === "contract" ? "contract" : "narrative";
+        const changedImportance = body.importance !== undefined && importance !== cur.importance;
+        if (changedImportance) {
+          const w0 = w0FromImportance(importance, layer);
+          deps.db.prepare("UPDATE memories SET text=?, importance=?, sensitivity=?, w0=?, scored_by='human:panel', updated_at=? WHERE id=?")
+            .run(text, importance, sensitivity, w0, now().toISOString(), id);
+          const row = deps.db.prepare("SELECT kind,recall_count,last_decay_at,stage FROM memories WHERE id=?").get(id) as
+            { kind: string; recall_count: number; last_decay_at: string; stage: Stage };
+          // 锚点不动：改 importance 不是“再巩固”（后者才动 last_decay_at）
+          const r = recompute({ id: String(id), layer, kind: row.kind, w0, recallCount: row.recall_count, lastDecayAt: new Date(row.last_decay_at), stage: row.stage }, now());
+          deps.db.prepare("UPDATE memories SET weight=?, stage=? WHERE id=?").run(r.weight, r.stage, id);
+        } else {
+          deps.db.prepare("UPDATE memories SET text=?, importance=?, sensitivity=?, updated_at=? WHERE id=?")
+            .run(text, importance, sensitivity, now().toISOString(), id);
+        }
         const vig = bigramText(text);
         deps.db.prepare("UPDATE memories SET text_bigram=? WHERE id=?").run(vig, id);
         deps.db.prepare("DELETE FROM memories_fts WHERE memory_id=?").run(id);
@@ -779,7 +795,7 @@ export function createWebServer(deps: WebDeps) {
       const memId = url.pathname.match(/^\/api\/memories\/(\d+)$/);
       if (req.method === "GET" && memId) {
         const row = deps.db.prepare(
-          `SELECT id,text,kind,layer,stage,weight,importance,sensitivity,taint,status,created_at,last_decay_at
+          `SELECT id,text,kind,layer,stage,weight,w0,importance,sensitivity,taint,scored_by,status,created_at,last_decay_at
            FROM memories WHERE id=?`).get(Number(memId[1]));
         if (!row) { json(res, 404, { error: "E_NOT_FOUND" }); return; }
         json(res, 200, row);

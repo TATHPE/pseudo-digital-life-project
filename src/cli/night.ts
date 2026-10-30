@@ -81,6 +81,7 @@ export async function runNightCli(opts: NightOptions): Promise<number> {
 
   const report = await runNightly({
     db: d.db, inboxDir: opts.inbox, home: opts.home, embedder, extract, now,
+    scoredBy: `extract:${cfg.roles["extract"]?.model || "?"}`,
     ...(skipReason ? { skipExtract: skipReason } : {}),
   });
 

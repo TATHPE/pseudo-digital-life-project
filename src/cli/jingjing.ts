@@ -29,6 +29,7 @@ import { resolveConfig, configSources, readFileConfig, writeFileConfig } from ".
 import { probeChat, probeEmbed, isInstalled } from "../ollama.ts";
 import { preflight, missingFrom } from "../preflight.ts";
 import { indexState, ensureIndexModel } from "../embedindex.ts";
+import { w0FromImportance, DECAY_PARAMS_VERSION } from "../decay.ts";
 import { reembed as reembedBuild } from "../reembed.ts";
 
 const HOME = process.env.JJ_HOME ?? join(process.cwd(), "data");
@@ -140,7 +141,7 @@ async function main(): Promise<void> {
       const text = rest.join(" ") || "（空）";
       const d = openDb(dbFile);
       const v = at(await createEmbedder("fake").embed([text]), 0);
-      const id = remember(d.db, { layer: "narrative", kind: "episode", text, embedding: v });
+      const id = remember(d.db, { layer: "narrative", kind: "episode", text, embedding: v, scoredBy: "human:cli" });
       appendEvent(inbox, { v: 1, id: newEventId(), ts: new Date().toISOString(), kind: "memory_write", actor: "user", payload: { id, text } });
       console.log(JSON.stringify({ id, weight: getRow(d.db, id)?.weight }));
       return;
@@ -896,7 +897,33 @@ ${r.pass}/${r.total} 拦截/放行符合预期`);
     }
     case "decay": {
       const d = openDb(dbFile);
-      console.log(JSON.stringify({ recomputed: tickDecay(d.db), paramsVersion: 1 }));
+      // E-2：把已有记忆的 w0 按 importance 重算一遍。
+      // 为什么要单独一个开关：这是**改历史**（旧行写入时 w0 恒 0.55），必须显式触发；
+      // 默认 dry-run，看清楚要动多少行再 --apply。
+      if (has(rest, "--reweight")) {
+        const apply = has(rest, "--apply");
+        const rows = d.db.prepare("SELECT id,layer,importance,w0 FROM memories WHERE status='active'").all() as
+          Array<{ id: number; layer: string; importance: number; w0: number }>;
+        const plan = rows.map((r) => ({
+          id: r.id,
+          from: r.w0,
+          to: r.layer === "contract" ? 1 : w0FromImportance(r.importance, "narrative"),
+        })).filter((x) => Math.abs(x.to - x.from) > 1e-9);
+        if (!apply) {
+          console.log(JSON.stringify({ dryRun: true, wouldChange: plan.length, of: rows.length, first5: plan.slice(0, 5),
+            note: "加 --apply 才会写库（改历史需要显式确认）" }, null, 2));
+          return;
+        }
+        const upd = d.db.prepare("UPDATE memories SET w0=?, weight=?, updated_at=? WHERE id=?");
+        d.db.exec("BEGIN");
+        try {
+          for (const x of plan) upd.run(x.to, x.to, new Date().toISOString(), x.id);
+          d.db.exec("COMMIT");
+        } catch (e) { d.db.exec("ROLLBACK"); throw e; }
+        console.log(JSON.stringify({ ok: true, changed: plan.length, of: rows.length, paramsVersion: DECAY_PARAMS_VERSION }, null, 2));
+        return;
+      }
+      console.log(JSON.stringify({ recomputed: tickDecay(d.db), paramsVersion: DECAY_PARAMS_VERSION }));
       return;
     }
     case "bench": {

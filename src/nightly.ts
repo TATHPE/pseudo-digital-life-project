@@ -31,6 +31,8 @@ export interface NightlyDeps {
   embedder: Embedder | null;
   /** 调本地模型做抽取（非流式）。返回模型原始文本 */
   extract: (prompt: string) => Promise<string>;
+  /** 打分者的名字（E-3）：写进 scored_by，让“这条为什么重”能查 */
+  scoredBy?: string;
   /**
    * 降级：有值就**不抽**，但仍算衰减（E-6）。
    * 为什么要这条：energy 的唯一恢复点在 `night` 末尾的 advance({night:true})，
@@ -287,6 +289,7 @@ export async function runNightly(deps: NightlyDeps): Promise<NightlyReport> {
       sourceRef: c.reason.slice(0, 80),
       // 原话（J-2）：**从 journal 里逐字取**，不采信模型转述 —— 否则“原话”又变成模型写的
       quote: pickQuote(fresh, c.text) ?? null,
+      scoredBy: deps.scoredBy ?? "extract",
       embedding: vec,
       now,
     });

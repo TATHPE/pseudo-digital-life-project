@@ -43,7 +43,7 @@ export function startup(deps: {
       remember(deps.db, {
         layer: "narrative", kind: "episode", sensitivity: "local_only",
         text: `${what} ${dur}（${fmt(outage.from)}–${fmt(outage.to)}），其间无经历`,
-        importance: 4, salience: 0.6, sourceKind: "agent", sourceRef: "startup", now,
+        importance: 4, salience: 0.6, sourceKind: "agent", sourceRef: "startup", scoredBy: "rule:outage", now,
       });
       recorded = true;
     }

@@ -1,7 +1,7 @@
 /** 记忆读写（M0 最小面）：remember / 载入候选 / 批量衰减 */
 import type { DatabaseSync } from "node:sqlite";
 import { bigramText } from "./text.ts";
-import { paramsFor, recompute, reconsolidate, weight, isKnownKind, type Layer, type Stage } from "./decay.ts";
+import { paramsFor, recompute, reconsolidate, weight, w0FromImportance, isKnownKind, type Layer, type Stage } from "./decay.ts";
 
 export interface NewMemory {
   layer: Layer; kind: string; text: string;
@@ -13,6 +13,8 @@ export interface NewMemory {
   sourceRef?: string | null;
   /** 原话（J-2）：必须是 journal 里的原句，不是模型转述 */
   quote?: string | null;
+  /** 这个 importance 是谁定的（E-3）：human:panel / extract:<model> / rule:outage / tool:memory.remember */
+  scoredBy?: string | null;
   w0?: number;
   embedding?: Float32Array | null;
   now?: Date;
@@ -35,16 +37,18 @@ export function remember(db: DatabaseSync, m: NewMemory): number {
   if (m.layer === "contract" && (m.taint ?? "trusted") !== "trusted") {
     throw new Error("E_TAINT_CONTRACT: 不可信来源（taint=external）不能直接进契约层（永不衰减）；先写叙事层，等人确认");
   }
-  const w0 = m.w0 ?? (m.layer === "contract" ? 1 : 0.55);
+  // E-2：w0 由 importance 推导（之前恒 0.55，权重从来没有方差）
+  const importance = Math.max(1, Math.min(5, Math.round(Number(m.importance ?? 3))));
+  const w0 = m.w0 ?? w0FromImportance(importance, m.layer);
   const emb = m.embedding ? new Uint8Array(m.embedding.buffer.slice(0)) : null;
   const r = db.prepare(`
     INSERT INTO memories(layer,kind,scope,subject,text,text_bigram,importance,salience,
-      sensitivity,taint,source_kind,source_ref,quote,w0,beta,floorw,weight,stage,last_decay_at,
+      sensitivity,taint,source_kind,source_ref,quote,scored_by,w0,beta,floorw,weight,stage,last_decay_at,
       embedding,created_at,updated_at)
-    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
       m.layer, m.kind, m.scope ?? "global", m.subject ?? null, m.text, bigramText(m.text),
-      m.importance ?? 3, m.salience ?? 0.3, m.sensitivity ?? "local_only", m.taint ?? "trusted",
-      m.sourceKind ?? "user", m.sourceRef ?? null, m.quote ?? null,
+      importance, m.salience ?? 0.3, m.sensitivity ?? "local_only", m.taint ?? "trusted",
+      m.sourceKind ?? "user", m.sourceRef ?? null, m.quote ?? null, m.scoredBy ?? "system",
       w0, p.beta, p.floor, m.layer === "contract" ? 1 : w0,
       m.layer === "contract" ? "active" : "active", now, emb, now, now,
     );

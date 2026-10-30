@@ -52,6 +52,10 @@ export function openDb(path: string): Db {
     if (Number(cur.value) < 8) {
       ensureColumn(db, "documents", "sensitivity", "TEXT NOT NULL DEFAULT 'local_only'");
     }
+    if (Number(cur.value) < 10) {
+      // E-3：权重/重要性是谁打的分，必须能查（否则"这条为什么比那条重"永远说不清）
+      ensureColumn(db, "memories", "scored_by", "TEXT");
+    }
     if (Number(cur.value) < 9) {
       // J 组：原话层（J-2）+ 关系带 why 与止期（J-3）
       ensureColumn(db, "memories", "quote", "TEXT");

@@ -1,5 +1,5 @@
 /** M0 schema（02 §4 + 18 §1 的 outage/审计） */
-export const SCHEMA_VERSION = 9;
+export const SCHEMA_VERSION = 10;
 
 export const MIGRATION_001 = `
 PRAGMA journal_mode=WAL;
@@ -60,6 +60,8 @@ CREATE TABLE IF NOT EXISTS memories (
   source_ref TEXT,
   /** 原话（J-2）：写入时从 journal 取的原句，**不是模型转述**；没有就是 null */
   quote TEXT,
+  /** 这个 importance/w0 是谁定的（E-3）：human:panel / extract:qwen2.5:7b / rule:outage / tool:memory.remember */
+  scored_by TEXT,
   w0 REAL NOT NULL DEFAULT 0.55,
   beta REAL NOT NULL DEFAULT 0.85,
   floorw REAL NOT NULL DEFAULT 0.05,

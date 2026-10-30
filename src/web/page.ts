@@ -1352,6 +1352,7 @@ async function openMemory(id) {
   $("#mv-text").textContent = r.text;
   $("#mv-meta").textContent = "id " + r.id + " · " + r.layer + "/" + r.kind + " · " + r.stage +
     " · 权重 " + Number(r.weight).toFixed(2) + " · " + r.sensitivity + " · " + r.taint +
+    " · 打分 " + (r.scored_by || "未记录") +
     " · 建于 " + String(r.created_at).slice(0, 19);
   $("#mv-msg").textContent = "";
   $("#mv-edit").value = r.text;

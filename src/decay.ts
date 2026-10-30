@@ -45,12 +45,37 @@ export const KIND_PARAMS: Record<string, DecayParams> = {
  */
 export const NIGHTLY_KINDS = ["episode", "preference_hard", "fact_hard", "promise", "boundary", "thought"] as const;
 
+/**
+ * 参数/行为的版本号。**改了会影响已有记忆的算法含义，就必须 bump。**
+ *   v1  初始（w0 恒为 0.55）
+ *   v2  2026-10-30（E-2）：`w0` 由 importance 推导，权重建库以来第一次有了方差
+ */
 /** 未知 kind 会不会被回落（可观测：store 写入时会记一条事件） */
 export function isKnownKind(kind: string): boolean {
   return Object.hasOwn(KIND_PARAMS, kind);
 }
 
-export const DECAY_PARAMS_VERSION = 1;
+export const DECAY_PARAMS_VERSION = 2;
+
+/**
+ * 初始权重 w0（E-2）
+ *
+ * 之前每条叙事记忆的 w0 **恒是 0.55** —— 于是 `importance` 只用于 `ORDER BY`，
+ * “这条重要”对“它记得多久”零影响（实测 47 条权重全在 0.55–0.56）。
+ *
+ * 现在按 importance 1–5 映射到 0.35–0.83（线性但四舍五入到 3 位），含义是：
+ *   · 合同层永远 1（不进公式）；
+ *   · 默认 3 → 0.59（和以前的 0.55 接近，避免一接上就把所有旧记忆的相对位置打乱）；
+ *   · 1 与 5 的差距是 2.4 倍衰减速度，仍然是**有界**的（不许重要度变成无限权重）。
+ *
+ * 为什么不在公式里直接用 importance：`weight()` 必须只依赖 (w0, 锚点, n)。
+ * 把 importance 塞进公式会让“改一个重要度”变成“改历史”。
+ */
+export function w0FromImportance(importance: number, layer: Layer): number {
+  if (layer === "contract") return 1;
+  const imp = Math.max(1, Math.min(5, Number.isFinite(importance) ? importance : 3));
+  return Math.round((0.35 + (imp - 1) * 0.12) * 1000) / 1000;
+}
 
 /** 唯一入口：未知 kind 回落到 episode，不用 `!` 也不用 ?? 撒满地 */
 export function paramsFor(kind: string): DecayParams {

@@ -166,7 +166,10 @@ export const verbs: VerbDef[] = [
       const kind = String(a.kind ?? (layer === "contract" ? "promise" : "episode"));
       const text = String(a.text ?? "").slice(0, 2000);
       const emb = ctx.embedder ? (await ctx.embedder.embed([text]))[0] ?? null : null;
-      const id = remember(ctx.db, { layer, kind, text, embedding: emb, now: ctx.now(), sensitivity: "shareable" });
+      const id = remember(ctx.db, {
+        layer, kind, text, embedding: emb, now: ctx.now(), sensitivity: "shareable",
+        scoredBy: "tool:memory.remember",
+      });
       return `已记住 [mem:${id}]（${layer}/${kind}）`;
     },
   },
