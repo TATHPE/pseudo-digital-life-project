@@ -574,6 +574,8 @@ export const PAGE = `<!doctype html>
         <label>api key（保存后只显示指纹）</label><input id="c-key" type="password" placeholder="sk-…" autocomplete="off">
         <div class="acts"><button id="c-save" class="primary">保存接口</button>
           <button id="c-test">测试连接</button>
+          <!-- 清除密钥：没有它，想测本地模型就只能断网或填个坏 key，而坏 key 拿不回来 -->
+          <button id="c-clear" hidden title="删掉存在本机的 key（会提示一次，再点确认）">清除密钥</button>
           <span id="c-msg" class="hint"></span></div>
         <p class="hint" id="c-usage">…</p>
         <p class="hint" id="c-cur">…</p>
@@ -1408,6 +1410,7 @@ async function loadConfig() {
   $("#c-model").value = c.model;
   $("#c-base").value = c.baseUrl || "";
   $("#modelchip").textContent = c.provider.toUpperCase() + " · " + c.model;
+  $("#c-clear").hidden = !c.hasKey;          // 没有 key 就不显示"清除"（避免点了没反应）
   $("#c-cur").textContent = "当前 " + c.provider + " / " + c.model +
     (c.hasKey ? " · key " + c.keyFingerprint + " (" + c.secretStore + ")" : " · 还没配 key") +
     " · 预算 $" + c.budgetUsd + "/天";
@@ -1506,6 +1509,31 @@ document.addEventListener("click", (e) => {
   if (e.target.closest("#side")) return;
   side.classList.remove("open");
 });
+// 清除密钥：两步确认（第一次只是"你确定？"，4 秒后自动复位）
+let clearArmed = 0;
+$("#c-clear").onclick = async () => {
+  const btn = $("#c-clear"), m = $("#c-msg");
+  if (Date.now() - clearArmed > 4000) {
+    clearArmed = Date.now();
+    btn.textContent = "再点一次 = 真的清除";
+    m.className = "err"; m.textContent = "会删掉本机存的 key（可重新填回）；没 key 时云端会回落本地，本地也没模型就直接报错";
+    setTimeout(() => { btn.textContent = "清除密钥"; }, 4000);
+    return;
+  }
+  clearArmed = 0;
+  btn.disabled = true;
+  try {
+    const j = await (await fetch("/api/config", { method: "PUT", headers: H, body: JSON.stringify({ key: null }) })).json();
+    m.className = j.ok ? "ok" : "err";
+    m.textContent = j.ok
+      ? (j.removed ? "已清除本机的 key。没有 key 时云端会回落本地模型" : "本来就没有 key")
+      : ("失败：" + (j.error || "?"));
+    await loadConfig();
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "清除密钥";
+  }
+};
 $("#c-save").onclick = async () => {
   const body = { provider: $("#c-provider").value, model: $("#c-model").value.trim() };
   const base = $("#c-base").value.trim(); if (base) body.baseUrl = base;

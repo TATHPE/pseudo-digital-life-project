@@ -785,6 +785,9 @@ test("没 key 时说真话：本地兜底要有 notice，banner 不能写「仅�
   assert.ok(!ingestBlock.includes("dlg-share"), "摄入表单里不许有「允许进云端」");
   assert.ok(ingestBlock.includes("摄入到本机"), "按钮要说清它只是落到本机");
   assert.ok(PAGE.includes("标为可发送"), "那篇文档自己的入口要在（docview）");
+  // C-1 的面板半截：清除密钥的按钮与两步确认都要在
+  assert.ok(PAGE.includes('id="c-clear"'), "接口面板要有「清除密钥」按钮");
+  assert.ok(PAGE.includes("再点一次 = 真的清除"), "删除不可逆，必须两步确认");
 });
 
 // ── C-1：面板也能「清除密钥」（key:null，不是空串）───────────────
