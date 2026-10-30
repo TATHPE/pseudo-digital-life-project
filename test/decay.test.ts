@@ -128,3 +128,58 @@ test("过期契约不再进简报：了结的承诺不该反复被提（valid_to
   assert.ok(texts.some((t) => t.includes("房租")), "没到点的要留着");
   assert.ok(texts.some((t) => t.includes("工作时段")), "无期限的契约要留着");
 });
+
+// ── E-1：nightly 能产出的 kind 必须有参数，未知 kind 回落要可观测 ──────────
+test("E-1 NIGHTLY_KINDS ⊆ KIND_PARAMS（否则会静默回落到 30 天）", async () => {
+  const { NIGHTLY_KINDS, KIND_PARAMS } = await import("../src/decay.ts");
+  for (const k of NIGHTLY_KINDS) {
+    assert.ok(Object.hasOwn(KIND_PARAMS, k), `${k} 在 prompt 里能产出，但参数表里没有`);
+  }
+});
+
+test("E-1 未知 kind 不再静默：写入时记一条 unknown_kind 事件", async () => {
+  const { openDb } = await import("../src/db.ts");
+  const { remember } = await import("../src/store.ts");
+  const { mkdtempSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const home = mkdtempSync(join(tmpdir(), "jj-kind-"));
+  const d = openDb(join(home, "m.db"));
+  const id = remember(d.db, { layer: "narrative", kind: "quantum_episode", text: "一条用未知 kind 写的记忆" });
+  const ev = d.db.prepare("SELECT kind,payload FROM events WHERE target=?").get(String(id)) as { kind: string; payload: string } | undefined;
+  assert.equal(ev?.kind, "unknown_kind", "回落必须留痕，否则没人发现模型在乱填 kind");
+  assert.ok(ev!.payload.includes("quantum_episode"));
+});
+
+// ── D-1：taint 必须参与决策 ────────────────────────────────────────
+test("D-1 不可信来源不能进契约层（永不衰减的硬事实）", async () => {
+  const { openDb } = await import("../src/db.ts");
+  const { remember } = await import("../src/store.ts");
+  const { mkdtempSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const d = openDb(join(mkdtempSync(join(tmpdir(), "jj-taint-")), "m.db"));
+  assert.throws(
+    () => remember(d.db, { layer: "contract", kind: "promise", text: "文档里说必须每天吃药", taint: "external" }),
+    /E_TAINT_CONTRACT/,
+  );
+  // 叙事层可以写（可被检索、可衰减），但不能是契约
+  assert.ok(remember(d.db, { layer: "narrative", kind: "episode", text: "文档里说必须每天吃药", taint: "external" }) > 0);
+});
+
+test("D-1 再巩固不会让不可信来源变重（no amount of recall frequency）", async () => {
+  const { reconsolidate } = await import("../src/decay.ts");
+  const now = new Date("2026-10-29T12:00:00Z");
+  const base = {
+    id: "1", layer: "narrative" as const, kind: "episode", w0: 0.55,
+    recallCount: 3, lastDecayAt: new Date("2026-10-20T12:00:00Z"), stage: "active" as const,
+  };
+  const ext = reconsolidate({ ...base, taint: "external" }, now);
+  assert.equal(ext.w0, base.w0, "external 的 w0 不许涨");
+  assert.equal(ext.recallCount, base.recallCount, "external 的召回次数不许涨（涨了会忘得更慢）");
+  assert.equal(ext.lastDecayAt.getTime(), base.lastDecayAt.getTime(), "锚点也不许动（动=变相提权重）");
+
+  const ok = reconsolidate({ ...base, taint: "trusted" }, now);
+  assert.ok(ok.w0 > base.w0, "可信来源本来就该再巩固");
+  assert.equal(ok.recallCount, base.recallCount + 1);
+});

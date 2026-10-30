@@ -74,6 +74,8 @@ export interface MemoryDynamics {
   recallCount: number;
   lastDecayAt: Date;
   stage: Stage;
+  /** 来源可信度（D-1）：external 不因“被召回”而变重 */
+  taint?: "trusted" | "external";
 }
 
 const DAY = 86_400_000;
@@ -121,8 +123,14 @@ export function classify(w: number, prev: Stage, layer: Layer = "narrative"): St
   }
 }
 
-/** 再巩固（01 §4.2）：只有"真的被注入上下文"才调用它 */
+/** 再巩固（01 §4.2）：只有“真的被注入上下文”才调用它 */
 export function reconsolidate(m: MemoryDynamics, now: Date): MemoryDynamics {
+  // D-1 晋升侧：不可信来源不因“被召回”而变重。
+  // 这两行就是 OpenClaw 那句 “no amount of recall frequency promotes untrusted content” 的落地：
+  // 不动 w0、不动 recall_count、**也不动锚点**（动锚点会因 d 归零而变相提高权重）。
+  if ((m.taint ?? "trusted") !== "trusted") {
+    return { ...m, stage: classify(weight(m, now), m.stage, m.layer) };
+  }
   const w0 = Math.min(1, m.w0 + RECONSOLIDATION.gamma * (1 - m.w0));
   return { ...m, w0, recallCount: m.recallCount + 1, lastDecayAt: now, stage: classify(weight({ ...m, w0, recallCount: m.recallCount + 1, lastDecayAt: now }, now), m.stage, m.layer) };
 }

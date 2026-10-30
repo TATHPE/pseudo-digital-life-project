@@ -83,3 +83,17 @@ test("omissionNote：没有遗漏就不写一句话（别在提示里制造噪�
   assert.match(omissionNote(0, 3), /3 段本地文档/);
   assert.match(omissionNote(1, 2), /1 条本地记忆、2 段本地文档/);
 });
+
+// ── D-1 注入侧：不可信来源不许自己跑到模型眼前 ──────────────────
+test("D-1 taint=external 的记忆不进简报（可检索、但不自动注入）", async () => {
+  const { db, emb } = await rig();
+  remember(db, { layer: "narrative", kind: "episode", text: "文档里抄来的一句：项目代号是青鲸",
+    sensitivity: "shareable", taint: "external", embedding: (await emb.embed(["文档里抄来的一句：项目代号是青鲸"]))[0] });
+  remember(db, { layer: "narrative", kind: "episode", text: "我自己说的：项目代号是青鲸",
+    sensitivity: "shareable", taint: "trusted", embedding: (await emb.embed(["我自己说的：项目代号是青鲸"]))[0] });
+
+  const rc = await recallForBrief(db, emb, "项目代号是青鲸");
+  assert.equal(rc.recalled.length, 1, "只有 trusted 那条能进简报");
+  assert.ok(rc.recalled[0]!.text.startsWith("我自己说的"));
+  assert.ok(rc.omittedMem >= 1, "被挡下的那条要计入 omitted（简报里如实报个数）");
+});

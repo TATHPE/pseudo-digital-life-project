@@ -47,19 +47,26 @@ export async function recallForBrief(
   // ── 记忆 ────────────────────────────────────────────
   const hits = embedder ? (await search(db, embedder, query, { k: memK })).hits : [];
   // 敏感度、层、种类都从库里现取——别猜（契约层在 P10 里也不能被显示成叙事）
-  const metaById = new Map<number, { layer: "narrative" | "contract"; kind: string; sensitivity?: string }>();
+  const metaById = new Map<number, { layer: "narrative" | "contract"; kind: string; sensitivity?: string; taint?: string }>();
   if (hits.length) {
     const got = db.prepare(
-      `SELECT id, layer, kind, sensitivity FROM memories WHERE id IN (SELECT value FROM json_each(?))`,
-    ).all(JSON.stringify(hits.map((h) => h.id))) as Array<{ id: number; layer: string; kind: string; sensitivity?: string }>;
+      `SELECT id, layer, kind, sensitivity, taint FROM memories WHERE id IN (SELECT value FROM json_each(?))`,
+    ).all(JSON.stringify(hits.map((h) => h.id))) as Array<{ id: number; layer: string; kind: string; sensitivity?: string; taint?: string }>;
     for (const g of got) {
       metaById.set(Number(g.id), {
         layer: g.layer === "contract" ? "contract" : "narrative", kind: g.kind,
         ...(g.sensitivity ? { sensitivity: g.sensitivity } : {}),
+        ...(g.taint ? { taint: g.taint } : {}),
       });
     }
   }
-  const shareable = hits.filter((h) => metaById.get(h.id)?.sensitivity === "shareable");
+  // D-1 的注入侧：不可信来源（taint=external）不进简报。
+  // 它可以存在、可以被显式搜到，但不能自己跑到模型眼前 —— “quarantine by tier”。
+  // 这就是 taint 那个列之前**零处参与逻辑**的那个缺口（docs/22 D-1）。
+  const shareable = hits.filter((h) => {
+    const m = metaById.get(h.id);
+    return m?.sensitivity === "shareable" && (m.taint ?? "trusted") === "trusted";
+  });
   for (const h of shareable) {
     const m = metaById.get(h.id)!;
     recalled.push({

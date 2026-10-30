@@ -1,7 +1,7 @@
 /** 记忆读写（M0 最小面）：remember / 载入候选 / 批量衰减 */
 import type { DatabaseSync } from "node:sqlite";
 import { bigramText } from "./text.ts";
-import { paramsFor, recompute, type Layer, type Stage } from "./decay.ts";
+import { paramsFor, recompute, isKnownKind, type Layer, type Stage } from "./decay.ts";
 
 export interface NewMemory {
   layer: Layer; kind: string; text: string;
@@ -27,6 +27,12 @@ export interface MemoryRow {
 export function remember(db: DatabaseSync, m: NewMemory): number {
   const now = (m.now ?? new Date()).toISOString();
   const p = paramsFor(m.kind);
+  // D-1：契约层不允许存不可信来源。
+  // 一旦写进去就是“永不衰减的硬事实”，而它可能是某份文档/某个工具结果里的一句话。
+  // 静默降级更糟：直接拒写，让人或整理器显式改成 narrative。
+  if (m.layer === "contract" && (m.taint ?? "trusted") !== "trusted") {
+    throw new Error("E_TAINT_CONTRACT: 不可信来源（taint=external）不能直接进契约层（永不衰减）；先写叙事层，等人确认");
+  }
   const w0 = m.w0 ?? (m.layer === "contract" ? 1 : 0.55);
   const emb = m.embedding ? new Uint8Array(m.embedding.buffer.slice(0)) : null;
   const r = db.prepare(`
@@ -42,6 +48,12 @@ export function remember(db: DatabaseSync, m: NewMemory): number {
     );
   const id = Number(r.lastInsertRowid);
   db.prepare("INSERT INTO memories_fts(memory_id,bigram) VALUES(?,?)").run(id, bigramText(m.text));
+  // E-1：未知 kind 以前是**静默**回落到 episode（30 天）。回落仍然发生（老数据里有 kind='fact' 这类），
+  // 但必须可观测：记一条事件，否则“模型填了个我们不认识的 kind”永远不会有人发现。
+  if (!isKnownKind(m.kind)) {
+    db.prepare("INSERT INTO events(ts,kind,actor,target,payload,ok) VALUES(?,?,?,?,?,1)")
+      .run(now, "unknown_kind", "system", String(id), `kind=${String(m.kind).slice(0, 40)} → 回落 episode`);
+  }
   if (emb) {
     // vec0 的主键只接受整数：node:sqlite 会把 JS number 绑成 REAL，必须 BigInt。
     // 失败时**不静默**：写 meta + 记事件（02 §4.3 的教训）。
