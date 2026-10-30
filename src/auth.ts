@@ -8,7 +8,7 @@
  * 绝不：写进 config、写进 SQLite、写进日志、写进 argv。
  */
 import { execFileSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync, existsSync, chmodSync, readdirSync, unlinkSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync, existsSync, chmodSync, readdirSync, unlinkSync, statSync } from "node:fs";
 import { dirname } from "node:path";
 
 export type Provider = "deepseek" | "anthropic" | "openai";
@@ -39,9 +39,24 @@ const fp = (k: string) => `${k.slice(0, 5)}…${k.slice(-4)}`;
 function ps(script: string, plaintext?: string): string {
   const r = execFileSync("powershell", ["-NoProfile", "-NonInteractive", "-Command",
     "$ErrorActionPreference='Stop'; Add-Type -AssemblyName System.Security; " + script,
-  ], { env: { ...process.env, JJ_PT: plaintext ?? "" }, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  ], {
+    env: { ...process.env, JJ_PT: plaintext ?? "" }, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"],
+    // windowsHide：不加这个，每次解密都会闪一下 PowerShell 窗口。
+    // 面板每读一次配置就要解密一次（以前还是每个请求 3 次），用户看到的就是"点设置弹黑框"。
+    windowsHide: true,
+  });
   return r.trim();
 }
+
+/**
+ * 解密结果按「文件路径 + mtime」缓存。
+ *
+ * 为什么要缓存：DPAPI 只能靠起一个 PowerShell 进程来解密，一次约 600 ms。
+ * 之前 /api/config 里 get() 被调两次（hasKey + 指纹）、getChat() 还把 3 个 provider 全读一遍，
+ * 于是"点一次设置"= 3 个进程 ≈ 1.9 秒，并且窗口闪 3 下。
+ * 缓存键带 mtime：auth set / remove 之后立刻失效，不会读到旧 key。
+ */
+const decrypted = new Map<string, { at: number; key: string }>();
 
 export function createStore(dir: string): SecretStore {
   mkdirSync(dir, { recursive: true });
@@ -60,19 +75,26 @@ export function createStore(dir: string): SecretStore {
             "$e=[Security.Cryptography.ProtectedData]::Protect($b,$null,'CurrentUser');" +
             "[Convert]::ToBase64String($e)", key);
           writeFileSync(file(p), b64 + "\n", { mode: 0o600 });
+          decrypted.delete(file(p));
         },
         get(p) {
           const f = file(p);
           if (!existsSync(f)) return undefined;
+          const at = statSync(f).mtimeMs;
+          const hit = decrypted.get(f);
+          if (hit && hit.at === at) return hit.key;
           const b64 = readFileSync(f, "utf8").trim();
-          return ps(
+          const key = ps(
             "$e=[Convert]::FromBase64String($env:JJ_PT);" +
             "$b=[Security.Cryptography.ProtectedData]::Unprotect($e,$null,'CurrentUser');" +
             "[Text.Encoding]::UTF8.GetString($b)", b64);
+          decrypted.set(f, { at, key });
+          return key;
         },
         list() { return listKeys(dir, "dpapi"); },
         clear(p) {
           const f = file(p);
+          decrypted.delete(f);
           if (!existsSync(f)) return false;
           unlinkSync(f);
           return true;

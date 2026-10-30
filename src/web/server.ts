@@ -239,7 +239,10 @@ export function serviceWorkerJs(): string {
 
 export function createWebServer(deps: WebDeps) {
   const now = deps.now ?? (() => new Date());
-  const secrets = () => createStore(joinDir(deps.home, "secrets"));
+  // 每次请求都 createStore 会重新做一遍 DPAPI 探测（又是一个 PowerShell 进程）；
+  // 存储本身无状态，进程内复用即可（clear/set 会自己让解密缓存失效）。
+  let secretStore: ReturnType<typeof createStore> | null = null;
+  const secrets = () => (secretStore ??= createStore(joinDir(deps.home, "secrets")));
 
   return httpCreateServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
@@ -601,17 +604,16 @@ export function createWebServer(deps: WebDeps) {
         const cfg = deps.getConfig();
         const store = secrets();
         const ex = cfg.roles["express"]!;
+        // 只读一次：每次 get() 在 Windows 上是一个 PowerShell 进程（DPAPI 解密）
+        const key = store.get(ex.provider as Provider);
         json(res, 200, {
           provider: ex.provider,
           model: ex.model,
           baseUrl: ex.baseUrl ?? null,
           ollama: cfg.ollama,
           secretStore: store.kind,
-          hasKey: Boolean(store.get(ex.provider as Provider)),
-          keyFingerprint: (() => {
-            const k = store.get(ex.provider as Provider);
-            return k ? fingerprint(k) : null;
-          })(),
+          hasKey: Boolean(key),
+          keyFingerprint: key ? fingerprint(key) : null,
           budgetUsd: deps.budgetUsd ?? 2,
         });
         return;
