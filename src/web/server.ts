@@ -339,6 +339,8 @@ export function createWebServer(deps: WebDeps) {
         let memories = 0;
         try { memories = Number((deps.db.prepare("SELECT count(*) c FROM memories WHERE status='active'").get() as { c?: number })?.c ?? 0); }
         catch { degraded.push("db_unreadable"); }
+        // 夜间整备降级是**可见状态**，不是日志里的一行（E-6：否则 energy 滑到 0 也没人知道为什么）
+        try { if (meta(deps.db, "nightly_skipped")) degraded.push("nightly-skipped"); } catch { /* ignore */ }
         json(res, 200, {
           ok: true,
           schema: meta(deps.db, "schema_version") ?? null,

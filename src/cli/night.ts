@@ -27,42 +27,43 @@ export interface NightOptions {
  * 只检查 kind=local 的；云端角色不做网络探测（也不该在夜间流程里出网）。
  */
 async function missingLocalModels(roles: Record<string, { kind: string; provider: string; model: string }>): Promise<string[]> {
-  const wanted = [...new Set(Object.values(roles).filter((r) => r.kind === "local" && r.provider === "ollama").map((r) => r.model))];
-  if (!wanted.length) return [];
+  const local = Object.values(roles).filter((r) => r.kind === "local" && r.provider === "ollama");
+  const unset = local.filter((r) => !r.model).length;
+  const wanted = [...new Set(local.map((r) => r.model).filter(Boolean))];
+  // 没配模型 ≠ 没装模型：以前默认值指向已删的 qwen2.5:1.5b-instruct，报错会把人引错（C-5）
+  const unsetNote = unset ? [`（未配置本地模型：设 JJ_MODEL_DEFAULT，或用 jingjing models use 写进 config.json）`] : [];
+  if (!wanted.length) return unsetNote;
   let have: string[] = [];
   try {
     const r = await fetch("http://127.0.0.1:11434/api/tags", { signal: AbortSignal.timeout(3000) });
     const j = await r.json() as { models?: Array<{ name: string }> };
     have = (j.models ?? []).map((m) => m.name);
   } catch {
-    return ["（Ollama 没在跑：http://127.0.0.1:11434 连不上）"];
+    return [...unsetNote, "（Ollama 没在跑：http://127.0.0.1:11434 连不上）"];
   }
-  return wanted.filter((m) => !have.includes(m) && !have.includes(m + ":latest"));
+  return [...unsetNote, ...wanted.filter((m) => !have.includes(m) && !have.includes(m + ":latest"))];
 }
 
 export async function runNightCli(opts: NightOptions): Promise<number> {
   const now = opts.now ?? new Date();
   const cfg = resolveConfig(opts.home);
   // 前置检查：本地整理模型在不在。
-  // 2026-10-28 删掉了 1.5B（它调不动工具），如果环境里没有任何本地 chat 模型，
-  // 这里必须**说人话**，而不是让 ollama 抛一个 404 让人去猜。
+  // 2026-10-28 删掉了 1.5B（它调不动工具）。缺模型是**降级**不是失败（E-6）：
+  //   · 能做的部分照做：衰减补算 + advance({night:true})（energy 的唯一恢复点就在这）
+  //   · 不能做的部分（抽取/冲突消解/自传）跳过，游标不动，/health 报 nightly-skipped
   const missing = await missingLocalModels(cfg.roles);
-  if (missing.length) {
-    console.error("⚠ 夜间整备需要本地模型，但 Ollama 里没有：");
-    for (const m of missing) console.error("   - " + m);
-    console.error(String.fromCharCode(10) + "可选：");
-    console.error("  ① 装一个能调工具的（推荐）：ollama pull qwen2.5:7b-instruct");
-    console.error("     然后 export JJ_MODEL_NIGHT=qwen2.5:7b-instruct（route/extract/salience/conflict 同理）");
-    console.error("  ② 暂时不跑夜间整备：记忆会停在「只追加不整理」的状态（inbox 仍然不丢）");
-    return 2;
-  }
+  const skipReason = missing.length ? `缺本地模型：${missing.join(", ")}` : undefined;
+
   const d = openDb(opts.dbFile);
-  const transport = createTransport(routerFrom(cfg.roles as never));
+  // 降级时**不许**建 transport：routerFrom 会对空 model 报 E_CONFIG（这是对的，
+  // 但不能让它把整轮 night 带崩——降级的要点就是“能做的照做”）。
+  const transport = skipReason ? null : createTransport(routerFrom(cfg.roles as never));
   const embedder = createEmbedder("ollama", { baseUrl: cfg.ollama, model: cfg.roles["embed"]!.model });
 
   ensureTerritory(opts.home);
 
   const extract = async (prompt: string): Promise<string> => {
+    if (!transport) throw new Error("E_NO_MODEL");
     // containsMemory=true → 只允许本地角色（19 §0.1 W-A）
     const r = await transport.complete("extract", [{ role: "user", content: prompt }], {
       containsMemory: true, purpose: "nightly-extract", maxTokens: 700, temperature: 0.2,
@@ -72,10 +73,11 @@ export async function runNightCli(opts: NightOptions): Promise<number> {
 
   const report = await runNightly({
     db: d.db, inboxDir: opts.inbox, home: opts.home, embedder, extract, now,
+    ...(skipReason ? { skipExtract: skipReason } : {}),
   });
 
   let autobio: Awaited<ReturnType<typeof writeAutobiography>> | null = null;
-  if (!opts.skipAutobio) {
+  if (!skipReason && !opts.skipAutobio && transport) {
     const st = describe(loadState(d.db));
     autobio = await writeAutobiography({
       db: d.db, home: opts.home, now,
@@ -85,14 +87,22 @@ export async function runNightCli(opts: NightOptions): Promise<number> {
       stateText: st,
     });
   }
+  // 无论抽没抽，这一句都要执行：能量、closeness、silenceDays 全靠它推进
   advance(d.db, { night: true, silenceDays: 1 }, now);
 
+  if (skipReason) {
+    console.error("⚠ 夜间整备降级：" + skipReason);
+    console.error("   已做：衰减补算 + 状态推进。未做：抽取 / 冲突消解 / 自传。游标未推进，这轮对话没丢。");
+    console.error("   要让它真整理：ollama pull qwen2.5:7b-instruct，然后 export JJ_MODEL_DEFAULT=qwen2.5:7b-instruct");
+  }
+
   const out = {
+    skipped: skipReason ?? null,
     nightly: report,
     autobio: autobio ? { path: autobio.path?.replace(opts.home, "<home>"), bytes: autobio.bytes, cited: autobio.cited, skipped: autobio.skipped } : null,
     territory: territoryListing(opts.home),
     spirits: listAutobiography(opts.home).slice(0, 3),
-    outbound: (transport as unknown as { outbound?: () => unknown[] }).outbound?.() ?? [],
+    outbound: (transport as unknown as { outbound?: () => unknown[] } | null)?.outbound?.() ?? [],
   };
   if (!opts.dryRun) {
     console.log(JSON.stringify(out, null, 2));

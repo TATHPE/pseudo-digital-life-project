@@ -11,7 +11,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { readEvents, type Event } from "./journal.ts";
 import { remember, tickDecay } from "./store.ts";
 import type { Embedder } from "./embed.ts";
-import type { Layer } from "./decay.ts";
+import { NIGHTLY_KINDS, type Layer } from "./decay.ts";
 
 export interface Candidate {
   kind: string;
@@ -31,6 +31,13 @@ export interface NightlyDeps {
   embedder: Embedder | null;
   /** 调本地模型做抽取（非流式）。返回模型原始文本 */
   extract: (prompt: string) => Promise<string>;
+  /**
+   * 降级：有值就**不抽**，但仍算衰减（E-6）。
+   * 为什么要这条：energy 的唯一恢复点在 `night` 末尾的 advance({night:true})，
+   * 而以前缺模型在更早的地方就 return 2 了 —— 于是每聊 50 句 energy 掉一整格，永远回不来。
+   * 不可达 ≠ 失败：能做的部分照做，不能做的部分说清楚。
+   */
+  skipExtract?: string;
   /** 冲突判定的可选模型分支（模糊带）。不给就纯规则 */
   verdict?: (a: { oldText: string; newText: string }) => Promise<Verdict>;
   now?: Date;
@@ -52,9 +59,19 @@ export interface NightlyReport {
   notes: string[];
 }
 
+/** 记一笔“今晚没抽”（/health 的 degraded 读它）。成功跑完就清掉。 */
+export function noteNightlySkip(db: DatabaseSync, reason: string, now: Date): void {
+  db.prepare("INSERT INTO meta(key,value) VALUES('nightly_skipped',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value")
+    .run(`${now.toISOString()} ${reason}`);
+}
+
+export function clearNightlySkip(db: DatabaseSync): void {
+  db.prepare("DELETE FROM meta WHERE key='nightly_skipped'").run();
+}
+
 const EXTRACT_PROMPT = (transcript: string): string => [
   "你是记忆抽取器。从下面的对话里抽取「值得长期记住」的东西，只输出 JSON 数组，不要解释。",
-  '每条格式：{"kind":"episode|preference_hard|fact_hard|promise|boundary|thought","layer":"narrative|contract","subject":"不超过8字的主题","text":"一句话，不超过60字","salience":0到1,"reason":"为什么值得记"}',
+  '每条格式：{"kind":"' + NIGHTLY_KINDS.join("|") + '","layer":"narrative|contract","subject":"不超过8字的主题","text":"一句话，不超过60字","salience":0到1,"reason":"为什么值得记"}',
   "规则：",
   "1) 承诺、边界、硬性事实 → layer=contract（永不衰减）；其余 → narrative",
   "2) 最多 5 条。宁缺毋滥：没有值得记的就输出 []",
@@ -62,7 +79,7 @@ const EXTRACT_PROMPT = (transcript: string): string => [
   "",
   "对话：",
   transcript,
-].join("\n");
+].join(String.fromCharCode(10));
 
 /** 宽松解析：容忍 ```json 围栏、前后废话、单条对象 */
 export function parseCandidates(raw: string, cap = 5): Candidate[] {
@@ -100,8 +117,7 @@ export function parseCandidates(raw: string, cap = 5): Candidate[] {
   return out;
 }
 
-const PUNCT = /[\s，。！？、；：""''（）()【】\[\]…—]/g;
-const normalize = (s: string): string => s.toLowerCase().replace(PUNCT, "");
+const PUNCT = /[\s，。！？、；：""''（）()【】\[\]…—]/g;const normalize = (s: string): string => s.toLowerCase().replace(PUNCT, "");
 
 function cosine(a: Float32Array, b: Float32Array): number {
   let d = 0;
@@ -139,8 +155,19 @@ export async function runNightly(deps: NightlyDeps): Promise<NightlyReport> {
     notes,
   };
 
+  if (deps.skipExtract) {
+    // 只算衰减 + 记一笔，游标**不动**（等模型到位再把这段 digest 掉，否则直接丢了）
+    report.cursorTo = cursorFrom;
+    report.decayed = tickDecay(deps.db, now);
+    notes.push(`SKIPPED: ${deps.skipExtract}`);
+    noteNightlySkip(deps.db, deps.skipExtract, now);
+    report.ms = Date.now() - t0;
+    return report;
+  }
+
   if (!fresh.length) {
     report.decayed = tickDecay(deps.db, now);
+    clearNightlySkip(deps.db);
     report.ms = Date.now() - t0;
     return report;
   }
@@ -233,6 +260,7 @@ export async function runNightly(deps: NightlyDeps): Promise<NightlyReport> {
       .run(report.cursorTo);
   }
   report.decayed = tickDecay(deps.db, now);
+  clearNightlySkip(deps.db);
   report.ms = Date.now() - t0;
   return report;
 }

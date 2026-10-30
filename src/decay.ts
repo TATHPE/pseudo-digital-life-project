@@ -25,10 +25,30 @@ export const KIND_PARAMS: Record<string, DecayParams> = {
   emotion:         { halfLifeDays: 20,   beta: 0.85, floor: 0.05 },
   thought:         { halfLifeDays: 50,   beta: 0.85, floor: 0.05 },
   preference_soft: { halfLifeDays: 70,   beta: 0.90, floor: 0.15 },
+  preference_hard: { halfLifeDays: 120,  beta: 0.95, floor: 0.25 },
+  fact:            { halfLifeDays: 180,  beta: 0.95, floor: 0.30 },
+  fact_hard:       { halfLifeDays: 180,  beta: 0.95, floor: 0.30 },
   gist:            { halfLifeDays: 90,   beta: 0.90, floor: 0.10 },
   anchor:          { halfLifeDays: 300,  beta: 1.00, floor: 0.35 },
+  promise:         { halfLifeDays: 365,  beta: 1.00, floor: 0.40 },
+  boundary:        { halfLifeDays: 365,  beta: 1.00, floor: 0.40 },
   contract:        { halfLifeDays: Infinity, beta: 1, floor: 1 },
 };
+
+/**
+ * nightly 抽取**能产出**的 kind（E-1）。
+ *
+ * 为什么单列一份：之前 prompt 里写的是 episode|preference_hard|fact_hard|promise|boundary|thought，
+ * 而参数表里只有 episode / thought 命中 —— 另外 4 种全静默回落到 episode（30 天），
+ * 而 preference_soft / gist / anchor 三档（70/90/300 天）没有任何写入方会产生。
+ * 现在两边共用这一份，并有测试盯着 NIGHTLY_KINDS ⊆ KIND_PARAMS。
+ */
+export const NIGHTLY_KINDS = ["episode", "preference_hard", "fact_hard", "promise", "boundary", "thought"] as const;
+
+/** 未知 kind 会不会被回落（可观测：store 写入时会记一条事件） */
+export function isKnownKind(kind: string): boolean {
+  return Object.hasOwn(KIND_PARAMS, kind);
+}
 
 export const DECAY_PARAMS_VERSION = 1;
 

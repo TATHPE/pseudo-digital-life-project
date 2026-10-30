@@ -204,3 +204,40 @@ test("保存人格：没填理由也要留痕，不伪造", () => {
   const r = savePersonaFile(home, "values", "# values", new Date("2026-10-28T12:00:00Z"));
   assert.match(readFileSync(r.versionFile, "utf8"), /未填写/);
 });
+
+// ── E-6：缺模型时降级，不许整体停摆 ──────────────────────────
+test("E-6 缺模型：衰减照算、游标不动、/health 能看见 nightly-skipped", async () => {
+  const home = H();
+  const inbox = seed(home, ["我说了一件值得记的事", "嗯。"]);
+  const d = openDb(join(home, "m.db"));
+
+  const report = await runNightly({
+    db: d.db, inboxDir: inbox, home, embedder: emb,
+    extract: async () => { throw new Error("不该被调用"); },
+    skipExtract: "缺本地模型：qwen2.5:7b-instruct",
+    now: new Date(Date.UTC(2026, 9, 29, 3)),
+  });
+
+  assert.equal(report.scanned, 2, "扫到几件事要说清楚");
+  assert.equal(report.added, 0, "没模型就不该写记忆");
+  assert.equal(report.cursorTo, null, "游标必须不动，否则这轮对话永久丢了");
+  assert.ok(report.notes.some((n) => n.startsWith("SKIPPED")));
+
+  const skip = d.db.prepare("SELECT value FROM meta WHERE key='nightly_skipped'").get() as { value: string };
+  assert.ok(skip?.value.includes("缺本地模型"), "skipped 要落进 meta，/health 才读得到");
+
+  // 成功跑一轮（没有新事件）→ skipped 被清掉
+  await runNightly({
+    db: d.db, inboxDir: inbox, home, embedder: emb,
+    extract: async () => "[]",
+    now: new Date(Date.UTC(2026, 9, 30, 3)),
+  });
+  const after = d.db.prepare("SELECT value FROM meta WHERE key='nightly_skipped'").get();
+  assert.equal(after, undefined, "恢复后不能还挂着 degraded");
+});
+
+test("E-6 降级不能挡住 energy 恢复：advance({night:true}) 仍然有效", async () => {
+  const { DEFAULTS, step } = await import("../src/state.ts");
+  const tired = step({ ...DEFAULTS, energy: 0.1 }, { night: true, silenceDays: 1 });
+  assert.ok(tired.energy > 0.3, "夜间必须回能，否则 ENERGY 只会一路滑到 0");
+});

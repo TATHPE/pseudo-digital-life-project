@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRouter, validateRouter, PrivacyError, MEMORY_ROLES, type RoleConfig } from "../src/provider.ts";
+import { defaultConfig } from "../src/config.ts";
 
 const cfg: Partial<Record<any, RoleConfig>> = {
   embed:    { kind: "local", provider: "ollama", model: "bge-m3" },
@@ -46,4 +47,17 @@ test("MEMORY_ROLES 必须含 conflict（02 §8.2）与 embed（它拿到的就�
   assert.ok(MEMORY_ROLES.has("conflict"));
   assert.ok(MEMORY_ROLES.has("embed"), "embed 也算读记忆原文");
   assert.ok(!MEMORY_ROLES.has("express"));
+});
+
+// ── C-5：默认值不许指向一个已经不存在的模型 ──────────────────
+test("C-5 本地角色默认不写死模型名：缺就是缺，由 validateRouter 报出来", () => {
+  const cfg = defaultConfig({});
+  for (const r of ["route", "extract", "salience", "conflict", "night"] as const) {
+    assert.equal(cfg.roles[r]!.model, "", `${r} 不该有默认模型名`);
+  }
+  const problems = validateRouter(cfg.roles);
+  assert.ok(problems.some((p) => p.includes("缺 provider/model")), "必须有人替它说人话");
+  // 用 JJ_MODEL_DEFAULT 显式给了就不该报
+  const ok = defaultConfig({ JJ_MODEL_DEFAULT: "qwen2.5:7b-instruct" });
+  assert.equal(ok.roles["extract"]!.model, "qwen2.5:7b-instruct");
 });

@@ -11,7 +11,14 @@ export interface AppConfig {
 
 export function defaultConfig(env = process.env): AppConfig {
   const ollama = env.JJ_OLLAMA ?? "http://127.0.0.1:11434";
-  const small = env.JJ_MODEL_DEFAULT ?? "qwen2.5:1.5b-instruct";
+  /**
+   * 本地角色**没有默认模型名**（C-5）。
+   *
+   * 2026-10-28 删掉 qwen2.5:1.5b-instruct 之后，默认值还指着它 —— `night` 报的
+   * 「缺模型」报的就是那个已经不存在的名字，会把人引去重新拉一个 1.5B。
+   * 缺就是缺：让 validateRouter 报「缺 provider/model」，让面板与 CLI 说人话。
+   */
+  const small = env.JJ_MODEL_DEFAULT ?? "";
   const night = env.JJ_MODEL_NIGHT ?? small;   // 自传/反思用；1.5B 会编，建议 ≥3B
   const embed = env.JJ_MODEL_EMBED ?? "bge-m3";
   const local = (model: string): RoleConfig => ({ kind: "local", provider: "ollama", model, baseUrl: ollama });
