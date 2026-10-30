@@ -29,7 +29,8 @@ import { resolveConfig, configSources, readFileConfig, writeFileConfig } from ".
 import { probeChat, probeEmbed, isInstalled } from "../ollama.ts";
 import { preflight, missingFrom } from "../preflight.ts";
 import { indexState, ensureIndexModel } from "../embedindex.ts";
-import { w0FromImportance, DECAY_PARAMS_VERSION } from "../decay.ts";
+import { w0FromImportance, DECAY_PARAMS_VERSION, KIND_PARAMS, T, RECONSOLIDATION, ACCESS } from "../decay.ts";
+import { applyDecayConfig, effectiveParams, currentOverrides, decayVersion, setDecayParam, resetDecayParams, readAudit } from "../decayparams.ts";
 import { reembed as reembedBuild } from "../reembed.ts";
 
 const HOME = process.env.JJ_HOME ?? join(process.cwd(), "data");
@@ -897,6 +898,41 @@ ${r.pass}/${r.total} 拦截/放行符合预期`);
     }
     case "decay": {
       const d = openDb(dbFile);
+      // E-4：参数属于 ② 参数类 —— 可调，但有白名单、有范围、有理由、有版本号
+      if (has(rest, "--params")) {
+        applyDecayConfig(HOME, (m) => console.error(m));
+        const kinds = Object.fromEntries(Object.keys(KIND_PARAMS).map((k) => [k, effectiveParams(k)]));
+        console.log(JSON.stringify({
+          version: decayVersion(HOME),
+          codeVersion: DECAY_PARAMS_VERSION,
+          paramsVersion: DECAY_PARAMS_VERSION,
+          overrides: currentOverrides(),
+          kinds,
+          globals: { T: { ...T }, RECONSOLIDATION: { ...RECONSOLIDATION }, ACCESS: { ...ACCESS } },
+          audit: readAudit(HOME, 5),
+        }, null, 2));
+        return;
+      }
+      if (has(rest, "--set")) {
+        const target = String(rest[rest.indexOf("--set") + 1] ?? "");
+        const valueRaw = String(rest[rest.indexOf("--set") + 2] ?? "");
+        const whyIdx = rest.indexOf("--because");
+        const because = whyIdx >= 0 ? rest.slice(whyIdx + 1).join(" ") : "";
+        const value = valueRaw === "Infinity" ? Infinity : Number(valueRaw);
+        if (!target || !valueRaw || Number.isNaN(value)) {
+          console.error("用法: jingjing decay --set <kind.field|T.activeIn|ACCESS.alpha> <值> --because \"为什么\"");
+          process.exitCode = 2; return;
+        }
+        const r = setDecayParam(HOME, target, value, because);
+        console.log(JSON.stringify(r, null, 2));
+        if (!r.ok) process.exitCode = 1;
+        return;
+      }
+      if (has(rest, "--reset")) {
+        const v = resetDecayParams(HOME);
+        console.log(JSON.stringify({ ok: true, version: v, note: "已恢复默认参数（审计里留了一条）" }, null, 2));
+        return;
+      }
       // E-2：把已有记忆的 w0 按 importance 重算一遍。
       // 为什么要单独一个开关：这是**改历史**（旧行写入时 w0 恒 0.55），必须显式触发；
       // 默认 dry-run，看清楚要动多少行再 --apply。
@@ -935,5 +971,6 @@ ${r.pass}/${r.total} 拦截/放行符合预期`);
   }
 }
 
+try { applyDecayConfig(HOME, (m) => console.error(m)); } catch { /* 参数配置有问题不影响其他命令 */ }
 main().catch((e) => { console.error(e); process.exitCode = 1; });
 

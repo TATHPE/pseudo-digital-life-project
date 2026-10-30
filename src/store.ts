@@ -164,3 +164,65 @@ export function tickDecay(db: DatabaseSync, now = new Date(), minGapDays = 0.5):
 
 /** 三位小数（只在写库时用） */
 const r3 = (x: number) => Math.round(x * 1000) / 1000;
+
+/**
+ * 改正文（E-5）：**只有人**能改。
+ *
+ * 为什么要在 store 层拦而不是只靠约定：模型现在能通过工具写库（`memory.remember`），
+ * 将来 P1-2 冲突消解还会让它"改写旧条目"。一旦模型能改正文，
+ * 它就会用自己的话改历史（`01 §9` 明确要防的），而审计里看不出区别。
+ *
+ * 人类改正文也必须留 **pre-image**（改前/改后的哈希 + 谁改的），
+ * 这样"这句话什么时候变的"永远查得到。
+ */
+export function updateMemoryText(
+  db: DatabaseSync, id: number, text: string, by: string, now = new Date(),
+): { ok: true; changed: boolean } {
+  if (!by.startsWith("human:")) {
+    throw new Error(`E_METADATA_ONLY: ${by} 只能改元数据（stage/weight/link），不能改正文`);
+  }
+  const next = String(text).trim();
+  if (!next) throw new Error("E_EMPTY");
+  const cur = db.prepare("SELECT text FROM memories WHERE id=?").get(id) as { text: string } | undefined;
+  if (!cur) throw new Error("E_NO_MEMORY");
+  if (cur.text === next) return { ok: true, changed: false };
+
+  const ts = now.toISOString();
+  db.prepare("UPDATE memories SET text=?, text_bigram=?, updated_at=? WHERE id=?")
+    .run(next, bigramText(next), ts, id);
+  db.prepare("DELETE FROM memories_fts WHERE memory_id=?").run(id);
+  db.prepare("INSERT INTO memories_fts(memory_id,bigram) VALUES(?,?)").run(id, bigramText(next));
+  db.prepare("INSERT INTO events(ts,kind,actor,target,payload,ok) VALUES(?,?,?,?,?,1)")
+    .run(ts, "memory_text_changed", by, String(id),
+      // pre-image 必须含**旧正文**（截断 300 字）：只有哈希的话"变过"能查到、却恢复不了
+      JSON.stringify({ before: hash8(cur.text), after: hash8(next), by, before_text: cur.text.slice(0, 300) }));
+  return { ok: true, changed: true };
+}
+
+/**
+ * 改元数据（E-5 的另一半）：模型/规则可以改这些，但**改不了正文**。
+ * 白名单是硬的：传 text/bigram 进来直接拒。
+ */
+const META_FIELDS = new Set(["stage", "weight", "w0", "importance", "valid_to", "superseded_by", "status", "sensitivity", "taint"]);
+
+export function patchMemoryMeta(
+  db: DatabaseSync, id: number, patch: Record<string, unknown>, by: string, now = new Date(),
+): { ok: true; applied: string[] } {
+  const keys = Object.keys(patch);
+  const bad = keys.filter((k) => !META_FIELDS.has(k));
+  if (bad.length) throw new Error(`E_METADATA_ONLY: ${by} 不许改 ${bad.join(",")}（正文/文本索引只能人改）`);
+  if (!keys.length) return { ok: true, applied: [] };
+  const ts = now.toISOString();
+  db.prepare(`UPDATE memories SET ${keys.map((k) => `${k}=?`).join(",")}, updated_at=? WHERE id=?`)
+    .run(...(keys.map((k) => patch[k] as never) as never[]), ts as never, id as never);
+  db.prepare("INSERT INTO events(ts,kind,actor,target,payload,ok) VALUES(?,?,?,?,?,1)")
+    .run(ts, "memory_meta_changed", by, String(id), JSON.stringify({ keys }));
+  return { ok: true, applied: keys };
+}
+
+function hash8(s: string): string {
+  // 只为"查得到变过"服务，不做安全用途；用简单 FNV-1a 免得引依赖
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+  return h.toString(16).padStart(8, "0");
+}

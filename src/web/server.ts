@@ -30,7 +30,7 @@ import { createTransport, routerFrom } from "../transport.ts";
 import { spentToday } from "../budget.ts";
 import { recallForBrief, omissionNote } from "../recall.ts";
 import { decideSurface, pickSurface, noteSurfaced, usedToday } from "../surface.ts";
-import { reinforce } from "../store.ts";
+import { reinforce, updateMemoryText } from "../store.ts";
 import { meta } from "../db.ts";
 import { openContracts } from "../store.ts";
 import { execute } from "../execute.ts";
@@ -472,23 +472,25 @@ export function createWebServer(deps: WebDeps) {
         //（否则改了 importance 权重不变，很迷惑）
         const layer = cur.layer === "contract" ? "contract" : "narrative";
         const changedImportance = body.importance !== undefined && importance !== cur.importance;
+        // E-5：正文改动只走 store.updateMemoryText（它只接受 human:*，并留 pre-image）
+        if (text !== cur.text) {
+          try { updateMemoryText(deps.db, id, text, "human:panel", now()); }
+          catch (e) { json(res, 400, { error: String((e as Error).message).slice(0, 120) }); return; }
+        }
         if (changedImportance) {
           const w0 = w0FromImportance(importance, layer);
-          deps.db.prepare("UPDATE memories SET text=?, importance=?, sensitivity=?, w0=?, scored_by='human:panel', updated_at=? WHERE id=?")
-            .run(text, importance, sensitivity, w0, now().toISOString(), id);
+          deps.db.prepare("UPDATE memories SET importance=?, sensitivity=?, w0=?, scored_by='human:panel', updated_at=? WHERE id=?")
+            .run(importance, sensitivity, w0, now().toISOString(), id);
           const row = deps.db.prepare("SELECT kind,recall_count,last_decay_at,stage FROM memories WHERE id=?").get(id) as
             { kind: string; recall_count: number; last_decay_at: string; stage: Stage };
           // 锚点不动：改 importance 不是“再巩固”（后者才动 last_decay_at）
           const r = recompute({ id: String(id), layer, kind: row.kind, w0, recallCount: row.recall_count, lastDecayAt: new Date(row.last_decay_at), stage: row.stage }, now());
           deps.db.prepare("UPDATE memories SET weight=?, stage=? WHERE id=?").run(r.weight, r.stage, id);
         } else {
-          deps.db.prepare("UPDATE memories SET text=?, importance=?, sensitivity=?, updated_at=? WHERE id=?")
-            .run(text, importance, sensitivity, now().toISOString(), id);
+          deps.db.prepare("UPDATE memories SET importance=?, sensitivity=?, updated_at=? WHERE id=?")
+            .run(importance, sensitivity, now().toISOString(), id);
         }
-        const vig = bigramText(text);
-        deps.db.prepare("UPDATE memories SET text_bigram=? WHERE id=?").run(vig, id);
-        deps.db.prepare("DELETE FROM memories_fts WHERE memory_id=?").run(id);
-        deps.db.prepare("INSERT INTO memories_fts(memory_id,bigram) VALUES(?,?)").run(id, vig);
+        // text_bigram / FTS 已由 updateMemoryText 处理（这里不再裸写）
         if (text !== cur.text) {
           try {
             const v = deps.getEmbedder();

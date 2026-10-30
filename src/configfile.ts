@@ -20,6 +20,16 @@ export interface FileConfig {
    *   embed   → 向量模型（换它必须重建索引，见 docs/22 C-2）
    */
   local?: { default?: string; night?: string; embed?: string };
+  /**
+   * 衰减参数覆盖（E-4）。**必须在这里声明并合并** —— 以前 writeFileConfig 只合并
+   * express/plan/budget/persona/local/ui，别的字段靠 `...patch` 整体替换；
+   * 于是"先写参数、再 bump 版本号"的第二步会把参数整块抹掉（实测踩到）。
+   */
+  decay?: {
+    version?: number;
+    kinds?: Record<string, Record<string, number>>;
+    globals?: Record<string, number>;
+  };
   persona?: { name?: string };
   /** 外观偏好（头像框）——与模型配置分开放，清理接口配置时不会被意外抹掉 */
   ui?: { avatar?: string };
@@ -46,6 +56,11 @@ export function writeFileConfig(home: string, patch: FileConfig): FileConfig {
     express: { ...(cur.express ?? {}), ...(patch.express ?? {}) },
     plan: { ...(cur.plan ?? {}), ...(patch.plan ?? {}) },
     local: { ...(cur.local ?? {}), ...(patch.local ?? {}) },
+    decay: {
+      ...(cur.decay ?? {}), ...(patch.decay ?? {}),
+      kinds: { ...(cur.decay?.kinds ?? {}), ...(patch.decay?.kinds ?? {}) },
+      globals: { ...(cur.decay?.globals ?? {}), ...(patch.decay?.globals ?? {}) },
+    },
     budget: { ...(cur.budget ?? {}), ...(patch.budget ?? {}) },
     persona: { ...(cur.persona ?? {}), ...(patch.persona ?? {}) },
     ui: { ...(cur.ui ?? {}), ...(patch.ui ?? {}) },

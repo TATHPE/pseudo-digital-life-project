@@ -77,9 +77,25 @@ export function w0FromImportance(importance: number, layer: Layer): number {
   return Math.round((0.35 + (imp - 1) * 0.12) * 1000) / 1000;
 }
 
+/**
+ * 运行期覆盖（E-4）：来自 config.json 的 decay 段，经白名单+范围校验后由
+ * `decayparams.applyDecayConfig()` 装进来。默认是空表 → 完全等于代码常量。
+ */
+let kindOverrides: Record<string, Partial<DecayParams>> = {};
+
+export function setKindOverrides(o: Record<string, Partial<DecayParams>> | null): void {
+  kindOverrides = o ?? {};
+}
+
+export function currentKindOverrides(): Record<string, Partial<DecayParams>> {
+  return kindOverrides;
+}
+
 /** 唯一入口：未知 kind 回落到 episode，不用 `!` 也不用 ?? 撒满地 */
 export function paramsFor(kind: string): DecayParams {
-  return KIND_PARAMS[kind] ?? KIND_PARAMS["episode"]!;
+  const base = KIND_PARAMS[kind] ?? KIND_PARAMS["episode"]!;
+  const o = kindOverrides[kind];
+  return o ? { ...base, ...o } : base;
 }
 
 /** 双阈值滞后带（01 §5）：进出用不同的门，中间带不转移 */
