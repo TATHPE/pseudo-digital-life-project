@@ -366,9 +366,6 @@ export const PAGE = `<!doctype html>
   #dlg-path.bad { border-color:#d9534f; box-shadow:inset 0 0 0 1px #d9534f; }
   .ingest #dlg-cands, .ingest #dlg-empty { margin:6px 0 4px; }
   .ingest #dlg-empty code { color:var(--ink-dim); font:11px/1.6 var(--mono); word-break:break-all; }
-  .ingest .dlg-share { display:flex; gap:6px; align-items:flex-start; margin:8px 0 0;
-                       font:11px/1.5 var(--mono); color:var(--ink-dim); cursor:pointer; }
-  .ingest .dlg-share input { margin-top:2px; }
   .ingest .acts { margin-top:8px; }
   .ingest .acts button { width:100%; }
   .ingest { margin-top:6px; display:flex; flex-direction:column; gap:6px; }
@@ -474,16 +471,15 @@ export const PAGE = `<!doctype html>
         <span class="hint">或手动填路径 ↓</span>
       </div>
       <input id="dlg-path" class="searchbox" placeholder="data/ 里的相对路径，如 sources/笔记.md" autocomplete="off">
-      <!-- 提示必须紧贴它抱怨的那个输入框：放在「允许进云端」下面会让人以为
-           是复选框有问题（用户实测：“报错为什么在允许进入云端下面”） -->
+      <!-- 提示紧贴它抱怨的那个输入框（不是复选框，也不是按钮） -->
       <span id="dlg-msg" class="hint"></span>
 
-      <!-- 隐私选项和按钮**不能并列**：一个是“这条数据能去哪”的属性，
-           一个是“现在开始做”的动作，摆在同一行会被读成同一类东西。 -->
-      <label class="dlg-share" title="勾上：这篇文档的片段会随简报发给云端模型。不勾：只在本机检索，模型永远读不到原文，只报个数">
-        <input type="checkbox" id="dlg-share"> 允许进云端（片段会发给云端模型）
-      </label>
-      <div class="acts"><button id="dlg-go" class="primary">摄入</button></div>
+      <!-- 这里**没有**隐私复选框：摄入是一个动作，去哪里是一个属性，
+           两者放在同一个表单里怎么摆都会被读成“勾了才能摄”。
+           所以摄入永远只在本机（默认最安全），能不能进云端是那篇文档之后的事。 -->
+      <div class="acts"><button id="dlg-go" class="primary">摄入到本机</button></div>
+      <p class="hint">录入后只在本机检索。要让它引用原文（随简报发给云端模型），
+        打开那篇文档点「标为可发送」。</p>
     </div></div>
   <div class="sec" data-sec="mem"><h3><button type="button" data-tog="mem">MEMORY <span class="n" id="memcount"></span></button></h3><div id="memlist"></div></div>
   <div class="sec" data-sec="actions"><h3><button type="button" data-tog="actions">ACTIONS <span class="n" id="actcount"></span></button></h3><div id="auditlist"></div></div>
@@ -933,7 +929,8 @@ $("#dlg-go").onclick = async () => {
   msg.className = "hint"; msg.textContent = "摄入中…（转换 + 分块 + 向量）";
   const j = await (await fetch("/api/ingest", {
     method: "POST", headers: H,
-    body: JSON.stringify({ path: p, shareable: $("#dlg-share").checked }),
+    // 摄入永远只在本机；能不能进云端是文档属性，在 docview 里单独改
+    body: JSON.stringify({ path: p, shareable: false }),
   })).json();
   if (j.ok) {
     msg.className = "ok";

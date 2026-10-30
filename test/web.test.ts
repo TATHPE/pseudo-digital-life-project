@@ -778,10 +778,13 @@ test("没 key 时说真话：本地兜底要有 notice，banner 不能写「仅�
   // 两个「路径」必须能区分：一个是云端地址，一个是本地文件
   assert.ok(PAGE.includes("接入地址 · 云端 API 的 baseUrl"), "设置里的 baseUrl 要说清是云端地址");
   assert.ok(PAGE.includes("加文档 · 只在本机读取，跟云端无关"), "加文档要说清是本地文件");
-  // 隐私选项与「摄入」按钮不许并列：一个是数据属性，一个是动作
-  const shareLine = PAGE.split(String.fromCharCode(10)).find((l) => l.includes("允许进云端"));
-  assert.ok(shareLine !== undefined, "应有「允许进云端」这一行");
-  assert.ok(!shareLine!.includes("dlg-go"), "「摄入」不能和「允许进云端」挤在同一行");
+  // 摄入表单里**不能**再有隐私选项：动作与属性放同一个表单，
+  // 怎么摆都会被读成“勾了才能摄”（用户连提两次）。
+  // 现在摄入永远 shareable=false，能不能进云端归 docview 的「标为可发送」。
+  const ingestBlock = PAGE.slice(PAGE.indexOf('class="ingest"'), PAGE.indexOf("</div></div>", PAGE.indexOf('class="ingest"')));
+  assert.ok(!ingestBlock.includes("dlg-share"), "摄入表单里不许有「允许进云端」");
+  assert.ok(ingestBlock.includes("摄入到本机"), "按钮要说清它只是落到本机");
+  assert.ok(PAGE.includes("标为可发送"), "那篇文档自己的入口要在（docview）");
 });
 
 // ── C-1：面板也能「清除密钥」（key:null，不是空串）───────────────
