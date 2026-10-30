@@ -97,10 +97,15 @@ export function noteSurfaced(db: DatabaseSync, now: Date, pick: SurfacePick): vo
   } catch { /* ignore */ }
 }
 
+/** 本地日期（YYYY-MM-DD）。库里时间戳混着 Z 与 +08:00，按 UTC 切会把一天算错 */
+function localDay(t: Date): string {
+  return new Date(t.getTime() - t.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+}
+
 /** 今天已经浮过几条（按本地日期切） */
 export function usedToday(db: DatabaseSync, now: Date): number {
-  const day = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-  return readLog(db).filter((x) => new Date(new Date(x.ts).getTime() - new Date(x.ts).getTimezoneOffset() * 60000).toISOString().slice(0, 10) === day).length;
+  const day = localDay(now);
+  return readLog(db).filter((x) => localDay(new Date(x.ts)) === day).length;
 }
 
 function readLog(db: DatabaseSync): Array<{ ts: string; key: string }> {

@@ -14,7 +14,7 @@
  */
 import { existsSync, readFileSync, appendFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { KIND_PARAMS, T, RECONSOLIDATION, ACCESS, setKindOverrides, type DecayParams } from "./decay.ts";
+import { KIND_PARAMS, T, RECONSOLIDATION, ACCESS, paramsFor, setKindOverrides, type DecayParams } from "./decay.ts";
 import { readFileConfig } from "./configfile.ts";
 import { atomicWriteFile } from "./fsx.ts";
 
@@ -63,11 +63,13 @@ export function setDecayOverrides(c: DecayConfig | null): void {
 
 export function currentOverrides(): DecayConfig { return overrides; }
 
-/** 生效参数：覆盖优先，否则代码默认 */
+/**
+ * 生效参数：**直接问 decay.paramsFor**（单一事实源）。
+ * 以前这里自己再拼一次 `{...base, ...overrides.kinds[kind]}`，和 decay.ts 里的
+ * kindOverrides 是两套状态 —— 谁调用一次 `setKindOverrides()`，CLI 的显示就和运行时脱节。
+ */
 export function effectiveParams(kind: string): DecayParams {
-  const base = KIND_PARAMS[kind] ?? KIND_PARAMS["episode"]!;
-  const o = overrides.kinds[kind];
-  return o ? { ...base, ...o } : base;
+  return paramsFor(kind);
 }
 
 export function checkRange(field: FieldName, value: number): string | null {

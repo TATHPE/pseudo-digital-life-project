@@ -740,6 +740,13 @@ async function state() {
   var e3 = $("#ro-energy");
   if (e3 && en !== null) {
     e3.innerHTML = Math.round(en * 100) + "<span class='u'>%</span>";
+    // E-6 第二步：energy 的唯一恢复点在夜间整备；它没跑就得说清，否则只能看着数字掉
+    var nrc = document.querySelector(".ro-w");
+    if (nrc) {
+      nrc.title = s.nightlySkipped
+        ? "energy 只在夜间整备后恢复 —— 现在夜间未运行（" + String(s.nightlySkipped).slice(11, 19) + " · 缺模型）"
+        : "energy：每轮对话 -2%，夜间整备 +25%";
+    }
     var segs = $("#ro-segs");
     if (segs) {
       var n = 14, on = Math.round(en * n);

@@ -221,4 +221,3 @@ export interface FlashCue {
  * 两个版本并存的结果是：读代码的人以为它在生效，而实际上被调用的是另一个；
  * 保留一份，删掉另一份，比“看起来更全”重要。
  */
-export const FLASHBACK = { cap: 2, reviveTo: 0.5 } as const;

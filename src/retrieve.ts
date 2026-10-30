@@ -25,6 +25,11 @@ export interface Hit {
   quote?: string | null;
   /** 怎么进来的：命中 / 强线索 / **沿一根线过来**（J-1 一跳） */
   viaLink?: { from: number; why: string };
+  /** 隐私闸门要用的字段（随行一起取回，避免调用方再查一次 = N+1） */
+  layer?: "narrative" | "contract";
+  taint?: "trusted" | "external";
+  /** 记忆种类（沿边过来时也要带上，否则简报里会全显示成 episode） */
+  kind?: string;
   bm25Rank?: number; cosRank?: number; cosine?: number;
 }
 
@@ -200,7 +205,7 @@ export function expandByLinks(
   const cap = opts.k ?? 2;
   const ids = hits.map((h) => h.id);
   const rows = db.prepare(`
-    SELECT l.src_id, l.dst_id, l.why, m.id, m.text, m.stage, m.weight, m.sensitivity, m.quote
+    SELECT l.src_id, l.dst_id, l.why, m.id, m.text, m.kind, m.stage, m.weight, m.sensitivity, m.quote, m.layer, m.taint
     FROM memory_links l
     JOIN memories m ON m.id = CASE WHEN l.src_id IN (SELECT value FROM json_each(?)) THEN l.dst_id ELSE l.src_id END
     WHERE (l.src_id IN (SELECT value FROM json_each(?)) OR l.dst_id IN (SELECT value FROM json_each(?)))
@@ -212,7 +217,8 @@ export function expandByLinks(
     JSON.stringify(ids), JSON.stringify(ids), JSON.stringify(ids), now.toISOString(), cap * 4,
   ) as Array<{
     src_id: number; dst_id: number; why: string; id: number;
-    text: string; stage: Stage; weight: number; sensitivity?: string; quote?: string | null;
+    text: string; kind: string; stage: Stage; weight: number; sensitivity?: string; quote?: string | null;
+    layer: string; taint: string;
   }>;
 
   const seen = new Set(ids);
@@ -226,6 +232,9 @@ export function expandByLinks(
       cite: `mem:${r.id}`, relevance: 0, via: r.stage === "fading" ? "fading" : "active",
       ...(r.sensitivity ? { sensitivity: r.sensitivity as "local_only" | "shareable" } : {}),
       ...(r.quote ? { quote: r.quote } : {}),
+      kind: r.kind,
+      layer: r.layer === "contract" ? "contract" : "narrative",
+      taint: (r.taint === "external" ? "external" : "trusted") as "trusted" | "external",
       viaLink: { from, why: String(r.why).slice(0, 20) },
     });
     if (out.length >= cap) break;

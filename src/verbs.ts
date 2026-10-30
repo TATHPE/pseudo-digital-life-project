@@ -83,6 +83,7 @@ import { renderTemplate, templateCatalog, templateById, planRun, runArgv } from 
 import { listDocs } from "./ingest.ts";
 import { dedupeTitle } from "./chunk.ts";
 import { resolveConfig } from "./configfile.ts";
+import { modelKeyOf } from "./config.ts";
 import { indexState } from "./embedindex.ts";
 import { isRemoteRole } from "./transport.ts";
 
@@ -99,7 +100,7 @@ function staleNote(ctx: VerbCtx): string {
   if (!ctx.db) return "";
   try {
     const e = resolveConfig(ctx.home).roles["embed"];
-    const cur = e && e.model ? `${e.provider}:${e.model}` : null;
+    const cur = modelKeyOf(e);
     const ix = indexState(ctx.db, cur);
     if (!ix.stale) return "";
     return `（注意：向量索引是用 ${ix.built ?? "未知模型"} 建的，当前配置是 ${ix.current ?? "未配置"}，召回可能不准；跑 jingjing reembed 重建）` + String.fromCharCode(10);
@@ -329,18 +330,19 @@ export const verbs: VerbDef[] = [
     target: () => "internal",
     async run(a, ctx) {
       if (!ctx.db) throw new Error("E_NO_DB");
+      const stale = staleNote(ctx);   // 文档块用的是同一套向量，过期一样会不准
       const r = await searchDocs(ctx.db, ctx.embedder ?? null, String(a.q ?? ""), { k: Number(a.k ?? 5) });
       if (expressIsRemote(ctx)) {
         const ok = r.hits.filter((h) => h.sensitivity === "shareable");
-        if (!ok.length) return r.hits.length ? redacted("本地文档里", r.hits.length) : "（没有相关文档块）";
+        if (!ok.length) return stale + (r.hits.length ? redacted("本地文档里", r.hits.length) : "（没有相关文档块）");
         const NL2 = String.fromCharCode(10);
-        return ok.map((h) =>
+        return stale + ok.map((h) =>
           "[" + h.cite + "] " + h.title + (dedupeTitle(h.headingPath, h.title) ? " › " + dedupeTitle(h.headingPath, h.title) : "") + NL2 + h.text.slice(0, 600),
         ).join(NL2 + NL2);
       }
-      if (!r.hits.length) return "（没有相关文档块）";
+      if (!r.hits.length) return stale + "（没有相关文档块）";
       const NL = String.fromCharCode(10);
-      return r.hits.map((h) =>
+      return stale + r.hits.map((h) =>
         "[" + h.cite + "] " + h.title + (dedupeTitle(h.headingPath, h.title) ? " › " + dedupeTitle(h.headingPath, h.title) : "") + NL + h.text.slice(0, 600),
       ).join(NL + NL);
     },

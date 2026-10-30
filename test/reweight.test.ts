@@ -98,3 +98,18 @@ test("E-5 夜间整备不会改已有记忆的正文", async () => {
   });
   assert.equal((d.db.prepare("SELECT text FROM memories WHERE id=?").get(id) as { text: string }).text, "老的一条记忆");
 });
+
+// ── 复审修复：元数据写入必须走 patchMemoryMeta（不能有第二条路） ─────────
+test("复审 #1：面板改元数据会留下 memory_meta_changed 事件（证明走的是闸门）", async () => {
+  const { patchMemoryMeta } = await import("../src/store.ts");
+  const d = openDb(join(H(), "m.db"));
+  const v = (await emb.embed(["x"]))[0]!;
+  const id = remember(d.db, { layer: "narrative", kind: "episode", text: "一条", embedding: v });
+  patchMemoryMeta(d.db, id, { importance: 5, scored_by: "human:panel" }, "human:panel",
+    new Date("2026-10-30T12:00:00Z"));
+  const ev = d.db.prepare("SELECT actor,payload FROM events WHERE kind='memory_meta_changed'").get() as
+    { actor: string; payload: string } | undefined;
+  assert.ok(ev, "必须留事件——这是「只有一条写入路径」的证据");
+  assert.equal(ev!.actor, "human:panel");
+  assert.match(ev!.payload, /importance/);
+});

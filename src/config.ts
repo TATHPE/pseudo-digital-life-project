@@ -79,6 +79,15 @@ export function applyEnv(base: AppConfig, env: Record<string, string | undefined
   return { ...base, ollama, roles };
 }
 
+/**
+ * `provider:model` 这个键散落在 6 处手拼（embed 指纹、索引身份、预算表…）。
+ * 手拼的地方越多，改一处忘一处就越容易（"哪个 fingerprint 到底指哪个模型"）。
+ */
+export function modelKeyOf(c: { provider?: string; model?: string } | undefined | null): string | null {
+  if (!c || !c.model) return null;
+  return `${c.provider ?? "ollama"}:${c.model}`;
+}
+
 /** 兼容入口：默认值 + 环境变量 */
 export function defaultConfig(env = process.env): AppConfig {
   return applyEnv(baseConfig(), env);

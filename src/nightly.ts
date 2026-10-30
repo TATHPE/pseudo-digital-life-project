@@ -12,6 +12,7 @@ import { readEvents, type Event } from "./journal.ts";
 import { remember, tickDecay } from "./store.ts";
 import type { Embedder } from "./embed.ts";
 import { NIGHTLY_KINDS, type Layer } from "./decay.ts";
+import { readMeta } from "./embedindex.ts";
 
 export interface Candidate {
   kind: string;
@@ -116,10 +117,7 @@ export function linkIfNew(
   return true;
 }
 
-function readMeta(db: DatabaseSync, key: string): string | null {
-  const r = db.prepare("SELECT value FROM meta WHERE key=?").get(key) as { value?: string } | undefined;
-  return r?.value ?? null;
-}
+
 
 const EXTRACT_PROMPT = (transcript: string): string => [
   "你是记忆抽取器。从下面的对话里抽取「值得长期记住」的东西，只输出 JSON 数组，不要解释。",

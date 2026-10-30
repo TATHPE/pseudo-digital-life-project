@@ -97,3 +97,17 @@ test("D-1 taint=external 的记忆不进简报（可检索、但不自动注入�
   assert.ok(rc.recalled[0]!.text.startsWith("我自己说的"));
   assert.ok(rc.omittedMem >= 1, "被挡下的那条要计入 omitted（简报里如实报个数）");
 });
+
+// ── 复审修复：沿边过来的邻居也要带 kind（不能一律标 episode） ──────────
+test("复审 #7：expandByLinks 带回 kind/layer/taint（调用方不再 N+1 查）", async () => {
+  const { db, emb } = await rig();
+  const { linkIfNew } = await import("../src/nightly.ts");
+  const v = (await emb.embed(["杭州出差"]))[0]!;
+  const a = remember(db, { layer: "narrative", kind: "episode", text: "三月去杭州出差", sensitivity: "shareable", embedding: v });
+  const b = remember(db, { layer: "narrative", kind: "fact_hard", text: "那次谈话让我很累", sensitivity: "shareable", embedding: v });
+  linkIfNew(db, a, b, "related", 1, "同一段经历", new Date());
+  const near = (await import("../src/retrieve.ts")).expandByLinks(db, [{ id: a } as never], { k: 2 });
+  assert.equal(near[0]?.kind, "fact_hard", "kind 要随行带回");
+  assert.equal(near[0]?.layer, "narrative");
+  assert.equal(near[0]?.taint, "trusted");
+});

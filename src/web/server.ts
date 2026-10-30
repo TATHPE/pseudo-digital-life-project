@@ -16,6 +16,7 @@ import { loadPersonaText, savePersonaFile, PERSONA_FILES, type PersonaFile } fro
 import { writeFileConfig, readFileConfig, resolveConfig, configSources } from "../configfile.ts";
 import { isInstalled } from "../ollama.ts";
 import { recompute, w0FromImportance, type Stage } from "../decay.ts";
+import { modelKeyOf } from "../config.ts";
 import { preflight, lastPreflight } from "../preflight.ts";
 import { indexState } from "../embedindex.ts";
 import { AVATAR_FRAMES, DEFAULT_AVATAR, isAvatarFrame } from "./avatar.ts";
@@ -30,7 +31,7 @@ import { createTransport, routerFrom } from "../transport.ts";
 import { spentToday } from "../budget.ts";
 import { recallForBrief, omissionNote } from "../recall.ts";
 import { decideSurface, pickSurface, noteSurfaced, usedToday } from "../surface.ts";
-import { reinforce, updateMemoryText } from "../store.ts";
+import { reinforce, updateMemoryText, patchMemoryMeta } from "../store.ts";
 import { meta } from "../db.ts";
 import { openContracts } from "../store.ts";
 import { execute } from "../execute.ts";
@@ -384,7 +385,7 @@ export function createWebServer(deps: WebDeps) {
         } catch { /* ignore */ }
         try {
           const cfgNow = deps.getConfig();
-          const cur = cfgNow.roles["embed"] ? `${cfgNow.roles["embed"]!.provider}:${cfgNow.roles["embed"]!.model}` : null;
+          const cur = modelKeyOf(cfgNow.roles["embed"]);
           const ix = indexState(deps.db, cur);
           if (ix.stale) degraded.push("embed-index-stale");
           if (meta(deps.db, "reembed_error")) degraded.push("reembed-failed");
@@ -479,16 +480,17 @@ export function createWebServer(deps: WebDeps) {
         }
         if (changedImportance) {
           const w0 = w0FromImportance(importance, layer);
-          deps.db.prepare("UPDATE memories SET importance=?, sensitivity=?, w0=?, scored_by='human:panel', updated_at=? WHERE id=?")
-            .run(importance, sensitivity, w0, now().toISOString(), id);
           const row = deps.db.prepare("SELECT kind,recall_count,last_decay_at,stage FROM memories WHERE id=?").get(id) as
             { kind: string; recall_count: number; last_decay_at: string; stage: Stage };
           // 锚点不动：改 importance 不是“再巩固”（后者才动 last_decay_at）
           const r = recompute({ id: String(id), layer, kind: row.kind, w0, recallCount: row.recall_count, lastDecayAt: new Date(row.last_decay_at), stage: row.stage }, now());
-          deps.db.prepare("UPDATE memories SET weight=?, stage=? WHERE id=?").run(r.weight, r.stage, id);
+          // E-5 / Standards #1：**元数据走 patchMemoryMeta**（白名单 + 事件），不再裸 UPDATE。
+          // 以前这里直接写 SQL，于是“模型只能改元数据”那道闸门在生产路径上是死的（只有测试调用它）。
+          patchMemoryMeta(deps.db, id, {
+            importance, sensitivity, w0, weight: r.weight, stage: r.stage, scored_by: "human:panel",
+          }, "human:panel", now());
         } else {
-          deps.db.prepare("UPDATE memories SET importance=?, sensitivity=?, updated_at=? WHERE id=?")
-            .run(importance, sensitivity, now().toISOString(), id);
+          patchMemoryMeta(deps.db, id, { importance, sensitivity }, "human:panel", now());
         }
         // text_bigram / FTS 已由 updateMemoryText 处理（这里不再裸写）
         if (text !== cur.text) {
@@ -626,6 +628,9 @@ export function createWebServer(deps: WebDeps) {
           lastSeenAt: last?.ts ?? null,
           line: expenseLine(gapDays, mem),
           memories: mem,
+          // E-6 第二步：ENERGY 旁边的自解释。缺模型时 energy 不会恢复，
+          // 不写清就只能看着数字往下掉却不知道为什么。
+          nightlySkipped: (() => { try { return meta(deps.db, "nightly_skipped"); } catch { return null; } })(),
           state: { ...st, text: describe(st) },
           outage: deps.pendingOutage
             ? { from: deps.pendingOutage.from.toISOString(), to: deps.pendingOutage.to.toISOString(), kind: deps.pendingOutage.kind }
@@ -669,7 +674,7 @@ export function createWebServer(deps: WebDeps) {
           index: (() => {
             try {
               const e = cfg.roles["embed"];
-              return indexState(deps.db, e ? `${e.provider}:${e.model}` : null);
+              return indexState(deps.db, modelKeyOf(e));
             } catch { return null; }
           })(),
           roles: ["embed", "route", "extract", "salience", "conflict", "night"].map((r) => ({

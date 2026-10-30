@@ -203,7 +203,7 @@ export function updateMemoryText(
  * 改元数据（E-5 的另一半）：模型/规则可以改这些，但**改不了正文**。
  * 白名单是硬的：传 text/bigram 进来直接拒。
  */
-const META_FIELDS = new Set(["stage", "weight", "w0", "importance", "valid_to", "superseded_by", "status", "sensitivity", "taint"]);
+const META_FIELDS = new Set(["stage", "weight", "w0", "importance", "valid_to", "superseded_by", "status", "sensitivity", "taint", "scored_by"]);
 
 export function patchMemoryMeta(
   db: DatabaseSync, id: number, patch: Record<string, unknown>, by: string, now = new Date(),

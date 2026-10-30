@@ -68,8 +68,3 @@ export function markIndexBuilt(db: DatabaseSync, model: string): void {
     .run(BUILT_KEY, model);
 }
 
-/** 写当前模型（serve 启动 / models use 用） */
-export function setCurrentModel(db: DatabaseSync, model: string): void {
-  db.prepare("INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value")
-    .run(CUR_KEY, model);
-}

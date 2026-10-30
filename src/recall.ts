@@ -82,18 +82,15 @@ export async function recallForBrief(
   // 且邻居同样要过 taint/sensitivity 闸门 —— 不能因为它是"朋友的邻居"就绕过隐私。
   let omittedLink = 0;
   if (hits.length) {
-    const near = expandByLinks(db, hits, { k: 2 });
-    for (const h of near) {
-      const row = db.prepare("SELECT sensitivity, taint, layer, kind, quote FROM memories WHERE id=?")
-        .get(h.id) as { sensitivity?: string; taint?: string; layer: string; kind: string; quote?: string | null } | undefined;
-      if (!row) continue;
-      if (row.sensitivity !== "shareable" || (row.taint ?? "trusted") !== "trusted") { omittedLink++; continue; }
+    // 邻居的 sensitivity/taint/layer 由 expandByLinks 一起带回来（不再逐条查 = 不再 N+1）
+    for (const h of expandByLinks(db, hits, { k: 2 })) {
+      if (h.sensitivity !== "shareable" || (h.taint ?? "trusted") !== "trusted") { omittedLink++; continue; }
       if (recalled.some((r) => r.id === `mem:${h.id}`)) continue;
       recalled.push({
-        id: `mem:${h.id}`, layer: row.layer === "contract" ? "contract" : "narrative", kind: row.kind,
+        id: `mem:${h.id}`, layer: h.layer ?? "narrative", kind: h.kind ?? "episode",
         stage: h.stage, weight: h.weight, text: h.text,
         sensitivity: "shareable", source: "memory",
-        ...(row.quote ? { quote: row.quote } : {}),
+        ...(h.quote ? { quote: h.quote } : {}),
         ...(h.viaLink ? { viaLink: h.viaLink } : {}),
       });
     }

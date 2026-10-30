@@ -30,6 +30,7 @@ import { probeChat, probeEmbed, isInstalled } from "../ollama.ts";
 import { preflight, missingFrom } from "../preflight.ts";
 import { indexState, ensureIndexModel } from "../embedindex.ts";
 import { w0FromImportance, DECAY_PARAMS_VERSION, KIND_PARAMS, T, RECONSOLIDATION, ACCESS } from "../decay.ts";
+import { modelKeyOf } from "../config.ts";
 import { applyDecayConfig, effectiveParams, currentOverrides, decayVersion, setDecayParam, resetDecayParams, readAudit } from "../decayparams.ts";
 import { reembed as reembedBuild } from "../reembed.ts";
 
@@ -225,7 +226,7 @@ async function main(): Promise<void> {
         // 于是用户在面板里换了 embedding，这里的“指纹”还是老的。
         const e = resolveConfig(HOME).roles.embed;
         if (e && e.model) {
-          const cur = `${e.provider}:${e.model}`;
+          const cur = modelKeyOf(e)!;
           setMeta(d.db, "embed_model", cur);
           ensureIndexModel(d.db, cur);      // 空库直接盖戳，别让新装用户看到假 stale
         }
@@ -481,7 +482,7 @@ async function main(): Promise<void> {
       const cfg = resolveConfig(HOME);
       const model = cfg.roles["embed"]?.model;
       if (!model) { console.error("E_NO_EMBED_MODEL: 先配 embedding 模型（jingjing models use <名> --role embed）"); process.exitCode = 2; return; }
-      const cur = `${cfg.roles["embed"]!.provider}:${model}`;
+      const cur = modelKeyOf(cfg.roles["embed"])!;
       const d = openDb(dbFile);
       const st = indexState(d.db, cur);
       const force = has(rest, "--force");
@@ -523,10 +524,11 @@ async function main(): Promise<void> {
       if ((op === "remove" || op === "clear") && provider) {
         const had = store.clear(provider);
         // “清引用”：OpenClaw 的教训是删了凭据却留下空引用，反而把整家 provider 禁了。
-        // 我们的对应物是 config.json.express —— 不带 --purge 时保留（它只是模型选择）；
-        // 带了就一并清掉，让它回到默认值。
+        // 我们的对应物是 config.json.express。**默认一并清掉**（docs/22 C-1 要求"含清引用"）：
+        // 只删密钥却留着 provider 指向，就成了"有配置、没凭据"的半截状态，排障时最容易误判。
+        // 想留配置（比如只想临时断云端）用 --keep-config。
         let purged = false;
-        if (rest[2] === "--purge") {
+        if (rest[2] !== "--keep-config") {
           const cur = readFileConfig(HOME);
           if (cur.express) {
             writeFileConfig(HOME, { express: { provider: "", model: "", baseUrl: "" } });
