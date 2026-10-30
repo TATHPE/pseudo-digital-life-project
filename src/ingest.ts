@@ -18,6 +18,7 @@ import { spawnSync } from "node:child_process";
 import type { DatabaseSync } from "node:sqlite";
 import { atomicWriteFile } from "./fsx.ts";
 import { bigramText } from "./text.ts";
+import { resolvePython, pythonHint } from "./pyenv.ts";
 import { chunkMarkdown, embedInput } from "./chunk.ts";
 import type { Embedder } from "./embed.ts";
 
@@ -55,23 +56,6 @@ function mimeOf(ext: string): string {
   return m[ext] ?? "application/octet-stream";
 }
 
-/** 找 python：先用项目 venv（装了 markitdown），再找 PATH 上的 */
-export function findPython(env: Record<string, string | undefined> = process.env): string | null {
-  const cands = [
-    env.JJ_PYTHON,
-    "D:/LLM/.venv/Scripts/python.exe",
-    "D:/LLM/.venv/bin/python",
-    "python",
-    "python3",
-  ].filter((x): x is string => Boolean(x));
-  for (const c of cands) {
-    if (c.includes("/") || c.includes("\\")) { if (existsSync(c)) return c; continue; }
-    const r = spawnSync(c, ["-c", "import sys"], { encoding: "utf8", timeout: 8000, windowsHide: true });
-    if (r.status === 0) return c;
-  }
-  return null;
-}
-
 export interface ConvertResult { markdown: string; converter: string }
 
 /**
@@ -85,8 +69,8 @@ export function convertToMarkdown(file: string, env: Record<string, string | und
     throw new Error(`E_UNSUPPORTED: ${ext || "(无扩展名)"}（支持 ${[...PASSTHROUGH, ...CONVERTIBLE].join(" ")}）`);
   }
 
-  const py = findPython(env);
-  if (!py) throw new Error("E_NO_PYTHON: 找不到 python（markitdown 在 D:/LLM/.venv 里，或用 JJ_PYTHON 指定）");
+  const py = resolvePython({ env });
+  if (!py) throw new Error("E_NO_PYTHON: " + pythonHint());
 
   const script = [
     "import sys",
@@ -96,7 +80,7 @@ export function convertToMarkdown(file: string, env: Record<string, string | und
     "sys.stdout.buffer.write(out.encode('utf-8'))",
   ].join(String.fromCharCode(10));
 
-  const r = spawnSync(py, ["-X", "utf8", "-c", script, file], {
+  const r = spawnSync(py.cmd, [...py.args, "-X", "utf8", "-c", script, file], {
     encoding: "buffer", timeout: 120_000, windowsHide: true, maxBuffer: 64 * 1024 * 1024,
     env: { ...env, PYTHONUTF8: "1", PYTHONIOENCODING: "utf-8" } as NodeJS.ProcessEnv,
   });

@@ -1,10 +1,17 @@
-# jingjing（M0 骨架 + M1.1 简报）
+# jingjing
 
-零依赖、零构建：Node 24 直接跑 TypeScript（类型剥离）。
+跑在本机的"伪数字生命"原型：**记忆 + 衰减 + 人格**（定义与验收口径见 `../docs/0-定义-数字生命.md`）。
+
+**无构建**（Node 24 直接跑 TypeScript，类型剥离）；运行时依赖只有两个：`casbin`（策略）与 `sqlite-vec`（向量扩展，缺了会降级成纯 FTS 并在 `/health` 里报出来）。
+
+> **环境要求：Node ≥ 24**（`node:sqlite` 在 22 还是实验性 API）。
+> 摄入 PDF / docx 需要 Python + `markitdown`（`.md / .txt` 不需要）。没装会用 `E_NO_PYTHON` 明说，不静默失败。
+> 找解释器的顺序：`JJ_PYTHON` → 项目 `.venv` → PATH 上的 `py -3` / `python3` / `python`。
 
 ```bash
-npm run check                         # 类型检查 + 131 条测试（CI 入口）
-npm test                              # 131 条断言
+npm run check                         # 类型检查 + 295 条测试（CI 入口）
+npm test                              # 295 条断言
+npm run ui:test                       # headless Edge 真点真发，20 项交互断言（面板要在跑）
 node src/cli/jingjing.ts migrate      # 建库 + 自检
 node src/cli/jingjing.ts remember "重要性应该影响衰减速率"
 node src/cli/jingjing.ts search "衰减速率"

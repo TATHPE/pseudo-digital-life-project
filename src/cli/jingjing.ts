@@ -971,6 +971,15 @@ ${r.pass}/${r.total} 拦截/放行符合预期`);
   }
 }
 
+// Node 版本（H-1）：`node:sqlite` 在 22 是实验性 API，行为在 24 才稳。
+// 不直接退出（老版本还能跑 md/txt），但必须说清楚，否则用户会遇到"莫名其妙的 SQL 错误"。
+{
+  const major = Number(String(process.versions.node).split(".")[0]);
+  if (Number.isFinite(major) && major < 24) {
+    console.error(`⚠ Node ${process.versions.node}：本项目要求 >= 24（node:sqlite 在 22 还是实验性）。`);
+    console.error("  行为可能不对（尤其是 sqlite/vec 相关）。升级：https://nodejs.org/ 或 nvm/fnm。");
+  }
+}
 try { applyDecayConfig(HOME, (m) => console.error(m)); } catch { /* 参数配置有问题不影响其他命令 */ }
 main().catch((e) => { console.error(e); process.exitCode = 1; });
 
