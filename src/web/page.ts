@@ -400,6 +400,9 @@ export const PAGE = `<!doctype html>
   /* ── 骨架（P2 #19）：首屏别空着 ─────────────────────── */
   #chat:empty::before { content:"// 正在读取时间轴…"; display:block; padding:18px 2px;
                         font:10px/1 var(--mono); color:var(--dim); letter-spacing:.14em; }
+  /* 空库（首次安装 / 清空后）：别让“正在读取”变成永久状态 */
+  #chat .empty { padding:22px 2px; font:12px/1.9 var(--mono); color:var(--dim); letter-spacing:.06em; }
+  #chat .empty b { color:var(--ink-dim); font-weight:600; }
 
   /* ── 记忆编辑（P1 #9）──────────────────────────────── */
   #mv-edit { width:100%; min-height:96px; resize:vertical; }
@@ -720,6 +723,14 @@ function escapeHtml(s) {
 async function timeline() {
   const blocks = await (await fetch("/api/timeline")).json();
   const el = $("#chat"); el.innerHTML = "";
+  if (!blocks.length) {
+    // 空库不是“加载中”：首次安装和清空数据后都会走到这里
+    el.insertAdjacentHTML("beforeend",
+      "<div class='empty'>// 还没有任何经历。" +
+      "<b>说一句试试</b>——它会记住，也会忘。<br>" +
+      "// 夜里整理记忆需要本地模型；现在没装，所以只会追加不会整理。</div>");
+    return;
+  }
   for (const b of blocks) {
     if (b.type === "day") {
       el.insertAdjacentHTML("beforeend", "<div class='day'>" + b.label +

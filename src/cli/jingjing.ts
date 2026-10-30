@@ -25,7 +25,7 @@ import { startup } from "../startup.ts";
 import { applyRelease, hasRelease, readStateSafe } from "../deploy/slot.ts";
 import { bootAttempt, markHealthy } from "../deploy/watchdog.ts";
 import { createStore as createSecretStore } from "../auth.ts";
-import { resolveConfig } from "../configfile.ts";
+import { resolveConfig, readFileConfig, writeFileConfig } from "../configfile.ts";
 
 const HOME = process.env.JJ_HOME ?? join(process.cwd(), "data");
 const dbFile = join(HOME, "memory.db");
@@ -345,7 +345,24 @@ async function main(): Promise<void> {
         console.log(JSON.stringify({ store: store.kind, keys: store.list() }, null, 2));
         return;
       }
-      console.error("用法: jingjing auth <set|list> [provider]");
+      if ((op === "remove" || op === "clear") && provider) {
+        const had = store.clear(provider);
+        // “清引用”：OpenClaw 的教训是删了凭据却留下空引用，反而把整家 provider 禁了。
+        // 我们的对应物是 config.json.express —— 不带 --purge 时保留（它只是模型选择）；
+        // 带了就一并清掉，让它回到默认值。
+        let purged = false;
+        if (rest[2] === "--purge") {
+          const cur = readFileConfig(HOME);
+          if (cur.express) {
+            writeFileConfig(HOME, { express: { provider: "", model: "", baseUrl: "" } });
+            purged = true;
+          }
+        }
+        console.log(JSON.stringify({ ok: true, provider, removed: had, purged, store: store.kind }));
+        if (!had) console.error("提示：本来就没有这个 provider 的密钥（幂等）");
+        return;
+      }
+      console.error("用法: jingjing auth <set|list|remove> [provider] [--purge]");
       process.exitCode = 1;
       return;
     }

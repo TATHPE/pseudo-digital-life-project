@@ -8,7 +8,7 @@
  *
  * 因为守卫在 fetch 之前，**泄露在结构上不可能发生**——不是靠事后检查。
  */
-import { validateRouter, type Role, type RoleConfig, type Router, createRouter } from "./provider.ts";
+import { validateRouterFatal, type Role, type RoleConfig, type Router, createRouter } from "./provider.ts";
 
 export interface Msg { role: "system" | "user" | "assistant"; content: string }
 export interface Span {
@@ -82,7 +82,7 @@ export function createTransport(
   async function call(
     role: Role, url: string, body: unknown, opts2: CallOpts,
   ): Promise<unknown> {
-    const c = router.role(role);
+    const c = needModel(role, router.role(role));
     // ① 隐私闸门
     router.assertLocalOnly(role, opts2.containsMemory);
     // ② endpoint 与 kind 必须一致
@@ -174,15 +174,25 @@ export function createTransport(
   };
 }
 
+
+
+/** 缺 model 在**调用点**报（而不是启动时报）：云端聊天不该被“还没装本地模型”挡住 */
+function needModel(role: Role, c: RoleConfig): RoleConfig {
+  if (!c.model) {
+    throw new Error(`E_MODEL: 角色 ${role} 没有配置模型（装好后跑 jingjing models use <名>，或设 JJ_MODEL_DEFAULT / JJ_MODEL_EXPRESS）`);
+  }
+  return c;
+}
+
 /** `test offline` 的断言核心：所有出站都必须落在回环 */
 export function assertAllLoopback(spans: readonly Span[]): string[] {
   const bad = spans.filter((s) => !LOOPBACK.has(s.host));
   return bad.map((s) => `${s.role} → ${s.host}${s.path}（${s.bytesOut}B, ${s.purpose}）`);
 }
 
-/** 建 router 的便捷入口：非法配置直接抛（拒绝启动） */
+/** 建 router 的便捷入口：**隐私边界**非法直接抛（拒绝启动）；缺 model 留给调用点报 E_MODEL */
 export function routerFrom(cfg: Partial<Record<Role, RoleConfig>>): Router {
-  const problems = validateRouter(cfg);
+  const problems = validateRouterFatal(cfg);
   if (problems.length) throw new Error(`E_CONFIG: ${problems.join("; ")}`);
   return createRouter(cfg);
 }
@@ -201,7 +211,7 @@ export function createStreamTransport(
   const clock = opts.clock ?? (() => performance.now());
 
   async function* completeStream(role: Role, messages: Msg[], o: CallOpts): AsyncGenerator<string, void, void> {
-    const c = router.role(role);
+    const c = needModel(role, router.role(role));
     router.assertLocalOnly(role, o.containsMemory);          // ① 守卫在这里，逐字面量之前
     const baseUrl = endpointOf(c);
     const url = c.provider === "ollama" ? `${baseUrl}/api/chat` : `${baseUrl}/v1/chat/completions`;
@@ -276,7 +286,7 @@ export function createChatTransport(router: Router, opts: TransportOpts = {}) {
   const base = createTransport(router, opts);
 
   async function* chat(role: Role, messages: unknown[], o: ChatOpts): AsyncGenerator<ChatEvent, void, void> {
-    const c = router.role(role);
+    const c = needModel(role, router.role(role));
     router.assertLocalOnly(role, o.containsMemory);
     const baseUrl = endpointOf(c);
     const url = c.provider === "ollama" ? `${baseUrl}/api/chat` : `${baseUrl}/v1/chat/completions`;

@@ -102,6 +102,23 @@ export function validateRouter(cfg: Partial<Record<Role, RoleConfig>>): string[]
 }
 
 /**
+ * 只有这些“必须在启动时就拒绝”：隐私边界（记忆类必须 local）与缺角色。
+ *
+ * 缺 model **不在此列**（C-5 之后默认模型为空）：云端聊天不需要本地模型，
+ * 不能因为“还没装本地整理模型”就把整个 router 拒了 —— 那会让首次启动一个字都说不出来。
+ * 缺 model 在真的用到那个角色时报 E_MODEL（调用点报，不是启动时报）。
+ */
+export function validateRouterFatal(cfg: Partial<Record<Role, RoleConfig>>): string[] {
+  const problems: string[] = [];
+  for (const r of MEMORY_ROLES) {
+    const c = cfg[r];
+    if (!c) problems.push(`缺角色 ${r}`);
+    else if (c.kind !== "local") problems.push(`${r} 应为 local，实为 ${c.kind}`);
+  }
+  return problems;
+}
+
+/**
  * 降级链（13 §5）：express 失败 → 下一个 → 本地短回复。
  * 注意：**永远不把记忆类角色降级到 cloud**，宁可降级为"只记不整理"。
  */

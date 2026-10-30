@@ -30,3 +30,25 @@ test("未设置的 provider 返回 undefined，不抛", () => {
   const s = createStore(mkdtempSync(join(tmpdir(), "jj-auth2-")));
   assert.equal(s.get("openai"), undefined);
 });
+
+// ── C-1：密钥必须能删（降级链唯一的精确开关）───────────────────
+test("C-1 clear：删掉后 get 返回 undefined、list 里也没有，重复删幂等", () => {
+  const s = createStore(mkdtempSync(join(tmpdir(), "jj-auth3-")));
+  s.set("deepseek", "sk-test-0123456789abcdef");
+  assert.equal(s.get("deepseek"), "sk-test-0123456789abcdef");
+
+  assert.equal(s.clear("deepseek"), true);
+  assert.equal(s.get("deepseek"), undefined, "删掉之后不能再读出来");
+  assert.equal(s.list().length, 0, "列表里也不能残留指纹");
+
+  assert.equal(s.clear("deepseek"), false, "重复删是幂等的，不报错");
+  assert.equal(s.clear("openai"), false, "从没设置过也不报错");
+});
+
+test("C-1 clear 之后还能重新 set（不是一次性的破坏）", () => {
+  const s = createStore(mkdtempSync(join(tmpdir(), "jj-auth4-")));
+  s.set("deepseek", "sk-old-000000000000");
+  s.clear("deepseek");
+  s.set("deepseek", "sk-new-111111111111");
+  assert.equal(s.get("deepseek"), "sk-new-111111111111");
+});

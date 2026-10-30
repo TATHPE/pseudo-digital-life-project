@@ -779,3 +779,27 @@ test("没 key 时说真话：本地兜底要有 notice，banner 不能写「仅�
   assert.ok(PAGE.includes("接入地址 · 云端 API 的 baseUrl"), "设置里的 baseUrl 要说清是云端地址");
   assert.ok(PAGE.includes("加文档 · 本地文件路径（和云端无关）"), "加文档要说清是本地文件");
 });
+
+// ── C-1：面板也能「清除密钥」（key:null，不是空串）───────────────
+test("配置：key:null 清除密钥 → hasKey 变 false，且不能靠空串误清", async () => {
+  const { srv, base } = await start();
+  try {
+    const H = { "content-type": "application/json", "x-jj": "1" };
+    await fetch(`${base}/api/config`, {
+      method: "PUT", headers: H,
+      body: JSON.stringify({ provider: "deepseek", model: "deepseek-chat", key: "sk-test-abcdefgh12345678" }),
+    });
+    assert.equal(((await (await fetch(`${base}/api/config`)).json()) as any).hasKey, true);
+
+    // 空串的语义是「没传」，不能当成清除（否则误触就把 key 删了）
+    await fetch(`${base}/api/config`, { method: "PUT", headers: H, body: JSON.stringify({ key: "" }) });
+    assert.equal(((await (await fetch(`${base}/api/config`)).json()) as any).hasKey, true, "空串不该清掉密钥");
+
+    const r = await fetch(`${base}/api/config`, { method: "PUT", headers: H, body: JSON.stringify({ key: null }) });
+    const j = await r.json() as any;
+    assert.equal(j.hasKey, false);
+    const after = (await (await fetch(`${base}/api/config`)).json()) as any;
+    assert.equal(after.hasKey, false, "清除之后 GET 必须说没有");
+    assert.equal(after.keyFingerprint, null);
+  } finally { srv.close(); }
+});

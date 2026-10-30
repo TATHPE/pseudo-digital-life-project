@@ -8,7 +8,7 @@
  * 绝不：写进 config、写进 SQLite、写进日志、写进 argv。
  */
 import { execFileSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync, existsSync, chmodSync, readdirSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync, existsSync, chmodSync, readdirSync, unlinkSync } from "node:fs";
 import { dirname } from "node:path";
 
 export type Provider = "deepseek" | "anthropic" | "openai";
@@ -18,6 +18,14 @@ export interface SecretStore {
   set(provider: Provider, key: string): void;
   get(provider: Provider): string | undefined;
   list(): Array<{ provider: string; fingerprint: string; storedBy: string }>;
+  /**
+   * 删掉一个 provider 的密钥（C-1）。
+   *
+   * 之前只有 set/get/list —— **密钥只有“写入”没有“删除”**，于是想测本地模型就没有任何精确开关：
+   * 只能断网或填一个坏 key，而填坏了也拿不回来。降级链（withFallback）因此只能靠祈祷验证。
+   * 返回是否真的删掉了东西（不存在时返回 false，不报错——重复删幂等）。
+   */
+  clear(provider: Provider): boolean;
 }
 
 const fp = (k: string) => `${k.slice(0, 5)}…${k.slice(-4)}`;
@@ -63,6 +71,12 @@ export function createStore(dir: string): SecretStore {
             "[Text.Encoding]::UTF8.GetString($b)", b64);
         },
         list() { return listKeys(dir, "dpapi"); },
+        clear(p) {
+          const f = file(p);
+          if (!existsSync(f)) return false;
+          unlinkSync(f);
+          return true;
+        },
       };
     }
   }
@@ -82,6 +96,14 @@ export function createStore(dir: string): SecretStore {
           } catch { return undefined; }
         },
         list() { return listKeys(dir, "libsecret"); },
+        clear(p) {
+          // 两份都要清：keyring 里的条目 + 指纹文件（否则 list 还会显示它）
+          let had = false;
+          try { execFileSync("secret-tool", ["clear", "service", "jingjing", "provider", p], { stdio: "ignore" }); had = true; } catch { /* 不在 keyring 里 */ }
+          const f = file(p);
+          if (existsSync(f)) { unlinkSync(f); had = true; }
+          return had;
+        },
       };
     } catch { /* fallthrough */ }
   }
@@ -98,6 +120,12 @@ export function createStore(dir: string): SecretStore {
       return existsSync(f) ? readFileSync(f, "utf8").trim() : undefined;
     },
     list() { return listKeys(dir, "file"); },
+    clear(p) {
+      const f = file(p);
+      if (!existsSync(f)) return false;
+      unlinkSync(f);
+      return true;
+    },
   };
 }
 

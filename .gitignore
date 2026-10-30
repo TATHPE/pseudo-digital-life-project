@@ -1,7 +1,9 @@
 data/
+data.bak-*/
 exports/
 tmp/
 node_modules/
 *.db
 *.db-wal
 *.db-shm
+.last-reset

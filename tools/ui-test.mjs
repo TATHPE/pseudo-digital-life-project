@@ -39,6 +39,8 @@ await send("Page.navigate", { url: URL_PAGE }); await sleep(2500);
 
 const out = [];
 const check = (n, ok, d = "") => out.push([n, ok, d]);
+/** 库是空的就跳过（首次安装/清空后就是这样），既不算红也不算绿 */
+const skip = (n, why) => out.push([n, null, why]);
 
 // 布局：输入框必须在视口内且可见
 const box = await js(`(() => { const r = document.querySelector('#composer').getBoundingClientRect();
@@ -56,15 +58,20 @@ check("工具项可点", await js(`(() => {
 const toolTitle = await js(`document.querySelector('#t-title').textContent`);
 check("工具详情有内容", typeof toolTitle === "string" && toolTitle.length > 3, toolTitle);
 
-// 记忆 → 记忆详情
-check("记忆项可点", await js(`(() => {
-  const b = document.querySelector('#side .item[data-view=memview]');
-  if (!b) return false; b.click();
-  return true;
-})()`));
-await sleep(900);
-check("记忆详情打开了", (await js(`!document.querySelector('#memview').hidden`)) === true,
-  await js(`document.querySelector('#mv-meta').textContent`));
+// 记忆 → 记忆详情（空库时没有可点的项，跳过而不是报错）
+const hasMem = await js("!!document.querySelector('#side .item[data-view=memview]')");
+if (hasMem) {
+  check("记忆项可点", await js(`(() => {
+    const b = document.querySelector('#side .item[data-view=memview]');
+    if (!b) return false; b.click();
+    return true;
+  })()`));
+  await sleep(900);
+  check("记忆详情打开了", (await js(`!document.querySelector('#memview').hidden`)) === true,
+    await js(`document.querySelector('#mv-meta').textContent`));
+} else {
+  skip("记忆项可点", "库里没有记忆（初始状态）");
+  skip("记忆详情打开了", "同上；用 jingjing remember \"…\" 造一条再跑") }
 
 // 设置
 check("设置可点", await js(`(() => { document.querySelector('#side .item[data-view=cfg]').click(); return !document.querySelector('#cfg').hidden; })()`));
@@ -75,13 +82,14 @@ check("会话可点回到对话", await js(`(() => {
   if (!b) return false; b.click(); return !document.querySelector('#chat').hidden;
 })()`));
 
-// 发一句话
-const before = await js(`document.querySelector('#chat').textContent.length`);
+// 发一句话（比较“消息数”而不是文本长度：空库时占位文案可能比一条回复还长）
+const countMsgs = `document.querySelectorAll('#chat .row').length`;
+const before = await js(countMsgs);
 await js(`(() => { const i = document.querySelector('#m'); i.value = '用三个字回答：在吗';
   document.querySelector('#composer').dispatchEvent(new Event('submit', { cancelable: true })); return true; })()`);
 await sleep(6000);
-const after = await js(`document.querySelector('#chat').textContent.length`);
-check("发送后有新内容", after > before, `${before} → ${after}`);
+const after = await js(countMsgs);
+check("发送后有新内容", after >= before + 2, `${before} → ${after} 条`);
 check("无 JS 运行时错误", errs.length === 0, errs.slice(0, 2).join(" | "));
 
 // 图标：标签页 favicon 是静态 /icon.svg（以前是运行时 data URI，viewBox 写死导致空白）
@@ -169,7 +177,12 @@ check("分区标题是带粗左边的标签条 + 格子有角标", await js(`(()
 })()`));
 
 ws.close(); proc.kill();
-let bad = 0;
-for (const [n, ok, d] of out) { console.log(`${ok ? "✅" : "❌"} ${n}${d ? "  — " + String(d).slice(0, 70) : ""}`); if (!ok) bad++; }
-console.log(bad ? `\n❌ ${bad} 项失败` : "\n✅ 交互全部通过");
+let bad = 0, skipped = 0;
+for (const [n, ok, d] of out) {
+  const mark = ok === null ? "⏭" : ok ? "✅" : "❌";
+  console.log(`${mark} ${n}${d ? "  — " + String(d).slice(0, 80) : ""}`);
+  if (ok === null) skipped++; else if (!ok) bad++;
+}
+if (bad) console.log(`\n❌ ${bad} 项失败` + (skipped ? `｜⏭ ${skipped} 项跳过` : ""));
+else console.log("\n✅ 交互全部通过" + (skipped ? `｜⏭ ${skipped} 项跳过（空库）` : ""));
 process.exitCode = bad ? 1 : 0;

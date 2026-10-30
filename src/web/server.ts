@@ -583,8 +583,15 @@ export function createWebServer(deps: WebDeps) {
       if (req.method === "PUT" && url.pathname === "/api/config") {
         const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
         const body = JSON.parse(await readBody(req)) as {
-          provider?: string; model?: string; baseUrl?: string; key?: string;
+          provider?: string; model?: string; baseUrl?: string; key?: string | null;
         };
+        // key: null = 清除（不能用 ""，那个语义已经被“没传”占用了）
+        if (body.key === null) {
+          const provider = (body.provider ?? deps.getConfig().roles["express"]!.provider) as Provider;
+          const removed = secrets().clear(provider);
+          json(res, 200, { ok: true, provider, removed, hasKey: false });
+          return;
+        }
         if (body.key !== undefined && body.key !== "") {
           if (body.key.includes("�")) { json(res, 400, { error: "E_ENCODING" }); return; }
           if (!/^\S{8,}$/.test(body.key)) { json(res, 400, { error: "E_BAD_KEY" }); return; }
@@ -814,8 +821,11 @@ export function createWebServer(deps: WebDeps) {
 
         let full = "";
         const used: ToolUse[] = [];
-        const chat = deps.getChat && deps.tools ? deps.getChat() : null;
         try {
+          // getChat 必须在 try 里面：routerFrom 会对空 model 报 E_CONFIG，
+          // 而它以前在 try 外面 —— 一抛就穿透到外层 catch，SSE 已经开始，
+          // 于是 json(500) 抛 ERR_HTTP_HEADERS_SENT，整个面板进程被打死。
+          const chat = deps.getChat && deps.tools ? deps.getChat() : null;
           if (chat) {
             const agent = runAgent({ chat, tools: deps.tools! }, brief.text, text);
             for await (const ev of agent) {
@@ -841,7 +851,12 @@ export function createWebServer(deps: WebDeps) {
             send({ type: "done", steps: 1 });
           }
         } catch (e) {
-          send({ type: "error", message: String(e).slice(0, 200) });
+          // 给人看的话，不是给开发者看的栈
+          const raw = String((e as Error)?.message ?? e);
+          const msg = raw.includes("E_CONFIG")
+            ? "还没有可用的模型。去设置里填云端 key，或装本地模型：ollama pull bge-m3，再 jingjing models use <模型名>"
+            : raw.slice(0, 200);
+          send({ type: "error", message: msg });
         }
         if (full) {
           appendEvent(deps.inboxDir, {
@@ -859,7 +874,16 @@ export function createWebServer(deps: WebDeps) {
       }
       json(res, 404, { error: "E_NOT_FOUND" });
     } catch (e) {
-      json(res, 500, { error: String(e).slice(0, 300) });
+      // 这里必须看 headersSent：/api/say 是 SSE，一旦开始吐字就不能再写头。
+      // 以前不管这个 —— 一次失败的聊天就能让 json() 抛 ERR_HTTP_HEADERS_SENT，
+      // 而那个抛是在 catch 里，直接**打死整个面板进程**（实测：无 key + 无本地模型即可复现）。
+      console.error("[api-error]", req.method, url.pathname, String((e as Error)?.stack ?? e).slice(0, 600));
+      if (res.headersSent) {
+        try { res.write("data: " + JSON.stringify({ type: "error", message: String(e).slice(0, 300) }) + String.fromCharCode(10, 10)); } catch { /* 已断开 */ }
+        try { res.end(); } catch { /* 已断开 */ }
+      } else {
+        json(res, 500, { error: String(e).slice(0, 300) });
+      }
     }
   });
 }
