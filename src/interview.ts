@@ -11,8 +11,9 @@
  * 模型不能自己声明"这是用户说的" —— 那是最坏的一种伪造。
  */
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { noteFileWillChange } from "./setup.ts";
 import { join } from "node:path";
-import { PERSONA_FILES, savePersonaFile, type PersonaFile } from "./persona.ts";
+import { PERSONA_FILES, personaDir, savePersonaFile, type PersonaFile } from "./persona.ts";
 import { bumpGenerationIfChanged } from "./generation.ts";
 import type { DatabaseSync } from "node:sqlite";
 
@@ -157,6 +158,8 @@ export function sealDraft(
   for (const f of PERSONA_FILES) {
     const body = renderBlock(d.blocks[f] ?? []);
     if (!body) continue;
+    // 先记账：撤销安装时要能把这些文件恢复/删掉
+    noteFileWillChange(home, join(personaDir(home), f + ".md"));
     savePersonaFile(home, f, `# ${f}${String.fromCharCode(10)}${String.fromCharCode(10)}${body}`, now, reason);
     wrote.push(f);
   }

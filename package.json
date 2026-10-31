@@ -18,7 +18,8 @@
     "ui:test:live": "node tools/ui-test.mjs",
     "docs:sync": "node tools/sync-docs.mjs",
     "map": "node tools/gen-map.mjs",
-    "map:check": "node tools/map-check.mjs"
+    "map:check": "node tools/map-check.mjs",
+    "setup:e2e": "node tools/setup-e2e.ts"
   },
   "dependencies": {
     "casbin": "^5.51.1",
