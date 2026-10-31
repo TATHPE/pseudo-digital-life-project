@@ -149,15 +149,18 @@ export function renderBlock(lines: DraftLine[]): string {
  */
 export function sealDraft(
   db: DatabaseSync, home: string, opts: { because?: string; now?: Date } = {},
-): { ok: true; gen: number; files: PersonaFile[] } | { ok: false; code: string; why: string } {
+): { ok: true; gen: number; files: PersonaFile[]; missing: PersonaFile[] } | { ok: false; code: string; why: string } {
   const d = readDraft(home);
   if (!d) return { ok: false, code: "E_NO_DRAFT", why: "还没有草稿；先做访谈" };
   const now = opts.now ?? new Date();
   const reason = String(opts.because ?? "").trim() || "首次封存（访谈草稿）";
   const wrote: PersonaFile[] = [];
+  // 没写到的块**保持原样**（首次安装 = 出厂默认）。这不该偷偷发生：
+  // 「已封存」如果其实是 2 块访谈 + 4 块出厂默认，人有权知道是哪 4 块。
+  const missing: PersonaFile[] = [];
   for (const f of PERSONA_FILES) {
     const body = renderBlock(d.blocks[f] ?? []);
-    if (!body) continue;
+    if (!body) { missing.push(f); continue; }
     // 先记账：撤销安装时要能把这些文件恢复/删掉
     noteFileWillChange(home, join(personaDir(home), f + ".md"));
     savePersonaFile(home, f, `# ${f}${String.fromCharCode(10)}${String.fromCharCode(10)}${body}`, now, reason);
@@ -165,7 +168,7 @@ export function sealDraft(
   }
   const g = bumpGenerationIfChanged(db, home, reason, now);
   discardDraft(home);                       // 封存后草稿不再留（它的内容已经在 persona 里）
-  return { ok: true, gen: g.generation.gen, files: wrote };
+  return { ok: true, gen: g.generation.gen, files: wrote, missing };
 }
 
 /** 统计：这一步里有多少行是"模型补的"（要人扫一眼的那些） */

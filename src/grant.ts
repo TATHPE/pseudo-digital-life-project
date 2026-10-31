@@ -49,7 +49,7 @@ export const PRESETS: Array<{ id: Preset; label: string; hint: string }> = [
   { id: "ask", label: "逐次确认", hint: "每次动作都要你看一眼（最安全，也最啰嗦）" },
   { id: "read", label: "仅可查看", hint: "只读；任何要动手的命令都拒绝" },
   { id: "write", label: "工作区内修改", hint: "注册过的模板，只在 workspace 内" },
-  { id: "full", label: "完全权限", hint: "任意命令 + 整个 home；删/磁盘/系统/下载器/壳永久拒绝" },
+  { id: "full", label: "完全权限", hint: "任意命令 + 整个 home（会话级，关掉就没了）；删/磁盘/系统/下载器/壳永久拒绝，密钥仍不进子进程，仍逐条审计" },
 ];
 export const GRANT_COMMANDS = [
   "node", "npm", "npx", "git", "python", "py", "ffmpeg", "ffprobe", "tsc", "vitest",
@@ -65,8 +65,9 @@ const never = (t: number): boolean => !Number.isFinite(t);
 
 export const MAX_TTL_MS = 2 * 60 * 60 * 1000;
 /**
- * 完全权限窗口：**也是会话级**（见 SESSION_ONLY）。
+ * 完全权限窗口：**默认也是会话级**（不传 ttlMs 就同 SESSION_ONLY）。
  * 之前限制 15 分钟，用户实测反馈是「多点几次，没多一层保护」—— 真正的边界是硬禁名单 + 密钥不传 + 审计。
+ * 这个常量只在「调用方显式要一个时限」时当上限用（CLI `grant open --full --ttl`），面板不走它。
  */
 export const FULL_MAX_TTL_MS = 15 * 60 * 1000;
 

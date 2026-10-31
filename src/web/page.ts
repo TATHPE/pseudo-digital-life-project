@@ -361,6 +361,27 @@ export const PAGE = `<!doctype html>
           color:var(--ink-dim); max-height:200px; overflow:auto; margin:0; }
   .dbar { height:3px; background:rgba(233,240,242,.16); margin-top:5px; }
   .dbar i { display:block; height:100%; background:var(--ink); }
+  /* ── 收纳：两个边栏都能收成一条窄带，状态记在 localStorage ──────────
+     收起来不是删掉：窄带上留一个能点开的把手，键盘 Tab 也够得着。 */
+  body.wing-off { --rail:34px; }
+  body.wing-off #side > *:not(#wingHandle) { display:none; }
+  body.wing-off #side { padding:0; overflow:hidden; }
+  body.wing-off #wingHandle { writing-mode:vertical-rl; letter-spacing:.4em; width:100%; height:100%;
+                               display:flex; align-items:center; justify-content:flex-start;
+                               padding:12px 0; border:0; background:#000; color:var(--ink);
+                               font:10px/1 var(--mono); font-weight:700; cursor:pointer; }
+  body.wing-off #wingHandle:hover { color:var(--fg); background:rgba(233,240,242,.08); }
+  body.wing-off #folio { display:none; }
+  body.wing-off #folioTog { display:inline-block; }
+  #wingTog { margin-left:auto; background:#000; border:1px solid var(--line-dim); color:var(--ink-dim);
+             font:10px/1 var(--mono); padding:4px 6px; cursor:pointer; }
+  #wingTog:hover { color:var(--ink); border-color:var(--ink); }
+  body.folio-off #folio { display:none; }
+  body.folio-off { --folio:0px; }
+  body.folio-off #folioTog { display:inline-block; }
+  #folioX { background:#000; border:1px solid var(--line-dim); color:var(--ink-dim); font:10px/1 var(--mono);
+            padding:4px 7px; cursor:pointer; margin-left:auto; }
+  #folioX:hover { color:var(--ink); border-color:var(--ink); }
   /* 1181–1440px：卷宗变窄；≤1180px：卷宗收成抽屉（照它把 folio 抽出来的做法） */
   @media (max-width: 1440px) { :root { --folio:290px; --rail:220px; } }
   @media (max-width: 1366px) { .ro:nth-last-child(-n+2) { display:none; } }
@@ -630,8 +651,10 @@ export const PAGE = `<!doctype html>
 </header>
 
 <aside id="side">
+  <button id="wingHandle" type="button" title="展开左栏（Ctrl+B）" aria-label="展开左栏" hidden>鲸鲸</button>
   <div class="wingtop">
-    <div class="wmark"><b>鲸鲸</b><span>PSEUDO · DIGITAL · LIFE</span></div>
+    <div class="wmark"><b>鲸鲸</b><span>PSEUDO · DIGITAL · LIFE</span>
+      <button id="wingTog" type="button" title="收起左栏（Ctrl+B）" aria-label="收起左栏">«</button></div>
     <div class="wsearch"><input id="q" class="searchbox" placeholder="搜记忆 / 文档…" autocomplete="off"><kbd>Ctrl K</kbd></div>
     <div class="wsec">工 作 区</div>
     <div class="witem" id="wsroot" title="本机工作区（data/ 记忆库 · persona/ 人格 · workspace/ 脚本）">本机 · 记忆库<span class="m" id="wspath">…</span></div>
@@ -927,7 +950,7 @@ export const PAGE = `<!doctype html>
 
 <!-- 右栏「卷宗」（结构照 Trianon 的 Dossier：Plan / Changes / Context 三张可折卡） -->
 <aside id="folio" aria-label="卷宗">
-  <div class="fcap"><b>卷 宗</b><span>DOSSIER</span></div>
+  <div class="fcap"><b>卷 宗</b><span>DOSSIER</span><button id="folioX" type="button" title="收起卷宗（⌘/Ctrl+J）" aria-label="收起卷宗">»</button></div>
 
   <div class="dcard" data-card="plan">
     <button class="dtab" type="button"><i>I</i><b>计 划</b><span class="n" id="dc-plan-n"></span></button>
@@ -1985,34 +2008,49 @@ async function paintSetupPanel() {
     return;
   }
 }
+// 草稿：**六块全列**（空的也列，写「还是出厂默认」），每行带着它的出处。
+// 出处不能被面板改掉：interview.ts 的铁律是「模型写的每一行要么能在你回答里逐字找到，
+// 要么标成『模型补的，请确认』」。之前这里保存时不看 source、一律写成「你原话」，
+// 等于把那条校验绕过去了 —— 封存出来的 persona 会把模型编的话挂上你的名字。
+var DRAFT_BLOCKS = ['core', 'boundaries', 'values', 'voice', 'evidence', 'tools'];
 function renderDraft(d) {
-  var box = $("#su-draft");
+  var box = document.getElementById('su-draft');
   if (!box) return;
-  var html = "";
-  ["core", "boundaries", "values", "voice", "evidence", "tools"].forEach(function (k) {
+  var html = '';
+  var empty = [];
+  DRAFT_BLOCKS.forEach(function (k) {
     var lines = (d.blocks || {})[k] || [];
-    if (!lines.length) return;
-    html += "<p class='hint' style='margin-top:12px'>#" + k + "</p>";
+    if (!lines.length) { empty.push(k); return; }
+    html += '<p class="hint" style="margin-top:12px">#' + k + '</p>';
     lines.forEach(function (l, i) {
-      var mine = l.source === "你原话";
-      html += "<div class='draftline" + (mine ? " mine" : "") + "'>" +
-        "<span class='src'>" + (mine ? "你原话" : "请确认") + "</span>" +
-        "<input data-blk='" + k + "' data-i='" + i + "' value='" + escapeHtml(l.text) + "'></div>";
+      var mine = l.source === '你原话';
+      html += '<div class="draftline' + (mine ? ' mine' : '') + '">' +
+        '<span class="src">' + (mine ? '你原话' : '请确认') + '</span>' +
+        '<input data-blk="' + k + '" data-i="' + i + '" data-src="' + (mine ? '你原话' : '模型补的') + '" value="' + escapeHtml(l.text) + '"></div>';
     });
   });
-  html += "<div class='acts' style='margin-top:12px'><button id='su-seal' class='primary'>封存（开第 1 代）</button><span id='su-seal-msg' class='hint'></span></div>";
+  if (empty.length) {
+    html += '<p class="hint" style="margin-top:12px">这几块访谈里没说到，封存后会**保持出厂默认**：' +
+      empty.map(function (k) { return '#' + k; }).join(' · ') + '（之后可在设置 → 人格里补）</p>';
+  }
+  html += '<div class="acts" style="margin-top:12px"><button id="su-seal" class="primary">封存（开第 1 代）</button><span id="su-seal-msg" class="hint"></span></div>';
   box.innerHTML = html;
-  $("#su-seal").onclick = async function () {
-    var msg = $("#su-seal-msg"); msg.textContent = "封存中…";
+  document.getElementById('su-seal').onclick = async function () {
+    var msg = document.getElementById('su-seal-msg'); msg.className = 'hint'; msg.textContent = '封存中…';
     var blocks = {};
-    document.querySelectorAll("#su-draft input[data-blk]").forEach(function (inp) {
-      var k = inp.dataset.blk; (blocks[k] = blocks[k] || []).push({ text: inp.value, source: "你原话" });
+    document.querySelectorAll('#su-draft input[data-blk]').forEach(function (inp) {
+      var k = inp.dataset.blk;
+      var src = inp.dataset.src === '你原话' ? '你原话' : '模型补的（请确认）';
+      (blocks[k] = blocks[k] || []).push({ text: inp.value, source: src });
     });
-    await fetch("/api/setup/interview", { method: "POST", headers: H, body: JSON.stringify({ action: "save", blocks: blocks }) });
-    var r = await (await fetch("/api/setup/interview", { method: "POST", headers: H, body: JSON.stringify({ action: "seal", because: "首次封存（面板）" }) })).json();
-    if (!r.ok) { msg.className = "err"; msg.textContent = r.error || "封存失败"; return; }
-    msg.className = "ok"; msg.textContent = r.note;
-    await fetch("/api/setup", { method: "POST", headers: H, body: JSON.stringify({ action: "run", step: "persona" }) });
+    await fetch('/api/setup/interview', { method: 'POST', headers: H, body: JSON.stringify({ action: 'save', blocks: blocks }) });
+    var r = await (await fetch('/api/setup/interview', { method: 'POST', headers: H, body: JSON.stringify({ action: 'seal', because: '首次封存（面板）' }) })).json();
+    if (!r.ok) { msg.className = 'err'; msg.textContent = r.error || '封存失败'; return; }
+    msg.className = 'ok'; msg.textContent = r.note;
+    await fetch('/api/setup', { method: 'POST', headers: H, body: JSON.stringify({ action: 'run', step: 'persona' }) });
+    // 封存后立刻把世代/人格读回来：不然设置里看到的还是旧的（要刷新才变）
+    await loadGeneration();
+    if (document.getElementById('p-file')) await loadPersona(document.getElementById('p-file').value);
     await loadSetup();
   };
 }
@@ -2568,6 +2606,49 @@ var ws = document.getElementById('wspath');
 if (ws) ws.textContent = 'data/ · persona/ · workspace/';
 loadDossier();
 setInterval(loadDossier, 20000);
+
+// ── 边栏收纳：收起来是「收」，不是「删」────────────────────────────
+// 状态存在 localStorage：这是**这台机器的视觉偏好**，不该进 data/config.json
+// （那是会跟着搬家走的东西；换台机器屏幕宽度不同，不该跟着搬）。
+function applyLayout() {
+  var wing = localStorage.getItem('jj.wing') === 'off';
+  var folio = localStorage.getItem('jj.folio') === 'off';
+  document.body.classList.toggle('wing-off', wing);
+  document.body.classList.toggle('folio-off', folio);
+  var h = document.getElementById('wingHandle');
+  if (h) h.hidden = !wing;
+}
+function toggleWing(on) {
+  var off = (typeof on === 'boolean') ? !on : !document.body.classList.contains('wing-off');
+  localStorage.setItem('jj.wing', off ? 'off' : 'on');
+  applyLayout();
+}
+function toggleFolio(on) {
+  var off = (typeof on === 'boolean') ? !on : !document.body.classList.contains('folio-off');
+  localStorage.setItem('jj.folio', off ? 'off' : 'on');
+  applyLayout();
+}
+applyLayout();
+var wingTog = document.getElementById('wingTog');
+if (wingTog) wingTog.onclick = function () { toggleWing(false); };
+var wingHandle = document.getElementById('wingHandle');
+if (wingHandle) wingHandle.onclick = function () { toggleWing(true); };
+var folioX = document.getElementById('folioX');
+if (folioX) folioX.onclick = function () { toggleFolio(false); };
+// 窄屏时「◧ 卷宗」是抽屉开关；宽屏时它就是收纳开关（同一颗按钮，别让人记两套）
+// 参数是**想要的结果**（true = 展开），不是「现在是不是关着」—— 之前这里传了反的，
+// 宽屏点一下反而确认了「关着」。
+var folioTog2 = document.getElementById('folioTog');
+if (folioTog2) folioTog2.onclick = function () {
+  if (innerWidth <= 1180) { document.body.classList.toggle('folio-open'); return; }
+  toggleFolio(document.body.classList.contains('folio-off'));
+};
+document.addEventListener('keydown', function (e) {
+  if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+  var k = (e.key || '').toLowerCase();
+  if (k === 'b') { e.preventDefault(); toggleWing(); }
+  else if (k === 'j') { e.preventDefault(); toggleFolio(); }
+});
 
 $("#composer").onsubmit = async (e) => {
   e.preventDefault();

@@ -1128,7 +1128,12 @@ export function createWebServer(deps: WebDeps) {
               payload: { gen: r.gen, files: r.files },
             });
           } catch { /* 事件写不下不影响封存 */ }
-          json(res, 200, { ok: true, gen: r.gen, files: r.files, note: "已封存为第 " + r.gen + " 代；之后要改就是开新一代" });
+          const miss = r.missing.map((f) => f + ".md").join("、");
+          json(res, 200, {
+            ok: true, gen: r.gen, files: r.files, missing: r.missing,
+            note: "已封存为第 " + r.gen + " 代；之后要改就是开新一代" +
+              (miss ? "（" + miss + " 访谈里没说到，仍是出厂默认 —— 可以去设置里补）" : ""),
+          });
           return;
         }
         json(res, 400, { error: "E_BAD_ACTION" });

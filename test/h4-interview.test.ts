@@ -91,6 +91,40 @@ test("H-4 封存：写 6 块 + 开第 1 代 + 清掉草稿 + 留事件", () => {
   assert.equal(currentGeneration(d.db, home).gen, 1);
 });
 
+// 抓到过的真事：面板保存草稿时把每一行都写成「你原话」，于是模型编的话
+// 封存后挂着用户的名字进 persona —— 那条「模型不能自称你原话」的校验等于没有。
+test("H-4 封存：模型补的行不会被改写成「你原话」", () => {
+  const home = H();
+  const d = openDb(join(home, "m.db"));
+  const draft = templateDraft(ANSWERS);
+  draft.blocks.core = [
+    { text: "她叫我主人", source: "你原话" },
+    { text: "喜欢下雨天", source: "模型补的（请确认）" },
+  ];
+  saveDraft(home, draft);
+  const r = sealDraft(d.db, home, { because: "访谈完封存" });
+  assert.equal(r.ok, true);
+  const core = readFileSync(join(home, "persona", "core.md"), "utf8");
+  assert.ok(core.includes("她叫我主人（你原话）"), "你说的话标你原话");
+  assert.ok(core.includes("喜欢下雨天（模型补的，请确认）"), "模型补的必须还是模型补的");
+});
+
+// 封存只写有内容的块，其余保持原样（第一次安装 = 出厂默认）。
+// 那就不该只说「已封存」——得说清哪几块还是出厂的，否则人会以为六块都来自访谈。
+test("H-4 封存要说清哪几块没写到（仍是出厂默认）", () => {
+  const home = H();
+  const d = openDb(join(home, "m.db"));
+  const draft = templateDraft(ANSWERS);
+  draft.blocks = { ...draft.blocks, core: [{ text: "只有这一块", source: "你原话" }] };
+  for (const k of Object.keys(draft.blocks)) if (k !== "core") delete (draft.blocks as Record<string, unknown>)[k];
+  saveDraft(home, draft);
+  const r = sealDraft(d.db, home, { because: "只封一块" });
+  assert.equal(r.ok, true);
+  if (!r.ok) return;
+  assert.deepEqual(r.files, ["core"]);
+  assert.deepEqual([...r.missing].sort(), ["boundaries", "evidence", "tools", "values", "voice"]);
+});
+
 test("H-4 试运行：没有表达模型就用模板，但**明说**这是模板", async () => {
   const r = await runSmoke({ personaText: "# core\n短句。" , });
   assert.equal(r.via, "template");

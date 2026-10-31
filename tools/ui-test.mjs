@@ -403,6 +403,42 @@ check("能力表的降级项与服务端一致", await (async () => {
 })(), cap.deg.slice(0, 60));
 
 // ── 横向溢出：加右栏之后中栏变窄，工具卡里的长行曾把对话列撑破 ──
+// ── 收纳：两个边栏能收成窄带，也要能收回原样 + 记住选择 ──────────
+check("左右边栏能收起来、也能再展开", await js(`(async () => {
+  const cols = () => getComputedStyle(document.body).gridTemplateColumns.split(" ").map((x) => parseFloat(x));
+  const before = cols();
+  document.getElementById("wingTog").click();
+  await new Promise((r) => setTimeout(r, 300));
+  const off = cols();
+  const handle = document.getElementById("wingHandle");
+  const handleOk = !handle.hidden && handle.getBoundingClientRect().width > 0;
+  handle.click();
+  await new Promise((r) => setTimeout(r, 300));
+  document.getElementById("folioX").click();
+  await new Promise((r) => setTimeout(r, 300));
+  const folioOff = cols();
+  document.getElementById("folioTog").click();
+  await new Promise((r) => setTimeout(r, 300));
+  const back = cols();
+  // 收起来 = 第一/第三列变窄到 0~40px；展开 = 回到原来的宽度（±2px 取整误差）
+  const ok1 = off[0] < 40 && handleOk;
+  const ok2 = folioOff[2] === 0;
+  const ok3 = Math.abs(back[0] - before[0]) <= 2 && Math.abs(back[2] - before[2]) <= 2;
+  return ok1 && ok2 && ok3 ? true : "wing:" + off[0] + " folio:" + folioOff[2] + " back:" + back.join("/") + " before:" + before.join("/");
+})()`));
+
+check("收纳选择记得住（刷新后还在）", await js(`(async () => {
+  document.getElementById("wingTog").click();
+  await new Promise((r) => setTimeout(r, 250));
+  const saved = localStorage.getItem("jj.wing");
+  // 不真的刷新（会打断后面的断言），只验「状态写进了 localStorage、且下次 applyLayout 会读它」
+  const ok = saved === "off" && document.body.classList.contains("wing-off");
+  document.getElementById("wingHandle").click();
+  await new Promise((r) => setTimeout(r, 250));
+  const back = localStorage.getItem("jj.wing");
+  return ok && back === "on";
+})()`));
+
 check("对话区没有横向滚动条", await js(`(() => {
   const sc = document.querySelector("#scroll");
   // 允许 1px 的取整误差；超了就是内容把列撑破了（.row 的 1fr 下限曾经是 min-content）
