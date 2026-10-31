@@ -40,16 +40,16 @@ interface Grant {
  * 权限预设（形状照 DeepSeek Harness 的 permission presets）：
  *   ask   逐次确认（我们的默认）
  *   read  仅可查看：任何 T3 都拒
- *   write 工作区内修改：注册过的模板 + workspace，30 分钟
- *   full  完全权限：任意命令（除硬禁）+ 整个 home，15 分钟
+ *   write 工作区内修改：注册过的模板 + workspace 内
+ *   full  完全权限：任意命令（除硬禁）+ 整个 home
  * 当前会话用 composer 旁的选择器切；设置里那行只管「以后新建会话的默认值」。
  */
 export type Preset = "ask" | "read" | "write" | "full";
 export const PRESETS: Array<{ id: Preset; label: string; hint: string }> = [
   { id: "ask", label: "逐次确认", hint: "每次动作都要你看一眼（最安全，也最啰嗦）" },
   { id: "read", label: "仅可查看", hint: "只读；任何要动手的命令都拒绝" },
-  { id: "write", label: "工作区内修改", hint: "注册过的模板 + workspace 内，30 分钟" },
-  { id: "full", label: "完全权限", hint: "任意命令 + 整个 home，15 分钟；删/系统/下载/壳仍拒绝" },
+  { id: "write", label: "工作区内修改", hint: "注册过的模板，只在 workspace 内" },
+  { id: "full", label: "完全权限", hint: "任意命令 + 整个 home；删/磁盘/系统/下载器/壳永久拒绝" },
 ];
 export const GRANT_COMMANDS = [
   "node", "npm", "npx", "git", "python", "py", "ffmpeg", "ffprobe", "tsc", "vitest",
@@ -65,8 +65,8 @@ const never = (t: number): boolean => !Number.isFinite(t);
 
 export const MAX_TTL_MS = 2 * 60 * 60 * 1000;
 /**
- * 完全权限窗口**更短**：15 分钟。
- * 理由：权限越大，窗口越短 —— 不然「开一次全权」会变成事实上的永久全权。
+ * 完全权限窗口：**也是会话级**（见 SESSION_ONLY）。
+ * 之前限制 15 分钟，用户实测反馈是「多点几次，没多一层保护」—— 真正的边界是硬禁名单 + 密钥不传 + 审计。
  */
 export const FULL_MAX_TTL_MS = 15 * 60 * 1000;
 

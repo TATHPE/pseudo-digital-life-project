@@ -1003,10 +1003,7 @@ export function createWebServer(deps: WebDeps) {
       // ── 权限档位（形状照 DSH：当前会话用输入框旁的选择器切）──
       if (req.method === "GET" && url.pathname === "/api/permission") {
         const cur = currentPreset(deps.home, now());
-        const file = deps.home + "/config.json";
-        let def: Preset = "ask";
-        try { def = (JSON.parse(readFileSync(file, "utf8")).permission?.default ?? "ask") as Preset; } catch { /* 没配就是 ask */ }
-        json(res, 200, { ...cur, default: def, presets: PRESETS });
+        json(res, 200, { ...cur, presets: PRESETS });
         return;
       }
       if (req.method === "POST" && url.pathname === "/api/permission") {
@@ -1030,26 +1027,6 @@ export function createWebServer(deps: WebDeps) {
         return;
       }
 
-      // ── 新会话默认档（设置里那一行；只影响以后新建的会话）──
-      if (req.method === "PUT" && url.pathname === "/api/permission/default") {
-        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
-        const body = JSON.parse(await readBody(req)) as { default?: string; confirm?: string };
-        const preset = String(body.default ?? "") as Preset;
-        if (!PRESETS.some((x) => x.id === preset)) { json(res, 400, { error: "E_BAD_PRESET" }); return; }
-        // 当前会话一键切可以不要确认；但把「全权」写成**以后新会话的默认值**要一句明确的话 ——
-        // 实测踩到：选择器开着时一次误点就把 config.json 的 default 改成了 full。
-        if (preset === "full" && String(body.confirm ?? "") !== "我明白") {
-          json(res, 400, { error: "E_NEEDS_CONFIRM", why: "把完全权限设为默认要确认（输入「我明白」）；当前会话可以直接一键切" });
-          return;
-        }
-        const file = deps.home + "/config.json";
-        let cfg: Record<string, unknown> = {};
-        try { cfg = JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>; } catch { /* 新文件 */ }
-        cfg.permission = { ...(cfg.permission as Record<string, unknown> | undefined ?? {}), default: preset };
-        writeFileSync(file, JSON.stringify(cfg, null, 2), "utf8");
-        json(res, 200, { ok: true, default: preset, note: "只影响之后新建的会话；当前会话请用输入框旁的选择器" });
-        return;
-      }
       // ── 回执（D-3 的前置通道）：它做完的事必须能被看见 ──
       if (req.method === "GET" && url.pathname === "/api/receipts") {
         const unseenOnly = url.searchParams.get("unseen") !== "0";

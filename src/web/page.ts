@@ -402,7 +402,8 @@ export const PAGE = `<!doctype html>
   /* 能力表（F-2）：一行一类，点开看条目；降级项直接标红 */
   #cap-list { margin-top:6px; }
   /* 权限 chip：贴在输入框左边，当前会话可见可切（位置照 DeepSeek Harness） */
-  .permchip { flex:0 0 auto; padding:4px 8px; border:1px solid var(--line); background:transparent;
+  .permchip { flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center;
+    align-self:stretch; padding:0 12px; border:1px solid var(--line); background:transparent;
     color:var(--dim); font:inherit; font-size:12px; font-weight:600; border-radius:2px; cursor:pointer; }
   .permchip:hover { color:var(--fg); border-color:var(--fg); }
   #permpop .opt:focus-visible { outline:1px solid var(--fg); outline-offset:-1px; }
@@ -707,14 +708,6 @@ export const PAGE = `<!doctype html>
       </div>
 
       <div class="panelbox">
-        <h2>DEFAULT · 新会话默认权限</h2>
-        <p class="hint">这里选的只是<b>以后新建会话</b>的默认值；当前会话请在输入框左边的开关上切。
-          权限在本次会话里一直有效（关掉面板就回到逐次确认）；密钥类环境变量永远不传。</p>
-        <div class="two"><div><label>默认档</label><select id="pd-sel"></select></div>
-          <div><label>&nbsp;</label><button id="pd-save" class="primary">保存默认</button></div></div>
-        <p class="hint" id="pd-msg"></p>
-      </div>
-      <div class="panelbox">
         <h2>STANDING · 常驻指令</h2>
         <p class="hint">它在你不在的时候按点做事。只收注册过的模板，每次触发自己开 60 秒窗口，跑完写回执；
           <b>回执三天没人读就自动停用</b>。真正的触发要外部调 jingjing standing tick（面板不会偷偷跑）。</p>
@@ -782,7 +775,6 @@ export const PAGE = `<!doctype html>
   <div class="ticker" id="ticker"></div>
   <form id="composer"><div class="wrap">
     <button type="button" id="perm" class="permchip" title="当前会话的权限档（点开切换）">逐次确认</button>
-    <span class="prompt">&gt;</span>
     <textarea id="m" rows="1" placeholder="说点什么…"></textarea>
     <button id="stop" type="button" title="停止生成">■</button>
     <button class="send">▲</button>
@@ -790,7 +782,7 @@ export const PAGE = `<!doctype html>
 </main>
 
 <div id="permpop" hidden role="dialog" aria-modal="true" aria-label="权限档"><div class="permbox">
-  <p class="hint">切的是<b>当前会话</b>的权限档；设置里那一行只管以后新建的会话。</p>
+  <p class="hint">这是<b>当前会话</b>的权限档。改完立刻生效，关掉面板就回到逐次确认。</p>
   <div id="permopts"></div>
   <div class="acts"><button type="button" id="permclose">关闭</button><span id="permmsg" class="hint"></span></div>
 </div></div>
@@ -1660,7 +1652,6 @@ var PERM_LABEL = { ask: "逐次确认", read: "仅可查看", write: "工作区�
 async function loadPermission() {
   try { PERM = await (await fetch("/api/permission")).json(); } catch (e) { return; }
   paintPermission();
-  paintPermDefault();
 }
 function paintPermission() {
   var b = document.getElementById("perm");
@@ -1729,41 +1720,6 @@ async function handleSlash(text) {
   if (await setPermission(preset)) pushTicker("权限已切到 " + preset);
   return true;
 }
-
-// ── 设置里那一行：以后新建会话的默认档（当前会话不受影响）──
-function paintPermDefault() {
-  var sel = document.getElementById("pd-sel");
-  if (!sel) return;
-  if (!sel.dataset.filled) {
-    sel.innerHTML = (PERM.presets || []).map(function (x) {
-      return "<option value='" + escapeHtml(x.id) + "'>" + escapeHtml(x.label) + "</option>";
-    }).join("");
-    sel.dataset.filled = "1";
-  }
-  sel.value = PERM.default || "ask";
-  var msg = document.getElementById("pd-msg");
-  if (msg) msg.textContent = "当前默认：" + (PERM_LABEL[PERM.default] || PERM.default || "逐次确认");
-}
-document.getElementById("pd-save").addEventListener("click", async function () {
-  var sel = document.getElementById("pd-sel");
-  var msg = document.getElementById("pd-msg");
-  msg.className = "hint";
-  msg.textContent = "保存中…";
-  var r;
-  try {
-    r = await (await fetch("/api/permission/default", {
-      method: "PUT", headers: H, body: JSON.stringify({ default: sel.value }),
-    })).json();
-  } catch (e) { msg.className = "err"; msg.textContent = "请求失败"; return; }
-  if (r.ok) {
-    PERM.default = r.default;
-    msg.className = "ok";
-    msg.textContent = "已保存：" + (PERM_LABEL[r.default] || r.default) + "（只影响以后新建的会话）";
-  } else {
-    msg.className = "err";
-    msg.textContent = r.why || r.error || "保存失败";
-  }
-});
 
 // ── 回执（D-3 前置）：送达 ≠ 已读 ───────────────────
 async function loadReceipts() {
