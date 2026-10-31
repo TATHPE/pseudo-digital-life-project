@@ -33,6 +33,22 @@ export interface Transport {
   resetSpans(): void;
 }
 
+import { gate as coolGate, recordFailure as coolFailure, recordSuccess as coolSuccess } from "./cooldown.ts";
+
+/** 云端角色才受冷却约束（本地 ollama 失败是"端点没起"，那有 preflight 管） */
+function coolCheck(c: { kind: string; provider: string }): void {
+  if (c.kind !== "cloud") return;
+  const g = coolGate(c.provider);
+  if (g.blocked) throw new Error("E_COOLDOWN: " + (g.reason ?? "冷却中"));
+}
+function coolNote(c: { kind: string; provider: string }, e: unknown): void {
+  if (c.kind !== "cloud") return;
+  coolFailure(c.provider, String((e as Error)?.message ?? e));
+}
+function coolOk(c: { kind: string; provider: string }): void {
+  if (c.kind === "cloud") coolSuccess(c.provider);
+}
+
 export class EndpointError extends Error {
   constructor(msg: string) { super(msg); this.name = "EndpointError"; }
 }
@@ -106,11 +122,16 @@ export function createTransport(
       }
     }
     let ok = false;
+    coolCheck(c);                       // D-2：冷却期内直接拒，不再打网络
     try {
       const r = await f(url, { method: "POST", headers, body: payload, signal: opts2.signal });
       ok = r.ok;
       if (!r.ok) throw new Error(`E_PROVIDER: ${r.status} ${(await r.text()).slice(0, 200)}`);
+      coolOk(c);
       return await r.json();
+    } catch (e) {
+      coolNote(c, e);
+      throw e;
     } finally {
       record({
         ts: new Date().toISOString(), role, kind: c.kind, host: hostOf(url),
@@ -228,8 +249,13 @@ export function createStreamTransport(
       ? { model: c.model, messages, stream: true, options: { num_predict: o.maxTokens ?? 512 } }
       : { model: c.model, messages, stream: true, max_tokens: o.maxTokens ?? 1024 };
     const t0 = clock();
-    const r = await f(url, { method: "POST", headers, body: JSON.stringify(body), signal: o.signal });
-    if (!r.ok || !r.body) throw new Error(`E_PROVIDER: ${r.status}`);
+    coolCheck(c);
+    let r: Response;
+    try {
+      r = await f(url, { method: "POST", headers, body: JSON.stringify(body), signal: o.signal });
+      if (!r.ok || !r.body) throw new Error(`E_PROVIDER: ${r.status}`);
+      coolOk(c);
+    } catch (e) { coolNote(c, e); throw e; }
     const reader = r.body.getReader();
     const dec = new TextDecoder();
     let buf = "";
@@ -306,8 +332,13 @@ export function createChatTransport(router: Router, opts: TransportOpts = {}) {
           ...(c.provider === "deepseek" || c.provider === "openai" ? { stream_options: { include_usage: true } } : {}) };
 
     const t0 = clock();
-    const r = await f(url, { method: "POST", headers, body: JSON.stringify(body), signal: o.signal });
-    if (!r.ok || !r.body) throw new Error(`E_PROVIDER: ${r.status} ${(await r.text().catch(() => "")).slice(0, 200)}`);
+    coolCheck(c);
+    let r: Response;
+    try {
+      r = await f(url, { method: "POST", headers, body: JSON.stringify(body), signal: o.signal });
+      if (!r.ok || !r.body) throw new Error(`E_PROVIDER: ${r.status} ${(await r.text().catch(() => "")).slice(0, 200)}`);
+      coolOk(c);
+    } catch (e) { coolNote(c, e); throw e; }
 
     const reader = r.body.getReader();
     const dec = new TextDecoder();

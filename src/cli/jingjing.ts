@@ -34,8 +34,10 @@ import { modelKeyOf } from "../config.ts";
 import { applyDecayConfig, effectiveParams, currentOverrides, decayVersion, setDecayParam, resetDecayParams, readAudit } from "../decayparams.ts";
 import { reembed as reembedBuild } from "../reembed.ts";
 import { capabilities, summarize } from "../capabilities.ts";
+import { doctor, exportDiag } from "../doctor.ts";
 import { checkConfig, describeProblems, EXIT_CONFIG } from "../startupcheck.ts";
 import { CLI_COMMANDS } from "../commands.ts";
+import { reset as coolReset } from "../cooldown.ts";
 
 const HOME = process.env.JJ_HOME ?? join(process.cwd(), "data");
 
@@ -482,6 +484,24 @@ async function main(): Promise<void> {
       return;
     }
 
+    case "doctor": {
+      // D-6：体检。默认只做结构检查；--full 才跑四条完整自检；--export 出脱敏诊断包。
+      const d = openDb(dbFile);
+      const rep = await doctor({ db: d.db, home: HOME, ...(has(rest, "--no-net") ? { skipPreflight: true } : {}) });
+      if (has(rest, "--export")) {
+        const ex = exportDiag(rep, HOME, d.db, { release: readStateSafe(HOME).state.active ?? null });
+        console.log(JSON.stringify({ exported: ex.dir.replace(HOME, "<home>"), files: ex.files, bytes: ex.bytes }, null, 2));
+      }
+      if (has(rest, "--json")) { console.log(JSON.stringify(rep, null, 2)); }
+      else {
+        for (const c of rep.checks) console.log((c.ok ? "✅" : "❌") + " " + c.name.padEnd(9) + " " + c.detail);
+        console.log(rep.degraded.length ? "⚠ 降级 " + rep.degraded.length + " 项：" + rep.degraded.join(", ") : "✅ 无降级");
+        console.log(rep.ok ? String.fromCharCode(10) + "✅ 体检通过" : String.fromCharCode(10) + "❌ 有项目不通过");
+      }
+      process.exitCode = (!rep.ok || (has(rest, "--strict") && rep.degraded.length > 0)) ? 1 : 0;
+      return;
+    }
+
     case "capabilities": {
       // B-0：每一行都能追到代码（工具来自 verbs，provider 来自配置，degraded 来自真探测）
       const d = openDb(dbFile);
@@ -538,6 +558,7 @@ async function main(): Promise<void> {
         const key = Buffer.concat(chunks).toString("utf8").trim();
         if (!key) { console.error("用法: echo <KEY> | jingjing auth set <provider>"); process.exitCode = 1; return; }
         store.set(provider, key);
+        coolReset(provider);           // 换 key 立刻解冷却
         console.log(JSON.stringify({ ok: true, store: store.kind, provider, fingerprint: fingerprint(key) }));
         return;
       }

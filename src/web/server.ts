@@ -19,6 +19,7 @@ import { recompute, w0FromImportance, type Stage } from "../decay.ts";
 import { modelKeyOf } from "../config.ts";
 import { capabilities } from "../capabilities.ts";
 import { CLI_COMMANDS } from "../commands.ts";
+import { gate as coolGate, reset as coolReset } from "../cooldown.ts";
 import { preflight, lastPreflight } from "../preflight.ts";
 import { indexState } from "../embedindex.ts";
 import { AVATAR_FRAMES, DEFAULT_AVATAR, isAvatarFrame } from "./avatar.ts";
@@ -390,6 +391,8 @@ export function createWebServer(deps: WebDeps) {
         try {
           const cfgNow = deps.getConfig();
           const cur = modelKeyOf(cfgNow.roles["embed"]);
+          const cg = coolGate(cfgNow.roles["express"]?.provider ?? "");
+          if (cg.blocked) degraded.push("cloud-cooldown");
           const ix = indexState(deps.db, cur);
           if (ix.stale) degraded.push("embed-index-stale");
           if (meta(deps.db, "reembed_error")) degraded.push("reembed-failed");
@@ -734,6 +737,11 @@ export function createWebServer(deps: WebDeps) {
           secretStore: store.kind,
           hasKey: Boolean(key),
           keyFingerprint: key ? fingerprint(key) : null,
+          // D-2：冷却中要让 banner 说得出来（不是静默失败）
+          cooldown: (() => {
+            const g = coolGate(ex.provider);
+            return g.blocked ? { reason: g.reason ?? "冷却中", remainingMs: g.remainingMs ?? 0 } : null;
+          })(),
           budgetUsd: deps.budgetUsd ?? 2,
         });
         return;
@@ -755,6 +763,7 @@ export function createWebServer(deps: WebDeps) {
           if (!/^\S{8,}$/.test(body.key)) { json(res, 400, { error: "E_BAD_KEY" }); return; }
           const provider = (body.provider ?? deps.getConfig().roles["express"]!.provider) as Provider;
           secrets().set(provider, body.key.trim());
+          coolReset(provider);          // 换了新 key 就立刻解冷却，否则"换好了还要等 5 分钟"没法学
         }
         const patch: Record<string, unknown> = {};
         if (body.provider || body.model || body.baseUrl) {

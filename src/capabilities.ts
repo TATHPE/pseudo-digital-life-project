@@ -56,7 +56,7 @@ export interface CapabilitiesDeps {
   mcp?: { servers: string[]; tools: string[]; errors: string[] };
   /** CLI 子命令（真实注册表由调用方给，避免这里硬编码） */
   commands?: string[];
-  /** 面板是否在服务（serve 里传 true；CLI 里传 false） */
+  /** 面板是否在服务：true=在服务，false=该在但不在（记降级），**undefined=与本次体检无关** */
   panel?: boolean;
   /** 版本号 */
   version?: string;
@@ -95,10 +95,10 @@ export async function capabilities(deps: CapabilitiesDeps): Promise<Capabilities
   ];
 
   // ── panel：只报真实在服务的 ──────────────────────────────────
-  const panel: CapabilityItem[] = deps.panel
+  const panel: CapabilityItem[] = deps.panel === true
     ? [{ name: "panel.http", class: "panel", source: "builtin", note: "127.0.0.1:7700" }]
     : [];
-  if (!deps.panel) degraded.push("panel-not-serving");
+  if (deps.panel === false) degraded.push("panel-not-serving");   // 只在"该在但不在"时报
 
   // ── provider：从配置真读（含每个角色值的来源）───────────────
   const providerItems: CapabilityItem[] = [];
