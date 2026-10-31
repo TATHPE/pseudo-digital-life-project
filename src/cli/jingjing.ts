@@ -537,6 +537,82 @@ async function main(): Promise<void> {
       process.exitCode = 2;
       return;
     }
+    case "setup": {
+      // H-4：首次配置 = **可暂停、可终止、终止自动回滚**的事务
+      const { readSession, startSetup, pauseSetup, resumeSetup, undoSetup, detect, SETUP_STEPS } =
+        await import("../setup.ts");
+      const { runStep } = await import("../setupsteps.ts");
+      const { execFileSync } = await import("node:child_process");
+      const op = rest[0] ?? "status";
+      const arg = (n: string) => {
+        const i = rest.indexOf("--" + n);
+        return i >= 0 ? rest[i + 1] : undefined;
+      };
+      if (op === "status") {
+        const s = readSession(HOME);
+        if (!s) { console.log(JSON.stringify({ status: "idle", steps: SETUP_STEPS }, null, 2)); return; }
+        console.log(JSON.stringify({ ...s, steps: SETUP_STEPS }, null, 2));
+        return;
+      }
+      if (op === "start") {
+        startSetup(HOME);
+        console.log(JSON.stringify({ ok: true, step: "detect", note: "现在可以: jingjing setup detect | run <step> | pause | abort" }, null, 2));
+        return;
+      }
+      if (op === "detect") {
+        const d = await detect(HOME);
+        console.log(JSON.stringify(d, null, 2));
+        return;
+      }
+      if (op === "run") {
+        const step = String(rest[1] ?? "") as (typeof SETUP_STEPS)[number];
+        if (!SETUP_STEPS.includes(step)) { console.error("步骤只能是: " + SETUP_STEPS.join(" / ")); process.exitCode = 2; return; }
+        const runner = {
+          run(cmd: string, args: string[], o?: { timeoutMs?: number }) {
+            try {
+              const out = execFileSync(cmd, args, { encoding: "utf8", windowsHide: true, timeout: o?.timeoutMs ?? 600_000 });
+              return { ok: true, out: String(out) };
+            } catch (e) { return { ok: false, out: String((e as Error).message).slice(0, 200) }; }
+          },
+          stream(cmd: string, args: string[], onLine: (l: string) => void) {
+            try {
+              const out = execFileSync(cmd, args, { encoding: "utf8", windowsHide: true, timeout: 60 * 60_000, stdio: ["ignore", "pipe", "pipe"] });
+              onLine(String(out).split(String.fromCharCode(10)).slice(-1)[0] ?? "");
+              return { ok: true };
+            } catch (e) { onLine(String((e as Error).message).slice(0, 120)); return { ok: false }; }
+          },
+        };
+        const model = arg("embed") ?? "bge-m3";
+        const chat = arg("chat") ?? "";
+        const r = runStep(HOME, step, runner, { model, ...(chat ? { chat } : {}) });
+        console.log(JSON.stringify({ step, ...r }, null, 2));
+        if (!r.ok) process.exitCode = 1;
+        return;
+      }
+      if (op === "pause") {
+        const s = pauseSetup(HOME);
+        console.log(JSON.stringify({ ok: true, status: s.status, step: s.step, note: "已暂停；账本还在，接着跑用 jingjing setup resume" }, null, 2));
+        return;
+      }
+      if (op === "resume") {
+        const s = resumeSetup(HOME);
+        console.log(JSON.stringify({ ok: true, status: s.status, step: s.step }, null, 2));
+        return;
+      }
+      if (op === "abort") {
+        // 终止 = 按账回滚（删我们拉的模型、恢复写过的配置、停我们起的进程）
+        const report = undoSetup(HOME);
+        console.log(JSON.stringify({ ok: true, ...report }, null, 2));
+        if (report.failed.length) {
+          console.error("有没清掉的：\n" + report.failed.join("；"));
+          process.exitCode = 1;
+        }
+        return;
+      }
+      console.error("用法: jingjing setup status|start|detect|run <step>|pause|resume|abort");
+      process.exitCode = 2;
+      return;
+    }
     case "persona": {
       // H-5：设定封存 = 分代（改动只向前生效；追溯要显式 + 带理由）
       const d = openDb(dbFile);

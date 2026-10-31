@@ -8,10 +8,10 @@
 
 | 项 | 数量 |
 |---|---|
-| 源文件（src/**/*.ts） | 79 |
+| 源文件（src/**/*.ts） | 81 |
 | 错误码 E_* | 165 |
 | verbs | 21 |
-| CLI 子命令 | 36 |
+| CLI 子命令 | 37 |
 
 ## 六条纪律落点
 
@@ -224,7 +224,7 @@
 
 ## CLI 子命令
 
-`migrate` · `remember` · `search` · `verify` · `outage` · `serve` · `config` · `models` · `links` · `threads` · `proposal` · `grant` · `standing` · `persona` · `capabilities` · `doctor` · `reembed` · `auth` · `usage` · `test` · `night` · `shell` · `ingest` · `docs` · `forget-doc` · `export` · `verify-export` · `import` · `smoke-tools` · `templates` · `redteam` · `verb` · `beat` · `eval` · `decay` · `bench`
+`migrate` · `remember` · `search` · `verify` · `outage` · `serve` · `config` · `models` · `links` · `threads` · `proposal` · `grant` · `standing` · `persona` · `setup` · `capabilities` · `doctor` · `reembed` · `auth` · `usage` · `test` · `night` · `shell` · `ingest` · `docs` · `forget-doc` · `export` · `verify-export` · `import` · `smoke-tools` · `templates` · `redteam` · `verb` · `beat` · `eval` · `decay` · `bench`
 
 ## 源文件
 
@@ -288,6 +288,8 @@
 | `src/reembed.ts` | 重建向量索引（C-2） |
 | `src/retrieve.ts` | 两阶段检索（02 §7.1 实测修订 / 12 §9.1） |
 | `src/schema.ts` | M0 schema（02 §4 + 18 §1 的 outage/审计） */ |
+| `src/setup.ts` | 首次配置事务（H-4）。 |
+| `src/setupsteps.ts` | 引导步骤的执行（H-4 的第 2–4 步）。 |
 | `src/shell.ts` | T3 受限命令执行（04 §5.2 模板 / §4.1 一次性令牌 / §6 宿主层） |
 | `src/standing.ts` | 常驻指令（D-3）：有范围的预授权 + 调度。 |
 | `src/startup.ts` | 启动自检（18 §1.3 / §2.2）：断电检测 → 记 outage → 写一条记忆 → 补算衰减。 |
