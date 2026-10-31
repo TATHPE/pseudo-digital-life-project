@@ -709,26 +709,10 @@ export const PAGE = `<!doctype html>
       <div class="panelbox">
         <h2>DEFAULT · 新会话默认权限</h2>
         <p class="hint">这里选的只是<b>以后新建会话</b>的默认值；当前会话请在输入框左边的开关上切。
-          窗口到点即失效，密钥类环境变量不会传给它；切「完全权限」时仍要手输确认。</p>
+          权限在本次会话里一直有效（关掉面板就回到逐次确认）；密钥类环境变量永远不传。</p>
         <div class="two"><div><label>默认档</label><select id="pd-sel"></select></div>
           <div><label>&nbsp;</label><button id="pd-save" class="primary">保存默认</button></div></div>
         <p class="hint" id="pd-msg"></p>
-        <div class="two">
-          <div><label>允许的命令</label><input id="g-cmds" placeholder="node,git" value="node"></div>
-          <div><label>目录范围</label><input id="g-scope" placeholder="workspace" value="workspace"></div>
-        </div>
-        <div class="two">
-          <div><label>多少分钟</label><input id="g-ttl" type="number" min="1" max="120" value="30"></div>
-          <div><label>为什么</label><input id="g-why" placeholder="我要它连着改几个文件"></div>
-        </div>
-        <div class="acts">
-          <label class="hint" style="display:flex;gap:6px;align-items:center">
-            <input type="checkbox" id="g-full"> 完全权限（任意命令 · 整个 home · 最多 15 分钟）
-          </label>
-        </div>
-        <p class="hint" id="g-warn" hidden><span class="err">完全权限 ≠ 钥匙：删/磁盘/系统配置/下载器/壳/内联求值仍然永久拒绝；env 里的 *_KEY、TOKEN、SECRET 依然不传；每次调用都会留痕。</span></p>
-        <div class="acts"><button id="g-open" class="primary">开窗口</button><span id="g-msg" class="hint"></span></div>
-        <div id="g-list"></div>
       </div>
       <div class="panelbox">
         <h2>STANDING · 常驻指令</h2>
@@ -1676,20 +1660,20 @@ var PERM_LABEL = { ask: "逐次确认", read: "仅可查看", write: "工作区�
 async function loadPermission() {
   try { PERM = await (await fetch("/api/permission")).json(); } catch (e) { return; }
   paintPermission();
+  paintPermDefault();
 }
 function paintPermission() {
   var b = document.getElementById("perm");
   if (!b) return;
-  var label = PERM_LABEL[PERM.preset] || PERM.preset;
-  if (PERM.remainingS > 0) label += " · 剩 " + Math.ceil(PERM.remainingS / 60) + " 分";
-  b.textContent = label;
+  // 会话级：不再显示倒计时（它不会自己过期；换了档或关掉进程才变）
+  b.textContent = PERM_LABEL[PERM.preset] || PERM.preset;
   b.className = "permchip" + (PERM.preset === "full" ? " full" : "");
 }
-async function setPermission(preset, because) {
+async function setPermission(preset) {
   var r;
   try {
     r = await (await fetch("/api/permission", {
-      method: "POST", headers: H, body: JSON.stringify({ preset: preset, because: because || "" }),
+      method: "POST", headers: H, body: JSON.stringify({ preset: preset }),
     })).json();
   } catch (e) { return false; }
   if (r.ok) { await loadPermission(); return true; }
@@ -1710,14 +1694,8 @@ function renderPermOptions() {
 document.getElementById("perm").addEventListener("click", function () {
   renderPermOptions();
   document.getElementById("permpop").hidden = false;
-  // 焦点落在当前档：键盘用户不用先 Tab 穿一遍
   var on = document.querySelector("#permopts .opt.on");
   if (on) on.focus();
-});
-document.addEventListener("keydown", function (e) {
-  if (e.key !== "Escape") return;
-  var pop = document.getElementById("permpop");
-  if (pop && !pop.hidden) { pop.hidden = true; document.getElementById("perm").focus(); }
 });
 document.getElementById("permclose").addEventListener("click", function () {
   document.getElementById("permpop").hidden = true;
@@ -1729,18 +1707,14 @@ document.getElementById("permopts").addEventListener("click", async function (e)
   var b = e.target.closest("button[data-preset]");
   if (!b) return;
   var preset = b.dataset.preset;
-  if (preset === "full") {
-    var typed = prompt("完全权限：任意命令 + 整个 home（最多 15 分钟）。删/系统/下载/壳仍然拒绝，密钥仍然不传。要切就输入：我明白");
-    if (typed !== "我明白") { document.getElementById("permmsg").textContent = "没有确认，保持原档"; return; }
-  }
-  if (await setPermission(preset, "面板选择器切换")) document.getElementById("permpop").hidden = true;
+  // 一键切：选中就生效，没有二次确认（安全边界在"哪些命令永久拒绝"，不在"多点几下手"）
+  if (await setPermission(preset)) document.getElementById("permpop").hidden = true;
 });
-// 每分钟刷一次剩余时间：让人看得见它什么时候自动回到逐次确认
-setInterval(function () {
-  if (PERM.remainingS <= 0) return;
-  PERM.remainingS = Math.max(0, PERM.remainingS - 60);
-  if (!PERM.remainingS) loadPermission(); else paintPermission();
-}, 60000);
+document.addEventListener("keydown", function (e) {
+  if (e.key !== "Escape") return;
+  var pop = document.getElementById("permpop");
+  if (pop && !pop.hidden) { pop.hidden = true; document.getElementById("perm").focus(); }
+});
 
 // /permission 斜杠命令：带参直接切，不带参打开选择器（同 DSH）
 async function handleSlash(text) {
@@ -1752,9 +1726,44 @@ async function handleSlash(text) {
   var alias = { full: "full", write: "write", read: "read", ask: "ask" };
   var preset = alias[arg];
   if (!preset) { pushTicker("未知档位：" + arg + "（可用 ask / read / write / full）"); return true; }
-  if (await setPermission(preset, "/permission " + arg)) pushTicker("权限已切到 " + preset);
+  if (await setPermission(preset)) pushTicker("权限已切到 " + preset);
   return true;
 }
+
+// ── 设置里那一行：以后新建会话的默认档（当前会话不受影响）──
+function paintPermDefault() {
+  var sel = document.getElementById("pd-sel");
+  if (!sel) return;
+  if (!sel.dataset.filled) {
+    sel.innerHTML = (PERM.presets || []).map(function (x) {
+      return "<option value='" + escapeHtml(x.id) + "'>" + escapeHtml(x.label) + "</option>";
+    }).join("");
+    sel.dataset.filled = "1";
+  }
+  sel.value = PERM.default || "ask";
+  var msg = document.getElementById("pd-msg");
+  if (msg) msg.textContent = "当前默认：" + (PERM_LABEL[PERM.default] || PERM.default || "逐次确认");
+}
+document.getElementById("pd-save").addEventListener("click", async function () {
+  var sel = document.getElementById("pd-sel");
+  var msg = document.getElementById("pd-msg");
+  msg.className = "hint";
+  msg.textContent = "保存中…";
+  var r;
+  try {
+    r = await (await fetch("/api/permission/default", {
+      method: "PUT", headers: H, body: JSON.stringify({ default: sel.value }),
+    })).json();
+  } catch (e) { msg.className = "err"; msg.textContent = "请求失败"; return; }
+  if (r.ok) {
+    PERM.default = r.default;
+    msg.className = "ok";
+    msg.textContent = "已保存：" + (PERM_LABEL[r.default] || r.default) + "（只影响以后新建的会话）";
+  } else {
+    msg.className = "err";
+    msg.textContent = r.error || "保存失败";
+  }
+});
 
 // ── 回执（D-3 前置）：送达 ≠ 已读 ───────────────────
 async function loadReceipts() {
@@ -1804,46 +1813,6 @@ $("#st-list").onclick = async function (e) {
   b.disabled = true;
   await fetch("/api/standing/" + card.dataset.std + "/disable", { method: "POST", headers: H, body: JSON.stringify({ reason: "面板上停用" }) });
   await loadStanding();
-};
-// ── 会话授权（K-3）：窗口开在服务进程里，页面只负责开关 ──
-// 全权勾上就展开警示（不做花哨动效：这里要的是看清）
-$("#g-full").addEventListener("change", function () { $("#g-warn").hidden = !this.checked; });
-async function loadGrants() {
-  var rows;
-  try { rows = await (await fetch("/api/grants")).json(); } catch (e) { return; }
-  rows = Array.isArray(rows) ? rows : [];
-  $("#g-list").innerHTML = rows.length ? rows.map(function (g) {
-    return "<div class='pend' data-grant='" + escapeHtml(g.id) + "'>" +
-      (g.full ? "<span class='err'>完全权限</span> " : "") +
-      "<span class='dir'>剩 " + g.remainingS + " 秒 · 为什么：" + escapeHtml(g.because) + "</span>" +
-      "<div class='acts'><button class='no' data-act='revoke'>收回</button></div><span class='msg'></span></div>";
-  }).join("") : "<p class='hint'>当前没有打开的窗口 —— 所有 T3 动作仍要逐次确认。</p>";
-}
-$("#g-open").addEventListener("click", async function () {
-  $("#g-msg").textContent = "处理中…";
-  try {
-    var full = $("#g-full").checked;
-    // 全权要再过一道人手确认：不是弹窗吓人，是让「我明白我在开什么」这句话由人说一遍
-    if (full) {
-      var typed = prompt("完全权限：任意命令 + 整个 home（最多 15 分钟）。删/系统/下载/壳仍然拒绝，密钥仍然不传。要开就输入：我明白");
-      if (typed !== "我明白") { $("#g-msg").className = "err"; $("#g-msg").textContent = "没有确认，未开窗口"; return; }
-    }
-    var r = await (await fetch("/api/grants", { method: "POST", headers: H, body: JSON.stringify({
-      commands: $("#g-cmds").value, scope: $("#g-scope").value, full: full,
-      ttlMin: Number($("#g-ttl").value), because: $("#g-why").value,
-    }) })).json();
-    if (r.ok) { $("#g-msg").className = "ok"; $("#g-msg").textContent = "已开：" + r.grant.id + "（" + new Date(r.grant.expiresAt).toLocaleTimeString() + " 到期）"; await loadGrants(); }
-    else { $("#g-msg").className = "err"; $("#g-msg").textContent = (r.why || r.code || "失败"); }
-  } catch (e) { $("#g-msg").className = "err"; $("#g-msg").textContent = "请求失败"; }
-});
-$("#g-list").onclick = async function (e) {
-  var b = e.target.closest("button[data-act=revoke]");
-  if (!b) return;
-  var card = b.closest("[data-grant]");
-  b.disabled = true;
-  card.querySelector(".msg").textContent = "收回中…";
-  await fetch("/api/grants/" + card.dataset.grant + "/revoke", { method: "POST", headers: H });
-  await loadGrants();
 };
 // ── 线索层：未闭合的事（"这件事发展到哪一步"）────────
 async function loadThreads() {

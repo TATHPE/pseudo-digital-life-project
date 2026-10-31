@@ -30,8 +30,11 @@ test("K-3 开窗口：限命令、限目录、限时间，且必须说为什么"
   const r = openGrant(home, { commands: "node", ttlMs: 999 * 3600_000, because: "要连着跑好几个钟头" });
   assert.equal(r.ok, true);
   if (r.ok) {
-    const left = Date.parse(r.grant.expiresAt) - Date.now();
-    assert.ok(left <= MAX_TTL_MS + 1000, "ttl 要夹到上限");
+    // 显式给了 ttl 就夹上限（不限期是**默认**，不是唯一）
+    const left = Date.parse(String(r.grant.expiresAt)) - Date.now();
+    assert.ok(left <= MAX_TTL_MS + 1000, "显式 ttl 要夹到上限");
+    const noTtl = openGrant(home, { commands: "node", because: "默认不限期的那次" });
+    assert.equal(noTtl.ok && noTtl.grant.expiresAt, null, "不给 ttl → 会话级");
   }
   revokeAll(home);
 });
@@ -133,8 +136,8 @@ test("K-3 全权窗口：短 ttl、理由更硬、硬禁名单结构性排除", 
   assert.equal(r.ok, true);
   if (r.ok) {
     assert.equal(r.grant.full, true);
-    const left = Date.parse(r.grant.expiresAt) - Date.now();
-    assert.ok(left <= FULL_MAX_TTL_MS + 1000, "全权窗口要夹到 15 分钟");
+    const left = Date.parse(String(r.grant.expiresAt)) - Date.now();
+    assert.ok(left <= FULL_MAX_TTL_MS + 1000, "显式 ttl 要夹到 15 分钟");
   }
 
   const ws = join(home, "workspace");
@@ -256,5 +259,29 @@ test("K-3 切到 full 也要守理由闸（面板选择器不能绕过 ≥10 字
   const home = H();
   const r = setPreset(home, "full", { because: "短" });
   assert.equal(r.ok, false, "短理由应当被拒");
+  revokeAll(home);
+});
+
+
+test("K-3 取消时间限制：切档默认不限期，换档/收回才失效", () => {
+  const home = H();
+  const now = new Date();
+  const r = setPreset(home, "write", {}, now);
+  assert.equal(r.ok, true);
+  if (r.ok) assert.equal(r.grant?.expiresAt, null, "不限期：返回 null 而不是某个时间点");
+  assert.equal(currentPreset(home, now).preset, "write");
+  assert.equal(currentPreset(home, now).remainingS, -1, "-1 = 本次会话（面板不再显示倒计时）");
+  const later = new Date(now.getTime() + 365 * 86400_000);
+  assert.equal(currentPreset(home, later).preset, "write", "有效期跟着进程走，不跟着时钟走");
+  revokeAll(home);
+  assert.equal(currentPreset(home, later).preset, "ask", "收回后回到逐次确认");
+});
+
+test("K-3 全权也是一键切：不需要二次确认，但硬禁名单不变", () => {
+  const home = H();
+  assert.equal(setPreset(home, "full", {}).ok, true, "不给 because 也能切");
+  assert.equal(currentPreset(home).preset, "full");
+  const d = checkGrant(home, { argv: ["rm", "-rf", "/"], cwd: join(home, "workspace"), verb: "shell.exec" });
+  assert.equal(d.ok, false);
   revokeAll(home);
 });

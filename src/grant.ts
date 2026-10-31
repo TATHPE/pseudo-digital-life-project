@@ -19,7 +19,7 @@
 import { basename, resolve } from "node:path";
 
 export type GrantDecision =
-  | { ok: true; id: string; commands: string[]; scope: string; expiresAt: string; full?: boolean }
+  | { ok: true; id: string; commands: string[]; scope: string; expiresAt: string | null; full?: boolean }
   | { ok: false; code: string; why: string };
 
 interface Grant {
@@ -54,6 +54,14 @@ export const PRESETS: Array<{ id: Preset; label: string; hint: string }> = [
 export const GRANT_COMMANDS = [
   "node", "npm", "npx", "git", "python", "py", "ffmpeg", "ffprobe", "tsc", "vitest",
 ] as const;
+
+/**
+ * 会话级窗口**不设到期时间**：它活在进程内存里，进程一退就没了 ——
+ * 再叠一层 15/30 分钟只是让人多点几次，并没有多一层真正的保护。
+ * （用户原话：切权限太麻烦还有时间限制，取消掉。）
+ */
+export const SESSION_ONLY = Number.POSITIVE_INFINITY;
+const never = (t: number): boolean => !Number.isFinite(t);
 
 export const MAX_TTL_MS = 2 * 60 * 60 * 1000;
 /**
@@ -102,7 +110,7 @@ export function openGrant(
   home: string,
   input: { commands?: unknown; scope?: string; ttlMs?: number; because?: unknown; full?: boolean },
   now = new Date(),
-): { ok: true; grant: { id: string; commands: string[]; scope: string; expiresAt: string; because: string; full: boolean } } | { ok: false; code: string; why: string } {
+): { ok: true; grant: { id: string; commands: string[]; scope: string; expiresAt: string | null; because: string; full: boolean } } | { ok: false; code: string; why: string } {
   const because = String(input.because ?? "").trim();
   const full = input.full === true;
   // 全权的理由要更硬：不是「测一下」，而是「为什么值得把闸门开到最大」
@@ -110,7 +118,7 @@ export function openGrant(
     return { ok: false, code: "E_GRANT_BECAUSE", why: full ? "开完全权限必须写清为什么（至少 10 个字）" : "得说清为什么开这个窗口（至少 4 个字）" };
   }
   if (full) {
-    const ttlMs = Math.min(FULL_MAX_TTL_MS, Math.max(60_000, Number(input.ttlMs ?? FULL_MAX_TTL_MS)));
+    const ttlMs = input.ttlMs === undefined ? SESSION_ONLY : Math.min(FULL_MAX_TTL_MS, Math.max(60_000, Number(input.ttlMs)));
     const g: Grant = {
       id: `grn_${now.getTime().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
       commands: new Set(["*"]),
@@ -126,7 +134,7 @@ export function openGrant(
       ok: true,
       grant: {
         id: g.id, commands: ["*"], scope: "(整个 home)",
-        expiresAt: new Date(g.expiresAt).toISOString(), because: g.because, full: true,
+        expiresAt: never(g.expiresAt) ? null : new Date(g.expiresAt).toISOString(), because: g.because, full: true,
       },
     };
   }
@@ -146,7 +154,7 @@ export function openGrant(
     return { ok: false, code: "E_GRANT_SCOPE", why: `scope 只收 home 内的相对目录：${input.scope}` };
   }
 
-  const ttlMs = Math.min(MAX_TTL_MS, Math.max(60_000, Number(input.ttlMs ?? 30 * 60_000)));
+  const ttlMs = input.ttlMs === undefined ? SESSION_ONLY : Math.min(MAX_TTL_MS, Math.max(60_000, Number(input.ttlMs)));
   const g: Grant = {
     id: `grn_${now.getTime().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
     commands: new Set(commands),
@@ -165,27 +173,28 @@ export function openGrant(
     ok: true,
     grant: {
       id: g.id, commands: [...g.commands], scope: g.scope,
-      expiresAt: new Date(g.expiresAt).toISOString(), because: g.because, full: g.full,
+      expiresAt: never(g.expiresAt) ? null : new Date(g.expiresAt).toISOString(), because: g.because, full: g.full,
     },
   };
 }
 
 export function listGrants(home: string, now = new Date()): Array<{
   id: string; commands: string[]; scope: string; because: string; full: boolean;
-  createdAt: string; expiresAt: string; remainingS: number;
+  createdAt: string; expiresAt: string | null; remainingS: number;
 }> {
   const perHome = store.get(home);
   if (!perHome) return [];
   const out = [];
   for (const g of perHome.values()) {
-    if (g.expiresAt <= now.getTime()) { perHome.delete(g.id); continue; }
+    if (!never(g.expiresAt) && g.expiresAt <= now.getTime()) { perHome.delete(g.id); continue; }
     out.push({
       id: g.id, commands: [...g.commands], scope: g.scope, because: g.because, full: g.full,
-      createdAt: new Date(g.createdAt).toISOString(), expiresAt: new Date(g.expiresAt).toISOString(),
-      remainingS: Math.round((g.expiresAt - now.getTime()) / 1000),
+      createdAt: new Date(g.createdAt).toISOString(),
+      expiresAt: never(g.expiresAt) ? null : new Date(g.expiresAt).toISOString(),
+      remainingS: never(g.expiresAt) ? -1 : Math.round((g.expiresAt - now.getTime()) / 1000),
     });
   }
-  return out.sort((a, b) => a.expiresAt.localeCompare(b.expiresAt));
+  return out.sort((a, b) => String(a.expiresAt ?? "").localeCompare(String(b.expiresAt ?? "")));
 }
 
 export function revokeGrant(home: string, id: string): boolean {
@@ -212,7 +221,7 @@ export function setPreset(
   preset: Preset,
   input: { because?: unknown; ttlMs?: number; commands?: readonly string[] } = {},
   now = new Date(),
-): { ok: true; preset: Preset; grant: { id: string; expiresAt: string; full?: boolean } | null } | { ok: false; code: string; why: string } {
+): { ok: true; preset: Preset; grant: { id: string; expiresAt: string | null; full?: boolean } | null } | { ok: false; code: string; why: string } {
   revokeAll(home);
   if (preset === "ask") return { ok: true, preset, grant: null };
 
@@ -221,20 +230,20 @@ export function setPreset(
     const g: Grant = {
       id: `grn_${now.getTime().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
       commands: new Set(), scope: "", because,
-      createdAt: now.getTime(), expiresAt: now.getTime() + Math.min(8 * 3600_000, Math.max(60_000, Number(input.ttlMs ?? 8 * 3600_000))),
+      createdAt: now.getTime(), expiresAt: now.getTime() + (input.ttlMs === undefined ? SESSION_ONLY : Math.max(60_000, Number(input.ttlMs))),
       full: false, preset: "read",
     };
     const perHome = store.get(home) ?? new Map<string, Grant>();
     perHome.set(g.id, g);
     store.set(home, perHome);
-    return { ok: true, preset, grant: { id: g.id, expiresAt: new Date(g.expiresAt).toISOString() } };
+    return { ok: true, preset, grant: { id: g.id, expiresAt: never(g.expiresAt) ? null : new Date(g.expiresAt).toISOString() } };
   }
   if (preset === "full") {
     const r = openGrant(home, { full: true, because, ...(input.ttlMs ? { ttlMs: input.ttlMs } : {}) }, now);
     return r.ok ? { ok: true, preset, grant: { id: r.grant.id, expiresAt: r.grant.expiresAt, full: true } } : r;
   }
   const commands = input.commands && input.commands.length ? [...input.commands] : [...GRANT_COMMANDS];
-  const r = openGrant(home, { commands, scope: "workspace", because, ttlMs: input.ttlMs ?? 30 * 60_000 }, now);
+  const r = openGrant(home, { commands, scope: "workspace", because, ...(input.ttlMs === undefined ? {} : { ttlMs: input.ttlMs }) }, now);
   return r.ok ? { ok: true, preset, grant: { id: r.grant.id, expiresAt: r.grant.expiresAt } } : r;
 }
 
@@ -283,7 +292,7 @@ export function checkGrant(
   let sawPathEscape = "";
   let sawReadOnly = false;
   for (const g of perHome.values()) {
-    if (g.expiresAt <= now.getTime()) { perHome.delete(g.id); continue; }
+    if (!never(g.expiresAt) && g.expiresAt <= now.getTime()) { perHome.delete(g.id); continue; }
 
     // 仅可查看：任何 T3 都拒（只读 verb 本来就是 T0/T1，不需要窗口）
     if (g.preset === "read") { sawReadOnly = true; continue; }
@@ -359,7 +368,8 @@ export function checkGrant(
   void scopeInCwd;
   return {
     ok: true, id: picked.id, commands: [...picked.commands],
-    scope: picked.full ? "" : picked.scope, expiresAt: new Date(picked.expiresAt).toISOString(),
+    scope: picked.full ? "" : picked.scope,
+    expiresAt: never(picked.expiresAt) ? null : new Date(picked.expiresAt).toISOString(),
     full: picked.full,
   };
 }
