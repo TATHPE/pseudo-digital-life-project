@@ -19,7 +19,10 @@
     "docs:sync": "node tools/sync-docs.mjs",
     "map": "node tools/gen-map.mjs",
     "map:check": "node tools/map-check.mjs",
-    "setup:e2e": "node tools/setup-e2e.ts"
+    "setup:e2e": "node tools/setup-e2e.ts",
+    "desktop:check": "node tools/desktop-check.mjs",
+    "desktop:dev": "cargo tauri dev --manifest-path desktop/src-tauri/Cargo.toml",
+    "desktop:build": "cargo tauri build --manifest-path desktop/src-tauri/Cargo.toml"
   },
   "dependencies": {
     "casbin": "^5.51.1",
