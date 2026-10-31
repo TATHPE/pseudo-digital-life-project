@@ -187,7 +187,12 @@ check("/permission 斜杠命令能切回逐次确认", await js(`(async () => {
 // ── F-3 记忆撤销：忘记之后 5 秒内能撤回 ─────────────
 check("F-3 忘记可撤销", await js(`(async () => {
   window.__f3 = {};
-  const mem = document.querySelector('#side .item[data-view=memview]');
+  // 记忆列表现在是独立一屏（左栏只留入口行）
+  const entry = document.querySelector('#side .item[data-view=memlistview]');
+  if (!entry) return false;
+  entry.click();
+  await new Promise((r) => setTimeout(r, 700));
+  const mem = document.querySelector('#memlist .item[data-mem]');
   window.__f3.hasMem = !!mem;
   if (!mem) return false;
   mem.click();
@@ -308,14 +313,22 @@ check("换头像框立即生效", await js(`(() => {
   s.dispatchEvent(new Event("change"));
   return document.body.dataset.av === "ring";
 })()`));
-check("侧栏分区可折叠", await js(`(() => {
-  const b = document.querySelector('[data-tog=mem]');
-  if (!b) return false;
-  const sec = b.closest('.sec');
+// 折叠现在有两处：左栏「工具」，卷宗里的几块（等你点头 / 上下文）
+check("折叠能用：左栏工具 + 卷宗分区", await js(`(() => {
+  const tool = document.getElementById("foldtools");
+  const box = document.getElementById("toollist");
+  if (!box.hidden) tool.click();   // 归零：别的用例可能已经把它展开了
+  tool.click();
+  const opened = box.hidden === false;
+  tool.click();
+  const closed = box.hidden === true;
+  const b = document.querySelector("[data-tog=prop]");
+  if (!b) return opened && closed;
+  const sec = b.closest(".sec");
   b.click();
-  const hidden = sec.querySelector('div').hidden;
+  const h1 = sec.querySelector("div").hidden;
   b.click();
-  return hidden === true && sec.querySelector('div').hidden === false;
+  return opened && closed && h1 === true && sec.querySelector("div").hidden === false;
 })()`));
 
 // 视图切换："回到最新"是对话专用的；滚回对话时不该跳回顶部
@@ -499,11 +512,13 @@ check("标题条跟着视图变（stage 顶部的当前屏名）", await js(`(as
   return /CHAT/.test(before) && /CONFIG|设置/.test(after);
 })()`));
 
-check("分区标题是带粗左边的标签条 + 格子有角标", await js(`(() => {
-  const h = document.querySelector(".sec h3");
+check("分区标题带左边条 + 格子有角标", await js(`(() => {
+  const h = document.querySelector("#dc-inbox .sec h3") || document.querySelector(".sec h3");
+  if (!h) return false;
   const s = getComputedStyle(h);
-  const tick = getComputedStyle(document.querySelector(".item"), "::after");
-  return s.borderLeftWidth === "3px" && tick.borderTopWidth === "1px";
+  const item = document.querySelector("#side .item");
+  const tick = getComputedStyle(item, "::after");
+  return parseFloat(s.borderLeftWidth) >= 1 && tick.borderTopWidth === "1px";
 })()`));
 
 ws.close(); proc.kill();

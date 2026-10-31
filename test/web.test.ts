@@ -668,9 +668,17 @@ test("面板：头像可换 / 三个分区可折叠 / 气泡两侧不同", () =>
   assert.ok(PAGE.includes('id="up-agent"') && PAGE.includes('id="up-user"'), "两侧头像都要能换");
   assert.ok(PAGE.includes('id="rm-agent"'), "要能恢复默认");
   assert.ok(PAGE.includes("/api/avatar"), "走头像接口");
-  for (const k of ["mem", "docs", "actions"]) {
+  // 记忆/文档/动作已经从侧栏收成独立一屏，侧栏不再有它们的折叠块；
+  // 现在能折叠的是：左栏的工具，和卷宗里那几块（等你点头 / 上下文）。
+  for (const k of ["prop", "egr", "rcp", "thread", "surf"]) {
     assert.ok(PAGE.includes(`data-sec="${k}"`), `${k} 分区要可折叠`);
     assert.ok(PAGE.includes(`data-tog="${k}"`));
+  }
+  assert.ok(PAGE.includes('id="foldtools"'), "工具也要能折");
+  // 左栏只留「去处」入口行：列表本体必须在中栏（不然又变成一列滚 2.9 屏）
+  const sideEnd = PAGE.indexOf("</aside>");
+  for (const id of ["memlist", "doclist", "auditlist"]) {
+    assert.ok(PAGE.indexOf('id="' + id + '"') > sideEnd, id + " 不该还留在左栏里");
   }
   // 两侧气泡底色不同（不然长消息看着像没有气泡）
   assert.ok(PAGE.includes(".row.user .body { background:rgba(38,28,14,.92)"), "用户气泡要有自己的底色");
@@ -681,13 +689,15 @@ test("面板：头像可换 / 三个分区可折叠 / 气泡两侧不同", () =>
   assert.ok(userBody.includes("display:block"), "inline-block 上的 auto 边距无效");
 });
 
-test("侧栏里写着“点开看全部/查看全部”的东西，必须真的是按钮（不是 hint）", () => {
+test("写着“点开看全部”的东西必须真的是按钮（不是 hint 文案）", () => {
   // 这条是踩过的坑：文案让用户去点，但它是个 <div class=hint>，根本点不动。
-  assert.ok(
-    PAGE.includes("data-view='auditview'><span class='preview'>查看全部"),
-    "“查看全部”必须是一个带 data-view 的 button，而不是一句 hint 文案",
-  );
+  // 左栏现在只留入口行，列表本体在中栏；入口行必须是 button + data-view。
+  for (const v of ["memlistview", "docsview", "auditview", "setupview", "cfg"]) {
+    const re = new RegExp('<button class="item"[^>]*data-view="' + v + '"');
+    assert.ok(re.test(PAGE), "左栏入口 " + v + " 必须是 button + data-view");
+  }
   assert.ok(!PAGE.includes("条近况，点开看全部"), "那句点不动的纯文案已删掉");
+  assert.ok(!PAGE.includes("查看全部"), "摘要式“查看全部”已随左栏列表一起删掉（列表本体就在那一屏）");
 });
 
 test("仪表带与 ticker：8 个读数格 + 分段条 + 底部状态带（数字必须来自接口）", async () => {

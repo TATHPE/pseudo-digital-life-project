@@ -361,6 +361,30 @@ export const PAGE = `<!doctype html>
           color:var(--ink-dim); max-height:200px; overflow:auto; margin:0; }
   .dbar { height:3px; background:rgba(233,240,242,.16); margin-top:5px; }
   .dbar i { display:block; height:100%; background:var(--ink); }
+  /* 卷宗里的分区：从左栏搬过来，尺寸要收（这里是 330px 宽，不是 240px 的侧栏） */
+  #dc-inbox .sec, #dc-ctx .sec { margin:0 0 8px; }
+  #dc-inbox .sec h3, #dc-ctx .sec h3 { margin:0 0 4px; padding:2px 0 2px 6px; background:none;
+    border:0; border-left:2px solid var(--line); font:9px/1.2 var(--mono); letter-spacing:.16em;
+    color:var(--ink-dim); font-weight:700; }
+  #dc-inbox .sec h3 .n, #dc-ctx .sec h3 .n { color:var(--ink-dim); font-weight:700; }
+  #dc-inbox .hint, #dc-ctx .hint, #surfsec .hint { font:9px/1.5 var(--mono); color:var(--ink-dim); margin:3px 0; }
+  #dc-inbox .pend, #dc-ctx .pend { border:1px solid var(--line-dim); background:#000; padding:6px 7px; margin:0 0 5px; }
+  #dc-inbox .pend .cmd, #dc-ctx .pend .cmd { font:10px/1.4 var(--mono); color:var(--ink); word-break:break-all; }
+  #dc-inbox .pend .dir, #dc-ctx .pend .dir { font:9px/1.4 var(--mono); color:var(--ink-dim); }
+  #dc-inbox .pend .fp { font:9px/1.4 var(--mono); color:var(--ink-dim); }
+  #dc-inbox .acts, #dc-ctx .acts { display:flex; gap:5px; flex-wrap:wrap; margin-top:5px; }
+  #dc-inbox .acts button, #dc-ctx .acts button { font:9px/1 var(--mono); padding:4px 6px; background:#000;
+    color:var(--ink); border:1px solid var(--line-dim); cursor:pointer; }
+  #dc-inbox .acts button:hover, #dc-ctx .acts button:hover { border-color:var(--ink); }
+  #dc-inbox .item, #dc-ctx .item { font:10px/1.45 var(--mono); padding:4px 6px; }
+  #dc-inbox .item .m, #dc-ctx .item .m { font:9px/1.4 var(--mono); }
+  #dc-inbox .dempty, #dc-ctx .dempty { margin:2px 0 0; }
+  /* 入口行（去处）：一行一个，名字在左、计数在右（flex 而不是靠 text-align） */
+  #side .wingtop > .item, #side .wingtop > #foldtools { display:flex; align-items:baseline;
+    justify-content:space-between; gap:8px; margin-bottom:3px; }
+  #side .wingtop > .item .m, #side .wingtop > #foldtools .n { display:inline; flex:none;
+    text-align:right; font:9px/1 var(--mono); color:var(--ink-dim); white-space:nowrap; }
+
   /* ── 收纳：两个边栏都能收成一条窄带，状态记在 localStorage ──────────
      收起来不是删掉：窄带上留一个能点开的把手，键盘 Tab 也够得着。 */
   /* 收纳只在宽屏成立：≤1180 时两个边栏本来就是抽屉，再叠一层「收起」只会互相打架
@@ -655,66 +679,24 @@ export const PAGE = `<!doctype html>
 <aside id="side">
   <button id="wingHandle" type="button" title="展开左栏（Ctrl+B）" aria-label="展开左栏" hidden>鲸鲸</button>
   <div class="wingtop">
-    <div class="wmark"><b>鲸鲸</b><span>PSEUDO · DIGITAL · LIFE</span>
+    <div class="wmark"><b>鲸鲸</b><span id="wingstate">…</span>
       <button id="wingTog" type="button" title="收起左栏（Ctrl+B）" aria-label="收起左栏">«</button></div>
-    <div class="wsearch"><input id="q" class="searchbox" placeholder="搜记忆 / 文档…" autocomplete="off"><kbd>Ctrl K</kbd></div>
-    <div class="wsec">工 作 区</div>
-    <div class="witem" id="wsroot" title="本机工作区（data/ 记忆库 · persona/ 人格 · workspace/ 脚本）">本机 · 记忆库<span class="m" id="wspath">…</span></div>
+
     <div class="wsec">今 天</div>
     <div id="sesslist"></div>
-  </div>
-  <div class="sec" id="pendsec" hidden><h3>PENDING · 待确认</h3><div id="pendlist"></div></div>
-  <div class="sec" id="propsec" hidden><h3><button type="button" data-tog="prop">它想做的 <span class="n" id="propcount"></span></button></h3><div id="proplist"></div></div>
-  <div class="sec" id="egrsec" hidden><h3><button type="button" data-tog="egr">它想读代码 <span class="n" id="egrcount"></span></button></h3>
-    <p class="hint">表达模型在云端时，读源码等于把代码发出去。默认拒；你可以只批一次，或批一段时间。</p>
-    <div id="egrlist"></div></div>
-  <div class="sec" id="rcpsec" hidden><h3><button type="button" data-tog="rcp">它做完的事 <span class="n" id="rcpcount"></span></button></h3>
-    <p class="hint">后台跑过的东西都在这里。<b>点了「知道了」才算我看见了</b> —— 三天没人看的，对应常驻指令会自动停用。</p>
-    <div id="rcplist"></div></div>
-  <div class="sec" id="threadsec" hidden><h3><button type="button" data-tog="thread">未闭合 <span class="n" id="threadcount"></span></button></h3>
-    <p class="hint">它答应过、还没了结的事。办完了点一下；太久没动静的会标「拖了 N 天」。</p>
-    <div id="threadlist"></div></div>
-  <div class="sec" id="surfsec" hidden><h3><button type="button" data-tog="surf">抽检 <span class="n" id="surfcount"></span></button></h3>
-    <p class="hint">这几根线是它自己连的，最没把握的排前面。判错了就点「不对」，当场断。</p>
-    <div id="surflist"></div></div>
-  <!-- 内容在前、参考在后：TOOLS 有 16 项，放在中间会把 DOCS / MEMORY 挤到折叠线以下 -->
-  <div class="sec" data-sec="docs"><h3><button type="button" data-tog="docs">DOCS <span class="n" id="doccount"></span></button></h3><div id="doclist"></div>
-    <div class="ingest">
-      <label class="ilab">加文档 · 只在本机读取，跟云端无关</label>
-      <!-- 候选优先：sources/ 里有文件就直接选，没有才提示放哪 -->
-      <div id="dlg-cands" hidden>
-        <select id="dlg-pick" class="searchbox"></select>
-      </div>
-      <div id="dlg-empty" class="hint">
-        还没有待摄入的文件。放这里：<br><code id="dlg-dir">data/sources</code>
-      </div>
-      <div class="rowmini">
-        <button type="button" id="dlg-file-btn">选文件…</button>
-        <input type="file" id="dlg-file" hidden multiple accept=".md,.markdown,.txt,.pdf,.docx,.pptx,.xlsx,.html,.htm,.epub,.csv,.json,.xml,.rtf,.ipynb">
-        <span class="hint">或手动填路径 ↓</span>
-      </div>
-      <input id="dlg-path" class="searchbox" placeholder="data/ 里的相对路径，如 sources/笔记.md" autocomplete="off">
-      <!-- 提示紧贴它抱怨的那个输入框（不是复选框，也不是按钮） -->
-      <span id="dlg-msg" class="hint"></span>
 
-      <!-- 这里**没有**隐私复选框：摄入是一个动作，去哪里是一个属性，
-           两者放在同一个表单里怎么摆都会被读成“勾了才能摄”。
-           所以摄入永远只在本机（默认最安全），能不能进云端是那篇文档之后的事。 -->
-      <div class="acts"><button id="dlg-go" class="primary">摄入到本机</button></div>
-      <p class="hint">录入后只在本机检索。要让它引用原文（随简报发给云端模型），
-        打开那篇文档点「标为可发送」。</p>
-    </div></div>
-  <div class="sec" data-sec="mem"><h3><button type="button" data-tog="mem">MEMORY <span class="n" id="memcount"></span></button></h3><div id="memlist"></div></div>
-  <div class="sec" data-sec="actions"><h3><button type="button" data-tog="actions">ACTIONS <span class="n" id="actcount"></span></button></h3><div id="auditlist"></div></div>
-  <div class="sec"><button class="fold" id="foldtools">TOOLS <span class="n" id="toolcount"></span></button>
+    <div class="wsec">去 处</div>
+    <button class="item" type="button" data-view="memlistview">记忆<span class="m" id="memcount">…</span></button>
+    <button class="item" type="button" data-view="docsview">文档<span class="m" id="doccount">…</span></button>
+    <button class="item" type="button" data-view="auditview">动作<span class="m" id="actcount">…</span></button>
+    <button class="item" type="button" id="foldtools">工具<span class="m" id="toolcount">…</span></button>
     <div id="toollist" hidden>
       <input id="toolq" class="searchbox" placeholder="筛工具名 / 说明…" autocomplete="off">
       <div id="toolrows"><button class="item on" data-view="chat">对话<span class="m">与鲸鲸说话</span></button></div>
       <button class="item dimmore" id="toolmore" hidden>显示全部</button>
-    </div></div>
-  <div class="sec"><h3>SETUP</h3><button class="item" data-view="setupview">首次配置<span class="m">装模型 / 配 API / 人格</span></button></div>
-  <div class="sec"><h3>CONFIG</h3>
-    <button class="item" data-view="cfg">设置<span class="m">接口 / 人格</span></button>
+    </div>
+    <button class="item" type="button" data-view="setupview">首次配置<span class="m">装模型 / 配 API / 人格</span></button>
+    <button class="item" type="button" data-view="cfg">设置<span class="m">接口 / 人格</span></button>
   </div>
 </aside>
 
@@ -817,12 +799,46 @@ export const PAGE = `<!doctype html>
       </div>
     </div>
 
+    <div id="docsview" hidden>
+      <div class="panelbox">
+        <h2>文档 · DOCS</h2>
+        <p class="hint" id="dv-listmeta">只在本机读取与检索；要让它把原文随简报发出去，打开那篇点「标为可发送」。</p>
+        <div id="doclist"></div>
+        <div class="ingest">
+          <label class="ilab">加文档 · 只在本机读取，跟云端无关</label>
+          <div id="dlg-cands" hidden>
+            <select id="dlg-pick" class="searchbox"></select>
+          </div>
+          <div id="dlg-empty" class="hint">
+            还没有待摄入的文件。放这里：<br><code id="dlg-dir">data/sources</code>
+          </div>
+          <div class="rowmini">
+            <button type="button" id="dlg-file-btn">选文件…</button>
+            <input type="file" id="dlg-file" hidden multiple accept=".md,.markdown,.txt,.pdf,.docx,.pptx,.xlsx,.html,.htm,.epub,.csv,.json,.xml,.rtf,.ipynb">
+            <span class="hint">或手动填路径 ↓</span>
+          </div>
+          <input id="dlg-path" class="searchbox" placeholder="data/ 里的相对路径，如 sources/笔记.md" autocomplete="off">
+          <span id="dlg-msg" class="hint"></span>
+          <div class="acts"><button id="dlg-go" class="primary">摄入到本机</button></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="memlistview" hidden>
+      <div class="panelbox">
+        <h2>记忆 · MEMORY</h2>
+        <p class="hint">按活跃度排；点一条看正文、出处与它的来历。</p>
+        <input id="q" class="searchbox" placeholder="搜记忆 / 文档…（Ctrl+K 也能到这儿）" autocomplete="off">
+        <div id="memlist"></div>
+      </div>
+    </div>
+
     <div id="auditview" hidden>
       <div class="panelbox">
         <h2>动作 · ACTIONS</h2>
         <p class="hint">来自 exec_audit：每一次能力调用（含被拒）都在这里。被拒的也留痕，这是"越权为零"能被验证的地方。</p>
         <p class="hint" id="av-meta"></p>
-        <div id="av-list"></div>
+        <div id="auditlist"></div>
       </div>
     </div>
 
@@ -954,6 +970,24 @@ export const PAGE = `<!doctype html>
 <aside id="folio" aria-label="卷宗">
   <div class="fcap"><b>卷 宗</b><span>DOSSIER</span><button id="folioX" type="button" title="收起卷宗（⌘/Ctrl+J）" aria-label="收起卷宗">»</button></div>
 
+  <div class="dcard" data-card="inbox">
+    <button class="dtab" type="button"><i>0</i><b>等 你 点 头</b><span class="n" id="dc-inbox-n"></span></button>
+    <div class="din" id="dc-inbox">
+      <div class="sec" id="pendsec" data-sec="pend" hidden><h3>待确认</h3><div id="pendlist"></div></div>
+      <div class="sec" id="propsec" data-sec="prop" hidden><h3><button type="button" data-tog="prop">它想做的 <span class="n" id="propcount"></span></button></h3><div id="proplist"></div></div>
+      <div class="sec" id="egrsec" data-sec="egr" hidden><h3><button type="button" data-tog="egr">它想读代码 <span class="n" id="egrcount"></span></button></h3>
+        <p class="hint">表达模型在云端时，读源码等于把代码发出去。默认拒；可以只批一次，或批一段时间。</p>
+        <div id="egrlist"></div></div>
+      <div class="sec" id="rcpsec" data-sec="rcp" hidden><h3><button type="button" data-tog="rcp">它做完的事 <span class="n" id="rcpcount"></span></button></h3>
+        <p class="hint">点了「知道了」才算看见了 —— 三天没人看的，对应常驻指令会自动停用。</p>
+        <div id="rcplist"></div></div>
+      <div class="sec" id="threadsec" data-sec="thread" hidden><h3><button type="button" data-tog="thread">未闭合 <span class="n" id="threadcount"></span></button></h3>
+        <p class="hint">它答应过、还没了结的事。办完了点一下；太久没动静的会标「拖了 N 天」。</p>
+        <div id="threadlist"></div></div>
+      <p class="dempty" id="dc-inbox-empty">没有等你点头的事。</p>
+    </div>
+  </div>
+
   <div class="dcard" data-card="plan">
     <button class="dtab" type="button"><i>I</i><b>计 划</b><span class="n" id="dc-plan-n"></span></button>
     <div class="din" id="dc-plan"><p class="dempty">…</p></div>
@@ -966,7 +1000,11 @@ export const PAGE = `<!doctype html>
 
   <div class="dcard" data-card="ctx">
     <button class="dtab" type="button"><i>III</i><b>上 下 文</b><span class="n" id="dc-ctx-n"></span></button>
-    <div class="din" id="dc-ctx"><p class="dempty">…</p></div>
+    <div class="din"><div id="dc-ctx-stats"><p class="dempty">…</p></div>
+      <div class="sec" id="surfsec" data-sec="surf" hidden><h3><button type="button" data-tog="surf">抽检 <span class="n" id="surfcount"></span></button></h3>
+        <p class="hint">这几根线是它自己连的，最没把握的排前面。判错了就点「不对」，当场断。</p>
+        <div id="surflist"></div></div>
+    </div>
   </div>
 </aside>
 
@@ -992,14 +1030,15 @@ let sideActive = null;   // 侧栏里最后点的那一项（文档/工具/记�
 
 var chatScroll = 0;   // 切走前记下对话滚到哪了
 const VIEWNAME = { chat: "对话 · CHAT", cfg: "设置 · CONFIG", toolview: "工具 · TOOL",
-  memview: "记忆 · MEMORY", docview: "文档 · DOC", auditview: "动作 · ACTIONS",
+  memview: "记忆 · MEMORY", memlistview: "记忆 · MEMORY", docview: "文档 · DOC",
+  docsview: "文档 · DOCS", auditview: "动作 · ACTIONS",
   searchview: "搜索 · SEARCH", propview: "它想做的一件事", setupview: "首次配置 · SETUP" };
 function show(v) {
   // 切走时把滚动位置存下来：隐藏 #chat 会让 #scroll 的 scrollHeight 塌成 0，浏览器会把 scrollTop 归零
   if (view === "chat" && v !== "chat") chatScroll = $("#scroll").scrollTop;
   view = v;
   document.body.dataset.view = v;   // CSS 用它把「回到最新」锁在对话里
-  for (const id of ["chat", "cfg", "toolview", "memview", "docview", "auditview", "searchview", "propview", "setupview"]) $("#" + id).hidden = id !== v;
+  for (const id of ["chat", "cfg", "toolview", "memview", "memlistview", "docview", "docsview", "auditview", "searchview", "propview", "setupview"]) $("#" + id).hidden = id !== v;
   $("#composer").style.display = v === "chat" ? "" : "none";
   // "回到最新"是对话专用的，别的界面不该出现
   if (v !== "chat") $("#jump").classList.remove("on");
@@ -1049,7 +1088,9 @@ function clock(iso) {
 async function state() {
   const s = await (await fetch("/api/state")).json();
   $("#state").textContent = s.line;
-  $("#statetext").textContent = s.state?.text ? " · " + s.state.text : "";
+  var stTxt = s.state?.text ? " · " + s.state.text : "";
+  $("#statetext").textContent = stTxt;
+  var ws = $("#wingstate"); if (ws) ws.textContent = s.state?.text ? s.state.text : "…";
   var hud = document.querySelector(".hud"); if (hud) hud.title = s.line + (s.state?.text ? " · " + s.state.text : "");
   // 断电提示：只在重启后第一次显示（服务端只给一次）
   if (s.outage) {
@@ -1485,27 +1526,17 @@ document.addEventListener("keydown", function (e) {
 
 // ── 动作审计（P0 #3）────────────────────────────────────
 async function audit() {
+  // 左栏的「动作」只是一行入口 + 计数；列表本体在 openAudit() 里渲染。
   var rows = [], total = 0;
-  try { var j = await (await fetch("/api/audit?limit=40")).json(); rows = j.rows || []; total = j.total || rows.length; } catch (e) { return; }
-  var ac = $("#actcount"); if (ac) ac.textContent = total + " 条";
-  var box = $("#auditlist");
-  if (!rows || !rows.length) { box.innerHTML = "<div class='hint' style='padding:4px 2px'>还没有动作</div>"; return; }
-  box.innerHTML = rows.slice(0, 8).map(function (r) {
-    var cls = r.decision === "allowed" ? "d-ok" : r.decision === "needs_confirm" ? "d-wait" : "d-no";
-    return "<button class='item' data-view='auditview' title='" + escapeHtml(r.verb + " " + (r.reason || r.decision)) + "'>" +
-      escapeHtml(r.verb) + "<span class='m'><span class='" + cls + "'>" + escapeHtml(r.decision) + "</span> · " +
-      escapeHtml(r.tier) + " · " + clock(r.ts) + "</span></button>";
-  }).join("") +
-    // 这行必须是真的控件：以前写成 hint，写着“点开看全部”却点不动
-    "<button class='item' data-view='auditview'><span class='preview'>查看全部（最近 " + rows.length + " / 共 " + total + " 条）</span>" +
-    "<span class='m'>exec_audit · 含被拒绝的调用</span></button>";
+  try { var j = await (await fetch('/api/audit?limit=1')).json(); total = j.total || (j.rows || []).length; } catch (e) { return; }
+  var ac = $('#actcount'); if (ac) ac.textContent = total + ' 条';
 }
 async function openAudit() {
   show("auditview");
   var rows = [], total = 0;
   try { var j2 = await (await fetch("/api/audit?limit=80")).json(); rows = j2.rows || []; total = j2.total || rows.length; } catch (e) { rows = []; }
   var am = $("#av-meta"); if (am) am.textContent = "exec_audit 共 " + total + " 条 · 下面显示最近 " + rows.length + " 条（含被拒绝的）";
-  $("#av-list").innerHTML = (rows || []).map(function (r) {
+  $("#auditlist").innerHTML = (rows || []).map(function (r) {
     var cls = r.decision === "allowed" ? "d-ok" : r.decision === "needs_confirm" ? "d-wait" : "d-no";
     return "<div class='arow'><span class='t'>" + escapeHtml(clock(r.ts)) + "</span>" +
       "<span class='v'>" + escapeHtml(r.verb) + "</span>" +
@@ -1562,6 +1593,7 @@ var PAL_ACTIONS = [
   { id: "tools", label: "工具列表", key: "视图", run: function () { $("#foldtools").click(); } },
   { id: "new", label: "说点什么（聚焦输入框）", key: "动作", run: function () { show("chat"); $("#m").focus(); } },
   { id: "ingest", label: "加文档（跳到 DOCS 的摄入区）", key: "动作", run: function () { docs(); setTimeout(function () { var el = $("#dlg-path"); if (el) el.focus(); }, 300); } },
+  { id: "search", label: "搜记忆 / 文档…", key: "动作", run: function () { show("memlistview"); memories(); setTimeout(function () { var el = $("#q"); if (el) el.focus(); }, 300); } },
   { id: "cap", label: "看能力与降级项", key: "动作", run: function () { show("cfg"); setTimeout(function () { var el = $("#cap-sum"); if (el) el.scrollIntoView({ block: "center" }); }, 600); } },
 ];
 var palOpen = false, palIdx = 0, palShown = PAL_ACTIONS;
@@ -2477,16 +2509,22 @@ async function loadPersona(file) {
   $("#p-text").value = p.files[file] || "";
 }
 document.addEventListener("click", (e) => {
-  const t = e.target.closest("#side .item");
-  if (!t || !t.dataset.view) return;
+  // 认任何带 data-view 的 .item：左栏是导航，中栏的列表项（记忆/文档/审计）也走这里。
+  // 之前只认 #side 里的 .item，列表搬出左栏之后点不动了（回归过一次）。
+  const t = e.target.closest(".item[data-view]");
+  if (!t) return;
   const v = t.dataset.view;
-  sideActive = t;
-  for (const b of document.querySelectorAll("#side .item")) b.classList.toggle("on", b === t);
+  if (t.closest("#side")) {
+    sideActive = t;
+    for (const b of document.querySelectorAll("#side .item")) b.classList.toggle("on", b === t);
+  }
   if (v === "setupview") { show("setupview"); loadSetup(false); return; }
   if (v === "cfg") { show("cfg"); loadConfig().then(() => loadPersona($("#p-file").value)); return; }
   if (v === "toolview") { openTool(Number(t.dataset.tool)); return; }
   if (v === "memview") { openMemory(Number(t.dataset.mem)); return; }
   if (v === "docview") { openDoc(t.dataset.doc); return; }
+  if (v === "memlistview") { show("memlistview"); memories(); return; }
+  if (v === "docsview") { show("docsview"); docs(); return; }
   if (v === "auditview") { openAudit(); return; }
   show("chat");
   if (t.dataset.day) jumpToDay(t.dataset.day);
@@ -2561,6 +2599,43 @@ function dline(k, v, t) {
   return '<div class="dline"><span class="k">' + escapeHtml(k) + '</span>' +
     '<span class="t" title="' + escapeHtml(t || v) + '">' + escapeHtml(v) + '</span></div>';
 }
+// 「等你点头」那张卡：五块各自有 loader 在维护 DOM，这里只负责
+//   · 数一数有几条（卡片标题上的数字）
+//   · 全空时显示「没有等你点头的事」
+// 坑（踩过）：回调里改 #dc-inbox-empty 的 hidden，而观察器正盯着 #dc-inbox 的 attributes
+// → 自己触发自己，微任务无限循环，整页卡死。所以**值没变就不写**，并且用 rAF 合并。
+var inboxRaf = 0;
+function paintInbox() {
+  var box = document.getElementById('dc-inbox');
+  if (!box) return;
+  var n = 0;
+  ['pendsec', 'propsec', 'egrsec', 'rcpsec', 'threadsec'].forEach(function (id) {
+    var sec = document.getElementById(id);
+    if (!sec || sec.hidden) return;
+    n += sec.querySelectorAll('.pend, .item, .card').length;
+  });
+  var badge = document.getElementById('dc-inbox-n');
+  if (badge) {
+    var txt = n ? n + ' 条' : '';
+    if (badge.textContent !== txt) badge.textContent = txt;
+  }
+  var empty = document.getElementById('dc-inbox-empty');
+  if (empty) {
+    var hide = n > 0;
+    if (empty.hidden !== hide) empty.hidden = hide;   // 值不变不写 → 不会自触发
+  }
+}
+function paintInboxSoon() {
+  if (inboxRaf) return;
+  inboxRaf = requestAnimationFrame(function () { inboxRaf = 0; paintInbox(); });
+}
+function watchInbox() {
+  var box = document.getElementById('dc-inbox');
+  if (!box || !window.MutationObserver) return;
+  new MutationObserver(paintInboxSoon).observe(box, { childList: true, subtree: true });
+  paintInbox();
+}
+watchInbox();
 function renderDossier() {
   var d = DOSSIER; if (!d) return;
   var ag = d.plan.agenda || [], th = d.plan.threads || [];
@@ -2591,7 +2666,7 @@ function renderDossier() {
   ctxh += dline('文档', (c.docs || 0) + ' 篇 / ' + (c.chunks || 0) + ' 块', '');
   ctxh += dline('模型', c.model || '未配置', '');
   ctxh += dline('今天用量', (c.todayTokens || 0) + ' tok · $' + Number(c.todayUsd || 0).toFixed(4), '');
-  document.getElementById('dc-ctx').innerHTML = ctxh;
+  document.getElementById('dc-ctx-stats').innerHTML = ctxh;
 }
 async function loadDossier() {
   try {
