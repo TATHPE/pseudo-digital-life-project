@@ -44,14 +44,18 @@ test("J-1 沿关系一跳：有 why 的有效边才带得动；作废的边不�
 
   const r = await search(d.db, emb, "杭州出差");
   assert.ok(r.hits.length >= 1);
-  const near = expandByLinks(d.db, r.hits, { k: 2, now });
+  // E-8 之后：向量召回也会把 b 拉进候选（两条 embedding 相同），所以「沿边扩」要按
+  // 只给 a 的命中集来测 —— 否则测到的是向量召回，不是扩边。
+  const onlyA = r.hits.filter((h) => h.id === a);
+  assert.equal(onlyA.length, 1, "至少要能搜到 a");
+  const near = expandByLinks(d.db, onlyA, { k: 2, now });
   assert.equal(near.length, 1, "应该沿边带出邻居");
   assert.equal(near[0]!.id, b);
   assert.equal(near[0]!.viaLink?.why, "同一段经历", "必须能说出为什么连");
 
   // 作废（写止期）之后就不该再带
   d.db.prepare("UPDATE memory_links SET valid_to=? WHERE src_id=?").run(now.toISOString(), a);
-  assert.equal(expandByLinks(d.db, r.hits, { k: 2, now }).length, 0, "止期到了就不走这条边");
+  assert.equal(expandByLinks(d.db, onlyA, { k: 2, now }).length, 0, "止期到了就不走这条边");
 });
 
 test("J-1 没有 why 的边不参与召回（说不清的关系不该存在）", async () => {

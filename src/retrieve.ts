@@ -35,7 +35,9 @@ export interface Hit {
 
 export interface SearchOpts {
   k?: number;               // 返回条数，默认 8
-  candidates?: number;      // 第一段候选数，默认 1000
+  candidates?: number;
+  /** E-8：有几个候选是从向量召回进来的（FTS 一个都没命中时就是它们的全部） */
+  vecHits?: number;      // 第一段候选数，默认 1000
   activeMin?: number;       // active 注入门槛（保留给调用方覆盖，默认 0.35 生效于 stage）
   fadingMin?: number;       // fading 最低权重，默认 0.15
   fadingRelevance?: number; // fading 需"话题直接命中"，默认 0.45
@@ -46,6 +48,8 @@ export interface SearchOpts {
 export interface SearchMeta {
   stage1Ms: number; stage2Ms: number; totalMs: number;
   candidates: number; degraded: string[];
+  /** E-8：有几个候选是从向量召回进来的（FTS 一个都没命中时就是它们的全部） */
+  vecHits?: number;
 }
 
 const dot = (a: Float32Array, b: Float32Array) => {
@@ -55,6 +59,55 @@ const dot = (a: Float32Array, b: Float32Array) => {
 };
 const toF32 = (blob: Uint8Array) => new Float32Array(blob.buffer, blob.byteOffset, blob.byteLength / 4);
 
+
+/**
+ * E-8：**向量召回**。
+ *
+ * 之前 search() 的候选入口只有 memories_fts MATCH，向量只给已召回的候选重排 ——
+ * 词面不重合时（「她不喜欢我怎么称呼」 vs 「不要叫我助手」）向量永远没机会出场。
+ * vec_memories 表建了很久、reembed 也一直在写，**却没有任何读路径**。
+ *
+ * 两条路：
+ *  ① vec_memories 可用（sqlite-vec 已加载）→ k-NN。vec0 默认 L2，
+ *     单位向量下 cos = 1 - d²/2，这里换算回余弦，和别处口径一致。
+ *  ② 不可用 → 有界扫描（默认 2000 行）。慢一点，但不会假装自己没有向量。
+ */
+function vecRecall(
+  db: DatabaseSync, qv: Float32Array, k: number, nowIso: string, scanCap = 2000,
+): Array<{ id: number; cos: number }> {
+  const out: Array<{ id: number; cos: number }> = [];
+  const seen = new Set<number>();
+  const bytes = new Uint8Array(qv.buffer, qv.byteOffset, qv.byteLength);
+
+  // ① k-NN
+  try {
+    const rows = db.prepare(
+      "SELECT memory_id AS id, distance FROM vec_memories WHERE embedding MATCH ? ORDER BY distance LIMIT ?",
+    ).all(bytes, k) as Array<{ id: number | bigint; distance: number }>;
+    for (const r of rows) {
+      const id = Number(r.id);
+      if (seen.has(id)) continue;
+      seen.add(id);
+      out.push({ id, cos: 1 - (Number(r.distance) ** 2) / 2 });
+    }
+  } catch { /* 扩展没加载 / 表不存在 → 走 ② */ }
+
+  // ② 有界扫描（也补上 vec 表可能漏掉的 id）
+  if (out.length < k) {
+    try {
+      const rows = db.prepare(
+        "SELECT id, embedding FROM memories WHERE status='active' AND embedding IS NOT NULL" +
+        " AND (valid_to IS NULL OR julianday(valid_to) > julianday(?)) ORDER BY id DESC LIMIT ?",
+      ).all(nowIso, scanCap) as Array<{ id: number; embedding: Uint8Array }>;
+      for (const r of rows) {
+        if (seen.has(r.id)) continue;
+        seen.add(r.id);
+        out.push({ id: r.id, cos: dot(qv, toF32(r.embedding)) });
+      }
+    } catch { /* 没有 embedding 列/表 → 算了 */ }
+  }
+  return out.sort((a, b) => b.cos - a.cos).slice(0, Math.max(k, 8));
+}
 export async function search(
   db: DatabaseSync, embedder: Embedder | null, query: string, opts: SearchOpts = {},
 ): Promise<{ hits: Hit[]; meta: SearchMeta }> {
@@ -68,44 +121,55 @@ export async function search(
   const degraded: string[] = [];
   const t0 = performance.now();
 
-  // ── ① 关键词候选：先只取 id + bm25（绝不 join 宽行）─────────
-  // 实测：`JOIN memories` 会把 text+embedding(2KB/行) 一起拉出来，
-  // 4000 候选 = 8MB 读，单这一步就 57 ms。所以拆成"先取 id，再取需要的列"。
+  // ── ① 关键词候选 + 向量候选（E-8：两路都要）────────────
+  // 实测：JOIN memories 会把 text+embedding(2KB/行) 一起拉出来，
+  // 4000 候选 = 8MB 读，单这一步就 57 ms。所以拆成「先取 id，再取需要的列」。
   const q = ftsQuery(query);
   let ranked: Array<{ id: number; score: number }> = [];
   if (q) {
-    ranked = db.prepare(`
-      SELECT memory_id AS id, bm25(memories_fts) AS score
-      FROM memories_fts WHERE memories_fts MATCH ?
-      ORDER BY score LIMIT ?`).all(q, lim) as typeof ranked;
+    ranked = db.prepare(
+      "SELECT memory_id AS id, bm25(memories_fts) AS score FROM memories_fts" +
+      " WHERE memories_fts MATCH ? ORDER BY score LIMIT ?",
+    ).all(q, lim) as typeof ranked;
   }
 
+  // 向量召回：词面不重合时的唯一活路。查询向量在这里就要算出来。
+  let qv: Float32Array | null = null;
+  if (embedder) {
+    try { qv = (await embedder.embed([query]))[0] ?? null; } catch { degraded.push("E_EMBED_DOWN"); }
+    if (!qv) degraded.push("E_EMBED_EMPTY");
+  } else degraded.push("no_embedder");
+
+  const vecIds = new Map<number, number>();
+  if (qv) {
+    for (const v of vecRecall(db, qv, Math.max(24, k * 4), new Date().toISOString())) {
+      // 只收够像的：0.55 以下进了候选也只会在闸门那里被丢掉，白算
+      if (v.cos >= 0.55) vecIds.set(v.id, v.cos);
+    }
+  }
+  const allIds = [...new Set([...ranked.map((r) => r.id), ...vecIds.keys()])];
   // 元数据按 id 批量取（不含 embedding）。
   // 用 json_each(?) 而不是 IN (?,?,…)——后者要为每个 chunk 重新 prepare 一个
   // 500 参数的语句，实测占掉 20 ms；json_each 只要一个参数、一条语句。
   const metaById = new Map<number, { text: string; stage: Stage; weight: number; sensitivity?: string }>();
-  if (ranked.length) {
+  if (allIds.length) {
     const got = db.prepare(
       `SELECT id,text,stage,weight,sensitivity FROM memories
        WHERE status='active' AND (valid_to IS NULL OR julianday(valid_to) > julianday(?))
          AND id IN (SELECT value FROM json_each(?))`,
-    ).all(new Date().toISOString(), JSON.stringify(ranked.map((r) => r.id))) as Array<{ id: number; text: string; stage: Stage; weight: number; sensitivity?: string }>;
+    ).all(new Date().toISOString(), JSON.stringify(allIds)) as Array<{ id: number; text: string; stage: Stage; weight: number; sensitivity?: string }>;
     for (const g of got) metaById.set(g.id, { text: g.text, stage: g.stage, weight: g.weight, ...(g.sensitivity ? { sensitivity: g.sensitivity } : {}) });
   }
-  const rows = ranked
-    .filter((r) => metaById.has(r.id))
-    .map((r) => ({ id: r.id, score: r.score, ...metaById.get(r.id)! }));
+  // 顺序：先向量分数（越高越前），同分再按 bm25 名次
+  const bmScoreById = new Map(ranked.map((r) => [r.id, r.score]));
+  const rows = [...metaById.entries()]
+    .map(([id, m]) => ({ id, score: bmScoreById.get(id) ?? 0, ...m }))
+    .sort((a, b) => (vecIds.get(b.id) ?? -1) - (vecIds.get(a.id) ?? -1) || a.score - b.score);
 
   const t1 = performance.now();
 
-  // ── ② 候选重排：cosine ───────────────────────
-  let qv: Float32Array | null = null;
-  if (embedder && rows.length) {
-    try { qv = (await embedder.embed([query]))[0] ?? null; } catch { degraded.push("E_EMBED_DOWN"); }
-    if (!qv) degraded.push("E_EMBED_EMPTY");
-  } else if (!embedder) degraded.push("no_embedder");
-
-  const cos = new Map<number, number>();
+  // ── ② 候选重排：cosine（向量召回那批已经有分数，不用重算）──
+  const cos = new Map<number, number>(vecIds);
   if (qv && rows.length) {
     const got = db.prepare(
       `SELECT id, embedding FROM memories
@@ -119,7 +183,8 @@ export async function search(
   const t2 = performance.now();
 
   // ── 融合：RRF(k=60) + 权重 ───────────────────
-  const bmRank = new Map(rows.map((r, i) => [r.id, i + 1]));
+  // bmRank 只对 FTS 命中有效：向量召回进来的行没有 bm25 名次（融合时按 lim 计）
+  const bmRank = new Map(ranked.map((r, i) => [r.id, i + 1]));
   const cosSorted = [...cos.entries()].sort((a, b) => b[1] - a[1]);
   const cosRank = new Map(cosSorted.map(([id], i) => [id, i + 1]));
   const K = 60;
@@ -173,7 +238,7 @@ export async function search(
     hits: picked,
     meta: {
       stage1Ms: +(t1 - t0).toFixed(1), stage2Ms: +(t2 - t1).toFixed(1),
-      totalMs: +(t3 - t0).toFixed(1), candidates: rows.length, degraded,
+      totalMs: +(t3 - t0).toFixed(1), candidates: rows.length, vecHits: vecIds.size, degraded,
     },
   };
 }
