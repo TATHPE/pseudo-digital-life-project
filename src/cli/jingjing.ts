@@ -33,8 +33,20 @@ import { w0FromImportance, DECAY_PARAMS_VERSION, KIND_PARAMS, T, RECONSOLIDATION
 import { modelKeyOf } from "../config.ts";
 import { applyDecayConfig, effectiveParams, currentOverrides, decayVersion, setDecayParam, resetDecayParams, readAudit } from "../decayparams.ts";
 import { reembed as reembedBuild } from "../reembed.ts";
+import { capabilities, summarize } from "../capabilities.ts";
 
 const HOME = process.env.JJ_HOME ?? join(process.cwd(), "data");
+
+/**
+ * CLI 子命令表（B-0 用）。它必须与下面 switch 的分支一致 ——
+ * 测试会读源文件核对，少一个/多一个都会红（否则这份表就是"装饰列"）。
+ */
+export const CLI_COMMANDS = [
+  "migrate", "remember", "search", "verify", "outage", "serve", "config", "models", "links",
+  "capabilities", "reembed", "auth", "usage", "test", "night", "shell", "ingest", "docs",
+  "forget-doc", "export", "verify-export", "import", "smoke-tools", "templates", "redteam",
+  "verb", "beat", "eval", "decay", "bench",
+];
 const dbFile = join(HOME, "memory.db");
 const inbox = join(HOME, "inbox");
 const ensureHome = () => { mkdirSync(HOME, { recursive: true }); mkdirSync(inbox, { recursive: true }); };
@@ -296,6 +308,7 @@ async function main(): Promise<void> {
       const srv = createWebServer({
         db: d.db, inboxDir: inbox, home: HOME, getTransport, getEmbedder, getConfig,
         tools: registry, getChat, pendingOutage: boot1.outage,
+        mcpInfo: { servers: Object.keys(mcpCfg.servers ?? {}), tools: mcp.tools, errors: mcp.errors },
       });
       // 绑哪里：默认只绑回环。容器里必须绑 0.0.0.0（否则宿主通过端口映射也访问不到，
       // 因为容器的 127.0.0.1 不是宿主的 127.0.0.1）；而 compose 只把 0.0.0.0 映射到
@@ -474,6 +487,25 @@ async function main(): Promise<void> {
       }
       console.error("用法: jingjing links [list [n] | cut L<n>]");
       process.exitCode = 2;
+      return;
+    }
+
+    case "capabilities": {
+      // B-0：每一行都能追到代码（工具来自 verbs，provider 来自配置，degraded 来自真探测）
+      const d = openDb(dbFile);
+      const cfg = resolveConfig(HOME);
+      const pf = await preflight(cfg.ollama);
+      const mcpCfg = await loadMcpConfig(HOME);
+      const cap = await capabilities({
+        db: d.db, home: HOME, cfg,
+        ollama: { base: pf.base, online: pf.online, names: pf.names, ...(pf.error ? { error: pf.error } : {}) },
+        mcp: { servers: Object.keys(mcpCfg.servers ?? {}), tools: [], errors: [] },
+        commands: CLI_COMMANDS,
+        panel: false,
+      });
+      if (has(rest, "--json")) { console.log(JSON.stringify(cap, null, 2)); return; }
+      console.log(summarize(cap));
+      if (cap.notes.length) for (const n of cap.notes) console.log("  · " + n);
       return;
     }
 

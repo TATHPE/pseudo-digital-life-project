@@ -65,6 +65,9 @@ export function remember(db: DatabaseSync, m: NewMemory): number {
     // 失败时**不静默**：写 meta + 记事件（02 §4.3 的教训）。
     try {
       db.prepare("INSERT INTO vec_memories(memory_id,embedding) VALUES(?,?)").run(BigInt(id), emb);
+      // 成功就要把旧报错清掉：否则一次历史失败会让 `/health` 永远说 `vec-index-broken`
+      // （状态标记只在“现在真的坏”时才该存在）
+      db.prepare("DELETE FROM meta WHERE key='vec_error'").run();
     } catch (e) {
       db.prepare("INSERT INTO meta(key,value) VALUES('vec_error',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value")
         .run(String(e).slice(0, 200));

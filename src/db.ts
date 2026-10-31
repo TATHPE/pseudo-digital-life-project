@@ -26,6 +26,22 @@ export function openDb(path: string): Db {
   if (vecLoaded) {
     try { db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS vec_memories USING vec0(memory_id INTEGER PRIMARY KEY, embedding FLOAT[512])`); } catch { vecLoaded = false; }
   }
+  // 启动时自检一次向量表（不是读旧标记，而是**现在试一下**）：
+  // `meta.vec_error` 以前只写不删 —— 一次历史失败会让 `/health` 和 `capabilities`
+  // 永远报 `vec-index-broken`。写入探针用负 id，插完立刻删。
+  if (vecLoaded) {
+    try {
+      const probe = new Float32Array(512);
+      db.prepare("INSERT OR REPLACE INTO vec_memories(memory_id,embedding) VALUES(?,?)").run(BigInt(-1), new Uint8Array(probe.buffer));
+      db.prepare("DELETE FROM vec_memories WHERE memory_id=?").run(BigInt(-1));
+      db.prepare("DELETE FROM meta WHERE key='vec_error'").run();
+    } catch (e) {
+      try {
+        db.prepare("INSERT INTO meta(key,value) VALUES('vec_error',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value")
+          .run(String(e).slice(0, 200));
+      } catch { /* ignore */ }
+    }
+  }
   // 迁移：001 是幂等的 CREATE IF NOT EXISTS；后续版本在 SCHEMA_VERSION 推进时补
   const cur = db.prepare("SELECT value FROM meta WHERE key='schema_version'").get() as { value?: string } | undefined;
   if (!cur) {

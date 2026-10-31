@@ -17,6 +17,7 @@ import { writeFileConfig, readFileConfig, resolveConfig, configSources } from ".
 import { isInstalled } from "../ollama.ts";
 import { recompute, w0FromImportance, type Stage } from "../decay.ts";
 import { modelKeyOf } from "../config.ts";
+import { capabilities } from "../capabilities.ts";
 import { preflight, lastPreflight } from "../preflight.ts";
 import { indexState } from "../embedindex.ts";
 import { AVATAR_FRAMES, DEFAULT_AVATAR, isAvatarFrame } from "./avatar.ts";
@@ -62,6 +63,8 @@ export interface WebDeps {
 
   /** 启动时检测到的缺口（只报告一次，首轮后清空） */
   pendingOutage?: Outage | null;
+  /** B-0：真实 MCP 连接结果（面板要能说清"哪个 server 没挂上"） */
+  mcpInfo?: { servers: string[]; tools: string[]; errors: string[] };
   getEmbedder: () => Embedder | null;
   now?: () => Date;
   /** 测试可注入：把"模型回复"换成生成器 */
@@ -662,6 +665,19 @@ export function createWebServer(deps: WebDeps) {
         return;
       }
       // ── 本地模型（C-4）：一个端点、列已装、拿当前生效值，面板据此分两块 ──
+      // B-0：能力自述（工具来自 verbs / provider 来自配置 / degraded 来自真探测）
+      if (req.method === "GET" && url.pathname === "/api/capabilities") {
+        const cfgNow = deps.getConfig();
+        const pf = lastPreflight(cfgNow.ollama);          // 只读缓存，不在这里探头
+        const cap = await capabilities({
+          db: deps.db, home: deps.home, cfg: resolveConfig(deps.home),
+          ollama: pf ? { base: pf.base, online: pf.online, names: pf.names, ...(pf.error ? { error: pf.error } : {}) } : null,
+          ...(deps.mcpInfo ? { mcp: deps.mcpInfo } : {}),
+          panel: true,
+        });
+        json(res, 200, cap);
+        return;
+      }
       if (req.method === "GET" && url.pathname === "/api/models") {
         const cfg = deps.getConfig();
         const src = configSources(deps.home);
