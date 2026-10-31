@@ -11,6 +11,8 @@ import type { Tier } from "./types.ts";
 export interface VerbCtx {
   home: string;
   now: () => Date;
+  /** 环境变量（默认 process.env）。只为让"出网闸"在测试里可注入 */
+  env?: Record<string, string | undefined>;
   /** 记忆类 verb 需要（不是所有 verb 都用得上） */
   db?: import("node:sqlite").DatabaseSync;
   embedder?: import("./embed.ts").Embedder | null;
@@ -83,6 +85,7 @@ import { renderTemplate, templateCatalog, templateById, planRun, runArgv } from 
 import { listDocs } from "./ingest.ts";
 import { dedupeTitle } from "./chunk.ts";
 import { resolveConfig } from "./configfile.ts";
+import * as project from "./project.ts";
 import { modelKeyOf } from "./config.ts";
 import { indexState } from "./embedindex.ts";
 import { isRemoteRole } from "./transport.ts";
@@ -105,6 +108,22 @@ function staleNote(ctx: VerbCtx): string {
     if (!ix.stale) return "";
     return `（注意：向量索引是用 ${ix.built ?? "未知模型"} 建的，当前配置是 ${ix.current ?? "未配置"}，召回可能不准；跑 jingjing reembed 重建）` + String.fromCharCode(10);
   } catch { return ""; }
+}
+
+/**
+ * 项目读取的出网闸（K-1 / H-7 的临时形态）。
+ *
+ * 代码与记忆是两种隐私：读到的源码如果正被云端表达模型使用，就等于外发。
+ * 默认拒绝，要显式 JJ_PROJECT_EGRESS=1 才放行；等 K-3 的 grant 上线后换成"按次授权"。
+ */
+function egressEnv(ctx: VerbCtx): Record<string, string | undefined> {
+  // 默认读 process.env；ctx.env 只是给测试注入用。
+  // （踩过：只查 ctx.env 的话，命令行设了 JJ_PROJECT_EGRESS=1 也不会生效）
+  const env = ctx.env ?? process.env;
+  if (expressIsRemote(ctx) && env.JJ_PROJECT_EGRESS !== "1") {
+    throw new Error("E_PROJECT_EGRESS: 当前表达模型在云端，读项目等于把代码发出去；要允许请设 JJ_PROJECT_EGRESS=1");
+  }
+  return env;
 }
 
 function expressIsRemote(ctx: VerbCtx): boolean {
@@ -357,6 +376,45 @@ export const verbs: VerbDef[] = [
       const docs = listDocs(ctx.db, 50);
       if (!docs.length) return "（还没有摄入任何文档：jingjing ingest <路径>）";
       return docs.map((d) => d.id + " " + d.title + " ｜ " + d.chunks + " 块 ｜ " + (d.rel_path ?? "")).join(String.fromCharCode(10));
+    },
+  },
+  {
+    name: "project.read", tier: "T0", reversible: true,
+    description: "读项目源码/文档（只读；根是 jingjing/ 与 docs/，data/ 与密钥一律拒）",
+    params: S({ path: { type: "string" }, from: { type: "number" }, to: { type: "number" } }, ["path"]),
+    target: (a) => String(a.path ?? ""),
+    async run(a, ctx) {
+      const r = project.readProjectFile(String(a.path ?? ""), {
+        ...(a.from ? { from: Number(a.from) } : {}), ...(a.to ? { to: Number(a.to) } : {}),
+        env: egressEnv(ctx),
+      });
+      const head = `[${r.path}] ${r.bytes} 字节${r.truncated ? "（已截断，用 from/to 读其余）" : ""}` + String.fromCharCode(10);
+      return head + r.text;
+    },
+  },
+  {
+    name: "project.list", tier: "T0", reversible: true,
+    description: "列项目目录（只读；默认项目根）",
+    params: S({ dir: { type: "string" } }, []),
+    target: () => "internal",
+    async run(a, ctx) {
+      const rows = project.listProject(String(a.dir ?? ""), egressEnv(ctx));
+      if (!rows.length) return "（空目录）";
+      return rows.map((x) => (x.type === "dir" ? x.path + "/" : `${x.path}  ${x.bytes} B`)).join(String.fromCharCode(10));
+    },
+  },
+  {
+    name: "project.search", tier: "T0", reversible: true,
+    description: "在项目里按正则搜（只读；返回 路径:行号）",
+    params: S({ pattern: { type: "string" }, glob: { type: "string" }, limit: { type: "number" } }, ["pattern"]),
+    target: (a) => String(a.pattern ?? ""),
+    async run(a, ctx) {
+      const hits = project.searchProject(String(a.pattern ?? ""), {
+        ...(a.glob ? { glob: String(a.glob) } : {}), ...(a.limit ? { limit: Number(a.limit) } : {}),
+        env: egressEnv(ctx),
+      });
+      if (!hits.length) return "（没有匹配）";
+      return hits.map((h) => `${h.path}:${h.line}: ${h.text}`).join(String.fromCharCode(10));
     },
   },
   {

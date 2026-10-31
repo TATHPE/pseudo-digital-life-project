@@ -46,6 +46,9 @@ p, allow, T1, memory.remember, *, advise
 p, allow, T2, msg.notify, *, enforce
 p, allow, T2, mcp__*, *, advise
 p, allow, T2, net.fetch, *, enforce
+p, allow, T0, project.read, *, advise
+p, allow, T0, project.list, *, advise
+p, allow, T0, project.search, *, advise
 p, allow, T0, shell.templates, *, advise
 # T3：只能走注册过的模板（target 是 shell:<template>），且每次要一次性令牌
 p, allow, T3, shell.run, shell:*, enforce
