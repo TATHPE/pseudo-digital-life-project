@@ -8,7 +8,7 @@
 
 | 项 | 数量 |
 |---|---|
-| 源文件（src/**/*.ts） | 90 |
+| 源文件（src/**/*.ts） | 91 |
 | 错误码 E_* | 178 |
 | verbs | 21 |
 | CLI 子命令 | 37 |
@@ -328,6 +328,7 @@
 | `src/types.ts` | export type Tier = "T0" / "T1" / "T2" / "T3" / "T4"; |
 | `src/verbs.ts` | 能力目录（04 §3）：鲸鲸能碰到的东西**只有这张表里的**。 |
 | `src/web/avatar.ts` | 头像框（外观偏好，不是模型配置） |
+| `src/web/desklive.ts` | 桌面工作台的「真数据层」页面（`/desk/live`）。 |
 | `src/web/page.ts` | 单页（零前端依赖、零构建）。 |
 | `src/web/server.ts` | 本地 Web 面板（17 §4）：127.0.0.1:7700，零前端依赖，SSE 流式。 |
 | `src/web/state.ts` | 状态行（17 §4.1）：一句话，不是数字仪表盘 */ |

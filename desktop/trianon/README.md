@@ -31,6 +31,34 @@ Trianon 把 AI 编程智能体的工作台拆成了该有的形状：
 - 桌面壳的窗口指向 `/desk`
 - 它是**离线自包含**的：断网也能打开
 
+## 真数据层（2026-11-01 接上）
+
+真数据放在 **iframe** 里，不注入 Trianon：
+
+| 文件 | 干什么 |
+|---|---|
+| `desktop/trianon/bridge.js` | 只在 `</body>` 前插一个右侧 iframe（约 40 行，**不动 Trianon 一行**） |
+| `src/web/desklive.ts` | `GET /desk/live` 的整页：对话 / 工具卡 / 审批 / 引擎状态 |
+
+**为什么必须是 iframe（踩过的坑）**：Trianon 在 window 捕获层调
+`stopImmediatePropagation()`，会吞掉**所有**点击与按键 —— 实测连
+`el.click()` 都不触发 `onclick`、真实 Enter 连 textarea 的换行都进不去。
+我们不是它的组件库，改不动那些闭包；iframe 里的事件不冒泡到父文档，
+两边各管各的：**Trianon 管"长什么样"，`/desk/live` 管"真数据"**。
+
+已经接上的（都有实测证据）：
+
+| 块 | 数据源 | 状态 |
+|---|---|---|
+| 对话（逐帧流式） | `POST /api/say`（SSE `delta` / `tool` / `tool_result` / `notice`） | ✅ 实测 5 秒出字 |
+| 工具卡 | 同上 `tool` / `tool_result` | ✅ |
+| 审批便条 | `GET /api/pending` + `POST /api/pending/:id`（`confirm` / `reject`） | ✅ |
+| 引擎状态 | `GET /health`（`ok` / `degraded`） | ✅ 显示「在线」 |
+| 出厂历史 | `GET /api/timeline` 最后一天的最近 6 条 | ✅ |
+
+还没接：Plan（P9 + agenda）、Changes（`git.diff`）、Context（`/api/memories`）、
+搜索 / 文件面板、模型选择。
+
 ## 下一步（还没做）
 
 把 mock 换成真数据。需要接的（都是现成 API）：
