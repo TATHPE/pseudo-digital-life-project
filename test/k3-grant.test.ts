@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openDb } from "../src/db.ts";
-import { openGrant, checkGrant, listGrants, revokeGrant, revokeAll, sanitizedEnv, MAX_TTL_MS, GRANT_COMMANDS } from "../src/grant.ts";
+import { openGrant, checkGrant, listGrants, revokeGrant, revokeAll, sanitizedEnv, MAX_TTL_MS, FULL_MAX_TTL_MS, GRANT_COMMANDS } from "../src/grant.ts";
 import { execute } from "../src/execute.ts";
 import { DEFAULT_POLICY } from "../src/policy.ts";
 
@@ -121,4 +121,91 @@ test("K-3 执行路径：有窗口 → 不用令牌就能跑；收回 → 又变
   assert.ok(rows.c >= 3, "三次调用（拒绝/窗口放行/收回后再拒）都要留痕");
   void allowAll;
   void (GRANT_COMMANDS as readonly string[]);
+});
+
+// ── K-3 完全权限窗口 ──────────────────────────────────
+test("K-3 全权窗口：短 ttl、理由更硬、硬禁名单结构性排除", () => {
+  const home = H();
+  const short = openGrant(home, { full: true, because: "短" });
+  assert.equal(short.ok, false, "全权理由至少 10 字");
+
+  const r = openGrant(home, { full: true, ttlMs: 99 * 3600_000, because: "要连着改好几个文件并跑测试" });
+  assert.equal(r.ok, true);
+  if (r.ok) {
+    assert.equal(r.grant.full, true);
+    const left = Date.parse(r.grant.expiresAt) - Date.now();
+    assert.ok(left <= FULL_MAX_TTL_MS + 1000, "全权窗口要夹到 15 分钟");
+  }
+
+  const ws = join(home, "workspace");
+  const now = new Date();
+  // 允许：普通命令（删/系统/下载/壳之外）
+  assert.equal(checkGrant(home, { argv: ["node", "x.mjs"], cwd: ws, verb: "shell.exec" }, now).ok, true);
+  assert.equal(checkGrant(home, { argv: ["git", "status"], cwd: home, verb: "shell.exec" }, now).ok, true, "全权覆盖整个 home");
+  // 硬禁：删除 / 系统 / 下载 / 壳
+  for (const bad of ["rm", "del", "reg", "shutdown", "curl", "powershell", "cmd", "bash"]) {
+    const d = checkGrant(home, { argv: [bad, "x"], cwd: ws, verb: "shell.exec" }, now);
+    assert.equal(d.ok, false, `${bad} 在全权窗口里也必须拒`);
+    if (!d.ok) assert.equal(d.code, "E_GRANT_FULL_DENY", `${bad} 要有专门的拒绝码`);
+  }
+  // 内联求值一律拒（两种窗口都拒）
+  assert.equal(checkGrant(home, { argv: ["node", "-e", "1"], cwd: ws, verb: "shell.exec" }, now).ok, false);
+  // 不许跑出 home
+  assert.equal(checkGrant(home, { argv: ["node", "C:/Windows/x.mjs"], cwd: ws, verb: "shell.exec" }, now).ok, false);
+  revokeAll(home);
+});
+
+test("K-3 普通窗口**不会**因为全权存在而变宽", () => {
+  const home = H();
+  const normal = openGrant(home, { commands: "node", scope: "workspace", because: "跑个脚本" });
+  assert.equal(normal.ok, true);
+  const ws = join(home, "workspace");
+  const now = new Date();
+  // 普通窗口 + 模板路径：可以
+  assert.equal(checkGrant(home, { argv: ["node", "a.mjs"], cwd: ws, verb: "shell.run" }, now).ok, true);
+  // 普通窗口 + 任意 argv：不行
+  const r = checkGrant(home, { argv: ["node", "a.mjs"], cwd: ws, verb: "shell.exec" }, now);
+  assert.equal(r.ok, false);
+  if (!r.ok) assert.equal(r.code, "E_GRANT_NEEDS_FULL");
+  revokeAll(home);
+});
+
+test("K-3 端到端：开全权 → shell.exec 真跑；收回 → 拒", async () => {
+  const home = H();
+  const db = openDb(join(home, "m.db"));
+  const policy = { authorize: async (_v: string, tier: string) => ({ allow: tier !== "T4", strength: "enforce" as const, reason: "test" }) };
+  const base = { db: db.db, policy: policy as never, ctx: { home, now: () => new Date(), db: db.db } };
+
+  // 没有窗口：E_GRANT_NEEDS_FULL（不是 needsConfirm，因为这是"能力没开"）
+  const denied = await execute(base, "shell.exec", { argv: ["node", "-p", "1"] });
+  assert.equal(denied.ok, false);
+
+  const r = openGrant(home, { full: true, because: "真跑一条不在模板里的命令来验证", ttlMs: 60_000 });
+  assert.equal(r.ok, true);
+
+  const outFile = join(home, "workspace");
+  mkdirSync(outFile, { recursive: true });
+  const ok = await execute(base, "shell.exec", { argv: ["node", "print-ok.mjs"], cwd: "workspace" });
+  // 文件还不存在 → 这里本来会失败；先写一个
+  assert.ok(true);
+  writeFileSync(join(outFile, "print-ok.mjs"), "console.log('exec-ok')", "utf8");
+  const ok2 = await execute(base, "shell.exec", { argv: ["node", "print-ok.mjs"], cwd: "workspace" });
+  assert.equal(ok2.ok, true, ok2.output);
+  assert.match(String(ok2.output), /exec-ok/);
+  assert.match(String(ok2.capability ?? ""), /^grant:/);
+  void ok;
+
+  if (r.ok) revokeGrant(home, r.grant.id);
+  const after = await execute(base, "shell.exec", { argv: ["node", "print-ok.mjs"], cwd: "workspace" });
+  assert.equal(after.ok, false, "收回后必须拒");
+});
+
+test("K-3 全权窗口：路径逃逸有专门的错误码（不是含混的 NEEDS_FULL）", () => {
+  const home = H();
+  const r = openGrant(home, { full: true, because: "验证路径逃逸的报错够清楚", ttlMs: 60_000 });
+  assert.equal(r.ok, true);
+  const d = checkGrant(home, { argv: ["node", "C:/Windows/system32/x.mjs"], cwd: join(home, "workspace"), verb: "shell.exec" });
+  assert.equal(d.ok, false);
+  if (!d.ok) assert.equal(d.code, "E_GRANT_PATH");
+  revokeAll(home);
 });

@@ -1005,13 +1005,23 @@ export function createWebServer(deps: WebDeps) {
       }
       if (req.method === "POST" && url.pathname === "/api/grants") {
         const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
-        const body = JSON.parse(await readBody(req)) as { commands?: string; scope?: string; ttlMin?: number; because?: string };
+        const body = JSON.parse(await readBody(req)) as { commands?: string; scope?: string; ttlMin?: number; because?: string; full?: boolean };
         const r = openGrant(deps.home, {
+          full: body.full === true,
           commands: String(body.commands ?? "node").split(","),
           scope: String(body.scope ?? "workspace"),
           ttlMs: Math.min(120, Math.max(1, Number(body.ttlMin ?? 30))) * 60_000,
           because: String(body.because ?? ""),
         });
+        if (r.ok && body.full === true) {
+          // 全权窗口开过就要留痕：这条比普通窗口重要得多
+          try {
+            appendEvent(deps.inboxDir, {
+              v: 1, id: newEventId(), ts: now().toISOString(), kind: "grant_full_open", actor: "user",
+              payload: { id: r.grant.id, because: r.grant.because, expiresAt: r.grant.expiresAt },
+            });
+          } catch { /* 事件写不下不影响开窗 */ }
+        }
         json(res, r.ok ? 200 : 400, r);
         return;
       }

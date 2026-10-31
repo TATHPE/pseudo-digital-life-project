@@ -17,7 +17,7 @@ export interface VerbCtx {
    * K-3：这次调用落在哪个授权窗口里（没有就是 undefined）。
    * shell.run 看到它就必须**脱敏环境变量**再跑 —— 窗口不该顺带把密钥也借出去。
    */
-  grant?: { id: string; commands: string[]; scope: string };
+  grant?: { id: string; commands: string[]; scope: string; full?: boolean };
   /** 记忆类 verb 需要（不是所有 verb 都用得上） */
   db?: import("node:sqlite").DatabaseSync;
   embedder?: import("./embed.ts").Embedder | null;
@@ -481,6 +481,41 @@ export const verbs: VerbDef[] = [
       const head = `exit=${res.code ?? res.signal} ${res.ms}ms` +
         (res.timedOut ? " 超时已杀" : "") + (res.truncated ? " 输出已截断" : "") +
         (plan.note ? ` ｜ ${plan.note}` : "");
+      const body = [res.stdout.trimEnd(), res.stderr.trimEnd()].filter(Boolean).join(String.fromCharCode(10));
+      if (res.timedOut) throw new Error(`E_TIMEOUT: ${head}${body ? String.fromCharCode(10) + body : ""}`);
+      return `${head}${body ? String.fromCharCode(10) + body : ""}`;
+    },
+  },
+  {
+    name: "shell.exec", tier: "T3", reversible: false,
+    description: "跑**任意 argv**（不是模板）。只有在「完全权限」会话窗口打开时才会被执行；" +
+      "删/磁盘/系统配置/下载器/壳/内联求值一律拒绝，密钥类环境变量不会传给它。",
+    params: S({
+      argv: { type: "array", items: { type: "string" }, description: "完整命令，如 [\"node\",\"tools/x.mjs\"]" },
+      cwd: { type: "string", description: "相对 home 的工作目录（默认 workspace）" },
+    }, ["argv"]),
+    target: () => "shell:exec",
+    capability(a, ctx) {
+      const argv = (Array.isArray(a.argv) ? a.argv : []).map((x) => String(x));
+      if (!argv.length) throw new Error("E_BAD_ARGV: argv 不能为空");
+      if (argv.length > 20) throw new Error("E_BAD_ARGV: argv 太长（≤20 段）");
+      if (argv.some((x) => x.length > 500)) throw new Error("E_BAD_ARGV: 单段太长");
+      const rel = String(a.cwd ?? "workspace");
+      if (rel.includes("..") || rel.startsWith("/")) throw new Error("E_BAD_ARGV: cwd 只收 home 内的相对路径");
+      const cwd = join(ctx.home, rel || ".");
+      return { argv, cwd, template: "exec" };
+    },
+    async run(a, ctx) {
+      // 纵深防御：即使策略层被改松，没有全权窗口也跑不了任意 argv
+      if (!ctx.grant) throw new Error("E_GRANT_NEEDS_FULL: 任意 argv 只能在完全权限窗口里跑");
+      const argv = (Array.isArray(a.argv) ? a.argv : []).map((x) => String(x));
+      const rel = String(a.cwd ?? "workspace");
+      const cwd = join(ctx.home, rel || ".");
+      const res = await runArgv(argv, {
+        cwd, timeoutMs: 120_000, env: sanitizedEnv(process.env),
+      });
+      const head = `exit=${res.code ?? res.signal} ${res.ms}ms` +
+        (res.timedOut ? " 超时已杀" : "") + (res.truncated ? " 输出已截断" : "");
       const body = [res.stdout.trimEnd(), res.stderr.trimEnd()].filter(Boolean).join(String.fromCharCode(10));
       if (res.timedOut) throw new Error(`E_TIMEOUT: ${head}${body ? String.fromCharCode(10) + body : ""}`);
       return `${head}${body ? String.fromCharCode(10) + body : ""}`;

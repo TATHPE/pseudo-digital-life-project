@@ -689,6 +689,12 @@ export const PAGE = `<!doctype html>
           <div><label>多少分钟</label><input id="g-ttl" type="number" min="1" max="120" value="30"></div>
           <div><label>为什么</label><input id="g-why" placeholder="我要它连着改几个文件"></div>
         </div>
+        <div class="acts">
+          <label class="hint" style="display:flex;gap:6px;align-items:center">
+            <input type="checkbox" id="g-full"> 完全权限（任意命令 · 整个 home · 最多 15 分钟）
+          </label>
+        </div>
+        <p class="hint" id="g-warn" hidden><span class="err">完全权限 ≠ 钥匙：删/磁盘/系统配置/下载器/壳/内联求值仍然永久拒绝；env 里的 *_KEY、TOKEN、SECRET 依然不传；每次调用都会留痕。</span></p>
         <div class="acts"><button id="g-open" class="primary">开窗口</button><span id="g-msg" class="hint"></span></div>
         <div id="g-list"></div>
       </div>
@@ -1607,13 +1613,15 @@ $("#proplist").onclick = function (e) {
 };
 
 // ── 会话授权（K-3）：窗口开在服务进程里，页面只负责开关 ──
+// 全权勾上就展开警示（不做花哨动效：这里要的是看清）
+$("#g-full").addEventListener("change", function () { $("#g-warn").hidden = !this.checked; });
 async function loadGrants() {
   var rows;
   try { rows = await (await fetch("/api/grants")).json(); } catch (e) { return; }
   rows = Array.isArray(rows) ? rows : [];
   $("#g-list").innerHTML = rows.length ? rows.map(function (g) {
     return "<div class='pend' data-grant='" + escapeHtml(g.id) + "'>" +
-      "<span class='cmd'>" + escapeHtml(g.commands.join(",")) + " · " + escapeHtml(g.scope) + "</span>" +
+      (g.full ? "<span class='err'>完全权限</span> " : "") +
       "<span class='dir'>剩 " + g.remainingS + " 秒 · 为什么：" + escapeHtml(g.because) + "</span>" +
       "<div class='acts'><button class='no' data-act='revoke'>收回</button></div><span class='msg'></span></div>";
   }).join("") : "<p class='hint'>当前没有打开的窗口 —— 所有 T3 动作仍要逐次确认。</p>";
@@ -1621,8 +1629,14 @@ async function loadGrants() {
 $("#g-open").addEventListener("click", async function () {
   $("#g-msg").textContent = "处理中…";
   try {
+    var full = $("#g-full").checked;
+    // 全权要再过一道人手确认：不是弹窗吓人，是让「我明白我在开什么」这句话由人说一遍
+    if (full) {
+      var typed = prompt("完全权限：任意命令 + 整个 home（最多 15 分钟）。删/系统/下载/壳仍然拒绝，密钥仍然不传。要开就输入：我明白");
+      if (typed !== "我明白") { $("#g-msg").className = "err"; $("#g-msg").textContent = "没有确认，未开窗口"; return; }
+    }
     var r = await (await fetch("/api/grants", { method: "POST", headers: H, body: JSON.stringify({
-      commands: $("#g-cmds").value, scope: $("#g-scope").value,
+      commands: $("#g-cmds").value, scope: $("#g-scope").value, full: full,
       ttlMin: Number($("#g-ttl").value), because: $("#g-why").value,
     }) })).json();
     if (r.ok) { $("#g-msg").className = "ok"; $("#g-msg").textContent = "已开：" + r.grant.id + "（" + new Date(r.grant.expiresAt).toLocaleTimeString() + " 到期）"; await loadGrants(); }

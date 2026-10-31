@@ -459,6 +459,7 @@ async function main(): Promise<void> {
         const m = ttlRaw.match(/^(\d+)([mh])?$/);
         const ttlMs = m ? Number(m[1]) * (m[2] === "h" ? 3600_000 : 60_000) : 30 * 60_000;
         const r = openGrant(HOME, {
+          full: rest.includes("--full"),
           commands: String(arg("commands") ?? "node").split(","),
           scope: String(arg("scope") ?? "workspace"),
           ttlMs,
@@ -475,7 +476,7 @@ async function main(): Promise<void> {
         if (!ok) process.exitCode = 1;
         return;
       }
-      console.error("用法: jingjing grant open --commands node,git --scope workspace --ttl 30m --because \"...\" | list | revoke <id>");
+      console.error("用法: jingjing grant open [--full] [--commands node,git] [--scope workspace] [--ttl 30m] --because \"...\" | list | revoke <id>");
       process.exitCode = 2;
       return;
     }

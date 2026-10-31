@@ -82,7 +82,7 @@ export async function execute(
   let tokenId: string | undefined;
   // K-3：授权窗口命中时记下它，传给 verb（shell.run 靠它决定要不要脱敏环境）
   let grantHit: ReturnType<typeof checkGrant> | null = null;
-  let grantCtx: { id: string; commands: string[]; scope: string } | undefined;
+  let grantCtx: { id: string; commands: string[]; scope: string; full?: boolean } | undefined;
   if (tier === "T3") {
     try {
       proposal = def.capability ? def.capability(args, deps.ctx) : null;
@@ -132,11 +132,11 @@ export async function execute(
         return { ok: false, output: `${c.code}: 令牌签发后立刻失效（系统时钟？）`, tier: tier, strength: auth.strength, verb, ms: 0, code: c.code };
       }
       tokenId = t.token;
-    } else if ((grantHit = checkGrant(home, { argv: proposal.argv, cwd: proposal.cwd }, new Date(ts))).ok) {
+    } else if ((grantHit = checkGrant(home, { argv: proposal.argv, cwd: proposal.cwd, verb: def.name }, new Date(ts))).ok) {
       // K-3：落在会话授权窗口里 → 不再逐次要令牌，但仍然逐条审计（capability = grant:<id>）
-      const g = grantHit as { ok: true; id: string; commands: string[]; scope: string; expiresAt: string };
+      const g = grantHit as { ok: true; id: string; commands: string[]; scope: string; expiresAt: string; full?: boolean };
       tokenId = `grant:${g.id}`;
-      grantCtx = { id: g.id, commands: g.commands, scope: g.scope };
+      grantCtx = { id: g.id, commands: g.commands, scope: g.scope, ...(g.full ? { full: true } : {}) };
     } else {
       audit("needs_confirm", "E_NEEDS_CONFIRM", tier, 0, { argv: proposal.argv, cwd: proposal.cwd, profile: hostProfile() });
       remember();

@@ -16,10 +16,10 @@
  * 为什么不做跨进程共享：那需要常驻守护进程，而我们已经有一个（面板服务）。
  * 所以授权由**谁执行谁持有** —— 面板里开的窗口给面板用，CLI 里开的给当次 CLI 用。
  */
-import { basename } from "node:path";
+import { basename, resolve } from "node:path";
 
 export type GrantDecision =
-  | { ok: true; id: string; commands: string[]; scope: string; expiresAt: string }
+  | { ok: true; id: string; commands: string[]; scope: string; expiresAt: string; full?: boolean }
   | { ok: false; code: string; why: string };
 
 interface Grant {
@@ -29,6 +29,8 @@ interface Grant {
   because: string;
   createdAt: number;
   expiresAt: number;
+  /** 完全权限：任意命令（除硬禁名单）、home 全域、可用 shell.exec 跑任意 argv */
+  full: boolean;
 }
 
 /** 默认允许的命令（和 shell 模板里出现过的那几种保持一致，陌生人别进来） */
@@ -37,6 +39,27 @@ export const GRANT_COMMANDS = [
 ] as const;
 
 export const MAX_TTL_MS = 2 * 60 * 60 * 1000;
+/**
+ * 完全权限窗口**更短**：15 分钟。
+ * 理由：权限越大，窗口越短 —— 不然「开一次全权」会变成事实上的永久全权。
+ */
+export const FULL_MAX_TTL_MS = 15 * 60 * 1000;
+
+/**
+ * 完全权限里**依然不放开**的东西（结构性排除，不是可配置项）：
+ *  · 删除/磁盘/系统配置类：跑坏了自己也救不回来
+ *  · 下载器：把「它想跑什么」变成「网上让它跑什么」
+ *  · 解释器/壳：一条 -e / -Command 就能绕过整套闸门，等于全权变无限全权
+ */
+export const FULL_DENY = new Set([
+  "rm", "del", "erase", "rmdir", "rd", "format", "diskpart", "mkfs", "dd",
+  "reg", "regedit", "sc", "net", "netsh", "schtasks", "shutdown", "reboot", "logoff",
+  "taskkill", "bcdedit", "takeown", "icacls", "cacls", "attrib",
+  "curl", "wget", "certutil", "bitsadmin",
+  "powershell", "pwsh", "cmd", "bash", "sh", "zsh", "wsl",
+]);
+/** 内联求值：node -e / python -c / sh -c …。命令必须落在**能读的文件**上。 */
+export const INLINE_EVAL = /^(-e|--eval|-c|-p|--print|-Command|-EncodedCommand)$/i;
 
 /** 内存里的窗口表：按 home 分开（一个进程可能同时服务多个 home 的测试） */
 const store = new Map<string, Map<string, Grant>>();
@@ -47,16 +70,48 @@ const binOf = (argv0: string): string =>
 const looksLikePath = (a: string): boolean =>
   a.includes("/") || a.includes("\\") || a === ".." || a.startsWith(".") || /^[a-zA-Z]:/.test(a);
 
+/** 目标路径是否落在 home 之内（按归一化字符串比较；调用方已排除 `..`） */
+function insideHome(home: string, target: string): boolean {
+  // 两边都转绝对路径再比：home 可能是相对的（CLI 传进来的 "data"）
+  const h = norm(resolve(home));
+  const t = norm(resolve(target));
+  return t === h || t.startsWith(h + "/");
+}
+
 /** 路径归一化（反斜杠统一成正斜杠，去掉末尾斜杠） */
 const norm = (p: string): string => String(p).replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
 
 export function openGrant(
   home: string,
-  input: { commands?: unknown; scope?: string; ttlMs?: number; because?: unknown },
+  input: { commands?: unknown; scope?: string; ttlMs?: number; because?: unknown; full?: boolean },
   now = new Date(),
-): { ok: true; grant: { id: string; commands: string[]; scope: string; expiresAt: string; because: string } } | { ok: false; code: string; why: string } {
+): { ok: true; grant: { id: string; commands: string[]; scope: string; expiresAt: string; because: string; full: boolean } } | { ok: false; code: string; why: string } {
   const because = String(input.because ?? "").trim();
-  if (because.length < 4) return { ok: false, code: "E_GRANT_BECAUSE", why: "得说清为什么开这个窗口（至少 4 个字）" };
+  const full = input.full === true;
+  // 全权的理由要更硬：不是「测一下」，而是「为什么值得把闸门开到最大」
+  if (because.length < (full ? 10 : 4)) {
+    return { ok: false, code: "E_GRANT_BECAUSE", why: full ? "开完全权限必须写清为什么（至少 10 个字）" : "得说清为什么开这个窗口（至少 4 个字）" };
+  }
+  if (full) {
+    const ttlMs = Math.min(FULL_MAX_TTL_MS, Math.max(60_000, Number(input.ttlMs ?? FULL_MAX_TTL_MS)));
+    const g: Grant = {
+      id: `grn_${now.getTime().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+      commands: new Set(["*"]),
+      scope: "",
+      because, createdAt: now.getTime(), expiresAt: now.getTime() + ttlMs,
+      full: true,
+    };
+    const perHomeF = store.get(home) ?? new Map<string, Grant>();
+    perHomeF.set(g.id, g);
+    store.set(home, perHomeF);
+    return {
+      ok: true,
+      grant: {
+        id: g.id, commands: ["*"], scope: "(整个 home)",
+        expiresAt: new Date(g.expiresAt).toISOString(), because: g.because, full: true,
+      },
+    };
+  }
 
   const wanted = (Array.isArray(input.commands) ? input.commands : [input.commands])
     .flatMap((x) => String(x ?? "").split(","))
@@ -81,6 +136,7 @@ export function openGrant(
     because,
     createdAt: now.getTime(),
     expiresAt: now.getTime() + ttlMs,
+    full: false,
   };
   const perHome = store.get(home) ?? new Map<string, Grant>();
   perHome.set(g.id, g);
@@ -90,13 +146,13 @@ export function openGrant(
     ok: true,
     grant: {
       id: g.id, commands: [...g.commands], scope: g.scope,
-      expiresAt: new Date(g.expiresAt).toISOString(), because: g.because,
+      expiresAt: new Date(g.expiresAt).toISOString(), because: g.because, full: g.full,
     },
   };
 }
 
 export function listGrants(home: string, now = new Date()): Array<{
-  id: string; commands: string[]; scope: string; because: string;
+  id: string; commands: string[]; scope: string; because: string; full: boolean;
   createdAt: string; expiresAt: string; remainingS: number;
 }> {
   const perHome = store.get(home);
@@ -105,7 +161,7 @@ export function listGrants(home: string, now = new Date()): Array<{
   for (const g of perHome.values()) {
     if (g.expiresAt <= now.getTime()) { perHome.delete(g.id); continue; }
     out.push({
-      id: g.id, commands: [...g.commands], scope: g.scope, because: g.because,
+      id: g.id, commands: [...g.commands], scope: g.scope, because: g.because, full: g.full,
       createdAt: new Date(g.createdAt).toISOString(), expiresAt: new Date(g.expiresAt).toISOString(),
       remainingS: Math.round((g.expiresAt - now.getTime()) / 1000),
     });
@@ -131,7 +187,7 @@ export function revokeAll(home: string): number {
  * 严格：命令、目录、路径参数、shell 元字符、密钥字样，任何一条不过就是不过。
  */
 export function checkGrant(
-  home: string, req: { argv: readonly string[]; cwd: string }, now = new Date(),
+  home: string, req: { argv: readonly string[]; cwd: string; verb?: string }, now = new Date(),
 ): GrantDecision {
   const perHome = store.get(home);
   if (!perHome || !perHome.size) return { ok: false, code: "E_NO_GRANT", why: "没有打开任何授权窗口" };
@@ -151,9 +207,43 @@ export function checkGrant(
     }
   }
 
+  // 内联求值一律拒（两种窗口都拒）：命令必须落在能读的文件上，否则审计只剩一个 -e
+  const inlineAt = argv.findIndex((a) => INLINE_EVAL.test(a));
+  if (inlineAt > 0) {
+    return { ok: false, code: "E_GRANT_INLINE_EVAL", why: `不许内联求值（${argv[inlineAt]}）：把代码写进文件再跑，才留得下痕迹` };
+  }
+
+  const wantFull = req.verb === "shell.exec";
   let picked: Grant | null = null;
+  let sawFullOnlyMismatch = false;
+  let sawFullDeny = "";
+  let sawPathEscape = "";
   for (const g of perHome.values()) {
     if (g.expiresAt <= now.getTime()) { perHome.delete(g.id); continue; }
+
+    // 完全权限窗口：任意命令（除硬禁名单）+ 整个 home；但**普通窗口不因此变宽**
+    if (g.full) {
+      if (FULL_DENY.has(bin)) { sawFullDeny = bin; continue; }
+      if (!insideHome(home, req.cwd)) continue;
+      const badPath = argv.slice(1).filter((a) => {
+        if (!looksLikePath(a)) return false;
+        const n = norm(a);
+        if (n.includes("..")) return true;
+        // 绝对路径：必须**本身**就在 home 内（拼 cwd 只会把任意绝对路径「洗白」）
+        if (n.startsWith("/") || /^[a-z]:/.test(n)) {
+          if (!insideHome(home, n)) { sawPathEscape = a; return true; }
+          return false;
+        }
+        return false;
+      });
+      if (badPath.length) continue;
+      picked = g;
+      break;
+    }
+
+    // 普通窗口**不允许**用 shell.exec 跑任意 argv：它只能跑模板（走 shell.run）
+    if (wantFull) { sawFullOnlyMismatch = true; continue; }
+
     // ② 命令白名单
     if (!g.commands.has(bin)) continue;
     // ③ 目录：cwd 必须落在 scope 内
@@ -173,15 +263,34 @@ export function checkGrant(
   }
 
   if (!picked) {
+    if (wantFull && sawPathEscape) {
+      return {
+        ok: false, code: "E_GRANT_PATH",
+        why: sawPathEscape + " 在 home 之外 —— 完全权限也不出这个家门",
+      };
+    }
+    if (wantFull && sawFullDeny) {
+      return {
+        ok: false, code: "E_GRANT_FULL_DENY",
+        why: sawFullDeny + " 在完全权限窗口里也**永久拒绕**（删/磁盘/系统/下载/壳）—— 这一条不可配置",
+      };
+    }
+    if (wantFull) {
+      return {
+        ok: false, code: "E_GRANT_NEEDS_FULL",
+        why: "任意 argv 只能在**完全权限**窗口里跑（普通窗口只放行注册过的模板）；而且删/系统/下载/壳类命令在全权窗口里也仍然拒绝",
+      };
+    }
     return {
       ok: false, code: "E_GRANT_NO_MATCH",
-      why: `窗口里没有能覆盖这条命令的：${bin} @ ${req.cwd}（先看 jingjing grant list）`,
+      why: `窗口里没有能覆盖这条命令的：${bin} @ ${req.cwd}（先看 jingjing grant list）` + (sawFullOnlyMismatch ? "" : ""),
     };
   }
   void scopeInCwd;
   return {
     ok: true, id: picked.id, commands: [...picked.commands],
-    scope: picked.scope, expiresAt: new Date(picked.expiresAt).toISOString(),
+    scope: picked.full ? "" : picked.scope, expiresAt: new Date(picked.expiresAt).toISOString(),
+    full: picked.full,
   };
 }
 

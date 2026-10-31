@@ -38,11 +38,14 @@ test("globOk：裸 * 不炸，前缀匹配正确", () => {
   assert.equal(globOk("etc/passwd", "workspace/*"), false);
 });
 
-test("能力表：shell.run 存在，但它是 T3 且有 argv 渲染器", () => {
+test("能力表：shell.run / shell.exec 都是 T3，且 shell.exec 只能在全权限窗口里跑", async () => {
   // M5.3 时这条断言是"表里根本没有 shell.run"；5.6 之后它开了一个口子，
-  // 于是断言换成"口子必须是窄的"：危险动词仍然不存在，而 shell.run 只能走模板 + 令牌。
+  // 于是断言换成"口子必须是窄的"。K-3 又加了一个更宽的口子（任意 argv），
+  // 所以这里的不变量从"不存在"升级为"**存在但自己也会拒绝**"：
+  //   · timer 外的东西（进程/包安装/删文件）仍然不存在
+  //   · shell.exec 的 run() 在**没有授权窗口**时必须直接抛，不靠调用方自觉
   const names = verbs.map((v) => v.name);
-  for (const bad of ["shell.admin", "fs.delete", "fs.raw", "pkg.install", "shell.exec", "proc.spawn"]) {
+  for (const bad of ["shell.admin", "fs.delete", "fs.raw", "pkg.install", "proc.spawn", "net.shell"]) {
     assert.ok(!names.includes(bad), `不该有 ${bad}`);
   }
   const shell = verbByName("shell.run")!;
@@ -52,6 +55,16 @@ test("能力表：shell.run 存在，但它是 T3 且有 argv 渲染器", () => 
   assert.equal(typeof shell.tierFor, "function", "档位必须跟着模板走");
   assert.ok(names.includes("fs.trash"), "删除只提供回收站语义");
   assert.equal(verbByName("fs.write")!.tier, "T1");
+
+  // K-3：任意 argv 的那个口子 —— 存在，但**自己**会拒绝
+  const exec = verbByName("shell.exec")!;
+  assert.equal(exec.tier, "T3");
+  assert.equal(typeof exec.capability, "function");
+  await assert.rejects(
+    () => exec.run({ argv: ["node", "--version"] }, { home: "/tmp", now: () => new Date() }) as never,
+    /E_GRANT_NEEDS_FULL/,
+    "没有全权限窗口时 shell.exec 必须自己拒（run 是 async，要用 rejects）",
+  );
 });
 
 test("路径白名单：越界与符号链接逃逸都拒绝", async () => {

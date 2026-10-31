@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync, mkdirSync, existsSync, statSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync, mkdirSync, existsSync, statSync, readFileSync, rmSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -157,7 +157,10 @@ test("令牌过期后会被扫掉（不无限堆积）", () => {
   const t = issueToken(home, { verb: "shell.run", template: "node.run_script", digest, cwd: home, now: T0, ttlMs: 1000 });
   const p = join(tokensDir(home), t.token + ".json");
   assert.ok(existsSync(p));
-  // 用**明确的远期**时间：sweep 会拿文件 mtime 跟 now 比，拿“真实时间 + 1h”会随时钟漂移而翻车
+  // mtime 必须是**确定的**：sweep 拿文件 mtime 跟 now 比，而文件是刚写的（mtime=真实时间）。
+  // 真实时间一旦落进 T0+3天 前的一小时内，这条测试就会翻 —— 2026-10-31 整点那一小时真的翻了。
+  // 所以直接把 mtime 钉在 T0 上。
+  utimesSync(p, T0, T0);
   const n = sweepTokens(home, at(1000 + 86_400_000 * 3));
   assert.equal(n, 1);
   assert.equal(existsSync(p), false);

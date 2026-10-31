@@ -52,16 +52,32 @@ p, allow, T0, project.search, *, advise
 p, allow, T0, shell.templates, *, advise
 # T3：只能走注册过的模板（target 是 shell:<template>），且每次要一次性令牌
 p, allow, T3, shell.run, shell:*, enforce
+# 任意 argv：只有「完全权限」窗口能把它跑起来（见 src/grant.ts）
+p, allow, T3, shell.exec, shell:exec, enforce
 `;
 
 export function policyPath(home: string): string { return join(home, "policy.csv"); }
 export function modelPath(home: string): string { return join(home, "policy.model.conf"); }
 
 /** 模型与策略都落盘：casbin 的 newEnforcer 只接受「文件路径 / 适配器」，不接受内存 Model + 路径混搭 */
+/** 老库升级时要补的行：只在「该 verb 一行都没有」时追加，不覆盖人写的 deny */
+const REQUIRED_RULES: Array<[string, string]> = [
+  ["shell.exec", "p, allow, T3, shell.exec, shell:exec, enforce"],
+];
+
 export function ensurePolicy(home: string): string {
   mkdirSync(home, { recursive: true });
   const p = policyPath(home);
   if (!existsSync(p)) atomicWriteFile(p, DEFAULT_POLICY);
+  else {
+    try {
+      const cur = readFileSync(p, "utf8");
+      const missing = REQUIRED_RULES.filter(([verb]) => !cur.includes(verb)).map(([, line]) => line);
+      if (missing.length) {
+        atomicWriteFile(p, cur.replace(/\n?$/, String.fromCharCode(10)) + missing.join(String.fromCharCode(10)) + String.fromCharCode(10));
+      }
+    } catch { /* 补不上就按原样，不阻塞启动 */ }
+  }
   const m = modelPath(home);
   if (!existsSync(m)) atomicWriteFile(m, MODEL);
   return p;
