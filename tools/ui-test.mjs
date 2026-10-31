@@ -416,6 +416,37 @@ check("能力表的降级项与服务端一致", await (async () => {
 })(), cap.deg.slice(0, 60));
 
 // ── 横向溢出：加右栏之后中栏变窄，工具卡里的长行曾把对话列撑破 ──
+// 真踩过：按钮和草稿容器都叫 id="su-draft" → getElementById 拿到按钮，
+// 整份人格草稿被塞进 <button> 里（浅色底 + 非法嵌套，看起来像页面坏了）。
+check("页面里没有重复 id", await js(`(() => {
+  const seen = new Map();
+  const dup = [];
+  for (const el of document.querySelectorAll("[id]")) {
+    const id = el.id;
+    if (seen.has(id)) dup.push(id);
+    seen.set(id, 1);
+  }
+  return dup.length ? "DUP:" + dup.slice(0, 6).join(",") : true;
+})()`));
+
+check("人格草稿的行有样式（不是塞进按钮里的白框）", await js(`(async () => {
+  document.querySelector("#side .item[data-view=setupview]").click();
+  await new Promise((r) => setTimeout(r, 900));
+  // 直接渲染一份草稿，只为看样式（不走模型）
+  renderDraft({ blocks: { core: [{ text: "她说这句话", source: "你原话" }, { text: "模型补的", source: "模型补的（请确认）" }] } });
+  await new Promise((r) => setTimeout(r, 200));
+  const box = document.getElementById("su-draft");
+  const line = box.querySelector(".draftline");
+  const inp = line && line.querySelector("input");
+  if (!line || !inp) return "NO_LINE";
+  const shown = box.getBoundingClientRect().width > 0;
+  const flex = getComputedStyle(line).display === "flex";
+  // 输入框不能超出容器（之前宽度写死，长句被切断）
+  const fits = inp.getBoundingClientRect().right <= box.getBoundingClientRect().right + 1;
+  const insideButton = !!box.closest("button");
+  return shown && flex && fits && !insideButton;
+})()`));
+
 // ── 技能与插件：harness 的两层"借来的手脚" ──────────────────
 check("能力屏能看见插件与技能", await js(`(async () => {
   const entry = document.querySelector("#side .item[data-view=capview]");

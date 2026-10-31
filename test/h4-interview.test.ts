@@ -143,3 +143,25 @@ test("H-4 第一句话：写进 journal（不是弹个成功框）", async () =>
   assert.ok(first, "第一句话必须真的落到 journal 里");
   assert.equal(first!.kind, "agent_reply");
 });
+
+// 真踩过：五问全空时模型输出「name: 未提供具体内容（仅出现字段名）」,
+// 旧逻辑把整段塞进 core，封存后 core.md 里就是一堆这种句子。
+test("H-4 闸门：模型的借口行不进人格，字段名前缀要剥掉", () => {
+  const answers = { name: "她叫我主人" };
+  const lines = classifyLines([
+    "name: 未提供具体内容（仅出现字段名）",
+    "initiative: 用户没有回答这一项",
+    "never: 不替我确认",
+    "她叫我主人",
+    "N/A",
+  ].join(String.fromCharCode(10)), answers);
+  assert.deepEqual(lines.map((x) => x.text), ["不替我确认", "她叫我主人"]);
+  assert.equal(lines[1]!.source, "你原话", "能逐字找到的就是你原话");
+});
+
+test("H-4 解析：模型没给出可用内容时，不要硬塞进 core", () => {
+  const answers = { name: "x" };
+  const d = parseDraft("## core" + String.fromCharCode(10) + "name: 未提供具体内容（仅出现字段名）", answers);
+  assert.equal((d as any).emptyAll, true, "要能告诉调用方：这份草稿是空的");
+  assert.equal(d.blocks.core.length, 0, "借口行不该变成 core 的内容");
+});

@@ -1104,6 +1104,13 @@ export function createWebServer(deps: WebDeps) {
         };
         if (body.action === "draft") {
           const answers = body.answers ?? {};
+          // 一个字都没填就别让模型写：它会输出"未提供具体内容（仅出现字段名）"这种句子，
+          // 而我们在面板上看到的是一屏看起来很像内容的垃圾（真踩过）。
+          const filled = Object.values(answers).filter((v) => String(v ?? "").trim().length > 0);
+          if (!filled.length) {
+            json(res, 400, { error: "E_NO_ANSWERS", why: "先回答几个问题（哪怕一句），不然写出来的只会是模型的自言自语" });
+            return;
+          }
           // 有表达模型就用它写；没有就模板（**明说**，不假装是模型写的）
           let d = iv.templateDraft(answers, now());
           const complete = await expressComplete(deps);
@@ -1121,6 +1128,13 @@ export function createWebServer(deps: WebDeps) {
             } catch (e) {
               d = { ...iv.templateDraft(answers, now()), note: "模型写失败了，用你的原话 + 中立模板：" + String(e).slice(0, 80) };
             }
+          }
+          if ((d as { emptyAll?: boolean }).emptyAll) {
+            json(res, 200, {
+              ok: false, emptyAll: true, draft: d, modelAdded: 0,
+              error: "E_EMPTY_DRAFT", why: "模型这次没给出可用的内容（可能没答到点上）。换个说法再试，或者一个字一个字自己写。",
+            });
+            return;
           }
           iv.saveDraft(deps.home, d);
           json(res, 200, { ok: true, draft: d, modelAdded: iv.countModelAdded(d) });

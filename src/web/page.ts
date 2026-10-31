@@ -563,9 +563,15 @@ export const PAGE = `<!doctype html>
   #su-panel textarea { width:100%; min-height:64px; }
   #su-panel .q { margin:10px 0; }
   #su-panel .q label { display:block; font:11px/1.6 var(--mono); color:var(--fg); font-weight:700; margin-bottom:4px; }
-  #su-panel .draftline { display:flex; gap:6px; align-items:baseline; padding:4px 0; border-bottom:1px solid var(--line-dim); }
-  #su-panel .draftline .src { font:9px/1.4 var(--mono); padding:1px 4px; border:1px solid var(--line); color:var(--dim); white-space:nowrap; }
-  #su-panel .draftline.mine .src { color:var(--fg); border-color:var(--fg); }
+  #su-draft { margin-top:10px; }
+  #su-draft .draftline { display:flex; gap:8px; align-items:baseline; padding:4px 0;
+                         border-bottom:1px solid var(--line-dim); }
+  #su-draft .draftline .src { font:9px/1.4 var(--mono); padding:1px 4px; border:1px solid var(--line);
+                              color:var(--dim); white-space:nowrap; flex:none; }
+  #su-draft .draftline.mine .src { color:var(--fg); border-color:var(--fg); }
+  /* 输入框必须在行内收缩：宽度写死会把长句切掉（截图里 "name: 未提供具体内容（仅出:"） */
+  #su-draft .draftline input { flex:1 1 auto; min-width:0; width:auto; font:12px/1.5 var(--mono); }
+  #su-draft .acts { margin-top:12px; }
   #su-panel .reply { white-space:pre-wrap; border-left:1px solid var(--line); padding-left:10px; margin:8px 0; }
   /* 权限 chip：贴在输入框左边，当前会话可见可切（位置照 DeepSeek Harness） */
   .permchip { flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center;
@@ -2032,13 +2038,20 @@ async function paintSetupPanel() {
     $("#su-qs").innerHTML = (iv.questions || []).map(function (q) {
       return "<div class='q'><label>" + escapeHtml(q.q) + "</label>" +
         "<textarea id='su-a-" + escapeHtml(q.id) + "' placeholder='" + escapeHtml(q.fallback) + "'></textarea></div>";
-    }).join("") + "<div class='acts'><button id='su-draft' class='primary'>让模型写草稿</button><span id='su-iv-msg' class='hint'></span></div><div id='su-draft'></div>";
-    $("#su-draft").onclick = async function () {
+    }).join("") + "<div class='acts'><button id='su-iv-go' class='primary'>让模型写草稿</button><span id='su-iv-msg' class='hint'></span></div><div id='su-draft'></div>";
+    $("#su-iv-go").onclick = async function () {
       var msg = $("#su-iv-msg"); msg.textContent = "写草稿中…";
       var answers = {};
       (SU_IV.questions || []).forEach(function (q) { answers[q.id] = ($("#su-a-" + q.id).value || "").trim(); });
+      var filled = Object.keys(answers).filter(function (k) { return answers[k]; });
+      if (!filled.length) {
+        msg.className = "err";
+        msg.textContent = "先回答几个问题（哪怕一句）。一个字都不填，模型只会写出「未提供具体内容」这种废话。";
+        return;
+      }
       var r = await (await fetch("/api/setup/interview", { method: "POST", headers: H, body: JSON.stringify({ action: "draft", answers: answers }) })).json();
-      if (!r.ok) { msg.className = "err"; msg.textContent = r.error || "写不出来"; return; }
+      // why 是人话，error 是错误码：先显示 why
+      if (!r.ok) { msg.className = "err"; msg.textContent = r.why || r.error || "写不出来"; return; }
       msg.className = "hint"; msg.textContent = (r.draft.via === "template" ? "（没有可用模型，用你的原话 + 中立模板拼的）" : "模型写的") + " · 需要你确认的 " + r.modelAdded + " 条";
       renderDraft(r.draft);
     };
@@ -2096,7 +2109,7 @@ function renderDraft(d) {
     });
   });
   if (empty.length) {
-    html += '<p class="hint" style="margin-top:12px">这几块访谈里没说到，封存后会**保持出厂默认**：' +
+    html += '<p class="hint" style="margin-top:12px">这几块访谈里没说到，封存后会<b>保持出厂默认</b>：' +
       empty.map(function (k) { return '#' + k; }).join(' · ') + '（之后可在设置 → 人格里补）</p>';
   }
   html += '<div class="acts" style="margin-top:12px"><button id="su-seal" class="primary">封存（开第 1 代）</button><span id="su-seal-msg" class="hint"></span></div>';

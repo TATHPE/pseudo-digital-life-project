@@ -47,6 +47,8 @@ export interface Draft {
   /** 用的是哪条路：模型 / 模板（没 key 或模型挂了） */
   via: "model" | "template";
   note?: string;
+  /** 解析后一块都没有（模型没给出可用内容） */
+  emptyAll?: boolean;
 }
 
 export const draftDir = (home: string): string => join(home, "persona.draft");
@@ -59,6 +61,15 @@ const norm = (s: string): string => String(s ?? "").replace(/\s+/g, "").toLowerC
  * 判据只有一条：这一行的核心片段（去空白后 ≥8 字）能否在用户回答里找到。
  * 找不到就一律降级为「模型补的」—— 哪怕模型自己写了"你原话"。
  */
+/**
+ * 模型的**自述/借口**，不是内容：
+ *   "name: 未提供具体内容（仅出现字段名）" / "用户没有回答这一项" / "N/A"
+ * 这些行是它在说"我不知道"，把它封存进人格就是往记忆里塞垃圾 —— 直接丢。
+ * 顺带剥掉 `name:` / `never:` 这类字段名前缀：那是我在提示词里给的格式，不是内容。
+ */
+const FIELD_PREFIX = /^\s*(name|initiative|never|hate|voice|core|boundaries|values|evidence|tools|description)\s*[:：]\s*/i;
+const META_TALK = /(未提供|未说明|没有提供|没有说明|仅出现字段|字段名|无具体内容|用户没有|无法确定|无法推断|not provided|no information|n\/a|none)/i;
+
 export function classifyLines(raw: string, answers: Record<string, string>): DraftLine[] {
   const corpus = norm(Object.values(answers).join(""));
   const out: DraftLine[] = [];
@@ -66,8 +77,12 @@ export function classifyLines(raw: string, answers: Record<string, string>): Dra
     const line = line0.replace(/^\s*[-*・]\s*/, "").trim();
     if (!line) continue;
     // 去掉模型可能加的标记，按内容重判
-    const text = line.replace(/^\[(你原话|模型补的（请确认）)\]\s*/, "").trim();
+    let text = line.replace(/^\[(你原话|模型补的（请确认）)\]\s*/, "").trim();
+    text = text.replace(FIELD_PREFIX, "").trim();
     if (!text) continue;
+    // 太短或只是它在说"我不知道" → 不是内容，丢掉（否则会被封存进 persona）
+    if (META_TALK.test(text)) continue;
+    if (text.replace(/[\s\p{P}]/gu, "").length < 2) continue;
     const probe = norm(text);
     // 阈值取 4：中文四五个字就能是一句完整的话（"不替我确认"），6 会把它误判成模型编的
     const quoted = probe.length >= 4 && corpus.includes(probe);
@@ -115,10 +130,11 @@ export function parseDraft(raw: string, answers: Record<string, string>, now = n
     if (!t) continue;
     blocks[cur]!.push(...classifyLines(t, answers));
   }
-  // 一块都没解析出来 → 当成整体交给 core，仍然过闸
-  const empty = PERSONA_FILES.every((f) => blocks[f].length === 0);
-  if (empty) blocks.core = classifyLines(raw, answers);
-  return { blocks, createdAt: now.toISOString(), via: "model" };
+  // 一块都没解析出来时**不要**把原始输出硬塞进 core：
+  // 那条路的实际后果是把模型的一句"未提供具体内容"封存成 core.md（踩过）。
+  // 交给调用方判断：emptyAll 为 true 就别存草稿，直接把原因说给人。
+  const emptyAll = PERSONA_FILES.every((f) => blocks[f].length === 0);
+  return { blocks, createdAt: now.toISOString(), via: "model", ...(emptyAll ? { emptyAll: true } : {}) } as Draft;
 }
 
 export function saveDraft(home: string, d: Draft): void {

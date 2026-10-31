@@ -9,7 +9,7 @@
 | 项 | 数量 |
 |---|---|
 | 源文件（src/**/*.ts） | 92 |
-| 错误码 E_* | 181 |
+| 错误码 E_* | 183 |
 | verbs | 23 |
 | CLI 子命令 | 37 |
 
@@ -77,6 +77,7 @@
 | `E_EMBED_DOWN` | `src/retrieve.ts` |
 | `E_EMBED_EMPTY` | `src/retrieve.ts` |
 | `E_EMPTY` | `src/agentguard.ts` `src/ingest.ts` `src/store.ts` `src/web/server.ts` |
+| `E_EMPTY_DRAFT` | `src/web/server.ts` |
 | `E_EMPTY_EMBEDDING` | `src/embed.ts` |
 | `E_ENCODING` | `src/ingest.ts` `src/persona.ts` `src/web/server.ts` |
 | `E_EXISTS` | `src/verbs.ts` |
@@ -114,6 +115,7 @@
 | `E_MODEL` | `src/autobio.ts` `src/eval.ts` `src/provider.ts` `src/transport.ts` |
 | `E_NEEDS_CONFIRM` | `src/confirm.ts` `src/execute.ts` `src/posture.ts` |
 | `E_NEEDS_EGRESS` | `src/egress.ts` `src/posture.ts` `src/project.ts` `src/verbs.ts` |
+| `E_NO_ANSWERS` | `src/web/server.ts` |
 | `E_NO_ARGV` | `src/shell.ts` |
 | `E_NO_AVATAR` | `src/web/server.ts` |
 | `E_NO_CALL` | `src/toolsmoke.ts` |
