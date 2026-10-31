@@ -427,7 +427,29 @@ check("左右边栏能收起来、也能再展开", await js(`(async () => {
   return ok1 && ok2 && ok3 ? true : "wing:" + off[0] + " folio:" + folioOff[2] + " back:" + back.join("/") + " before:" + before.join("/");
 })()`));
 
+// 抓到过：`body.wing-off #folio{display:none}` 让「只收左栏」把卷宗一起干掉，
+// 而且点 ◧ 也打不开（状态变成 wing-off + folio-off 两个都关）。
+check("收纳左栏不牵连右栏，卷宗能单独开关", await js(`(async () => {
+  const shown = () => document.getElementById("folio").getBoundingClientRect().width > 0;
+  if (innerWidth <= 1180) return null;   // 窄屏是抽屉，没有「收纳」这回事
+  const cols = () => getComputedStyle(document.body).gridTemplateColumns.split(" ").map((x) => parseFloat(x));
+  document.getElementById("wingTog").click();
+  await new Promise((r) => setTimeout(r, 300));
+  const wingOff = cols()[0] < 40;
+  const folioStays = shown();
+  document.getElementById("folioX").click();
+  await new Promise((r) => setTimeout(r, 300));
+  const folioOff = !shown();
+  document.getElementById("folioTog").click();
+  await new Promise((r) => setTimeout(r, 300));
+  const folioBack = shown();
+  document.getElementById("wingHandle").click();
+  await new Promise((r) => setTimeout(r, 300));
+  return wingOff && folioStays && folioOff && folioBack;
+})()`));
+
 check("收纳选择记得住（刷新后还在）", await js(`(async () => {
+  if (innerWidth <= 1180) return null;
   document.getElementById("wingTog").click();
   await new Promise((r) => setTimeout(r, 250));
   const saved = localStorage.getItem("jj.wing");

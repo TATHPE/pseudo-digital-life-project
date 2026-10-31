@@ -363,6 +363,9 @@ export const PAGE = `<!doctype html>
   .dbar i { display:block; height:100%; background:var(--ink); }
   /* ── 收纳：两个边栏都能收成一条窄带，状态记在 localStorage ──────────
      收起来不是删掉：窄带上留一个能点开的把手，键盘 Tab 也够得着。 */
+  /* 收纳只在宽屏成立：≤1180 时两个边栏本来就是抽屉，再叠一层「收起」只会互相打架
+     （之前左栏一收，右栏卷宗跟着 display:none，点了也打不开 —— 就是这条的锅） */
+  @media (min-width: 1181px) {
   body.wing-off { --rail:34px; }
   body.wing-off #side > *:not(#wingHandle) { display:none; }
   body.wing-off #side { padding:0; overflow:hidden; }
@@ -371,8 +374,6 @@ export const PAGE = `<!doctype html>
                                padding:12px 0; border:0; background:#000; color:var(--ink);
                                font:10px/1 var(--mono); font-weight:700; cursor:pointer; }
   body.wing-off #wingHandle:hover { color:var(--fg); background:rgba(233,240,242,.08); }
-  body.wing-off #folio { display:none; }
-  body.wing-off #folioTog { display:inline-block; }
   #wingTog { margin-left:auto; background:#000; border:1px solid var(--line-dim); color:var(--ink-dim);
              font:10px/1 var(--mono); padding:4px 6px; cursor:pointer; }
   #wingTog:hover { color:var(--ink); border-color:var(--ink); }
@@ -382,6 +383,7 @@ export const PAGE = `<!doctype html>
   #folioX { background:#000; border:1px solid var(--line-dim); color:var(--ink-dim); font:10px/1 var(--mono);
             padding:4px 7px; cursor:pointer; margin-left:auto; }
   #folioX:hover { color:var(--ink); border-color:var(--ink); }
+  }   /* @media (min-width:1181px)：收纳规则结束 */
   /* 1181–1440px：卷宗变窄；≤1180px：卷宗收成抽屉（照它把 folio 抽出来的做法） */
   @media (max-width: 1440px) { :root { --folio:290px; --rail:220px; } }
   @media (max-width: 1366px) { .ro:nth-last-child(-n+2) { display:none; } }
@@ -2611,8 +2613,10 @@ setInterval(loadDossier, 20000);
 // 状态存在 localStorage：这是**这台机器的视觉偏好**，不该进 data/config.json
 // （那是会跟着搬家走的东西；换台机器屏幕宽度不同，不该跟着搬）。
 function applyLayout() {
-  var wing = localStorage.getItem('jj.wing') === 'off';
-  var folio = localStorage.getItem('jj.folio') === 'off';
+  // 窄屏不套用这两个偏好：那里它们由抽屉管
+  var narrow = innerWidth <= 1180;
+  var wing = !narrow && localStorage.getItem('jj.wing') === 'off';
+  var folio = !narrow && localStorage.getItem('jj.folio') === 'off';
   document.body.classList.toggle('wing-off', wing);
   document.body.classList.toggle('folio-off', folio);
   var h = document.getElementById('wingHandle');
@@ -2629,20 +2633,40 @@ function toggleFolio(on) {
   applyLayout();
 }
 applyLayout();
-var wingTog = document.getElementById('wingTog');
-if (wingTog) wingTog.onclick = function () { toggleWing(false); };
 var wingHandle = document.getElementById('wingHandle');
 if (wingHandle) wingHandle.onclick = function () { toggleWing(true); };
+// ── 卷宗的开/关（唯一入口）──────────────────────────────────────
+// 两套状态不能混：窄屏是**抽屉**（folio-open，只在内存里），宽屏是**收纳**（folio-off，记 localStorage）。
+// 之前 » 在手机上也去写 folio-off，于是抽屉一关，◧ 再也打不开（folio-off 压着 display:none）。
+var NARROW = function () { return innerWidth <= 1180; };
+function folioIsOpen() {
+  return NARROW() ? document.body.classList.contains('folio-open')
+                  : !document.body.classList.contains('folio-off');
+}
+function setFolioOpen(open) {
+  if (NARROW()) {
+    document.body.classList.toggle('folio-open', open);
+    document.body.classList.remove('folio-off');   // 窄屏不认宽屏留下的收纳状态
+    return;
+  }
+  toggleFolio(open);
+}
 var folioX = document.getElementById('folioX');
-if (folioX) folioX.onclick = function () { toggleFolio(false); };
-// 窄屏时「◧ 卷宗」是抽屉开关；宽屏时它就是收纳开关（同一颗按钮，别让人记两套）
-// 参数是**想要的结果**（true = 展开），不是「现在是不是关着」—— 之前这里传了反的，
-// 宽屏点一下反而确认了「关着」。
+if (folioX) folioX.onclick = function () { setFolioOpen(false); };
 var folioTog2 = document.getElementById('folioTog');
-if (folioTog2) folioTog2.onclick = function () {
-  if (innerWidth <= 1180) { document.body.classList.toggle('folio-open'); return; }
-  toggleFolio(document.body.classList.contains('folio-off'));
+if (folioTog2) folioTog2.onclick = function () { setFolioOpen(!folioIsOpen()); };
+// 左栏的 «：窄屏只是关抽屉，别把「收起」记成偏好
+var wingTog2 = document.getElementById('wingTog');
+if (wingTog2) wingTog2.onclick = function () {
+  if (NARROW()) { document.getElementById('side').classList.remove('open'); return; }
+  toggleWing(false);
 };
+// 窗口跨过 1180：把另一种模式的状态清干净（窄屏拖宽不该带着 folio-open）
+addEventListener('resize', function () {
+  if (NARROW()) document.body.classList.remove('wing-off', 'folio-off');
+  else document.body.classList.remove('folio-open');
+  applyLayout();
+});
 document.addEventListener('keydown', function (e) {
   if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
   var k = (e.key || '').toLowerCase();
