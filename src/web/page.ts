@@ -43,7 +43,7 @@ export const PAGE = `<!doctype html>
     --cyan:#0f97a4; --cyan-hi:#7fe6f2; --fg:#e9f0f2; --dim:#9fb0b3;
     --amber:#ffb454; --red:#ff5f56; --ok:#7fd18b;
     --mono:ui-monospace,"Cascadia Mono",Consolas,"Noto Sans Mono",monospace;
-    --rail:252px; --head:56px; --readh:40px;
+    --rail:240px; --folio:330px; --head:56px; --readh:40px;
 
     /* ── 仪表带：照参照图的"标签 / 读数 / 单位"三件套，一格一读数 ── */
   }
@@ -120,8 +120,10 @@ export const PAGE = `<!doctype html>
   body {
     margin:0; color:var(--fg); background:var(--void);
     font:15px/1.72 -apple-system,"Segoe UI","Microsoft YaHei","PingFang SC","Noto Sans SC",sans-serif;
-    display:grid; grid-template-rows:var(--head) var(--readh) 1fr; grid-template-columns:var(--rail) 1fr;
-    grid-template-areas:"head head" "readout readout" "side main"; height:100vh; overflow:hidden;
+    display:grid; grid-template-rows:var(--head) var(--readh) 1fr;
+    grid-template-columns:var(--rail) minmax(0,1fr) var(--folio);
+    grid-template-areas:"head head head" "readout readout readout" "side main folio";
+    height:100vh; overflow:hidden;
     background-image:
       radial-gradient(900px 420px at 60% -140px, rgba(233,240,242,.06), transparent 70%),
       repeating-linear-gradient(0deg, rgba(233,240,242,.04) 0 1px, transparent 1px 36px),
@@ -290,6 +292,84 @@ export const PAGE = `<!doctype html>
   /* 角标也是文字：.32 合成后 2.6:1，改 ink-dim（7.6:1） */
   .frame b { position:absolute; font:9px/1 var(--mono); letter-spacing:.2em; color:var(--ink-dim); }
   .frame b.bl { bottom:5px; left:10px; } .frame b.br { bottom:5px; right:10px; }
+  /* ── 三列骨架（照 Trianon：wing ｜ stage ｜ folio）──────────
+     结构抄它，配色仍是我们的：黑底 + 白细线 + 加粗白字。
+     wing = 左栏（品牌 / 搜索 / 工作区 / 今天 / 各分区）
+     stage = 中栏（标题条 + 对话 + 输入）
+     folio = 右栏「卷宗」三张可折卡（Plan / Changes / Context） */
+  .wingtop { margin-bottom:10px; }
+  .wmark { display:flex; align-items:baseline; gap:8px; padding:2px 2px 8px;
+           border-bottom:1px solid var(--line-dim); margin-bottom:8px; }
+  .wmark b { font:15px/1 var(--mono); letter-spacing:.3em; color:var(--ink); font-weight:700;
+             flex:none; white-space:nowrap; }
+  .wmark span { font:8px/1.4 var(--mono); letter-spacing:.14em; color:var(--ink-dim);
+                min-width:0; overflow:hidden; }
+  .wsearch { position:relative; margin-bottom:10px; }
+  .wsearch kbd { position:absolute; right:6px; top:50%; transform:translateY(-50%);
+                 font:9px/1 var(--mono); color:var(--ink-dim); border:1px solid var(--line-dim);
+                 padding:3px 4px; background:#000; pointer-events:none; }
+  .wsec { display:flex; align-items:center; gap:8px; margin:10px 0 5px;
+          font:9px/1 var(--mono); letter-spacing:.26em; color:var(--ink-dim); font-weight:700; }
+  .wsec::after { content:""; flex:1; height:1px; background:var(--line-dim); }
+  .witem { border:1px solid var(--line-dim); background:#000; color:var(--ink);
+           font:12px/1.5 inherit; padding:5px 9px; margin-bottom:6px; }
+  .witem .m { display:block; font:9px/1.5 var(--mono); color:var(--ink-dim); letter-spacing:.04em; }
+  /* 中栏标题条：会话名 + 状态 + 卷宗开关 */
+  #stagebar { display:flex; align-items:center; gap:10px; flex:none; height:44px; padding:0 22px;
+              border-bottom:1px solid var(--line-dim); background:rgba(8,11,10,.9); }
+  #stagebar .stt { font:12px/1 var(--mono); letter-spacing:.14em; color:var(--ink); font-weight:700;
+                   overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #stagebar .sts { font:9px/1 var(--mono); letter-spacing:.18em; color:var(--ink-dim); white-space:nowrap; }
+  #stagebar .str { margin-left:auto; display:flex; align-items:center; gap:8px; }
+  #folioTog { display:none; background:#000; border:1px solid var(--line); color:var(--ink);
+              font:10px/1 var(--mono); letter-spacing:.1em; padding:6px 9px; cursor:pointer; }
+  #folioTog:hover { background:rgba(233,240,242,.1); }
+  /* 右栏：卷宗 */
+  #folio { grid-area:folio; min-height:0; overflow-y:auto; background:#000;
+           border-left:1px solid var(--line); padding:12px 12px 30px; }
+  #folio .fcap { display:flex; align-items:baseline; gap:8px; margin-bottom:10px;
+                 padding-bottom:7px; border-bottom:1px solid var(--line-dim); }
+  #folio .fcap b { font:13px/1 var(--mono); letter-spacing:.3em; color:var(--ink); font-weight:700; }
+  #folio .fcap span { font:8px/1 var(--mono); letter-spacing:.18em; color:var(--ink-dim); }
+  .dcard { border:1px solid var(--line); background:#000; margin-bottom:9px; position:relative; }
+  .dcard::after { content:""; position:absolute; top:3px; right:3px; width:5px; height:5px;
+                  border-top:1px solid var(--line); border-right:1px solid var(--line); pointer-events:none; }
+  .dtab { display:flex; align-items:center; gap:8px; width:100%; text-align:left; cursor:pointer;
+          background:#000; border:0; border-bottom:1px solid var(--line-dim); color:var(--ink);
+          font:10px/1 var(--mono); letter-spacing:.2em; font-weight:700; padding:8px 9px; }
+  .dtab:hover { background:rgba(233,240,242,.07); }
+  .dtab i { font-style:normal; color:var(--ink-dim); letter-spacing:.1em; }
+  .dtab b { font-weight:700; }
+  .dtab .n { margin-left:auto; font:9px/1 var(--mono); color:var(--ink-dim); letter-spacing:.08em; }
+  .dcard.closed .din { display:none; }
+  .dcard.closed .dtab { border-bottom:0; }
+  .din { padding:8px 9px; font:11px/1.62 var(--mono); color:var(--ink); }
+  .dline { display:flex; gap:8px; padding:4px 0; border-bottom:1px solid rgba(233,240,242,.07); }
+  .dline:last-child { border-bottom:0; }
+  .dline .k { color:var(--ink-dim); flex:none; }
+  .dline .t { color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .dline .v { margin-left:auto; color:var(--ink); font-weight:700; flex:none; }
+  .dempty { color:var(--ink-dim); font:10px/1.6 var(--mono); letter-spacing:.04em; }
+  .dact { margin-top:7px; display:flex; gap:6px; flex-wrap:wrap; }
+  .dact button { background:#000; border:1px solid var(--line-dim); color:var(--ink);
+                 font:10px/1 var(--mono); padding:5px 7px; cursor:pointer; }
+  .dact button:hover { border-color:var(--ink); background:rgba(233,240,242,.08); }
+  .dchg { white-space:pre-wrap; word-break:break-all; font:10px/1.55 var(--mono);
+          color:var(--ink-dim); max-height:200px; overflow:auto; margin:0; }
+  .dbar { height:3px; background:rgba(233,240,242,.16); margin-top:5px; }
+  .dbar i { display:block; height:100%; background:var(--ink); }
+  /* 1181–1440px：卷宗变窄；≤1180px：卷宗收成抽屉（照它把 folio 抽出来的做法） */
+  @media (max-width: 1440px) { :root { --folio:290px; --rail:220px; } }
+  @media (max-width: 1366px) { .ro:nth-last-child(-n+2) { display:none; } }
+  @media (max-width: 1180px) {
+    body { grid-template-columns:var(--rail) 1fr;
+           grid-template-areas:"head head" "readout readout" "side main"; }
+    #folioTog { display:inline-block; }
+    #folio { position:fixed; z-index:13; top:var(--head); bottom:0; right:0; width:min(88vw,360px);
+             transform:translateX(102%); transition:.2s; box-shadow:-14px 0 30px rgba(0,0,0,.6); }
+    body.folio-open #folio { transform:none; }
+  }
+
   @media (max-width: 860px) {
     body { grid-template-columns:1fr; grid-template-rows:var(--head) 1fr; grid-template-areas:"head" "main"; }
     #readoutbar, .ticker { display:none; }
@@ -297,16 +377,22 @@ export const PAGE = `<!doctype html>
     #composer .wrap { align-items:center; }
     #m { overflow:hidden; }
     /* 抽屉：手机上不能是半透明的——聊天内容会透出来，看不出哪层在上 */
-    aside { position:fixed; z-index:12; top:var(--head); bottom:0; left:0; width:82vw; max-width:320px;
+    aside#side { position:fixed; z-index:12; top:var(--head); bottom:0; left:0; width:82vw; max-width:320px;
             transform:translateX(-102%); transition:.22s; border-right:1px solid var(--line);
             background:var(--void); }
-    aside.open { transform:none; }
+    aside#side.open { transform:none; }
     /* 遮罩用 box-shadow 而不是伪元素：伪元素 z-index:-1 会被 aside 自己的背景盖住，等于没有 */
-    aside.open { box-shadow:0 0 0 100vmax rgba(0,0,0,.5); }
+    aside#side.open { box-shadow:0 0 0 100vmax rgba(0,0,0,.5); }
+    /* 卷宗在手机上就是一张从右边推出来的抽屉，默认完全藏起来 */
+    #folioTog { display:inline-block; }
+    #folio { left:auto; right:0; width:min(88vw,380px); max-width:none; transform:translateX(103%); }
+    body.folio-open #folio { transform:none; box-shadow:0 0 0 100vmax rgba(0,0,0,.5); }
     .chip { display:none; }
     /* 窄屏状态行分级：保留时间与计数，收起那句描述（它最长、最容易被截成半句） */
     #statetext { display:none; }
     #menu { display:inline-flex; }
+    #stagebar { padding:0 14px; height:40px; }
+    .wsearch kbd { display:none; }
     /* 底部装饰标签会和输入框叠在一起，手机上直接不要 */
     .frame b { display:none; }
   }
@@ -540,6 +626,14 @@ export const PAGE = `<!doctype html>
 </header>
 
 <aside id="side">
+  <div class="wingtop">
+    <div class="wmark"><b>鲸鲸</b><span>PSEUDO · DIGITAL · LIFE</span></div>
+    <div class="wsearch"><input id="q" class="searchbox" placeholder="搜记忆 / 文档…" autocomplete="off"><kbd>Ctrl K</kbd></div>
+    <div class="wsec">工 作 区</div>
+    <div class="witem" id="wsroot" title="本机工作区（data/ 记忆库 · persona/ 人格 · workspace/ 脚本）">本机 · 记忆库<span class="m" id="wspath">…</span></div>
+    <div class="wsec">今 天</div>
+    <div id="sesslist"></div>
+  </div>
   <div class="sec" id="pendsec" hidden><h3>PENDING · 待确认</h3><div id="pendlist"></div></div>
   <div class="sec" id="propsec" hidden><h3><button type="button" data-tog="prop">它想做的 <span class="n" id="propcount"></span></button></h3><div id="proplist"></div></div>
   <div class="sec" id="egrsec" hidden><h3><button type="button" data-tog="egr">它想读代码 <span class="n" id="egrcount"></span></button></h3>
@@ -554,8 +648,6 @@ export const PAGE = `<!doctype html>
   <div class="sec" id="surfsec" hidden><h3><button type="button" data-tog="surf">抽检 <span class="n" id="surfcount"></span></button></h3>
     <p class="hint">这几根线是它自己连的，最没把握的排前面。判错了就点「不对」，当场断。</p>
     <div id="surflist"></div></div>
-  <div class="sec"><input id="q" class="searchbox" placeholder="搜记忆 / 文档…（Ctrl+K）" autocomplete="off"></div>
-  <div class="sec"><h3>最近</h3><div id="sesslist"></div></div>
   <!-- 内容在前、参考在后：TOOLS 有 16 项，放在中间会把 DOCS / MEMORY 挤到折叠线以下 -->
   <div class="sec" data-sec="docs"><h3><button type="button" data-tog="docs">DOCS <span class="n" id="doccount"></span></button></h3><div id="doclist"></div>
     <div class="ingest">
@@ -606,6 +698,13 @@ export const PAGE = `<!doctype html>
 </div>
 
 <main>
+  <div id="stagebar">
+    <span class="stt" id="stTitle">对话</span>
+    <span class="sts" id="stSub"></span>
+    <span class="str"><span class="sts" id="stState"></span>
+      <button id="folioTog" type="button" title="卷宗 · Plan / Changes / Context">◧ 卷宗</button>
+    </span>
+  </div>
   <button id="jump" type="button">↓ 回到最新 <span id="jumpn" class="badge dim2"></span></button>
   <div id="undo" hidden><span id="undo-text"></span><button id="undo-go">撤销</button></div>
     <div id="scroll"><div class="col">
@@ -820,6 +919,28 @@ export const PAGE = `<!doctype html>
   </div></form>
 </main>
 
+</main>
+
+<!-- 右栏「卷宗」（结构照 Trianon 的 Dossier：Plan / Changes / Context 三张可折卡） -->
+<aside id="folio" aria-label="卷宗">
+  <div class="fcap"><b>卷 宗</b><span>DOSSIER</span></div>
+
+  <div class="dcard" data-card="plan">
+    <button class="dtab" type="button"><i>I</i><b>计 划</b><span class="n" id="dc-plan-n"></span></button>
+    <div class="din" id="dc-plan"><p class="dempty">…</p></div>
+  </div>
+
+  <div class="dcard" data-card="chg">
+    <button class="dtab" type="button"><i>II</i><b>改 动</b><span class="n" id="dc-chg-n"></span></button>
+    <div class="din" id="dc-chg"><p class="dempty">…</p></div>
+  </div>
+
+  <div class="dcard" data-card="ctx">
+    <button class="dtab" type="button"><i>III</i><b>上 下 文</b><span class="n" id="dc-ctx-n"></span></button>
+    <div class="din" id="dc-ctx"><p class="dempty">…</p></div>
+  </div>
+</aside>
+
 <div id="permpop" hidden role="dialog" aria-modal="true" aria-label="权限档"><div class="permbox">
   <p class="hint">这是<b>当前会话</b>的权限档。改完立刻生效，关掉面板就回到逐次确认。</p>
   <div id="permopts"></div>
@@ -841,6 +962,9 @@ let sideActive = null;   // 侧栏里最后点的那一项（文档/工具/记�
 
 
 var chatScroll = 0;   // 切走前记下对话滚到哪了
+const VIEWNAME = { chat: "对话 · CHAT", cfg: "设置 · CONFIG", toolview: "工具 · TOOL",
+  memview: "记忆 · MEMORY", docview: "文档 · DOC", auditview: "动作 · ACTIONS",
+  searchview: "搜索 · SEARCH", propview: "它想做的一件事", setupview: "首次配置 · SETUP" };
 function show(v) {
   // 切走时把滚动位置存下来：隐藏 #chat 会让 #scroll 的 scrollHeight 塌成 0，浏览器会把 scrollTop 归零
   if (view === "chat" && v !== "chat") chatScroll = $("#scroll").scrollTop;
@@ -879,6 +1003,9 @@ function show(v) {
     sideActive.classList.add("on");
   }
   $("#side").classList.remove("open");
+  // 标题条（照 Trianon 的 stage 顶部）：当前在哪一屏，别让人靠猜
+  const st = $("#stTitle"); if (st) st.textContent = VIEWNAME[v] || v;
+  const sub = $("#stSub"); if (sub) sub.textContent = v === "chat" ? "本地 · 记忆库" : "";
 }
 function gapText(ms) {
   const m = Math.floor(ms / 60000), d = Math.floor(m / 1440), h = Math.floor((m % 1440) / 60);
@@ -2379,6 +2506,65 @@ $("#p-save").onclick = async () => {
   else { m.className = "err"; m.textContent = j.error || "FAILED"; }
 };
 
+// ── 卷宗（右栏）：Plan / Changes / Context ───────────────────────────
+// 数据来自 /api/dossier（只读）。它不猜、不跑命令：
+//   Plan   = 她惦记的事（agenda.json）+ 没闭合的线（memories 里的 thread）
+//   Changes= 我们自己的账本 exec_audit 里**真的动过东西**的那几条（写入/执行）
+//   Context= 记忆/文档/分块/今天用量 —— 都是系统量，不是装饰数字
+var DOSSIER = null;
+// 生成代码里禁反斜杠转义（TS 模板字符串会吃掉一层）：JS 字符串只用单引号，HTML 属性只用双引号
+function dline(k, v, t) {
+  return '<div class="dline"><span class="k">' + escapeHtml(k) + '</span>' +
+    '<span class="t" title="' + escapeHtml(t || v) + '">' + escapeHtml(v) + '</span></div>';
+}
+function renderDossier() {
+  var d = DOSSIER; if (!d) return;
+  var ag = d.plan.agenda || [], th = d.plan.threads || [];
+  var n = ag.length + th.length;
+  document.getElementById('dc-plan-n').textContent = n ? n + ' 条' : '';
+  var ph = '';
+  for (var i = 0; i < ag.length; i++) ph += dline(ag[i].k, ag[i].t, ag[i].from);
+  for (var j = 0; j < th.length; j++) {
+    ph += dline(th[j].aging ? '拖了 ' + th[j].d + ' 天' : th[j].d + ' 天', th[j].t, '#' + th[j].id);
+  }
+  document.getElementById('dc-plan').innerHTML = ph || '<p class="dempty">手上没有未了的事。</p>';
+  var ch = d.changes || [];
+  document.getElementById('dc-chg-n').textContent = ch.length ? ch.length + ' 条' : '';
+  var chh = '';
+  for (var k2 = 0; k2 < ch.length; k2++) {
+    var r = ch[k2], a = r.argv || '';
+    try { var o = JSON.parse(a); if (o && o.argv) a = o.argv.join(' '); else if (o && o.path) a = o.path; } catch (e) { /* 不是 JSON 就原样 */ }
+    chh += '<div class="dline"><span class="k">' + (r.ok ? '✓' : '✗') + ' ' + escapeHtml(r.verb) +
+      '</span><span class="t" title="' + escapeHtml(a) + '">' + escapeHtml(a) + '</span></div>';
+  }
+  document.getElementById('dc-chg').innerHTML = chh || '<p class="dempty">这一轮还没动过东西。她动手时（含被拒的）都会记在这里。</p>';
+  var c = d.context || {};
+  document.getElementById('dc-ctx-n').textContent = c.model ? String(c.model).split('/').pop() : '';
+  var ctxh = '';
+  ctxh += dline('记忆', (c.memories || 0) + ' 条', 'status=active');
+  var stages = (c.stages || []).map(function (x) { return x.stage + ' ' + x.c; }).join(' · ');
+  if (stages) ctxh += dline('分层', stages, '');
+  ctxh += dline('文档', (c.docs || 0) + ' 篇 / ' + (c.chunks || 0) + ' 块', '');
+  ctxh += dline('模型', c.model || '未配置', '');
+  ctxh += dline('今天用量', (c.todayTokens || 0) + ' tok · $' + Number(c.todayUsd || 0).toFixed(4), '');
+  document.getElementById('dc-ctx').innerHTML = ctxh;
+}
+async function loadDossier() {
+  try {
+    DOSSIER = await (await fetch('/api/dossier')).json();
+    renderDossier();
+  } catch (e) { /* 拿不到就保持原样，不弹错 */ }
+}
+for (const b of document.querySelectorAll('#folio .dtab')) {
+  b.onclick = function () { b.parentElement.classList.toggle('closed'); };
+}
+var folioTog = document.getElementById('folioTog');
+if (folioTog) folioTog.onclick = function () { document.body.classList.toggle('folio-open'); };
+var ws = document.getElementById('wspath');
+if (ws) ws.textContent = 'data/ · persona/ · workspace/';
+loadDossier();
+setInterval(loadDossier, 20000);
+
 $("#composer").onsubmit = async (e) => {
   e.preventDefault();
   const text = $("#m").value.trim(); if (!text) return;
@@ -2475,8 +2661,8 @@ if ("serviceWorker" in navigator && (location.protocol === "https:" || location.
 }
 // 手机上侧栏是抽屉：没有这个按钮，SESSIONS/DOCS/MEMORY/TOOLS/CONFIG 全都不可达
 $("#menu").onclick = (e) => { e.stopPropagation(); $("#side").classList.toggle("open"); };
-loadAvatars(); applySections(); state(); timeline(); sessions(); tools(); memories(); docs(); audit(); readout(); loadConfig(); loadUi(); pending(); usage(); loadProposals(); loadSurfaceReview(); loadThreads(); loadReceipts(); loadStanding();
-setInterval(() => { state(); pending(); audit(); readout(); }, 20000);
+loadAvatars(); applySections(); state(); timeline(); sessions(); tools(); memories(); docs(); audit(); readout(); loadConfig(); loadUi(); pending(); usage(); loadProposals(); loadSurfaceReview(); loadThreads(); loadReceipts(); loadStanding(); loadEgress(); loadSetup(false);
+setInterval(() => { state(); pending(); audit(); readout(); loadEgress(); }, 20000);
 </script>
 </body></html>`;
 

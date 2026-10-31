@@ -244,14 +244,14 @@ check("D-3 常驻指令能停用", await js(`(async () => {
 // ── H-7 代码外发：待批 → 批一次 → 收回 ────────────────
 check("H-7 外发待批能看见、能批一次", await js(`(async () => {
   const card = document.querySelector('#egrlist [data-egrpath]');
-  if (!card) return false;
+  if (!card) { const a = await (await fetch('/api/egress')).json(); return 'NO_CARD pending=' + (a.pending||[]).length + ' html=' + document.querySelector('#egrlist').innerHTML.slice(0,60); }
   const path = card.dataset.egrpath;
   const once = card.querySelector('button[data-egr=once]');
-  if (!once) return false;
+  if (!once) return 'NO_BTN';
   once.click();
   await new Promise((r) => setTimeout(r, 900));
   const st = await (await fetch('/api/egress')).json();
-  return st.once >= 1 || (st.pending || []).every((p) => p.path !== path);
+  return (st.once >= 1 || (st.pending || []).every((p) => p.path !== path)) ? true : 'STILL_PENDING once=' + st.once;
 })()`));
 
 check("H-7 外发窗口能收回", await js(`(async () => {
@@ -401,6 +401,38 @@ check("能力表的降级项与服务端一致", await (async () => {
   const api = await (await fetch(new URL("/api/capabilities", URL_PAGE))).json();
   return api.degraded.every((d) => cap.deg.includes(d));
 })(), cap.deg.slice(0, 60));
+
+// ── 卷宗（右栏三签）：结构照 Trianon，数据必须是真接口 ────────
+check("卷宗三签都在，且数字来自 /api/dossier", await js(`(async () => {
+  const api = await (await fetch("/api/dossier")).json();
+  const cards = document.querySelectorAll("#folio .dcard");
+  const ctx = document.querySelector("#dc-ctx").textContent;
+  const n = document.querySelector("#dc-chg-n").textContent;
+  // 三个真数据点：记忆条数、今天用量、改动条数（空也要有“还没动过”的说明）
+  const memOk = ctx.indexOf(String(api.context.memories)) >= 0;
+  const chgOk = api.changes.length ? n.indexOf(String(api.changes.length)) >= 0 : /还没动过/.test(document.querySelector("#dc-chg").textContent);
+  return cards.length === 3 && memOk && chgOk;
+})()`));
+
+check("卷宗卡片能折叠（点了收起，再点展开）", await js(`(async () => {
+  const card = document.querySelector("#folio .dcard");
+  const tab = card.querySelector(".dtab");
+  tab.click(); await new Promise((r) => setTimeout(r, 120));
+  const closed = card.classList.contains("closed") && getComputedStyle(card.querySelector(".din")).display === "none";
+  tab.click(); await new Promise((r) => setTimeout(r, 120));
+  const open = !card.classList.contains("closed") && getComputedStyle(card.querySelector(".din")).display !== "none";
+  return closed && open;
+})()`));
+
+check("标题条跟着视图变（stage 顶部的当前屏名）", await js(`(async () => {
+  const before = document.querySelector("#stTitle").textContent;
+  document.querySelector("#side .item[data-view=cfg]").click();
+  await new Promise((r) => setTimeout(r, 400));
+  const after = document.querySelector("#stTitle").textContent;
+  document.querySelector("#side .item[data-view=chat]").click();
+  await new Promise((r) => setTimeout(r, 300));
+  return /CHAT/.test(before) && /CONFIG|设置/.test(after);
+})()`));
 
 check("分区标题是带粗左边的标签条 + 格子有角标", await js(`(() => {
   const h = document.querySelector(".sec h3");

@@ -1332,6 +1332,50 @@ export function createWebServer(deps: WebDeps) {
         return;
       }
       // ── 线索层：还没闭合的事（借 Twig 的 thread 概念，不新建表）──
+      // ── 卷宗（右栏三签）：一把拿齐 Plan / Changes / Context ─────────
+      // 为什么合成一个接口：三张卡每次都要一起刷新，分三个请求会让它们互相错位；
+      // 而且这里**只读**（不写库、不跑命令），所以不需要 writeGuarded。
+      if (req.method === "GET" && url.pathname === "/api/dossier") {
+        const nowD = now();
+        const agenda = await import("../agenda.ts");
+        let plan: Array<{ k: string; t: string; from: string; aging?: boolean }> = [];
+        try {
+          for (const it of agenda.openItems(deps.home).slice(0, 5)) {
+            plan.push({ k: it.via === "human" ? "你" : it.via === "rule" ? "规则" : "模型", t: it.text, from: it.from });
+          }
+        } catch { /* 没有 agenda.json 就当空 */ }
+        let threads: Array<{ id: number; t: string; d: number; aging: boolean }> = [];
+        try {
+          threads = openThreads(deps.db, nowD).slice(0, 6).map((x) => ({ id: x.id, t: x.text, d: x.ageDays, aging: x.aging }));
+        } catch { /* 表还没建 */ }
+
+        // Changes：只认自己的账本（exec_audit 里真的动过东西的那几条），不猜、不跑命令
+        const WRITEY = ["fs.write", "fs.patch", "fs.mkdir", "fs.rm", "shell.run", "shell.exec", "code.run"];
+        const chg = deps.db.prepare(
+          `SELECT verb, argv_json, decision, ts, exit_code FROM exec_audit
+           WHERE verb IN (${WRITEY.map(() => "?").join(",")}) AND decision = (?)
+           ORDER BY rowid DESC LIMIT 8`,
+        ).all(...WRITEY, "allowed") as Array<{ verb: string; argv_json: string; decision: string; ts: string; exit_code: number }>;
+
+        const mem = deps.db.prepare("SELECT stage, count(*) c FROM memories WHERE status='active' GROUP BY stage").all() as Array<{ stage: string; c: number }>;
+        const memAll = mem.reduce((a, b) => a + b.c, 0);
+        const docs = (deps.db.prepare("SELECT count(*) c FROM documents WHERE deleted_at IS NULL").get() as { c: number }).c;
+        const chunks = (deps.db.prepare("SELECT count(*) c FROM chunks").get() as { c: number }).c;
+        const usage = deps.db.prepare("SELECT coalesce(sum(in_tokens),0) p, coalesce(sum(out_tokens),0) c, coalesce(sum(usd),0) u FROM usage WHERE substr(ts,1,10)=?").get(nowD.toISOString().slice(0, 10)) as { p: number; c: number; u: number };
+        let model: string | null = null;
+        try { model = meta(deps.db, "model_express") ?? null; } catch { /* 没记录 */ }
+
+        json(res, 200, {
+          plan: { agenda: plan, threads },
+          changes: chg.map((r) => ({ verb: r.verb, argv: r.argv_json.slice(0, 160), ts: r.ts, ok: r.exit_code === 0 })),
+          context: {
+            memories: memAll, stages: mem, docs, chunks,
+            model, todayTokens: usage.p + usage.c, todayUsd: usage.u,
+          },
+        });
+        return;
+      }
+
       if (req.method === "GET" && url.pathname === "/api/threads") {
         json(res, 200, openThreads(deps.db, now()));
         return;
