@@ -34,6 +34,13 @@ export interface NightlyDeps {
   extract: (prompt: string) => Promise<string>;
   /** 每个窗口多少条事件（P1-1a：长上下文会稀释注意力，默认 20） */
   windowSize?: number;
+  /**
+   * E-7：对**同一批**事件重复巩固几轮（默认 1，上限 5）。
+   * 用途只有一个：能不能回答「再巩固一次会不会更好」。
+   * 判据是收敛 —— 最后一轮没有新增、没有新反证；不是「跑得越多越好」。
+   * 来源：Google《Language Models Need Sleep》用轮次单调性证明巩固有效，我们没有这个度量。
+   */
+  rounds?: number;
   /** 打分者的名字（E-3）：写进 scored_by，让“这条为什么重”能查 */
   scoredBy?: string;
   /**
@@ -61,6 +68,10 @@ export interface NightlyReport {
   merged: number;
   /** 写前反证：命中了反面证据的条数（建 contradicts 边，交人去判） */
   contradicted: number;
+  /** E-7：每轮（同一批事件重复巩固）的数字 */
+  rounds: Array<{ n: number; candidates: number; added: number; noop: number; merged: number; superseded: number; contradicted: number }>;
+  /** E-7：收敛 = 最后一轮没有新增、没有新反证（这批事件已经榨干了）。只跑 1 轮时为 null */
+  converged: boolean | null;
   decayed: number;
   cursorFrom: string | null;
   cursorTo: string | null;
@@ -341,6 +352,8 @@ export async function runNightly(deps: NightlyDeps): Promise<NightlyReport> {
     superseded: 0,
     merged: 0,
     contradicted: 0,
+    rounds: [],
+    converged: null,
     refined: 0,
     decayed: 0,
     cursorFrom,
@@ -368,139 +381,176 @@ export async function runNightly(deps: NightlyDeps): Promise<NightlyReport> {
 
   // P1-1a：先把噪声剔掉（短句 / 测试句 / 断电提示），再**分段**问。
   // 实测：88 条原始事件 → 模型回 []；同样的尾部用短提示 + 分段能抽出东西。
-  const textOf = (e: Event) => String((e.payload as { text?: string })?.text ?? "");
-  const usable = fresh.filter((e) => !isNoise(textOf(e)));
-  const dropped = fresh.length - usable.length;
-  if (dropped) notes.push(`NOISE: 跳过 ${dropped} 条噪声`);
-
-  const windows = segmentEvents(usable, deps.windowSize ?? 20);
-  const cands: Candidate[] = [];
+  const rounds = Math.min(5, Math.max(1, Math.round(deps.rounds ?? 1)));
+  // 本轮开跑前库里最大的 id：这一轮里新写进去的条目记在水位线之上。
+  // 用它在 supersede 分支里拦住“自己取代自己”（第二轮把第一轮刚写的那条取代了 ——
+  // 真机跑 E-7 时就是这样：第 2 轮 added=0 但 superseded=1，同一批里 ping-pong）。
+  const runFloorId = Number((deps.db.prepare("SELECT COALESCE(MAX(id),0) AS m FROM memories").get() as { m: number }).m ?? 0);
+  // 抽取失败要能影响**整个** run（游标不推进），所以旗子放在循环外，每轮开头复位
   let extractFailed = false;
-  for (const [i, win] of windows.entries()) {
-    const transcript = win
-      .map((e) => `${e.kind === "utterance" ? "用户" : "鲸鲸"}：${textOf(e)}`)
-      .join(String.fromCharCode(10));
-    try {
-      const raw = await deps.extract(EXTRACT_PROMPT(transcript));
-      const got = parseCandidates(raw, cap);
-      notes.push(`WINDOW ${i + 1}/${windows.length}: ${win.length} 条 → ${got.length} 条候选`);
-      for (const c of got) {
-        // 跳窗口去重（同一句话被两段都抽到）
-        if (!cands.some((x) => x.layer === c.layer && normalize(x.text) === normalize(c.text))) cands.push(c);
-      }
-    } catch (e) {
-      // 抽取失败 ≠ 今天没什么可记的：**游标不能推进**，否则这批对话永久丢掉
-      extractFailed = true;
-      notes.push(`E_EXTRACT: ${String(e).slice(0, 120)}`);
-      break;
-    }
-  }
-  cands.splice(cap);   // 总量上限：宁缺毋滥
-  report.candidates = cands.length;
+  for (let round = 1; round <= rounds; round++) {
+    // 每一轮都**重新读同一批**事件（游标要等所有轮结束才动）——
+    // 第二轮的作用是让去重/合并/反证这些闸门有机会把第一轮写进去的东西再判一次。
+    const textOf = (e: Event) => String((e.payload as { text?: string })?.text ?? "");
+    const usable = fresh.filter((e) => !isNoise(textOf(e)));
+    const dropped = fresh.length - usable.length;
+    if (dropped) notes.push(`NOISE: 跳过 ${dropped} 条噪声`);
 
-  for (const c of cands) {
-    const vec = deps.embedder ? (await deps.embedder.embed([c.text]))[0] ?? null : null;
-
-    // 同层同主题的既有记忆（subject 归一化后作为"槽位"）
-    const key = `${c.layer}|${normalize(c.subject)}`;
-    const same = deps.db
-      .prepare(`SELECT id,text,embedding FROM memories
-                WHERE status='active' AND layer=? AND normalized_key=? LIMIT 20`)
-      .all(c.layer, key) as Array<{ id: number; text: string; embedding: Uint8Array | null }>;
-
-    let verdict: Verdict | null = null;
-    let target: number | null = null;
-
-    for (const s of same) {
-      if (normalize(s.text) === normalize(c.text)) { verdict = "duplicate"; target = s.id; break; }
-      if (vec && s.embedding) {
-        const old = new Float32Array(s.embedding.buffer, s.embedding.byteOffset, s.embedding.byteLength / 4);
-        const cos = cosine(vec, old);
-        if (cos >= th) {
-          verdict = deps.verdict ? await deps.verdict({ oldText: s.text, newText: c.text }) : "supersede";
-          target = s.id;
-          break;
+    const windows = segmentEvents(usable, deps.windowSize ?? 20);
+    let cands: Candidate[] = [];
+    for (const [i, win] of windows.entries()) {
+      const transcript = win
+        .map((e) => `${e.kind === "utterance" ? "用户" : "鲸鲸"}：${textOf(e)}`)
+        .join(String.fromCharCode(10));
+      try {
+        const raw = await deps.extract(EXTRACT_PROMPT(transcript));
+        const got = parseCandidates(raw, cap);
+        notes.push(`WINDOW ${i + 1}/${windows.length}: ${win.length} 条 → ${got.length} 条候选`);
+        for (const c of got) {
+          // 跳窗口去重（同一句话被两段都抽到）
+          if (!cands.some((x) => x.layer === c.layer && normalize(x.text) === normalize(c.text))) cands.push(c);
         }
-        if (cos >= 0.75) { verdict = "refine"; target = s.id; }
+      } catch (e) {
+        // 抽取失败 ≠ 今天没什么可记的：**游标不能推进**，否则这批对话永久丢掉
+        extractFailed = true;
+        notes.push(`E_EXTRACT: ${String(e).slice(0, 120)}`);
+        break;
       }
     }
+    cands.splice(cap);   // 总量上限：宁缺毋滥
+    report.candidates = cands.length;
 
-    // P1-2：同槽位撞不见时，再按"同一件事"跨层找一次。
-    // 真实案例："下周三生日提醒买蛋糕" 被抽成 contract/promise 和 narrative/promise 两份，
-    // 因为槽位键带 layer，两份都留下了 —— 计数虚高，检索时也会重复浮现。
-    if (!verdict && vec) {
-      const cross = findSameThing(deps.db, vec, c.text, th);
-      if (cross && LAYER_RANK[c.layer] > LAYER_RANK[cross.layer]) {
-          // 新的是强层（contract）→ 覆盖掉旧的弱层版本
-          verdict = "supersede";
-          target = cross.id;
-          notes.push(`MERGE↑ ${c.layer}>${cross.layer} 覆盖 #${cross.id}（cos ${cross.cos.toFixed(2)} 字面 ${cross.sim.toFixed(2)}）`);
-      } else if (cross) {
-        // 弱层版本或同层另一个槽位 → 不插，只抬旧条 confidence（同一件事不该有第二份）
+
+
+    const before = { added: report.added, noop: report.noop, merged: report.merged,
+      superseded: report.superseded, contradicted: report.contradicted };
+    for (const c of cands) {
+      const vec = deps.embedder ? (await deps.embedder.embed([c.text]))[0] ?? null : null;
+
+      // 同层同主题的既有记忆（subject 归一化后作为"槽位"）
+      const key = `${c.layer}|${normalize(c.subject)}`;
+      const same = deps.db
+        .prepare(`SELECT id,text,embedding FROM memories
+                  WHERE status='active' AND layer=? AND normalized_key=? LIMIT 20`)
+        .all(c.layer, key) as Array<{ id: number; text: string; embedding: Uint8Array | null }>;
+
+      let verdict: Verdict | null = null;
+      let target: number | null = null;
+
+      for (const s of same) {
+        if (normalize(s.text) === normalize(c.text)) { verdict = "duplicate"; target = s.id; break; }
+        if (vec && s.embedding) {
+          const old = new Float32Array(s.embedding.buffer, s.embedding.byteOffset, s.embedding.byteLength / 4);
+          const cos = cosine(vec, old);
+          if (cos >= th) {
+            verdict = deps.verdict ? await deps.verdict({ oldText: s.text, newText: c.text }) : "supersede";
+            target = s.id;
+            break;
+          }
+          if (cos >= 0.75) { verdict = "refine"; target = s.id; }
+        }
+      }
+
+      // P1-2：同槽位撞不见时，再按"同一件事"跨层找一次。
+      // 真实案例："下周三生日提醒买蛋糕" 被抽成 contract/promise 和 narrative/promise 两份，
+      // 因为槽位键带 layer，两份都留下了 —— 计数虚高，检索时也会重复浮现。
+      if (!verdict && vec) {
+        const cross = findSameThing(deps.db, vec, c.text, th);
+        if (cross && LAYER_RANK[c.layer] > LAYER_RANK[cross.layer]) {
+            // 新的是强层（contract）→ 覆盖掉旧的弱层版本
+            verdict = "supersede";
+            target = cross.id;
+            notes.push(`MERGE↑ ${c.layer}>${cross.layer} 覆盖 #${cross.id}（cos ${cross.cos.toFixed(2)} 字面 ${cross.sim.toFixed(2)}）`);
+        } else if (cross) {
+          // 弱层版本或同层另一个槽位 → 不插，只抬旧条 confidence（同一件事不该有第二份）
+          deps.db.prepare("UPDATE memories SET confidence=MIN(1,confidence+0.05), updated_at=? WHERE id=?")
+            .run(now.toISOString(), cross.id);
+          report.merged++;
+          const arrow = c.layer === cross.layer ? "=" : "<";
+          notes.push(`MERGE${arrow} ${c.layer}${arrow}${cross.layer} 吞掉（#${cross.id} 已有）：${c.text.slice(0, 18)}`);
+          continue;
+        }
+      }
+
+      if (verdict === "duplicate" && target != null) {
         deps.db.prepare("UPDATE memories SET confidence=MIN(1,confidence+0.05), updated_at=? WHERE id=?")
-          .run(now.toISOString(), cross.id);
-        report.merged++;
-        const arrow = c.layer === cross.layer ? "=" : "<";
-        notes.push(`MERGE${arrow} ${c.layer}${arrow}${cross.layer} 吞掉（#${cross.id} 已有）：${c.text.slice(0, 18)}`);
+          .run(now.toISOString(), target);
+        report.noop++;
+        notes.push(`NOOP ${c.text.slice(0, 20)}`);
         continue;
       }
-    }
 
-    if (verdict === "duplicate" && target != null) {
-      deps.db.prepare("UPDATE memories SET confidence=MIN(1,confidence+0.05), updated_at=? WHERE id=?")
-        .run(now.toISOString(), target);
-      report.noop++;
-      notes.push(`NOOP ${c.text.slice(0, 20)}`);
-      continue;
-    }
+      // 写前反证：先看有没有"同一话题、极性相反"的既有记忆
+      const counter = vec ? findCounterEvidence(deps.db, vec, c.text) : null;
 
-    // 写前反证：先看有没有"同一话题、极性相反"的既有记忆
-    const counter = vec ? findCounterEvidence(deps.db, vec, c.text) : null;
-
-    const id = remember(deps.db, {
-      layer: c.layer,
-      kind: c.kind,
-      subject: c.subject || null,
-      text: c.text,
-      importance: c.layer === "contract" ? 5 : Math.round(2 + c.salience * 3),
-      salience: c.salience,
-      sensitivity: "shareable",           // 聊天来源 → 已出过网（19 §0.1）
-      sourceKind: "extract",
-      sourceRef: c.reason.slice(0, 80),
-      // 原话（J-2）：**从 journal 里逐字取**，不采信模型转述 —— 否则“原话”又变成模型写的
-      quote: pickQuote(fresh, c.text) ?? null,
-      scoredBy: deps.scoredBy ?? "extract",
-      embedding: vec,
-      now,
-    });
-    // 归一化键（源里叫 normalized_key，store 负责写 text_bigram；这里补 key）
-    deps.db.prepare("UPDATE memories SET normalized_key=? WHERE id=?").run(key, id);
-    if (counter) {
-      // 两条都留、都降一点信心，建一根 contradicts —— 然后它会自己出现在抽检卡上
-      linkIfNew(deps.db, id, counter.id, "contradicts", 0.6,
-        `反证：极性相反（cos ${counter.cos.toFixed(2)} / 字面 ${counter.sim.toFixed(2)}）`.slice(0, 60), now);
-      for (const mid of [id, counter.id]) {
-        deps.db.prepare("UPDATE memories SET confidence=MAX(0.3, confidence-0.1) WHERE id=?").run(mid);
+      const id = remember(deps.db, {
+        layer: c.layer,
+        kind: c.kind,
+        subject: c.subject || null,
+        text: c.text,
+        importance: c.layer === "contract" ? 5 : Math.round(2 + c.salience * 3),
+        salience: c.salience,
+        sensitivity: "shareable",           // 聊天来源 → 已出过网（19 §0.1）
+        sourceKind: "extract",
+        sourceRef: c.reason.slice(0, 80),
+        // 原话（J-2）：**从 journal 里逐字取**，不采信模型转述 —— 否则“原话”又变成模型写的
+        quote: pickQuote(fresh, c.text) ?? null,
+        scoredBy: deps.scoredBy ?? "extract",
+        embedding: vec,
+        now,
+      });
+      // 归一化键（源里叫 normalized_key，store 负责写 text_bigram；这里补 key）
+      deps.db.prepare("UPDATE memories SET normalized_key=? WHERE id=?").run(key, id);
+      if (counter) {
+        // 两条都留、都降一点信心，建一根 contradicts —— 然后它会自己出现在抽检卡上
+        linkIfNew(deps.db, id, counter.id, "contradicts", 0.6,
+          `反证：极性相反（cos ${counter.cos.toFixed(2)} / 字面 ${counter.sim.toFixed(2)}）`.slice(0, 60), now);
+        for (const mid of [id, counter.id]) {
+          deps.db.prepare("UPDATE memories SET confidence=MAX(0.3, confidence-0.1) WHERE id=?").run(mid);
+        }
+        report.contradicted++;
+        notes.push(`COUNTER #${counter.id}：${counter.text.slice(0, 24)} ↔ ${c.text.slice(0, 24)}`);
       }
-      report.contradicted++;
-      notes.push(`COUNTER #${counter.id}：${counter.text.slice(0, 24)} ↔ ${c.text.slice(0, 24)}`);
+
+      if (verdict === "supersede" && target != null && target > runFloorId) {
+        // 想取代的是**这一轮刚写的**条目 → 当作重复：不归档、不建边，只抬信心
+        deps.db.prepare("UPDATE memories SET confidence=MIN(1,confidence+0.05), updated_at=? WHERE id=?")
+          .run(now.toISOString(), target);
+        report.noop++;
+        notes.push(`SELF-SUPERSEDE→NOOP ${c.text.slice(0, 18)}`);
+      } else if (verdict === "supersede" && target != null) {
+        deps.db.prepare("UPDATE memories SET superseded_by=?, status='archived', updated_at=? WHERE id=?")
+          .run(id, now.toISOString(), target);
+        linkIfNew(deps.db, id, target, "supersedes", 1, "同一件事的新说法", now);
+        report.superseded++;
+        notes.push(`SUPERSEDE ${c.text.slice(0, 20)}`);
+      } else if (verdict === "refine" && target != null) {
+        linkIfNew(deps.db, id, target, "derived_from", 0.8, (c.reason || c.subject || "同一段经历").slice(0, 20), now);
+        report.refined++;
+        report.added++;
+      } else {
+        report.added++;
+      }
     }
 
-    if (verdict === "supersede" && target != null) {
-      deps.db.prepare("UPDATE memories SET superseded_by=?, status='archived', updated_at=? WHERE id=?")
-        .run(id, now.toISOString(), target);
-      linkIfNew(deps.db, id, target, "supersedes", 1, "同一件事的新说法", now);
-      report.superseded++;
-      notes.push(`SUPERSEDE ${c.text.slice(0, 20)}`);
-    } else if (verdict === "refine" && target != null) {
-      linkIfNew(deps.db, id, target, "derived_from", 0.8, (c.reason || c.subject || "同一段经历").slice(0, 20), now);
-      report.refined++;
-      report.added++;
-    } else {
-      report.added++;
-    }
+
+    // 失败的那一轮不记成一轮：它没告诉我们任何关于收敛的信息
+    if (extractFailed) break;
+    report.rounds.push({
+      n: round, candidates: cands.length,
+      added: report.added - before.added,
+      noop: report.noop - before.noop,
+      merged: report.merged - before.merged,
+      superseded: report.superseded - before.superseded,
+      contradicted: report.contradicted - before.contradicted,
+    });
+    if (extractFailed) break;
+    const last = report.rounds[report.rounds.length - 1]!;
+    // 收敛：这一轮什么都没学到（也没有新反证）→ 再跑也是空转，停
+    if (round > 1 && last.added === 0 && last.contradicted === 0) { report.converged = true; break; }
+    if (last.candidates === 0) { if (round > 1) report.converged = true; break; }
   }
-
+  if (rounds > 1 && report.converged === null && !extractFailed) report.converged = false;
   if (extractFailed) {
     report.cursorTo = cursorFrom;                       // 失败就留在原地，下轮重试
     noteNightlySkip(deps.db, "抽取失败（见 notes.E_EXTRACT）", now);

@@ -24,6 +24,8 @@ export interface NightOptions {
   inbox: string;
   dryRun?: boolean;
   skipAutobio?: boolean;
+  /** E-7：同一批事件重复巩固几轮（1..5） */
+  rounds?: number;
   now?: Date;
 }
 
@@ -83,6 +85,7 @@ export async function runNightCli(opts: NightOptions): Promise<number> {
     db: d.db, inboxDir: opts.inbox, home: opts.home, embedder, extract, now,
     scoredBy: `extract:${cfg.roles["extract"]?.model || "?"}`,
     ...(skipReason ? { skipExtract: skipReason } : {}),
+    ...(opts.rounds ? { rounds: opts.rounds } : {}),
   });
 
   let autobio: Awaited<ReturnType<typeof writeAutobiography>> | null = null;

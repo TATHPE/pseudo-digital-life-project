@@ -726,10 +726,14 @@ async function main(): Promise<void> {
     }
     case "night": {
       const { runNightCli } = await import("./night.ts");
+      // E-7：--rounds N 对同一批事件重复巩固，看是否收敛（默认 1 轮）
+      const ri = rest.indexOf("--rounds");
+      const rounds = ri >= 0 ? Number(rest[ri + 1]) : undefined;
       const code = await runNightCli({
         home: HOME, dbFile, inbox,
         skipAutobio: rest.includes("--no-autobio"),
         dryRun: rest.includes("--dry-run"),
+        ...(Number.isFinite(rounds) && rounds && rounds > 1 ? { rounds } : {}),
       });
       process.exitCode = code;
       return;

@@ -156,3 +156,103 @@ test("写前反证：同极性不该建 contradicts（别把同一件事判成�
   const link = d.db.prepare("SELECT count(*) c FROM memory_links WHERE rel='contradicts'").get() as { c: number };
   assert.equal(link.c, 0);
 });
+
+// ── E-7：多轮巩固与收敛 ────────────────────────────────
+test("E-7 多轮巩固：第一轮写入、第二轮空转 → 收敛；游标只在全部轮结束后才动", async () => {
+  const home = H();
+  const d = openDb(join(home, "m.db"));
+  const emb = groupedEmb([["生日"]]);
+  const inbox = join(home, "inbox");
+  for (const [i, text] of ["我妈下周三生日，记得提醒我买蛋糕", "好，我记着了。"].entries()) {
+    appendEvent(inbox, {
+      v: 1, id: newEventId(), ts: new Date(Date.UTC(2026, 9, 30, 21, i)).toISOString(),
+      kind: i === 0 ? "utterance" : "agent_reply", actor: i === 0 ? "user" : "agent", payload: { text },
+    });
+  }
+  let calls = 0;
+  const report = await runNightly({
+    db: d.db, inboxDir: inbox, home, embedder: emb, rounds: 3,
+    extract: async () => {
+      calls++;
+      return JSON.stringify([{ kind: "promise", layer: "contract", subject: "生日", text: "下周三提醒买蛋糕", salience: 0.9, reason: "承诺" }]);
+    },
+    now: new Date(Date.UTC(2026, 9, 31, 3)),
+  });
+
+  assert.equal(report.rounds.length, 2, "第二轮空转后应停，不该跑满 3 轮");
+  assert.equal(calls, 2);
+  assert.equal(report.rounds[0]!.added, 1, "第一轮新增 1 条");
+  assert.equal(report.rounds[1]!.added, 0, "第二轮不该再新增（同一句话已被掐住）");
+  assert.ok(report.rounds[1]!.noop + report.rounds[1]!.merged >= 1, "第二轮要命中去重/合并");
+  assert.equal(report.converged, true);
+  const active = d.db.prepare("SELECT count(*) c FROM memories WHERE status='active'").get() as { c: number };
+  assert.equal(active.c, 1, "多轮不该把同一条写成两条");
+  const cur = d.db.prepare("SELECT value FROM meta WHERE key='nightly_cursor_ts'").get() as { value?: string } | undefined;
+  assert.ok(cur?.value, "全部轮成功后才推进游标");
+});
+
+test("E-7 单轮（默认）：不给收敛结论，behavior 与从前一致", async () => {
+  const home = H();
+  const d = openDb(join(home, "m.db"));
+  const emb = groupedEmb([["生日"]]);
+  const inbox = join(home, "inbox");
+  appendEvent(inbox, {
+    v: 1, id: newEventId(), ts: new Date(Date.UTC(2026, 9, 30, 21)).toISOString(),
+    kind: "utterance", actor: "user", payload: { text: "我妈下周三生日，记得提醒我买蛋糕" },
+  });
+  const report = await runNightly({
+    db: d.db, inboxDir: inbox, home, embedder: emb,
+    extract: async () => JSON.stringify([{ kind: "promise", layer: "contract", subject: "生日", text: "下周三提醒买蛋糕", salience: 0.9, reason: "承诺" }]),
+    now: new Date(Date.UTC(2026, 9, 31, 3)),
+  });
+  assert.equal(report.rounds.length, 1);
+  assert.equal(report.converged, null, "只跑一轮不下收敛结论（没有依据）");
+});
+
+test("E-7 轮次上限与失败语义：抽取失败＝所有轮都不算成功，游标不动", async () => {
+  const home = H();
+  const d = openDb(join(home, "m.db"));
+  const emb = groupedEmb([["生日"]]);
+  const inbox = join(home, "inbox");
+  appendEvent(inbox, {
+    v: 1, id: newEventId(), ts: new Date(Date.UTC(2026, 9, 30, 21)).toISOString(),
+    kind: "utterance", actor: "user", payload: { text: "我妈下周三生日，记得提醒我买蛋糕" },
+  });
+  const report = await runNightly({
+    db: d.db, inboxDir: inbox, home, embedder: emb, rounds: 9,
+    extract: async () => { throw new Error("E_EXTRACT: boom"); },
+    now: new Date(Date.UTC(2026, 9, 31, 3)),
+  });
+  assert.equal(report.rounds.length, 0, "失败的那一轮不记成一轮");
+  assert.equal(report.converged, null);
+  const cur = d.db.prepare("SELECT value FROM meta WHERE key='nightly_cursor_ts'").get() as { value?: string } | undefined;
+  assert.equal(cur, undefined, "失败不推进游标");
+  assert.ok(report.notes.some((n) => n.startsWith("E_EXTRACT")));
+});
+
+test("E-7 不许自己取代自己：第二轮撞上第一轮刚写的那条 → 记 NOOP，不归档", async () => {
+  const home = H();
+  const d = openDb(join(home, "m.db"));
+  const emb = groupedEmb([["生日"]]);
+  const inbox = join(home, "inbox");
+  appendEvent(inbox, {
+    v: 1, id: newEventId(), ts: new Date(Date.UTC(2026, 9, 30, 21)).toISOString(),
+    kind: "utterance", actor: "user", payload: { text: "我妈下周三生日，记得提醒我买蛋糕" },
+  });
+  let n = 0;
+  const report = await runNightly({
+    db: d.db, inboxDir: inbox, home, embedder: emb, rounds: 3,
+    // 每轮换个说法（模拟 temperature 0.2 下两次抽取措辞不同）→ 天然会想 supersede 自己
+    extract: async () => {
+      n++;
+      return JSON.stringify([{ kind: "promise", layer: "contract", subject: "生日", text: `下周三生日提醒买蛋糕（第${n}次说法）`, salience: 0.9, reason: "承诺" }]);
+    },
+    now: new Date(Date.UTC(2026, 9, 31, 3)),
+  });
+  assert.equal(report.rounds[0]!.added, 1);
+  assert.equal(report.rounds[1]!.superseded, 0, "第二轮不该取代第一轮刚写的条目");
+  assert.ok(report.rounds[1]!.noop >= 1);
+  const archived = d.db.prepare("SELECT count(*) c FROM memories WHERE status='archived'").get() as { c: number };
+  assert.equal(archived.c, 0, "同一批里不该留下归档的中间态");
+  assert.equal(report.converged, true);
+});
