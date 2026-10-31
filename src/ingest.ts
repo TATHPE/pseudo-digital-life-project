@@ -313,8 +313,14 @@ export function setDocSensitivity(
 
 /** 忘掉一篇文档：块与文档标 deleted_at，FTS 行真删（不让它再被召回） */
 export function forgetDoc(db: DatabaseSync, id: string, now = new Date()): number {
-  const live = db.prepare("SELECT id FROM chunks WHERE doc_id=? AND deleted_at IS NULL").all(id) as Array<{ id: number }>;
-  for (const c of live) db.prepare("DELETE FROM chunks_fts WHERE rowid=?").run(BigInt(c.id));
+  // chunks_fts 是 external-content FTS5（content='chunks'）：必须用 'delete' 命令并带上被索引的列值，
+  // 直接 DELETE FROM 会把索引写坏（实测：restore 时报 database disk image is malformed）
+  const live = db.prepare("SELECT id,text_bigram,heading_path FROM chunks WHERE doc_id=? AND deleted_at IS NULL")
+    .all(id) as Array<{ id: number; text_bigram: string; heading_path: string }>;
+  for (const c of live) {
+    db.prepare("INSERT INTO chunks_fts(chunks_fts, rowid, text_bigram, heading_path) VALUES('delete',?,?,?)")
+      .run(BigInt(c.id), c.text_bigram, c.heading_path);
+  }
   db.prepare("UPDATE chunks SET deleted_at=? WHERE doc_id=? AND deleted_at IS NULL").run(now.toISOString(), id);
   db.prepare("UPDATE documents SET deleted_at=? WHERE id=?").run(now.toISOString(), id);
   return live.length;

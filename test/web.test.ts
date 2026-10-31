@@ -854,3 +854,35 @@ test("上传：没有 x-jj 头就 403（跨站不能往 sources/ 里塞文件）
     assert.equal(r.status, 403);
   } finally { srv.close(); }
 });
+
+// ── F-3：忘掉文档 5 秒内能撤销 ────────────────────────────────
+test("F-3 撤销「忘掉这篇」：restore 后文档与前缀检索都回来", async () => {
+  const { srv, base, dir } = await start();
+  try {
+    const H = { "content-type": "application/json", "x-jj": "1" };
+    mkdirSync(join(dir, "sources"), { recursive: true });
+    writeFileSync(join(dir, "sources", "undo.md"), "# 撤销测试\n\n这段文字有个独特记号 青鲸石。\n");
+    await fetch(`${base}/api/ingest`, { method: "POST", headers: H, body: JSON.stringify({ path: "sources/undo.md" }) });
+    const docs1 = await (await fetch(`${base}/api/docs`)).json() as Array<{ id: string; chunks: number }>;
+    assert.equal(docs1.length, 1);
+    const id = docs1[0]!.id;
+
+    await fetch(`${base}/api/docs/${id}/forget`, { method: "POST", headers: H, body: "{}" });
+    assert.equal(((await (await fetch(`${base}/api/docs`)).json()) as unknown[]).length, 0, "忘掉后列表为空");
+
+    const r = await (await fetch(`${base}/api/docs/${id}/restore`, { method: "POST", headers: H, body: "{}" })).json() as any;
+    assert.equal(r.ok, true);
+    assert.ok(r.chunks >= 1);
+    const docs2 = await (await fetch(`${base}/api/docs`)).json() as Array<{ id: string; chunks: number }>;
+    assert.equal(docs2.length, 1, "恢复后回到列表");
+    assert.equal(docs2[0]!.id, id);
+    // FTS 也要恢复（否则"恢复了但搜不到"）。这个 harness 里 getEmbedder 是 null，
+    // 走不了 /api/search，所以直接查 chunks_fts。
+    const { DatabaseSync } = await import("node:sqlite");
+    const raw = new DatabaseSync(join(dir, "m.db"), { readOnly: true });
+    // FTS 是 bigram 索引（"青鲸 鲸石"），整串"青鲸石"匹配不到；count(*) 对 external-content 表读的是 content 表，也不可靠
+    const fts = raw.prepare("SELECT count(*) c FROM chunks_fts WHERE chunks_fts MATCH ?").get("青鲸") as { c: number };
+    raw.close();
+    assert.ok(fts.c >= 1, "恢复后 FTS 行要重插（否则恢复了也搜不到）");
+  } finally { srv.close(); }
+});

@@ -185,6 +185,19 @@ const settle = await js(`(async () => {
 })()`);
 check("回对话仍贴底（贴底离开 → 回来贴底）", settle.ok === true, JSON.stringify(settle));
 
+// F-3：Ctrl+K 命令面板（打开 / 过滤 / Esc 关闭 / Enter 执行）
+await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }))`);
+await sleep(250);
+const palOpen = await js(`(() => { const el = document.querySelector('#pal'); return !!el && !el.hidden; })()`);
+const palRows = await js(`document.querySelectorAll('#pallist .pi').length`);
+check("Ctrl+K 打开命令面板", palOpen && palRows >= 5, `条目 ${palRows}`);
+await js(`(() => { const i = document.querySelector('#palq'); i.value = '设置'; i.dispatchEvent(new Event('input')); return true; })()`);
+await sleep(150);
+check("命令面板能过滤", (await js(`document.querySelector('#pallist').textContent`)).includes("设置"));
+await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+await sleep(150);
+check("Esc 关闭命令面板", await js(`document.querySelector('#pal').hidden`));
+
 // F-2：能力自述进面板（数据来自 /api/capabilities，面板只显示）
 const cap = await js(`(() => {
   const sum = document.querySelector('#cap-sum');

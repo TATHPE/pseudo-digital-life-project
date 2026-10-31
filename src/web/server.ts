@@ -893,6 +893,28 @@ export function createWebServer(deps: WebDeps) {
         json(res, 200, { ok: true, chunks: n });
         return;
       }
+      // F-3：撤销「忘掉这篇」——5 秒内能反悔。作废是写 deleted_at，恢复就是把它们清空并重建 FTS。
+      const docRestore = url.pathname.match(/^\/api\/docs\/(doc_[0-9a-f]+)\/restore$/);
+      if (req.method === "POST" && docRestore) {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
+        const id = String(docRestore[1]);
+        const rows = deps.db.prepare("SELECT id,text_bigram,heading_path FROM chunks WHERE doc_id=?").all(id) as Array<{ id: number; text_bigram: string; heading_path: string }>;
+        if (!rows.length) { json(res, 404, { error: "E_NO_DOC" }); return; }
+        deps.db.exec("BEGIN");
+        try {
+          deps.db.prepare("UPDATE chunks SET deleted_at=NULL WHERE doc_id=?").run(id);
+          deps.db.prepare("UPDATE documents SET deleted_at=NULL WHERE id=?").run(id);
+          // 只重插索引行：forget 时已经用 'delete' 命令正确地移除过
+          for (const r of rows) {
+            deps.db.prepare("INSERT INTO chunks_fts(rowid, text_bigram, heading_path) VALUES(?,?,?)")
+              .run(BigInt(r.id), r.text_bigram, r.heading_path);
+          }
+          deps.db.exec("COMMIT");
+        } catch (e) { deps.db.exec("ROLLBACK"); json(res, 500, { error: String(e).slice(0, 120) }); return; }
+        appendEvent(deps.inboxDir, { v: 1, id: newEventId(), ts: now().toISOString(), kind: "doc_restore", actor: "user", payload: { docId: id } });
+        json(res, 200, { ok: true, chunks: rows.length });
+        return;
+      }
       if (req.method === "GET" && url.pathname === "/api/pending") {
         // 待确认的 T3 提案（面板上那张卡）：带确切 argv，人看完才能点
         json(res, 200, listPending(deps.home, now()).map((p) => ({

@@ -368,6 +368,29 @@ export const PAGE = `<!doctype html>
   .ingest #dlg-empty code { color:var(--ink-dim); font:11px/1.6 var(--mono); word-break:break-all; }
   .ingest .acts { margin-top:8px; }
   .ingest .acts button { width:100%; }
+  /* 命令面板（F-3）：黑底、白细线、只有一个青色留给鲸鲸气泡 —— 这里一律不用青 */
+  #pal { position:fixed; inset:0; z-index:60; background:rgba(4,6,5,.72); display:flex; align-items:flex-start; justify-content:center; padding-top:12vh; }
+  #pal[hidden] { display:none !important; }
+  .palbox { width:min(620px, 92vw); background:var(--bg); border:1px solid var(--line); box-shadow:0 18px 60px rgba(0,0,0,.6); }
+  #palq { width:100%; background:transparent; border:0; border-bottom:1px solid var(--line-dim); color:var(--fg);
+          font:13px/1 var(--mono); padding:12px 14px; outline:none; letter-spacing:.04em; }
+  #pallist { max-height:46vh; overflow:auto; }
+  #pallist .pi { display:flex; justify-content:space-between; gap:10px; padding:8px 14px; cursor:pointer;
+                 font:11px/1.4 var(--mono); color:var(--ink-dim); border-bottom:1px solid rgba(255,255,255,.04); }
+  #pallist .pi .k { color:var(--dim); font-size:10px; }
+  #pallist .pi.on { background:rgba(255,255,255,.06); color:var(--ink); font-weight:600; }
+  #palhint { padding:6px 14px 10px; }
+
+  /* 撤销条（F-3）：贴在输入框上方，5 秒后自己消失 */
+  #undo { position:fixed; left:50%; transform:translateX(-50%); bottom:96px; z-index:50;
+          display:flex; gap:10px; align-items:center; padding:8px 12px;
+          background:rgba(8,13,11,.96); border:1px solid var(--line); }
+  #undo[hidden] { display:none !important; }
+  #undo span { font:11px/1 var(--mono); color:var(--ink-dim); }
+  #undo button { background:transparent; border:1px solid var(--line); color:var(--fg);
+                 font:11px/1 var(--mono); padding:5px 10px; cursor:pointer; }
+  #undo button:hover { border-color:var(--ink); }
+
   /* 能力表（F-2）：一行一类，点开看条目；降级项直接标红 */
   #cap-list { margin-top:6px; }
   .capbox { border:1px solid var(--line-dim); margin:4px 0; }
@@ -499,9 +522,18 @@ export const PAGE = `<!doctype html>
   </div>
 </aside>
 
+<div id="pal" hidden>
+  <div class="palbox">
+    <input id="palq" placeholder="去哪里 / 做什么…（Enter 执行，Esc 关闭）" autocomplete="off" spellcheck="false">
+    <div id="pallist"></div>
+    <p class="hint" id="palhint">↑↓ 选择 · Enter 执行 · Esc 关闭</p>
+  </div>
+</div>
+
 <main>
   <button id="jump" type="button">↓ 回到最新 <span id="jumpn" class="badge dim2"></span></button>
-  <div id="scroll"><div class="col">
+  <div id="undo" hidden><span id="undo-text"></span><button id="undo-go">撤销</button></div>
+    <div id="scroll"><div class="col">
     <div id="banner" class="banner" hidden></div>
     <div id="chat"></div>
 
@@ -915,7 +947,14 @@ $("#dv-forget").onclick = async () => {
   if (!target) return;
   const j = await (await fetch("/api/docs/" + target + "/forget", { method: "POST", headers: H, body: "{}" })).json();
   const m = $("#dv-msg");
-  if (j.ok) { m.className = "ok"; m.textContent = "已忘掉 " + j.chunks + " 块"; await docs(); show("chat"); }
+  if (j.ok) {
+    m.className = "ok"; m.textContent = "已忘掉 " + j.chunks + " 块"; await docs(); show("chat");
+    // F-3：5 秒内可反悔（作废是写 deleted_at，恢复是把它们清掉并重插 FTS）
+    offerUndo("已忘掉 " + j.chunks + " 块 · 5 秒内可撤销", async function () {
+      const r2 = await (await fetch("/api/docs/" + target + "/restore", { method: "POST", headers: H, body: "{}" })).json();
+      if (r2.ok) { await docs(); await timeline(); }
+    });
+  }
   else { m.className = "err"; m.textContent = j.error || "FAILED"; }
 };
 // ── 记忆纠错（P1 #9）──────────────────────────────────
@@ -1232,9 +1271,72 @@ $("#m").addEventListener("keydown", function (e) {
     $("#composer").dispatchEvent(new Event("submit", { cancelable: true }));
   }
 });
+// ── F-3 命令面板：Ctrl+K 到任何地方（导航 + 少量安全的动作）──────
+var PAL_ACTIONS = [
+  { id: "chat", label: "对话", key: "视图", run: function () { show("chat"); } },
+  { id: "cfg", label: "设置（接口 / 本地模型 / 能力 / 人格）", key: "视图", run: function () { show("cfg"); loadConfig(); } },
+  { id: "mem", label: "记忆", key: "视图", run: function () { memories(); } },
+  { id: "docs", label: "文档 DOCS", key: "视图", run: function () { docs(); } },
+  { id: "audit", label: "动作审计", key: "视图", run: function () { audit(); } },
+  { id: "tools", label: "工具列表", key: "视图", run: function () { $("#foldtools").click(); } },
+  { id: "new", label: "说点什么（聚焦输入框）", key: "动作", run: function () { show("chat"); $("#m").focus(); } },
+  { id: "ingest", label: "加文档（跳到 DOCS 的摄入区）", key: "动作", run: function () { docs(); setTimeout(function () { var el = $("#dlg-path"); if (el) el.focus(); }, 300); } },
+  { id: "cap", label: "看能力与降级项", key: "动作", run: function () { show("cfg"); setTimeout(function () { var el = $("#cap-sum"); if (el) el.scrollIntoView({ block: "center" }); }, 600); } },
+];
+var palOpen = false, palIdx = 0, palShown = PAL_ACTIONS;
+
+function palRender() {
+  var q = ($("#palq").value || "").trim().toLowerCase();
+  palShown = PAL_ACTIONS.filter(function (a) { return !q || (a.label + " " + a.id).toLowerCase().indexOf(q) >= 0; });
+  if (palIdx >= palShown.length) palIdx = 0;
+  $("#pallist").innerHTML = palShown.length
+    ? palShown.map(function (a, i) {
+        return "<div class='pi" + (i === palIdx ? " on" : "") + "' data-pal='" + a.id + "'>" +
+          "<span>" + escapeHtml(a.label) + "</span><span class='k'>" + a.key + "</span></div>";
+      }).join("")
+    : "<div class='pi'><span>没有匹配的条目</span></div>";
+}
+function palShow(on) {
+  palOpen = on;
+  $("#pal").hidden = !on;
+  if (on) { $("#palq").value = ""; palIdx = 0; palRender(); $("#palq").focus(); }
+}
+function palRun(id) {
+  var a = PAL_ACTIONS.find(function (x) { return x.id === id; });
+  palShow(false);
+  if (a) a.run();
+}
+$("#palq").addEventListener("input", function () { palIdx = 0; palRender(); });
+$("#pallist").addEventListener("click", function (e) {
+  var row = e.target.closest("[data-pal]");
+  if (row) palRun(row.dataset.pal);
+});
+$("#pal").addEventListener("click", function (e) { if (e.target === $("#pal")) palShow(false); });
+
+// ── F-3 撤销条：破坏性操作 5 秒内可反悔 ────────────────────
+var undoState = null, undoTimer = 0;
+function offerUndo(text, fn, ms) {
+  undoState = fn;
+  $("#undo-text").textContent = text;
+  $("#undo").hidden = false;
+  clearTimeout(undoTimer);
+  undoTimer = setTimeout(function () { undoState = null; $("#undo").hidden = true; }, ms || 5000);
+}
+$("#undo-go").onclick = async function () {
+  var fn = undoState;
+  undoState = null; $("#undo").hidden = true; clearTimeout(undoTimer);
+  if (fn) await fn();
+};
+
 document.addEventListener("keydown", function (e) {
   var mod = e.ctrlKey || e.metaKey;
-  if (mod && e.key.toLowerCase() === "k") { e.preventDefault(); $("#q").focus(); $("#q").select(); return; }
+  if (mod && e.key.toLowerCase() === "k") { e.preventDefault(); palShow(true); return; }
+  if (palOpen) {
+    if (e.key === "Escape") { e.preventDefault(); palShow(false); return; }
+    if (e.key === "ArrowDown") { e.preventDefault(); palIdx = Math.min(palShown.length - 1, palIdx + 1); palRender(); return; }
+    if (e.key === "ArrowUp") { e.preventDefault(); palIdx = Math.max(0, palIdx - 1); palRender(); return; }
+    if (e.key === "Enter") { e.preventDefault(); if (palShown[palIdx]) palRun(palShown[palIdx].id); return; }
+  }
   if (e.key === "Escape") {
     if (view !== "chat") { show("chat"); return; }
     if ($("#side").classList.contains("open")) { $("#side").classList.remove("open"); return; }
