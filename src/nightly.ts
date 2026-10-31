@@ -149,6 +149,7 @@ export const EXTRACT_PROMPT = (transcript: string): string => [
   "你是记忆抽取器。读下面的对话，只输出 JSON 数组（不要解释、不要代码围栏）。",
   '每条：{"kind":"episode|thought|preference_hard|fact_hard|promise|boundary","layer":"narrative|contract","subject":"≤8字","text":"一句话","salience":0.9,"reason":"为什么值得记"}',
   "",
+  "只记**她经历/被告知的**；你读到的书/文档不算她的经历（那要走 reading，不是这里）。",
   "值得记：承诺 / 边界 / 硬事实（→contract）、稳定偏好、重要经历、想通了的事。",
   "不值得记：寒暄、测试句、系统提示、重复的话、一次性的闲聊。",
   "最多 3 条；没有值得记的就输出 []。",

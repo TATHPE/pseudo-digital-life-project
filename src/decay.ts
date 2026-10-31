@@ -33,6 +33,9 @@ export const KIND_PARAMS: Record<string, DecayParams> = {
   promise:         { halfLifeDays: 365,  beta: 1.00, floor: 0.40 },
   boundary:        { halfLifeDays: 365,  beta: 1.00, floor: 0.40 },
   contract:        { halfLifeDays: Infinity, beta: 1, floor: 1 },
+  // 读来的（书/文档/别人说的话里学到的）：比一次性经历耐久，但**不该**当成她的经历。
+  // 半衰期对齐 fact_hard（180 天）：知识不像经历那样随日子变淡；floor 0.30 与 fact 一致。
+  reading:         { halfLifeDays: 180,  beta: 0.95, floor: 0.30 },
 };
 
 /**
@@ -44,6 +47,16 @@ export const KIND_PARAMS: Record<string, DecayParams> = {
  * 现在两边共用这一份，并有测试盯着 NIGHTLY_KINDS ⊆ KIND_PARAMS。
  */
 export const NIGHTLY_KINDS = ["episode", "preference_hard", "fact_hard", "promise", "boundary", "thought"] as const;
+
+/**
+ * 「读来的」是**独立的一档**（借云汐那条：读来的 ≠ 经历过的）。
+ * 三条边界：
+ *   ① 永远进 narrative —— 读来的东西不能变成契约（她没答应过，只是看到过）
+ *   ② 不进 NIGHTLY_KINDS —— 夜间抽取只看对话（经历），不该从聊天里造出「读来的」
+ *   ③ 简报里单独标注「读来」，免得她把书里的话当成自己记得的事
+ */
+export const READING_KIND = "reading" as const;
+export const isReadingKind = (kind: string): boolean => kind === READING_KIND;
 
 /**
  * 参数/行为的版本号。**改了会影响已有记忆的算法含义，就必须 bump。**

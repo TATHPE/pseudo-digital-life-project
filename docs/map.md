@@ -9,7 +9,7 @@
 | 项 | 数量 |
 |---|---|
 | 源文件（src/**/*.ts） | 78 |
-| 错误码 E_* | 162 |
+| 错误码 E_* | 163 |
 | verbs | 21 |
 | CLI 子命令 | 35 |
 
@@ -159,6 +159,7 @@
 | `E_PROPOSAL_TOUCH_ROOT` | `src/proposals.ts` |
 | `E_PROPOSAL_WHY` | `src/proposals.ts` |
 | `E_PROVIDER` | `src/cooldown.ts` `src/transport.ts` |
+| `E_READING_CONTRACT` | `src/store.ts` |
 | `E_RECEIPT_ID` | `src/notify.ts` |
 | `E_RECEIPT_NOT_FOUND` | `src/cli/jingjing.ts` `src/web/server.ts` |
 | `E_RELEASE_CORRUPT` | `src/deploy/slot.ts` |

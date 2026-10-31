@@ -195,20 +195,34 @@ export const verbs: VerbDef[] = [
   },
   {
     name: "memory.remember", tier: "T1", reversible: true,
-    description: "写一条记忆（默认叙事层；聊天来源记为 shareable）",
-    params: S({ text: { type: "string" }, layer: { type: "string", enum: ["narrative", "contract"] }, kind: { type: "string" } }, ["text"]),
+    description: "写一条记忆（默认叙事层；聊天来源记为 shareable）。" +
+      "读到的书/文档要用 from=reading 记 —— 那是「读来的」，不是「她经历过的」。",
+    params: S({
+      text: { type: "string" },
+      layer: { type: "string", enum: ["narrative", "contract"] },
+      kind: { type: "string" },
+      from: { type: "string", enum: ["reading"] },
+      source: { type: "string", description: "读来的东西出自哪（书名/路径），写进 source_ref" },
+    }, ["text"]),
     target: () => "internal",
     async run(a, ctx) {
       if (!ctx.db) throw new Error("E_NO_DB");
+      const reading = a.from === "reading";
       const layer = (a.layer === "contract" ? "contract" : "narrative") as "narrative" | "contract";
-      const kind = String(a.kind ?? (layer === "contract" ? "promise" : "episode"));
+      // 读来的一律 narrative/reading；不接受调用方指定成别的 kind（否则又能混进经历里）
+      const kind = reading ? "reading" : String(a.kind ?? (layer === "contract" ? "promise" : "episode"));
       const text = String(a.text ?? "").slice(0, 2000);
       const emb = ctx.embedder ? (await ctx.embedder.embed([text]))[0] ?? null : null;
       const id = remember(ctx.db, {
-        layer, kind, text, embedding: emb, now: ctx.now(), sensitivity: "shareable",
-        scoredBy: "tool:memory.remember",
+        layer: reading ? "narrative" : layer,
+        kind, text, embedding: emb, now: ctx.now(),
+        // 读来的默认 local_only：书里的原文不该顺手发给云端（要用再显式放宽）
+        sensitivity: reading ? "local_only" : "shareable",
+        ...(reading ? { sourceKind: "doc" as const, sourceRef: String(a.source ?? "reading").slice(0, 200), scoredBy: "tool:memory.remember:reading" } : { scoredBy: "tool:memory.remember" }),
       });
-      return `已记住 [mem:${id}]（${layer}/${kind}）`;
+      return reading
+        ? `已记住（读来的，不是经历）[mem:${id}]（narrative/reading）`
+        : `已记住 [mem:${id}]（${layer}/${kind}）`;
     },
   },
   {

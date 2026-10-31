@@ -1,7 +1,7 @@
 /** 记忆读写（M0 最小面）：remember / 载入候选 / 批量衰减 */
 import type { DatabaseSync } from "node:sqlite";
 import { bigramText } from "./text.ts";
-import { paramsFor, recompute, reconsolidate, weight, w0FromImportance, isKnownKind, type Layer, type Stage } from "./decay.ts";
+import { paramsFor, recompute, reconsolidate, weight, w0FromImportance, isKnownKind, isReadingKind, type Layer, type Stage } from "./decay.ts";
 
 export interface NewMemory {
   layer: Layer; kind: string; text: string;
@@ -36,6 +36,10 @@ export function remember(db: DatabaseSync, m: NewMemory): number {
   // 静默降级更糟：直接拒写，让人或整理器显式改成 narrative。
   if (m.layer === "contract" && (m.taint ?? "trusted") !== "trusted") {
     throw new Error("E_TAINT_CONTRACT: 不可信来源（taint=external）不能直接进契约层（永不衰减）；先写叙事层，等人确认");
+  }
+  // 读来的 ≠ 经历过的：书里的一句话不是她答应过的事，永远进不了契约层。
+  if (m.layer === "contract" && isReadingKind(m.kind)) {
+    throw new Error("E_READING_CONTRACT: 读来的东西不能进契约层（她没答应过，只是看到过）；用 narrative");
   }
   // E-2：w0 由 importance 推导（之前恒 0.55，权重从来没有方差）
   const importance = Math.max(1, Math.min(5, Math.round(Number(m.importance ?? 3))));

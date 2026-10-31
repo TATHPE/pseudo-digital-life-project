@@ -60,7 +60,8 @@ function recallLine(m: MemoryLine): string {
     const where = m.headingPath ? " · " + m.headingPath : "";
     return `- [文档${where}] ${m.text}（cite: ${m.id}）`;
   }
-  const tag = m.layer === "contract" ? "契约" : "叙事";
+  // 读来的单独标一档：她对书里的句子和对自己的经历，语气不该一样
+  const tag = m.layer === "contract" ? "契约" : m.kind === "reading" ? "读来" : "叙事";
   // 原话优先（J-2）：想起"奶奶生日"时，先浮出来的应该是那句原话，
   // 而不是一条抽象的"待办：提醒生日"。
   const q = m.quote ? String.fromCharCode(12300) + m.quote + String.fromCharCode(12301) + " " : "";
