@@ -8,8 +8,8 @@
 
 | 项 | 数量 |
 |---|---|
-| 源文件（src/**/*.ts） | 89 |
-| 错误码 E_* | 177 |
+| 源文件（src/**/*.ts） | 90 |
+| 错误码 E_* | 178 |
 | verbs | 21 |
 | CLI 子命令 | 37 |
 
@@ -70,6 +70,7 @@
 | `E_DEPLOY_FROZEN` | `src/deploy/watchdog.ts` |
 | `E_DEPLOY_NO_REASON` | `src/deploy/slot.ts` |
 | `E_DEPLOY_STATE` | `src/deploy/slot.ts` |
+| `E_DESK` | `src/web/server.ts` |
 | `E_DISABLED` | `src/shell.ts` |
 | `E_EMBED` | `src/embed.ts` `src/ingest.ts` `src/reembed.ts` |
 | `E_EMBED_COUNT` | `src/transport.ts` |
@@ -331,3 +332,4 @@
 | `src/web/server.ts` | 本地 Web 面板（17 §4）：127.0.0.1:7700，零前端依赖，SSE 流式。 |
 | `src/web/state.ts` | 状态行（17 §4.1）：一句话，不是数字仪表盘 */ |
 | `src/web/timeline.ts` | 时间轴渲染（17 §4）：**没有"会话"，只有时间；空白要可见** */ |
+| `src/web/trianon.ts` | Trianon（第三方，MIT，shuoshuo）—— 桌面工作台界面，**原样**搬来的单文件。 |

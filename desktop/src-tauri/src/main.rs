@@ -45,7 +45,7 @@ pub fn run() {
                 Ok(()) => {
                     // 窗口加载时 sidecar 还没起来，会停在占位页；这里主动导航一次
                     if let Some(w) = app.get_webview_window("main") {
-                        let url = format!("http://127.0.0.1:{}/", sc.port());
+                        let url = format!("http://127.0.0.1:{}/desk", sc.port());
                         let _ = w.navigate(url.parse().unwrap());
                     }
                 }

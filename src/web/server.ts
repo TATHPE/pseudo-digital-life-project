@@ -313,6 +313,18 @@ export function createWebServer(deps: WebDeps) {
   return httpCreateServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     try {
+      // 桌面工作台（Trianon，MIT，整块搬来的单文件）：同源提供、不联网、离线自包含。
+      // 壳的窗口指向这里；`/` 仍然是给用户/PWA 的内置面板。
+      if ((req.method === "GET" || req.method === "HEAD") && url.pathname === "/desk") {
+        try {
+          const { trianonPage } = await import("./trianon.ts");
+          res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+          res.end(trianonPage());
+        } catch (e) {
+          json(res, 500, { error: "E_DESK: " + String((e as Error).message).slice(0, 120) });
+        }
+        return;
+      }
       if ((req.method === "GET" || req.method === "HEAD") && url.pathname === "/") {
         // 面板会被频繁改样式：禁止缓存，避免"我改了但你还看旧页面"
         res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });

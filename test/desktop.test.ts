@@ -10,9 +10,9 @@ import { join } from "node:path";
 const T = join(process.cwd(), "desktop", "src-tauri");
 const read = (p: string) => readFileSync(join(T, p), "utf8");
 
-test("H-6 壳的窗口直接指内置面板（不打包前端：省掉整条构建链）", () => {
+test("H-6 壳的窗口指向 /desk（桌面工作台），不打包前端", () => {
   const conf = JSON.parse(read("tauri.conf.json")) as { app: { windows: Array<{ url: string }> } };
-  assert.match(conf.app.windows[0]!.url, /^http:\/\/127\.0\.0\.1:\d+\/$/);
+  assert.match(conf.app.windows[0]!.url, /^http:\/\/127\.0\.0\.1:\d+\/desk$/);
 });
 
 test("H-6 壳没有 fs / shell / http 权限（不然它就成了第二条能力路径）", () => {
@@ -61,4 +61,28 @@ test("H-6 探测预算够 Node 启动（≥8 秒），不误判「起不来」",
   assert.ok(m, "要有探测循环");
   const attempts = Number(m![1]);
   assert.ok(attempts * 500 >= 8000, `探测预算只有 ${attempts * 500}ms —— Node 起 serve 要 3–4 秒`);
+});
+
+test("H-6 桌面工作台：/desk 提供 Trianon（同源、离线、MIT）", async () => {
+  const { readFileSync } = await import("node:fs");
+  // ① 单文件真的在仓库里（10 MB，自包含）
+  const file = join(process.cwd(), "desktop", "trianon", "trianon.html");
+  assert.ok(existsSync(file));
+  const html = readFileSync(file, "utf8");
+  assert.match(html, /<title>Trianon/, "要有 Trianon 的标题（证明整块搬的，不是我们重画的）");
+  // ② 许可与出处要跟着文件走（MIT 底线）
+  assert.ok(existsSync(join(process.cwd(), "desktop", "trianon", "LICENSE")), "MIT LICENSE 必须随附");
+  assert.ok(existsSync(join(process.cwd(), "desktop", "trianon", "README.md")), "出处与改动记账");
+  // ③ 服务端用 /desk 提供，壳的窗口指向它
+  const srv = readFileSync(join(process.cwd(), "src", "web", "server.ts"), "utf8");
+  assert.match(srv, /url\.pathname === "\/desk"/);
+  const conf = JSON.parse(read("tauri.conf.json")) as { app: { windows: Array<{ url: string }> } };
+  assert.match(conf.app.windows[0]!.url, /:7700\/desk$/);
+});
+
+test("H-6 内置面板仍然在 /（桌面工作台不是替代品）", async () => {
+  const { readFileSync } = await import("node:fs");
+  const srv = readFileSync(join(process.cwd(), "src", "web", "server.ts"), "utf8");
+  assert.match(srv, /url\.pathname === "\/desk"/);
+  assert.match(srv, /url\.pathname === "\/"\) \{/, "`/` 必须还在 —— 删掉桌面壳仍是网页");
 });
