@@ -19,7 +19,7 @@ node src/cli/jingjing.ts serve 7700   # 面板 → http://127.0.0.1:7700
 
 ---
 
-## 2. 六条纪律
+## 2. 八条纪律
 
 1. **一条执行路径。** `verbs → execute → policy → audit`。新能力挂在这条线上；`tools.ts` 只是适配层。
 2. **没接上 = 没做完。** 改完一条链路，去库里/日志里找**一行证据**。类型通过不算。
@@ -29,6 +29,11 @@ node src/cli/jingjing.ts serve 7700   # 面板 → http://127.0.0.1:7700
 6. **改一个功能先列清单。** 动手前把它的**全部面** grep 成一张单：字符串/文案、DOM 元素、接口与字段、配置键、文档、测试。
    一次改完再验证，不要"先改主路径，等用户看到残渣再补"。
    反例（2026-10-31）：权限从"限时窗口"改成"会话级一键切"，分三次才把文案/chip 高度/残留表单/`>` 符号清完 —— 每次都是用户指出来的。
+7. **写入单入口。** 记忆的正文类写入（`INSERT INTO memories` / `UPDATE ... text` / `bigram` / 向量行）
+   只允许出现在白名单里（`map:check` 第四条会查）。多一条路 = 同一个 bug 修两遍 ——
+   这轮真踩到：面板改正文时自己在 `server.ts` 里补写向量，绕开了 `store.updateMemoryText`。
+8. **L0 字节级不变。** 稳定前缀（persona 四块）改一个标点就让 prompt 缓存全掉，且**没有症状**。
+   `test/l0-prefix.test.ts` 把 `prefixHash` 钉死了：想改 L0 就故意改那个常量，并在 commit 里写明后果。
 
 动手前先看技能索引 `~/.agents/skills/INDEX.md`，**调用 skill 前说明"用哪个、为什么"**。
 

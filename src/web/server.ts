@@ -489,8 +489,14 @@ export function createWebServer(deps: WebDeps) {
         const layer = cur.layer === "contract" ? "contract" : "narrative";
         const changedImportance = body.importance !== undefined && importance !== cur.importance;
         // E-5：正文改动只走 store.updateMemoryText（它只接受 human:*，并留 pre-image）
+        // H-7 附：向量也交给它同一次写 —— 面板不再自己 INSERT vec_memories（那会变成第二个写入口）
         if (text !== cur.text) {
-          try { updateMemoryText(deps.db, id, text, "human:panel", now()); }
+          let newEmb: Float32Array | null = null;
+          try {
+            const v = deps.getEmbedder();
+            if (v) newEmb = (await v.embed([text]))[0] ?? null;
+          } catch { /* 算不出向量不算失败：检索会退化为纯词法 */ }
+          try { updateMemoryText(deps.db, id, text, "human:panel", now(), newEmb); }
           catch (e) { json(res, 400, { error: String((e as Error).message).slice(0, 120) }); return; }
         }
         if (changedImportance) {
@@ -507,21 +513,7 @@ export function createWebServer(deps: WebDeps) {
         } else {
           patchMemoryMeta(deps.db, id, { importance, sensitivity }, "human:panel", now());
         }
-        // text_bigram / FTS 已由 updateMemoryText 处理（这里不再裸写）
-        if (text !== cur.text) {
-          try {
-            const v = deps.getEmbedder();
-            if (v) {
-              const emb = (await v.embed([text]))[0];
-              if (emb) {
-                deps.db.prepare("UPDATE memories SET embedding=? WHERE id=?")
-                  .run(new Uint8Array(emb.buffer, emb.byteOffset, emb.byteLength), id);
-                try { deps.db.prepare("DELETE FROM vec_memories WHERE memory_id=?").run(BigInt(id)); } catch { /* 没有扩展就跳过 */ }
-                try { deps.db.prepare("INSERT INTO vec_memories(memory_id,embedding) VALUES(?,?)").run(BigInt(id), emb); } catch { /* 同上 */ }
-              }
-            }
-          } catch { /* 向量没更新不算失败，检索会退化为纯 BM25 */ }
-        }
+        // text_bigram / FTS / 向量 已由 updateMemoryText 一次写完（这里不再裸写）
         appendEvent(deps.inboxDir, {
           v: 1, id: newEventId(), ts: now().toISOString(), kind: "memory_edit", actor: "user",
           payload: { id, before: cur.text, after: text, importance, sensitivity },

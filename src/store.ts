@@ -180,6 +180,12 @@ const r3 = (x: number) => Math.round(x * 1000) / 1000;
  */
 export function updateMemoryText(
   db: DatabaseSync, id: number, text: string, by: string, now = new Date(),
+  /**
+   * 改完正文要一起重算向量（可选）：**正文与向量必须同一次写**。
+   * 以前面板改完正文自己在 server.ts 里补 embedding + vec 行，于是出现了第二个写入口 ——
+   * map:check 的「写入单入口」第四条当场把它抓了出来。
+   */
+  embedding?: Float32Array | null,
 ): { ok: true; changed: boolean } {
   if (!by.startsWith("human:")) {
     throw new Error(`E_METADATA_ONLY: ${by} 只能改元数据（stage/weight/link），不能改正文`);
@@ -199,6 +205,20 @@ export function updateMemoryText(
     .run(ts, "memory_text_changed", by, String(id),
       // pre-image 必须含**旧正文**（截断 300 字）：只有哈希的话"变过"能查到、却恢复不了
       JSON.stringify({ before: hash8(cur.text), after: hash8(next), by, before_text: cur.text.slice(0, 300) }));
+
+  // 正文变了，向量也跟着变（同一次写，不留给调用方补）
+  if (embedding) {
+    db.prepare("UPDATE memories SET embedding=? WHERE id=?")
+      .run(new Uint8Array(embedding.buffer, embedding.byteOffset, embedding.byteLength), id);
+    try {
+      db.prepare("DELETE FROM vec_memories WHERE memory_id=?").run(BigInt(id));
+      db.prepare("INSERT INTO vec_memories(memory_id,embedding) VALUES(?,?)").run(BigInt(id), embedding);
+      db.prepare("DELETE FROM meta WHERE key='vec_error'").run();
+    } catch (e) {
+      db.prepare("INSERT INTO meta(key,value) VALUES('vec_error',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value")
+        .run(String(e).slice(0, 200));
+    }
+  }
   return { ok: true, changed: true };
 }
 

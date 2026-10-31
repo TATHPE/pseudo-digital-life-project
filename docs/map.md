@@ -23,6 +23,8 @@
 | 参数有界 | `src/decayparams.ts` | `RANGES` |
 | 内容只是资料 | `src/verbs.ts` | `E_NEEDS_EGRESS` |
 | 改功能先列清单 | `AGENTS.md` | `改一个功能先列清单` |
+| 写入单入口 | `src/store.ts` | `export function updateMemoryText` |
+| L0 字节级不变 | `test/l0-prefix.test.ts` | `PINNED_PREFIX_HASH` |
 
 ## 错误码 E_*
 

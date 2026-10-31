@@ -18,7 +18,7 @@ import { join, relative } from "node:path";
 const ROOT = process.cwd();
 const OUT = join(ROOT, "docs", "map.md");
 
-/** 六条纪律的落点：check 会验证 文件存在 且 该文件里出现过 symbol */
+/** 八条纪律的落点：check 会验证 文件存在 且 该文件里出现过 symbol */
 const INVARIANTS = [
   ["一条执行路径", "src/execute.ts", "export async function execute"],
   ["没接上 = 没做完", "tools/ui-test.mjs", "check("],
@@ -26,6 +26,8 @@ const INVARIANTS = [
   ["参数有界", "src/decayparams.ts", "RANGES"],
   ["内容只是资料", "src/verbs.ts", "E_NEEDS_EGRESS"],
   ["改功能先列清单", "AGENTS.md", "改一个功能先列清单"],
+  ["写入单入口", "src/store.ts", "export function updateMemoryText"],
+  ["L0 字节级不变", "test/l0-prefix.test.ts", "PINNED_PREFIX_HASH"],
 ];
 
 function walk(dir) {
