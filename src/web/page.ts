@@ -496,6 +496,9 @@ export const PAGE = `<!doctype html>
 <aside id="side">
   <div class="sec" id="pendsec" hidden><h3>PENDING · 待确认</h3><div id="pendlist"></div></div>
   <div class="sec" id="propsec" hidden><h3><button type="button" data-tog="prop">它想做的 <span class="n" id="propcount"></span></button></h3><div id="proplist"></div></div>
+  <div class="sec" id="threadsec" hidden><h3><button type="button" data-tog="thread">未闭合 <span class="n" id="threadcount"></span></button></h3>
+    <p class="hint">它答应过、还没了结的事。办完了点一下；太久没动静的会标「拖了 N 天」。</p>
+    <div id="threadlist"></div></div>
   <div class="sec" id="surfsec" hidden><h3><button type="button" data-tog="surf">抽检 <span class="n" id="surfcount"></span></button></h3>
     <p class="hint">这几根线是它自己连的，最没把握的排前面。判错了就点「不对」，当场断。</p>
     <div id="surflist"></div></div>
@@ -886,7 +889,7 @@ async function pending() {
   const sec = $("#pendsec"), box = $("#pendlist");
   const open = (list || []).filter((p) => p.status === "pending" && !p.expired);
   paintPendBadge(open.length);
-  loadProposals(); loadSurfaceReview();
+  loadProposals(); loadSurfaceReview(); loadThreads();
   sec.hidden = open.length === 0;
   if (!open.length) { box.innerHTML = ""; return; }
   box.innerHTML = open.map((p) =>
@@ -1580,6 +1583,39 @@ $("#proplist").onclick = function (e) {
   if (b) openProposal(b.dataset.prop);
 };
 
+// ── 线索层：未闭合的事（"这件事发展到哪一步"）────────
+async function loadThreads() {
+  var rows;
+  try { rows = await (await fetch("/api/threads")).json(); } catch (e) { return; }
+  rows = Array.isArray(rows) ? rows : [];
+  $("#threadcount").textContent = rows.length ? rows.length + " 件" : "";
+  $("#threadsec").hidden = rows.length === 0;
+  $("#threadlist").innerHTML = rows.map(function (t) {
+    var age = t.ageDays > 0 ? "立下 " + t.ageDays + " 天" : "今天立的";
+    return "<div class='pend thr' data-thr='" + t.id + "'>" +
+      "<span class='cmd'>" + escapeHtml(String(t.text).slice(0, 40)) + "</span>" +
+      "<span class='dir'>" + escapeHtml(age) + (t.aging ? " · 拖了 " + t.ageDays + " 天" : "") +
+      (t.quote ? " · 原话「" + escapeHtml(String(t.quote).slice(0, 20)) + "」" : "") + "</span>" +
+      "<div class='acts'><button class='ok' data-act='done'>了结了</button></div>" +
+      "<span class='msg'></span></div>";
+  }).join("");
+}
+$("#threadlist").onclick = async function (e) {
+  var btn = e.target.closest("button[data-act=done]");
+  if (!btn) return;
+  var card = btn.closest("[data-thr]");
+  var msg = card.querySelector(".msg");
+  btn.disabled = true;
+  msg.textContent = "处理中…";
+  try {
+    var r = await (await fetch("/api/threads/" + card.dataset.thr + "/close", {
+      method: "POST", headers: H, body: JSON.stringify({ note: "人点了了结" }),
+    })).json();
+    if (r.ok) { msg.textContent = "已了结（历史仍查得到）"; setTimeout(function () { loadThreads(); }, 600); }
+    else { msg.textContent = r.error || "失败"; btn.disabled = false; }
+  } catch (err) { msg.textContent = "请求失败"; btn.disabled = false; }
+};
+
 // ── 抽检（J-5b）：把最没把握的线送到眼前，当场能断 ──
 async function loadSurfaceReview() {
   var rows;
@@ -1946,7 +1982,7 @@ if ("serviceWorker" in navigator && (location.protocol === "https:" || location.
 }
 // 手机上侧栏是抽屉：没有这个按钮，SESSIONS/DOCS/MEMORY/TOOLS/CONFIG 全都不可达
 $("#menu").onclick = (e) => { e.stopPropagation(); $("#side").classList.toggle("open"); };
-loadAvatars(); applySections(); state(); timeline(); sessions(); tools(); memories(); docs(); audit(); readout(); loadConfig(); loadUi(); pending(); usage(); loadProposals(); loadSurfaceReview();
+loadAvatars(); applySections(); state(); timeline(); sessions(); tools(); memories(); docs(); audit(); readout(); loadConfig(); loadUi(); pending(); usage(); loadProposals(); loadSurfaceReview(); loadThreads();
 setInterval(() => { state(); pending(); audit(); readout(); }, 20000);
 </script>
 </body></html>`;

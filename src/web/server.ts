@@ -26,6 +26,7 @@ import { AVATAR_FRAMES, DEFAULT_AVATAR, isAvatarFrame } from "./avatar.ts";
 import { listPending, getPending, updatePending } from "../confirm.ts";
 import { listProposals, getProposal, setProposalStatus } from "../proposals.ts";
 import { reviewQueue, noteReviewed } from "../surface.ts";
+import { openThreads, closeThread } from "../threads.ts";
 import { cutLink, linkKey } from "../links.ts";
 import { readStateSafe } from "../deploy/slot.ts";
 import { listDocs, forgetDoc, setDocSensitivity, ingestPath, collectFiles } from "../ingest.ts";
@@ -975,6 +976,20 @@ export function createWebServer(deps: WebDeps) {
           payload: { text: `（关于「${p.title}」：${body.action === "accept" ? "我同意，你来做" : "不做"}${body.reason ? "，因为" + String(body.reason).slice(0, 80) : ""}）` },
         });
         json(res, 200, { ok: true, status: next?.status ?? null });
+        return;
+      }
+
+      // ── 线索层：还没闭合的事（借 Twig 的 thread 概念，不新建表）──
+      if (req.method === "GET" && url.pathname === "/api/threads") {
+        json(res, 200, openThreads(deps.db, now()));
+        return;
+      }
+      const threadClose = url.pathname.match(/^\/api\/threads\/(\d+)\/close$/);
+      if (req.method === "POST" && threadClose) {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
+        const body = JSON.parse(await readBody(req)) as { note?: string };
+        const ok = closeThread(deps.db, Number(threadClose[1]), String(body.note ?? ""), now());
+        json(res, ok ? 200 : 409, ok ? { ok: true } : { error: "E_THREAD_CLOSED" });
         return;
       }
 

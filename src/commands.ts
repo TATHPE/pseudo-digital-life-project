@@ -3,7 +3,7 @@
  * 测试会读源文件核对，少一个/多一个都会红（否则这份表就是"装饰列"）。
  */
 export const CLI_COMMANDS = [
-  "migrate", "remember", "search", "verify", "outage", "serve", "config", "models", "links",
+  "migrate", "remember", "search", "verify", "outage", "serve", "config", "models", "links", "threads", "proposal",
   "capabilities", "doctor", "reembed", "auth", "usage", "test", "night", "shell", "ingest", "docs",
   "forget-doc", "export", "verify-export", "import", "smoke-tools", "templates", "redteam",
   "verb", "beat", "eval", "decay", "bench",

@@ -59,6 +59,8 @@ export interface NightlyReport {
   refined: number;
   /** P1-2：被跨层合并掉的条数（同一件事在 narrative / contract 各出现一次） */
   merged: number;
+  /** 写前反证：命中了反面证据的条数（建 contradicts 边，交人去判） */
+  contradicted: number;
   decayed: number;
   cursorFrom: string | null;
   cursorTo: string | null;
@@ -240,6 +242,46 @@ export function bigramSim(a: string, b: string): number {
 }
 
 /**
+ * 极性：这句话是肯定还是否定。用来判"是不是反面证据"。
+ * 只做字面判定（不调模型）：漏掉一些说法可以接受，把两件无关的事判成矛盾才是灾难。
+ */
+const NEGATIVE = /不|没|别|取消|改成|不再|拒绝|讨厌|不想|停止|忘了/;
+export const polarity = (text: string): "neg" | "pos" => (NEGATIVE.test(text) ? "neg" : "pos");
+
+/**
+ * 写前反证（借自衔枝的"反证搜索"，这里用规则而不是 HyDE）：
+ * 写入前先找**同一话题但极性相反**的既有记忆。
+ *   · 向量 ≥ 0.75（同一话题，比"同一件事"的 0.92 松）
+ *   · 字面 ≥ 0.2（防止只靠向量的假近邻）
+ *   · 极性相反
+ * 命中不是自动否决，而是建一根 contradicts 边、双方信心各降 0.1，然后**进抽检卡给人看** ——
+ * 「两条都留、同时呈现」是文档 02 §8.2 的原则，这里只负责把它变成看得见的东西。
+ */
+function findCounterEvidence(
+  db: DatabaseSync,
+  vec: Float32Array,
+  text: string,
+): { id: number; text: string; cos: number; sim: number } | null {
+  const mine = polarity(text);
+  const rows = db
+    .prepare(`SELECT id, text, embedding FROM memories
+              WHERE status='active' AND embedding IS NOT NULL AND valid_to IS NULL
+              ORDER BY id DESC LIMIT 500`)
+    .all() as Array<{ id: number; text: string; embedding: Uint8Array }>;
+  let best: { id: number; text: string; cos: number; sim: number } | null = null;
+  for (const r of rows) {
+    if (polarity(r.text) === mine) continue;        // 同极性不构成反证
+    const old = new Float32Array(r.embedding.buffer, r.embedding.byteOffset, r.embedding.byteLength / 4);
+    const cos = cosine(vec, old);
+    if (cos < 0.75) continue;
+    const sim = bigramSim(r.text, text);
+    if (sim < 0.2) continue;
+    if (!best || cos > best.cos) best = { id: r.id, text: r.text, cos, sim };
+  }
+  return best;
+}
+
+/**
  * 找"同一件事"：槽位键是 `layer|subject`，所以两处都撞不见 ——
  *   · 同内容落到不同层（contract 的承诺 + narrative 的经历）
  *   · 模型给同一件事起了不同 subject（"生日" vs "生日提醒"）
@@ -298,6 +340,7 @@ export async function runNightly(deps: NightlyDeps): Promise<NightlyReport> {
     noop: 0,
     superseded: 0,
     merged: 0,
+    contradicted: 0,
     refined: 0,
     decayed: 0,
     cursorFrom,
@@ -411,6 +454,9 @@ export async function runNightly(deps: NightlyDeps): Promise<NightlyReport> {
       continue;
     }
 
+    // 写前反证：先看有没有"同一话题、极性相反"的既有记忆
+    const counter = vec ? findCounterEvidence(deps.db, vec, c.text) : null;
+
     const id = remember(deps.db, {
       layer: c.layer,
       kind: c.kind,
@@ -429,6 +475,16 @@ export async function runNightly(deps: NightlyDeps): Promise<NightlyReport> {
     });
     // 归一化键（源里叫 normalized_key，store 负责写 text_bigram；这里补 key）
     deps.db.prepare("UPDATE memories SET normalized_key=? WHERE id=?").run(key, id);
+    if (counter) {
+      // 两条都留、都降一点信心，建一根 contradicts —— 然后它会自己出现在抽检卡上
+      linkIfNew(deps.db, id, counter.id, "contradicts", 0.6,
+        `反证：极性相反（cos ${counter.cos.toFixed(2)} / 字面 ${counter.sim.toFixed(2)}）`.slice(0, 60), now);
+      for (const mid of [id, counter.id]) {
+        deps.db.prepare("UPDATE memories SET confidence=MAX(0.3, confidence-0.1) WHERE id=?").run(mid);
+      }
+      report.contradicted++;
+      notes.push(`COUNTER #${counter.id}：${counter.text.slice(0, 24)} ↔ ${c.text.slice(0, 24)}`);
+    }
 
     if (verdict === "supersede" && target != null) {
       deps.db.prepare("UPDATE memories SET superseded_by=?, status='archived', updated_at=? WHERE id=?")

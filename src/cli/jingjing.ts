@@ -17,6 +17,7 @@ import { createStore, fingerprint, type Provider } from "../auth.ts";
 import { record, checkBudget, estimateCost, spentToday } from "../budget.ts";
 import { listLinks, cutLink } from "../links.ts";
 import { listProposals, getProposal, setProposalStatus } from "../proposals.ts";
+import { openThreads, closeThread } from "../threads.ts";
 import { createWebServer } from "../web/server.ts";
 import { execute } from "../execute.ts";
 import { createStreamTransport, createChatTransport } from "../transport.ts";
@@ -432,6 +433,33 @@ async function main(): Promise<void> {
       }
 
       console.error("用法: jingjing models [list | use <名> [--role X] | doctor]");
+      process.exitCode = 2;
+      return;
+    }
+    case "threads": {
+      // 线索层：答应过、还没了结的事
+      const d = openDb(dbFile);
+      const op = rest[0] ?? "list";
+      if (op === "list") {
+        const rows = openThreads(d.db, new Date(), 50);
+        if (!rows.length) { console.log("（没有未闭合的事）"); return; }
+        rows.forEach((t, i) => {
+          console.log("T" + (i + 1) + "  #" + t.id + "  " + t.text);
+          console.log("     " + (t.ageDays > 0 ? "立下 " + t.ageDays + " 天" : "今天立的") +
+            (t.aging ? "（拖太久了）" : "") + (t.quote ? "  ／ 原话「" + t.quote.slice(0, 30) + "」" : ""));
+        });
+        console.log(String.fromCharCode(10) + "了结：jingjing threads close <id>");
+        return;
+      }
+      if (op === "close") {
+        const id = Number(rest[1] ?? "");
+        if (!Number.isFinite(id)) { console.error("用法: jingjing threads close <id>"); process.exitCode = 2; return; }
+        const ok = closeThread(d.db, id, rest.slice(2).join(" ") || "人说了结了");
+        console.log(JSON.stringify(ok ? { ok: true, id, note: "写了止期（不删，历史仍查得到）" } : { ok: false, error: "E_THREAD_CLOSED" }, null, 2));
+        if (!ok) process.exitCode = 1;
+        return;
+      }
+      console.error("用法: jingjing threads list|close <id>");
       process.exitCode = 2;
       return;
     }
