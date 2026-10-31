@@ -96,11 +96,14 @@ export const PAGE = `<!doctype html>
   *::-webkit-scrollbar-corner { background:transparent; }
   *::-webkit-scrollbar-button { display:none; }   /* 去掉 Windows 上下的箭头按钮 */
   ::selection { background:rgba(233,240,242,.30); color:#fff; }
-  input::placeholder, textarea::placeholder { color:rgba(111,143,146,.75); }
+  /* placeholder 是正文：原来 rgba(111,143,146,.75) 合成后 3.7:1，改 --dim（9.2:1） */
+  input::placeholder, textarea::placeholder { color:var(--dim); opacity:1; }
   input::-ms-reveal, input::-ms-clear { display:none; }
   select { color-scheme:dark; }
   :focus-visible { outline:1px solid var(--ink); outline-offset:1px; }
   input, textarea { caret-color:var(--ink); }
+  /* placeholder 也是正文：3.7:1 不够（检测器抓到 3 处），提到 --dim */
+  ::placeholder { color:var(--dim); opacity:1; }
   /* Chrome/Edge 自动填充会强行刷浅黄底，只能这样压回去 */
   input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:focus {
     -webkit-text-fill-color:var(--fg);
@@ -176,7 +179,7 @@ export const PAGE = `<!doctype html>
          font:10px/1 var(--mono); letter-spacing:.16em; color:var(--ink); font-weight:700; }
   .day::after { content:""; flex:1; height:1px; background:var(--line-dim); }
   .gap { display:flex; align-items:center; gap:12px; margin:16px 0; font:10px/1 var(--mono);
-         letter-spacing:.14em; color:rgba(111,143,146,.9); }
+         letter-spacing:.14em; color:var(--ink-dim); }
   .gap::before, .gap::after { content:""; flex:1; height:1px;
          background:repeating-linear-gradient(90deg, var(--line) 0 5px, transparent 5px 10px); }
   .row { display:grid; grid-template-columns:28px 1fr; gap:12px; margin:14px 0; align-items:start; }
@@ -205,7 +208,8 @@ export const PAGE = `<!doctype html>
   .pend { border:1px solid rgba(255,180,84,.34); background:rgba(255,180,84,.06); padding:7px 8px; margin-bottom:6px; }
   .pend .cmd { display:block; font:11px/1.5 var(--mono); color:var(--amber); word-break:break-all; }
   .pend .dir { display:block; font:9px/1.4 var(--mono); color:var(--dim); word-break:break-all; margin-top:3px; }
-  .pend .fp { display:block; font:9px/1.4 var(--mono); color:rgba(111,143,146,.7); }
+  /* 指纹是事实性文本，不能用装饰性的低透明度：合成后只有 2.6:1（检测器抓到的） */
+  .pend .fp { display:block; font:9px/1.4 var(--mono); color:var(--dim); }
   .pend .acts { display:flex; gap:6px; margin-top:7px; }
   .pend .acts button { font:10px/1 var(--mono); letter-spacing:.06em; padding:5px 9px; cursor:pointer;
                        background:transparent; color:var(--fg); border:1px solid var(--line-dim); }
@@ -283,11 +287,15 @@ export const PAGE = `<!doctype html>
   .frame i:nth-child(2) { top:-1px; right:-1px; border-left:0; border-bottom:0; }
   .frame i:nth-child(3) { bottom:-1px; left:-1px; border-right:0; border-top:0; }
   .frame i:nth-child(4) { bottom:-1px; right:-1px; border-left:0; border-top:0; }
-  .frame b { position:absolute; font:9px/1 var(--mono); letter-spacing:.2em; color:rgba(233,240,242,.32); }
+  /* 角标也是文字：.32 合成后 2.6:1，改 ink-dim（7.6:1） */
+  .frame b { position:absolute; font:9px/1 var(--mono); letter-spacing:.2em; color:var(--ink-dim); }
   .frame b.bl { bottom:5px; left:10px; } .frame b.br { bottom:5px; right:10px; }
   @media (max-width: 860px) {
     body { grid-template-columns:1fr; grid-template-rows:var(--head) 1fr; grid-template-areas:"head" "main"; }
     #readoutbar, .ticker { display:none; }
+    /* 手机上 chip 占位后，长 placeholder 会换行顶出输入框（截图抓到的） */
+    #composer .wrap { align-items:center; }
+    #m { overflow:hidden; }
     /* 抽屉：手机上不能是半透明的——聊天内容会透出来，看不出哪层在上 */
     aside { position:fixed; z-index:12; top:var(--head); bottom:0; left:0; width:82vw; max-width:320px;
             transform:translateX(-102%); transition:.22s; border-right:1px solid var(--line);
@@ -397,6 +405,10 @@ export const PAGE = `<!doctype html>
   .permchip { flex:0 0 auto; padding:4px 8px; border:1px solid var(--line); background:transparent;
     color:var(--dim); font:inherit; font-size:12px; font-weight:600; border-radius:2px; cursor:pointer; }
   .permchip:hover { color:var(--fg); border-color:var(--fg); }
+  #permpop .opt:focus-visible { outline:1px solid var(--fg); outline-offset:-1px; }
+  /* 档位文字会变长（"完全权限 · 剩 15 分"）：给上限 + 省略号，别让它把输入框挤成一行两字 */
+  .permchip { max-width:42%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .permchip:focus-visible { outline:1px solid var(--fg); outline-offset:2px; }
   .permchip.full { color:var(--fg); border-color:var(--fg); }
   #permpop { position:fixed; left:0; right:0; top:0; bottom:0; z-index:60; background:rgba(0,0,0,.72);
     display:flex; align-items:flex-end; justify-content:center; padding:0 16px 88px; }
@@ -787,13 +799,13 @@ export const PAGE = `<!doctype html>
   <form id="composer"><div class="wrap">
     <button type="button" id="perm" class="permchip" title="当前会话的权限档（点开切换）">逐次确认</button>
     <span class="prompt">&gt;</span>
-    <textarea id="m" rows="1" placeholder="说点什么…（Enter 发送 · Shift+Enter 换行）"></textarea>
+    <textarea id="m" rows="1" placeholder="说点什么…"></textarea>
     <button id="stop" type="button" title="停止生成">■</button>
     <button class="send">▲</button>
   </div></form>
 </main>
 
-<div id="permpop" hidden><div class="permbox">
+<div id="permpop" hidden role="dialog" aria-modal="true" aria-label="权限档"><div class="permbox">
   <p class="hint">切的是<b>当前会话</b>的权限档；设置里那一行只管以后新建的会话。</p>
   <div id="permopts"></div>
   <div class="acts"><button type="button" id="permclose">关闭</button><span id="permmsg" class="hint"></span></div>
@@ -804,6 +816,9 @@ const $ = (s) => document.querySelector(s);
 const NL2 = String.fromCharCode(10, 10);
 // 标签页标题：待确认闪烁时也要闪回这个名字
 const TITLE = 'Pseudo Digital Life Project';
+// 占位符按屏宽给：手机上长提示会换行顶出输入框（截图抓到的）
+var mEl = document.getElementById("m");
+if (mEl) mEl.placeholder = innerWidth > 560 ? "说点什么…（Enter 发送 · Shift+Enter 换行）" : "说点什么…";
 const H = { "x-jj": "1", "content-type": "application/json" };
 const WHALE = "<svg class='ico' aria-hidden='true'><use href='#whale' /></svg>";
 let view = "chat", TOOLS = [], MEMS = [];
@@ -1688,13 +1703,21 @@ function renderPermOptions() {
   box.innerHTML = (PERM.presets || []).map(function (x) {
     var on = x.id === cur ? " on" : "";
     var warn = x.id === "full" ? " ⚠" : "";
-    return "<button class='opt" + on + "' data-preset='" + escapeHtml(x.id) + "'>" +
+    return "<button class='opt" + on + "' data-preset='" + escapeHtml(x.id) + "' aria-current='" + (x.id === cur ? "true" : "false") + "'>" +
       "<b>" + escapeHtml(x.label) + warn + "</b><span>" + escapeHtml(x.hint) + "</span></button>";
   }).join("");
 }
 document.getElementById("perm").addEventListener("click", function () {
   renderPermOptions();
   document.getElementById("permpop").hidden = false;
+  // 焦点落在当前档：键盘用户不用先 Tab 穿一遍
+  var on = document.querySelector("#permopts .opt.on");
+  if (on) on.focus();
+});
+document.addEventListener("keydown", function (e) {
+  if (e.key !== "Escape") return;
+  var pop = document.getElementById("permpop");
+  if (pop && !pop.hidden) { pop.hidden = true; document.getElementById("perm").focus(); }
 });
 document.getElementById("permclose").addEventListener("click", function () {
   document.getElementById("permpop").hidden = true;
