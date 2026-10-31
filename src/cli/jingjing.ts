@@ -18,6 +18,7 @@ import { record, checkBudget, estimateCost, spentToday } from "../budget.ts";
 import { listLinks, cutLink } from "../links.ts";
 import { listProposals, getProposal, setProposalStatus } from "../proposals.ts";
 import { openThreads, closeThread } from "../threads.ts";
+import { openGrant, listGrants, revokeGrant } from "../grant.ts";
 import { createWebServer } from "../web/server.ts";
 import { execute } from "../execute.ts";
 import { createStreamTransport, createChatTransport } from "../transport.ts";
@@ -433,6 +434,48 @@ async function main(): Promise<void> {
       }
 
       console.error("用法: jingjing models [list | use <名> [--role X] | doctor]");
+      process.exitCode = 2;
+      return;
+    }
+    case "grant": {
+      // K-3：会话级授权窗口（**活在当前进程里**，进程一退就没了）
+      const op = rest[0] ?? "list";
+      if (op === "list") {
+        const rows = listGrants(HOME);
+        if (!rows.length) { console.log("（没有打开的授权窗口）"); return; }
+        rows.forEach((g) => {
+          console.log(`${g.id}  [${g.commands.join(",")}]  目录 ${g.scope}  剩 ${g.remainingS}s`);
+          console.log(`    为什么：${g.because}`);
+        });
+        console.log(String.fromCharCode(10) + "收回：jingjing grant revoke <id>");
+        return;
+      }
+      if (op === "open") {
+        const arg = (n: string) => {
+          const i = rest.indexOf("--" + n);
+          return i >= 0 ? rest[i + 1] : undefined;
+        };
+        const ttlRaw = String(arg("ttl") ?? "30m");
+        const m = ttlRaw.match(/^(\d+)([mh])?$/);
+        const ttlMs = m ? Number(m[1]) * (m[2] === "h" ? 3600_000 : 60_000) : 30 * 60_000;
+        const r = openGrant(HOME, {
+          commands: String(arg("commands") ?? "node").split(","),
+          scope: String(arg("scope") ?? "workspace"),
+          ttlMs,
+          because: arg("because") ?? "",
+        });
+        console.log(JSON.stringify(r, null, 2));
+        if (!r.ok) process.exitCode = 1;
+        return;
+      }
+      if (op === "revoke") {
+        const id = String(rest[1] ?? "");
+        const ok = revokeGrant(HOME, id);
+        console.log(JSON.stringify({ ok, id, note: ok ? "已收回" : "没有这个窗口（或已经过期）" }, null, 2));
+        if (!ok) process.exitCode = 1;
+        return;
+      }
+      console.error("用法: jingjing grant open --commands node,git --scope workspace --ttl 30m --because \"...\" | list | revoke <id>");
       process.exitCode = 2;
       return;
     }

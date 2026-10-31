@@ -46,6 +46,14 @@ d.db.prepare("INSERT INTO memory_links(src_id,dst_id,rel,weight,why,created_at) 
 d.db.prepare("INSERT INTO memory_links(src_id,dst_id,rel,weight,why,created_at) VALUES(?,?,?,?,?,?)")
   .run(c, e, "related", 0.55, "都跟周三周报有关（推的）", now.toISOString());
 
+// F-3 分页夹具：多造几条，让侧栏「看更早的」真的能翻（初始只给 8 条）
+for (let i = 1; i <= 9; i++) {
+  remember(d.db, {
+    layer: "narrative", kind: "episode",
+    text: `第 ${i} 条用来测分页的记忆：随便聊了点日常${i}`,
+    importance: 2, salience: 0.4, sensitivity: "shareable", sourceKind: "extract", now,
+  });
+}
 // ③ 一张等回应的提议
 createProposal(HOME, {
   title: "给记忆列表加分页",

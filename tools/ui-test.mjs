@@ -157,6 +157,61 @@ if (hasMem) {
   })()`));
 } else skip("记忆详情显示来源", "空库");
 
+// ── K-3 会话授权：能开、能看到、能收回 ──────────────
+check("K-3 会话授权能开能收", await js(`(async () => {
+  document.querySelector('#side .item[data-view=cfg]').click();
+  await new Promise((r) => setTimeout(r, 400));
+  const why = document.querySelector('#g-why');
+  const open = document.querySelector('#g-open');
+  if (!why || !open) return false;
+  // 先试没理由 → 必须被拒（闸门在服务端）
+  why.value = ''; open.click();
+  await new Promise((r) => setTimeout(r, 600));
+  const err = document.querySelector('#g-msg').textContent;
+  why.value = '测一下窗口'; open.click();
+  await new Promise((r) => setTimeout(r, 900));
+  const one = document.querySelectorAll('#g-list [data-grant]').length;
+  const btn = document.querySelector('#g-list button[data-act=revoke]');
+  if (btn) btn.click();
+  await new Promise((r) => setTimeout(r, 900));
+  const after = document.querySelectorAll('#g-list [data-grant]').length;
+  return err.length > 0 && one === 1 && after === 0;
+})()`));
+
+// ── F-3 记忆撤销：忘记之后 5 秒内能撤回 ─────────────
+check("F-3 忘记可撤销", await js(`(async () => {
+  window.__f3 = {};
+  const mem = document.querySelector('#side .item[data-view=memview]');
+  window.__f3.hasMem = !!mem;
+  if (!mem) return false;
+  mem.click();
+  await new Promise((r) => setTimeout(r, 800));
+  const f = document.querySelector('#mv-forget');
+  window.__f3.hasForget = !!f;
+  if (!f) return false;
+  f.click();
+  await new Promise((r) => setTimeout(r, 1200));
+  const msg = document.querySelector('#mv-msg');
+  window.__f3.msg = msg ? msg.textContent.slice(0, 60) : null;
+  const undo = document.querySelector('#mv-undo');
+  window.__f3.hasUndo = !!undo;
+  if (!undo) return false;
+  undo.click();
+  await new Promise((r) => setTimeout(r, 1200));
+  window.__f3.after = document.querySelector('#mv-msg').textContent;
+  return window.__f3.after.includes('撤回');
+})()`), await js("JSON.stringify(window.__f3 || {})"));
+// ── F-3 列表分页：先给 8 条，能往上翻 ───────────────
+check("F-3 记忆列表能翻页", await js(`(async () => {
+  await new Promise((r) => setTimeout(r, 300));
+  const before = document.querySelectorAll('#memlist .item').length;
+  const more = document.querySelector('#memmore');
+  if (!more) return false;
+  more.click();
+  await new Promise((r) => setTimeout(r, 800));
+  const after = document.querySelectorAll('#memlist .item').length;
+  return before <= 9 && after > before;
+})()`));
 check("无 JS 运行时错误", errs.length === 0, errs.slice(0, 2).join(" | "));
 
 // 图标：标签页 favicon 是静态 /icon.svg（以前是运行时 data URI，viewBox 写死导致空白）

@@ -27,6 +27,7 @@ import { listPending, getPending, updatePending } from "../confirm.ts";
 import { listProposals, getProposal, setProposalStatus } from "../proposals.ts";
 import { reviewQueue, noteReviewed } from "../surface.ts";
 import { openThreads, closeThread } from "../threads.ts";
+import { openGrant, listGrants, revokeGrant } from "../grant.ts";
 import { cutLink, linkKey } from "../links.ts";
 import { readStateSafe } from "../deploy/slot.ts";
 import { listDocs, forgetDoc, setDocSensitivity, ingestPath, collectFiles } from "../ingest.ts";
@@ -873,6 +874,24 @@ export function createWebServer(deps: WebDeps) {
         json(res, 200, { ...row, provenance: { changes, doc } });
         return;
       }
+      // F-3：忘记的**撤销**。忘记是软删（status='deleted'），所以能原样放回；
+      // 只回 status，不动 weight —— 权重已经按时间衰减过，硬抬回去等于假装它没被忘过。
+      const memRestore = url.pathname.match(/^\/api\/memories\/(\d+)\/restore$/);
+      if (req.method === "POST" && memRestore) {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
+        const id = Number(memRestore[1]);
+        const row = deps.db.prepare("SELECT status FROM memories WHERE id=?").get(id) as { status?: string } | undefined;
+        if (!row) { json(res, 404, { error: "E_NOT_FOUND" }); return; }
+        if (row.status !== "deleted") { json(res, 409, { error: "E_NOT_DELETED" }); return; }
+        deps.db.prepare("UPDATE memories SET status='active', updated_at=? WHERE id=?").run(now().toISOString(), id);
+        appendEvent(deps.inboxDir, {
+          v: 1, id: newEventId(), ts: now().toISOString(), kind: "memory_restore", actor: "user",
+          payload: { id },
+        });
+        json(res, 200, { ok: true });
+        return;
+      }
+
       const forget = url.pathname.match(/^\/api\/memories\/(\d+)\/forget$/);
       if (req.method === "POST" && forget) {
         const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
@@ -979,6 +998,30 @@ export function createWebServer(deps: WebDeps) {
         return;
       }
 
+      // ── 会话授权（K-3）：窗口活在**这个进程**里，重启即失效 ──
+      if (req.method === "GET" && url.pathname === "/api/grants") {
+        json(res, 200, listGrants(deps.home, now()));
+        return;
+      }
+      if (req.method === "POST" && url.pathname === "/api/grants") {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
+        const body = JSON.parse(await readBody(req)) as { commands?: string; scope?: string; ttlMin?: number; because?: string };
+        const r = openGrant(deps.home, {
+          commands: String(body.commands ?? "node").split(","),
+          scope: String(body.scope ?? "workspace"),
+          ttlMs: Math.min(120, Math.max(1, Number(body.ttlMin ?? 30))) * 60_000,
+          because: String(body.because ?? ""),
+        });
+        json(res, r.ok ? 200 : 400, r);
+        return;
+      }
+      const grantRevoke = url.pathname.match(/^\/api\/grants\/(grn_[0-9a-z]+)\/revoke$/);
+      if (req.method === "POST" && grantRevoke) {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
+        const ok = revokeGrant(deps.home, String(grantRevoke[1]));
+        json(res, ok ? 200 : 404, { ok, error: ok ? undefined : "E_NO_GRANT" });
+        return;
+      }
       // ── 线索层：还没闭合的事（借 Twig 的 thread 概念，不新建表）──
       if (req.method === "GET" && url.pathname === "/api/threads") {
         json(res, 200, openThreads(deps.db, now()));

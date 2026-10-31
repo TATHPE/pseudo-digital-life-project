@@ -678,6 +678,21 @@ export const PAGE = `<!doctype html>
       </div>
 
       <div class="panelbox">
+        <h2>GRANT · 会话授权</h2>
+        <p class="hint">开一个窗口：这段时间内它可以按你给的范围跑命令，不用每次点确认。
+          **进程重启或到点即失效**，密钥类环境变量不会传给它。</p>
+        <div class="two">
+          <div><label>允许的命令</label><input id="g-cmds" placeholder="node,git" value="node"></div>
+          <div><label>目录范围</label><input id="g-scope" placeholder="workspace" value="workspace"></div>
+        </div>
+        <div class="two">
+          <div><label>多少分钟</label><input id="g-ttl" type="number" min="1" max="120" value="30"></div>
+          <div><label>为什么</label><input id="g-why" placeholder="我要它连着改几个文件"></div>
+        </div>
+        <div class="acts"><button id="g-open" class="primary">开窗口</button><span id="g-msg" class="hint"></span></div>
+        <div id="g-list"></div>
+      </div>
+      <div class="panelbox">
         <h2>CAPABILITIES · 能力</h2>
         <p class="hint" id="cap-sum">…</p>
         <div id="cap-list"></div>
@@ -1512,15 +1527,23 @@ function paintTools() {
 $("#toolq").addEventListener("input", function () { TOOLQ = this.value; paintTools(); });
 $("#toolmore").addEventListener("click", function () { TOOLALL = true; paintTools(); });
 const renderTools = () => tools();
-async function memories() {
-  const rows = await (await fetch("/api/memories")).json();
+var MEMPAGE = 8;   // 侧栏先给 8 条；点「看更早的」按 8→40→200 往上翻
+async function memories(limit) {
+  var lim = limit || MEMPAGE;
+  const rows = await (await fetch("/api/memories?limit=" + lim)).json();
   MEMS = rows;
+  MEMPAGE = lim;
   var mc = $("#memcount"); if (mc) mc.textContent = rows.length + " 条";
-  $("#memlist").innerHTML = rows.slice(0, 8).map((r) =>
+  const more = rows.length >= MEMPAGE
+    ? "<button class='item dimmore' id='memmore'>看更早的（已显示 " + rows.length + " 条）</button>"
+    : "";
+  $("#memlist").innerHTML = rows.slice(0, MEMPAGE).map((r) =>
     "<button class='item' data-view='memview' data-mem='" + r.id + "'>" +
     "<span class='preview'>" + escapeHtml(r.text) + "</span>" +
     "<span class='m'>" + r.weight.toFixed(2) + " · " + r.stage + "</span>" +
-    "<span class='bar'><i style='width:" + Math.round(r.weight * 100) + "%'></i></span></button>").join("");
+    "<span class='bar'><i style='width:" + Math.round(r.weight * 100) + "%'></i></span></button>").join("") + more;
+  const mb = $("#memmore");
+  if (mb) mb.onclick = function () { memories(Math.min(200, MEMPAGE * 5)); };
 }
 async function openTool(i) {
   const t = TOOLS[i]; if (!t) return;
@@ -1583,6 +1606,38 @@ $("#proplist").onclick = function (e) {
   if (b) openProposal(b.dataset.prop);
 };
 
+// ── 会话授权（K-3）：窗口开在服务进程里，页面只负责开关 ──
+async function loadGrants() {
+  var rows;
+  try { rows = await (await fetch("/api/grants")).json(); } catch (e) { return; }
+  rows = Array.isArray(rows) ? rows : [];
+  $("#g-list").innerHTML = rows.length ? rows.map(function (g) {
+    return "<div class='pend' data-grant='" + escapeHtml(g.id) + "'>" +
+      "<span class='cmd'>" + escapeHtml(g.commands.join(",")) + " · " + escapeHtml(g.scope) + "</span>" +
+      "<span class='dir'>剩 " + g.remainingS + " 秒 · 为什么：" + escapeHtml(g.because) + "</span>" +
+      "<div class='acts'><button class='no' data-act='revoke'>收回</button></div><span class='msg'></span></div>";
+  }).join("") : "<p class='hint'>当前没有打开的窗口 —— 所有 T3 动作仍要逐次确认。</p>";
+}
+$("#g-open").addEventListener("click", async function () {
+  $("#g-msg").textContent = "处理中…";
+  try {
+    var r = await (await fetch("/api/grants", { method: "POST", headers: H, body: JSON.stringify({
+      commands: $("#g-cmds").value, scope: $("#g-scope").value,
+      ttlMin: Number($("#g-ttl").value), because: $("#g-why").value,
+    }) })).json();
+    if (r.ok) { $("#g-msg").className = "ok"; $("#g-msg").textContent = "已开：" + r.grant.id + "（" + new Date(r.grant.expiresAt).toLocaleTimeString() + " 到期）"; await loadGrants(); }
+    else { $("#g-msg").className = "err"; $("#g-msg").textContent = (r.why || r.code || "失败"); }
+  } catch (e) { $("#g-msg").className = "err"; $("#g-msg").textContent = "请求失败"; }
+});
+$("#g-list").onclick = async function (e) {
+  var b = e.target.closest("button[data-act=revoke]");
+  if (!b) return;
+  var card = b.closest("[data-grant]");
+  b.disabled = true;
+  card.querySelector(".msg").textContent = "收回中…";
+  await fetch("/api/grants/" + card.dataset.grant + "/revoke", { method: "POST", headers: H });
+  await loadGrants();
+};
 // ── 线索层：未闭合的事（"这件事发展到哪一步"）────────
 async function loadThreads() {
   var rows;
@@ -1677,8 +1732,19 @@ async function openMemory(id) {
   $("#mv-save").dataset.id = String(id);
   $("#mv-forget").onclick = async () => {
     const j = await (await fetch("/api/memories/" + id + "/forget", { method: "POST", headers: H })).json();
-    if (j.ok) { $("#mv-msg").className = "ok"; $("#mv-msg").textContent = "已忘记"; await memories(); }
-    else { $("#mv-msg").className = "err"; $("#mv-msg").textContent = j.error || "失败"; }
+    if (!j.ok) { $("#mv-msg").className = "err"; $("#mv-msg").textContent = j.error || "失败"; return; }
+    $("#mv-msg").className = "ok";
+    // F-3：忘记是可撤回的（软删）。5 秒内点一下就回来，过期才真的算忘了
+    $("#mv-msg").innerHTML = "已忘记 · <button class='item mini' id='mv-undo'>撤销</button>（5 秒）";
+    await memories();
+    const undo = $("#mv-undo");
+    const timer = setTimeout(() => { $("#mv-msg").innerHTML = "已忘记"; }, 5000);
+    if (undo) undo.onclick = async () => {
+      clearTimeout(timer);
+      const r = await (await fetch("/api/memories/" + id + "/restore", { method: "POST", headers: H })).json();
+      if (r.ok) { $("#mv-msg").className = "ok"; $("#mv-msg").textContent = "已撤回（权重按原样，没补回来）"; await memories(); }
+      else { $("#mv-msg").className = "err"; $("#mv-msg").textContent = r.error || "撤回失败"; }
+    };
   };
   show("memview");
 }

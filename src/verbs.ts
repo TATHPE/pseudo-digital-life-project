@@ -13,6 +13,11 @@ export interface VerbCtx {
   now: () => Date;
   /** 环境变量（默认 process.env）。只为让"出网闸"在测试里可注入 */
   env?: Record<string, string | undefined>;
+  /**
+   * K-3：这次调用落在哪个授权窗口里（没有就是 undefined）。
+   * shell.run 看到它就必须**脱敏环境变量**再跑 —— 窗口不该顺带把密钥也借出去。
+   */
+  grant?: { id: string; commands: string[]; scope: string };
   /** 记忆类 verb 需要（不是所有 verb 都用得上） */
   db?: import("node:sqlite").DatabaseSync;
   embedder?: import("./embed.ts").Embedder | null;
@@ -82,6 +87,7 @@ const maxList = 200;
 import { search, searchDocs } from "./retrieve.ts";
 import { remember } from "./store.ts";
 import { createProposal } from "./proposals.ts";
+import { sanitizedEnv } from "./grant.ts";
 import { renderTemplate, templateCatalog, templateById, planRun, runArgv } from "./shell.ts";
 import { listDocs } from "./ingest.ts";
 import { dedupeTitle } from "./chunk.ts";
@@ -465,6 +471,8 @@ export const verbs: VerbDef[] = [
       const plan = planRun(r);
       const res = await runArgv(plan.argv, {
         cwd: plan.cwd, timeoutMs: r.timeoutMs,
+        // ⑤ K-3：授权窗口里跑命令，密钥类环境变量一律不传
+        ...(ctx.grant ? { env: sanitizedEnv(process.env) } : {}),
         // docker 模式下被我们杀掉：客户端死了容器还会活着，必须手动清
         onKill: plan.container
           ? () => { void killContainer(plan.container!); }
