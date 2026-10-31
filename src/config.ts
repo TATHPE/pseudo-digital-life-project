@@ -23,16 +23,18 @@ export function baseConfig(env: Record<string, string | undefined> = {}): AppCon
       salience: local(""),
       conflict: local(""),
       night:    local(""),
+      // 官方 /models 现在只列 deepseek-flash（V4.1-Flash）与 deepseek-v4-pro；
+      // deepseek-chat / deepseek-reasoner 仍作为**别名**可用，但新装默认走 flash。
       express: {
         kind: "cloud",
         provider: "deepseek",
-        model: "deepseek-chat",
+        model: "deepseek-flash",
         maxTokens: 1024,
       },
       plan: {
         kind: "cloud",
         provider: "deepseek",
-        model: "deepseek-reasoner",
+        model: "deepseek-v4-pro",
         maxTokens: 2048,
       },
     },

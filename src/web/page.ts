@@ -408,6 +408,10 @@ export const PAGE = `<!doctype html>
   #su-steps .k { font:11px/1.4 var(--mono); color:var(--fg); font-weight:700; min-width:86px; }
   #su-steps .v { font:11px/1.6 var(--mono); color:var(--dim); }
   #su-steps .step.now .v { color:var(--fg); }
+  /* 谁在说话：云端/本地 —— 只用白与灰，不加新颜色 */
+  .who { font:9px/1 var(--mono); letter-spacing:.08em; border:1px solid var(--line); padding:2px 5px; margin-right:6px; }
+  .who.cloud { color:var(--fg); border-color:var(--line); }
+  .who.local { color:var(--dim); border-color:var(--line-dim); }
   #su-panel { margin-top:14px; border:1px solid var(--line); padding:12px; }
   #su-panel textarea { width:100%; min-height:64px; }
   #su-panel .q { margin:10px 0; }
@@ -2416,6 +2420,17 @@ $("#composer").onsubmit = async (e) => {
           // 证据链（P0 #1）：这一轮它到底调了哪几条记忆/文档
           cites = d.cites || []; omitted = d.omitted || 0; omittedDocs = d.omittedDocs || 0;
           recallBox.innerHTML = recallHtml(cites, omitted, omittedDocs);
+          // 「这次到底是本地还是云端在说话」：写在气泡的 meta 里，不靠猜
+          if (d.responder) {
+            var who = d.responder;
+            meta.innerHTML = "<span class='who " + (who.kind === "local" ? "local" : "cloud") + "'>" +
+              escapeHtml(who.label) + "</span>";
+          }
+        }
+        if (d.type === "unavailable") {
+          meta.textContent = "不可用";
+          box.innerHTML = "<span class='err'>" + escapeHtml(d.message || "对话不可用") + "</span>";
+          continue;
         }
         if (d.type === "notice") {
           recallBox.insertAdjacentHTML("beforeend", "<span class='notice'>" + escapeHtml(d.text) + "</span>");

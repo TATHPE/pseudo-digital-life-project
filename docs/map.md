@@ -8,7 +8,7 @@
 
 | 项 | 数量 |
 |---|---|
-| 源文件（src/**/*.ts） | 83 |
+| 源文件（src/**/*.ts） | 85 |
 | 错误码 E_* | 168 |
 | verbs | 21 |
 | CLI 子命令 | 37 |
@@ -59,6 +59,7 @@
 | `E_CONTROL_CHAR` | `src/persona.ts` |
 | `E_CONVERT` | `src/ingest.ts` |
 | `E_COOLDOWN` | `src/transport.ts` |
+| `E_CORE_PROTECTED` | `src/verbs.ts` |
 | `E_CSRF` | `src/web/server.ts` |
 | `E_DECAY_PARAM` | `src/startupcheck.ts` |
 | `E_DENIED` | `src/execute.ts` `src/policy.ts` `src/tools.ts` |
@@ -102,8 +103,8 @@
 | `E_MISSING` | `src/assert.ts` |
 | `E_MISSING_ARG` | `src/toolsmoke.ts` |
 | `E_MODEL` | `src/autobio.ts` `src/eval.ts` `src/provider.ts` `src/transport.ts` |
-| `E_NEEDS_CONFIRM` | `src/confirm.ts` `src/execute.ts` |
-| `E_NEEDS_EGRESS` | `src/egress.ts` `src/project.ts` `src/verbs.ts` |
+| `E_NEEDS_CONFIRM` | `src/confirm.ts` `src/execute.ts` `src/posture.ts` |
+| `E_NEEDS_EGRESS` | `src/egress.ts` `src/posture.ts` `src/project.ts` `src/verbs.ts` |
 | `E_NO_ARGV` | `src/shell.ts` |
 | `E_NO_AVATAR` | `src/web/server.ts` |
 | `E_NO_CALL` | `src/toolsmoke.ts` |
@@ -140,7 +141,6 @@
 | `E_OUT_OF_PROJECT` | `src/project.ts` |
 | `E_OUT_OF_RANGE` | `src/decayparams.ts` |
 | `E_OUTSIDE_HOME` | `src/web/server.ts` |
-| `E_OUTSIDE_WORKSPACE` | `src/verbs.ts` |
 | `E_PATH_DENIED` | `src/project.ts` `src/shell.ts` `src/verbs.ts` |
 | `E_PENDING_` | `src/web/server.ts` |
 | `E_PENDING_EXPIRED` | `src/web/server.ts` |
@@ -253,6 +253,7 @@
 | `src/configfile.ts` | 可持久化的配置（13 §2）：env > data/config.json > 默认值 |
 | `src/confirm.ts` | 待确认清单（04 §4.1 的"人那一侧"） |
 | `src/cooldown.ts` | 云端失败冷却（D-2） |
+| `src/coreguard.ts` | 记忆核心的**结构性保护**（用户 2026-10-31 定的边界）： |
 | `src/db.ts` | import { DatabaseSync } from "node:sqlite"; |
 | `src/decay.ts` | 记忆动力学（01 §4/§5）——全项目唯一"写完之后不用改"的模块。 |
 | `src/decayparams.ts` | 衰减参数的可调边界（E-4） |
@@ -284,6 +285,7 @@
 | `src/ollama.ts` | Ollama 探测（C-4）：一次 /api/tags + 两个最小调用探针。 |
 | `src/persona.ts` | import { readFileSync, mkdirSync, existsSync, readdirSync } from "node |
 | `src/policy.ts` | 策略层（04 §4 / 12 §9.2）：唯一有权说"不"的地方。 |
+| `src/posture.ts` | 默认姿态（用户 2026-10-31 的判断）： |
 | `src/preflight.ts` | 本地端点前置检查（C-3） |
 | `src/project.ts` | 项目读取（K-1） |
 | `src/proposals.ts` | 提议（K-2）：让它会**提要求**，而不是只会照做。 |

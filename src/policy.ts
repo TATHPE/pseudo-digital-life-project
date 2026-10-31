@@ -35,10 +35,10 @@ m = (p.tier == "*" || p.tier == r.tier) && (p.verb == "*" || p.verb == r.verb) &
 export const DEFAULT_POLICY = `# eft, tier, verb, target, strength
 p, deny, T4, *, *, enforce
 p, allow, T0, *, *, advise
-p, allow, T1, fs.write, workspace/*, enforce
-p, allow, T1, fs.mkdir, workspace/*, enforce
-p, allow, T1, fs.move, workspace/*, enforce
-p, allow, T1, fs.trash, workspace/*, enforce
+p, allow, T1, fs.write, *, enforce
+p, allow, T1, fs.mkdir, *, enforce
+p, allow, T1, fs.move, *, enforce
+p, allow, T1, fs.trash, *, enforce
 p, allow, T1, fs.restore, *, enforce
 p, allow, T0, time.now, *, advise
 p, allow, T0, memory.search, *, advise
@@ -72,7 +72,14 @@ export function ensurePolicy(home: string): string {
   else {
     try {
       const cur = readFileSync(p, "utf8");
-      const missing = REQUIRED_RULES.filter(([verb]) => !cur.includes(verb)).map(([, line]) => line);
+      // 语义升级（2026-10-31）：fs.* 从 workspace/* 放宽到 *（记忆核心由 coreguard 挡）
+      const upgraded = cur.replace(
+        /^p, allow, T1, (fs\.(?:write|mkdir|move|trash)), workspace\/\*, enforce$/gm,
+        "p, allow, T1, $1, *, enforce",
+      );
+      if (upgraded !== cur) atomicWriteFile(p, upgraded);
+      const cur2 = upgraded;
+      const missing = REQUIRED_RULES.filter(([verb]) => !cur2.includes(verb)).map(([, line]) => line);
       if (missing.length) {
         atomicWriteFile(p, cur.replace(/\n?$/, String.fromCharCode(10)) + missing.join(String.fromCharCode(10)) + String.fromCharCode(10));
       }

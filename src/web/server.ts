@@ -1460,6 +1460,19 @@ export function createWebServer(deps: WebDeps) {
           omitted, omittedDocs: rc.omittedDocs, recall: recalled.length,
           recallDocs: recalled.filter((r) => r.source === "doc").length,
           cites: recalled.map((r) => r.id),
+          // 用户分不清本地/云端 —— 首帧就把答案给他（面板在消息 meta 里显示）
+          responder: (() => {
+            try {
+              const ex = deps.getConfig().roles["express"] as { kind?: string; model?: string; provider?: string } | undefined;
+              const kind = ex?.kind === "local" ? "local" : "cloud";
+              return {
+                kind, model: ex?.model ?? null, provider: ex?.provider ?? null,
+                label: (kind === "local" ? "本地" : "云端") + " · " + (ex?.model ?? "未配置"),
+              };
+            } catch {
+              return { kind: "unknown", model: null, provider: null, label: "未知" };
+            }
+          })(),
         });
 
         let full = "";

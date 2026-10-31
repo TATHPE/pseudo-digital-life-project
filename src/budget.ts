@@ -10,6 +10,10 @@ export interface UsageRow {
 const PRICE: Record<string, { in: number; cached: number; out: number }> = {
   "deepseek:deepseek-chat": { in: 0.27, cached: 0.07, out: 1.1 },
   "deepseek:deepseek-reasoner": { in: 0.55, cached: 0.14, out: 2.19 },
+  // 2026-10-31 官方 /models 新增的两档：价格我们**没有从官方文档确认过**，
+  // 所以先按 chat 的档位估算，并在注释里标明这不是官方价 —— 编一个精确数字更糟。
+  "deepseek:deepseek-flash": { in: 0.27, cached: 0.07, out: 1.1 },
+  "deepseek:deepseek-v4-pro": { in: 0.55, cached: 0.14, out: 2.19 },
   "anthropic:claude-sonnet-4-6": { in: 3, cached: 0.3, out: 15 },
   "anthropic:claude-opus-4-6": { in: 15, cached: 1.5, out: 75 },
 };

@@ -35,11 +35,12 @@ test("schema 可直接给模型用（含参数）", async () => {
   assert.deepEqual(Object.keys((fsRead.function.parameters as any).properties), ["path"]);
 });
 
-test("工具调用走策略：越界写被拒，返回可读错误给模型", async () => {
+test("工具调用走策略：记忆核心写被拒（给模型可读错误），其余目录可写", async () => {
   const { reg, db } = await rig();
-  const bad = await reg.run("fs.write", { path: "docs/a.md", content: "x" });
+  const bad = await reg.run("fs.write", { path: "memory.db", content: "x" });
   assert.equal(bad.ok, false);
-  assert.match(bad.output, /E_OUTSIDE_WORKSPACE|E_DENIED/);
+  assert.match(bad.output, /E_CORE_PROTECTED|E_DENIED/);
+  assert.match(bad.output, /记忆库本体/);
   const good = await reg.run("fs.write", { path: "workspace/a.md", content: "hi" });
   assert.equal(good.ok, true, good.output);
   // 审计里两条都在（被拒的也要留痕）

@@ -299,16 +299,23 @@ async function main(): Promise<void> {
             });
           } catch { /* 记账失败不影响回答 */ }
         } });
-        const localRole = c.roles["night"]?.kind === "local" ? "night"
-          : c.roles["route"]?.kind === "local" ? "route" : null;
-        return (messages: unknown[], tools: any) => withFallback(
-          () => t.chat("express", messages, { containsMemory: false, purpose: "agent", maxTokens: 1200, tools }),
-          // 本地兜底不给工具：1.5B 用工具的结果比不用更糟
-          localRole ? () => t.chat(localRole, messages, { containsMemory: false, purpose: "agent-local", maxTokens: 600 }) : null,
-        );
+        // 用户 2026-10-31 定的边界：**本地模型只负责管理记忆（夜间抽取），不参与对话**。
+        // 所以这里不再挂本地兜底 —— 云端不可用就该**明说不可用**，而不是换一个 7B 装作是她。
+        // （旧行为：withFallback 到本地 night/route 角色，用户根本分不清刚才是谁在答。）
+        return (messages: unknown[], tools: any) => t.chat("express", messages, {
+          containsMemory: false, purpose: "agent", maxTokens: 1200, tools,
+        });
       };
       const toolCtx = () => ({ db: d.db, embedder: getEmbedder(), home: HOME, now: () => new Date() });
       const registry = createToolRegistry({ db: d.db, policy, ctx: toolCtx(), external: externals });
+      // 默认姿态：能干活（write）+ 会话内外发开放；JJ_PARANOID=1 回到「什么都问」
+      {
+        const { applyDefaultPosture } = await import("../posture.ts");
+        const applied = applyDefaultPosture(d.db, HOME);
+        if (applied.presetApplied) console.error("[posture] 权限档默认 = " + applied.preset + "（面板上可切）");
+        if (applied.egressOpened) console.error("[posture] 代码外发：会话内开放（每次留 audit，面板可一键关）");
+        if (applied.paranoid) console.error("[posture] JJ_PARANOID=1：逐次确认 + 外发关闭");
+      }
       const srv = createWebServer({
         db: d.db, inboxDir: inbox, home: HOME, getTransport, getEmbedder, getConfig,
         tools: registry, getChat, pendingOutage: boot1.outage,

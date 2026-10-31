@@ -76,9 +76,9 @@ export function safePath(home: string, p: string, mustExist = true): string {
   const abs = normalize(isAbsolute(p) ? p : join(home, p));
   const real = realpathish(abs);
   const rel = relative(homeReal, real);
-  if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) {
-    if (!(rel === "" && !mustExist)) throw new Error(`E_PATH_DENIED: ${p}`);
-  }
+  // rel === "" 就是 home 本身。以前连它一起拒 → `fs.list .` 连家目录都列不了；
+  // 现在 home 内全域可动，列根目录是正常需求（记忆核心由 coreguard 单独挡）。
+  if (rel.startsWith("..") || isAbsolute(rel)) throw new Error(`E_PATH_DENIED: ${p}`);
   if (mustExist && !existsSync(real)) throw new Error(`E_NOT_FOUND: ${p}`);
   return real;
 }
@@ -90,6 +90,7 @@ import { search, searchDocs } from "./retrieve.ts";
 import { remember } from "./store.ts";
 import { createProposal } from "./proposals.ts";
 import { sanitizedEnv } from "./grant.ts";
+import { isCorePath, coreLabel } from "./coreguard.ts";
 import { checkEgress, noteEgressRequest } from "./egress.ts";
 import { renderTemplate, templateCatalog, templateById, planRun, runArgv } from "./shell.ts";
 import { listDocs } from "./ingest.ts";
@@ -303,13 +304,14 @@ export const verbs: VerbDef[] = [
   },
   {
     name: "fs.write", tier: "T1", reversible: true,
-    description: "写文本文件（只允许 workspace/ 之内；写前留快照）",
+    description: "写文本文件（home 内任意路径；记忆库/密钥/人格/事件流除外；写前留快照）",
     params: S({ path: { type: "string" }, content: { type: "string" } }, ["path", "content"]),
     target: (a) => String(a.path ?? ""),
     async run(a, ctx) {
       const raw = String(a.path ?? "");
-      if (!normalize(raw).split("\\").join("/").startsWith("workspace/")) throw new Error("E_OUTSIDE_WORKSPACE");
+      // 放开到整个 home（完全权限下什么都能动），但**记忆核心是硬边界** —— 见 coreguard.ts
       const p = safePath(ctx.home, raw, false);
+      if (isCorePath(ctx.home, p)) throw new Error(`E_CORE_PROTECTED: ${coreLabel(raw)} 不能直接改（走界面/CLI 的专门入口）`);
       mkdirSync(dirname(p), { recursive: true });
       if (existsSync(p)) {
         const snap = join(ctx.home, "snapshots", `${Date.now()}-${basename(p)}`);
@@ -327,13 +329,14 @@ export const verbs: VerbDef[] = [
   },
   {
     name: "fs.mkdir", tier: "T1", reversible: true,
-    description: "建目录（只允许 workspace/ 之内）",
+    description: "建目录（home 内任意路径；记忆核心除外）",
     params: S({ path: { type: "string" } }, ["path"]),
     target: (a) => String(a.path ?? ""),
     async run(a, ctx) {
       const raw = String(a.path ?? "");
-      if (!normalize(raw).split("\\").join("/").startsWith("workspace/")) throw new Error("E_OUTSIDE_WORKSPACE");
-      mkdirSync(safePath(ctx.home, raw, false), { recursive: true });
+      const dir = safePath(ctx.home, raw, false);
+      if (isCorePath(ctx.home, dir)) throw new Error(`E_CORE_PROTECTED: ${coreLabel(raw)} 不能直接改`);
+      mkdirSync(dir, { recursive: true });
       return `已建 ${raw}`;
     },
   },

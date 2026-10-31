@@ -80,11 +80,15 @@ test("路径白名单：越界与符号链接逃逸都拒绝", async () => {
   } finally { rmSync(outside, { force: true }); }
 });
 
-test("执行：fs.write 只允许 workspace/，写前留快照", async () => {
+test("执行：fs.write 在 home 内任意目录可写，但**记忆核心**挡死；写前留快照", async () => {
   const { db, policy, ctx, home } = await rig();
-  const bad = await execute({ db, policy, ctx }, "fs.write", { path: "docs/a.md", content: "x" });
+  // 语义变更（2026-10-31）：不再限定 workspace/ —— 除记忆核心外都能动
+  const bad = await execute({ db, policy, ctx }, "fs.write", { path: "memory.db", content: "x" });
   assert.equal(bad.ok, false);
-  assert.match(bad.output, /E_OUTSIDE_WORKSPACE|E_DENIED/);
+  assert.match(bad.output, /E_CORE_PROTECTED|E_DENIED/);
+  assert.match(bad.output, /记忆库本体/, "错误里要说人话");
+  const docs = await execute({ db, policy, ctx }, "fs.write", { path: "docs/a.md", content: "x" });
+  assert.equal(docs.ok, true, "docs/ 现在可写：" + docs.output);
 
   const ok1 = await execute({ db, policy, ctx }, "fs.write", { path: "workspace/a.md", content: "v1" });
   assert.equal(ok1.ok, true, ok1.output);
