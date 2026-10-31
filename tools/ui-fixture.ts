@@ -14,6 +14,7 @@ import { remember } from "../src/store.ts";
 import { createProposal } from "../src/proposals.ts";
 import { pushReceipt } from "../src/notify.ts";
 import { noteEgressRequest } from "../src/egress.ts";
+import { startSetup, notePulledModel, pauseSetup } from "../src/setup.ts";
 import { addStanding } from "../src/standing.ts";
 import { appendEvent, newEventId } from "../src/journal.ts";
 
@@ -84,6 +85,11 @@ addStanding(HOME, { id: "std-check", when: "daily 09:00", template: "node.run_sc
   slots: { script: "x.mjs" }, because: "每天看一眼日志里有没有 E_", notify: "panel" }, now);
 // ⑥ H-7 夹具：一条待批的代码外发（面板要能显示、能批、能收回）
 noteEgressRequest(HOME, "jingjing/src/recall.ts", "project.read", now);
+
+// ⑦ H-4 夹具：一条 paused 的配置会话，且账本里有东西可预览
+startSetup(HOME, now);
+notePulledModel(HOME, "bge-m3");
+pauseSetup(HOME, now);
 
 // ── 起服务（独立端口，不与日常面板抢 7700）────────────
 const log = join(ROOT, "tmp", "ui-home-serve.log");

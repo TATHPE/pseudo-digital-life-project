@@ -265,6 +265,21 @@ check("H-7 外发窗口能收回", await js(`(async () => {
 })()`));
 
 
+// ── H-4 首次配置：能看到步骤、能暂停、终止先给预览 ──────
+check("H-4 首次配置：步骤齐全、能暂停、终止先预览", await js(`(async () => {
+  const nav = document.querySelector('#side .item[data-view=setupview]');
+  if (!nav) return false;
+  nav.click();
+  await new Promise((r) => setTimeout(r, 800));
+  const steps = document.querySelectorAll('#su-steps .step').length;
+  const view = !document.querySelector('#setupview').hidden;
+  const preview = await (await fetch('/api/setup', { method: 'POST', headers: H, body: JSON.stringify({ action: 'abort' }) })).json();
+  const hasPreview = !!preview.preview && Array.isArray(preview.preview.models);
+  const listed = (preview.preview.models || []).join(',');
+  await fetch('/api/setup', { method: 'POST', headers: H, body: JSON.stringify({ action: 'pause' }) });
+  window.__su = { steps, view, hasPreview, listed };
+  return view && steps === 8 && hasPreview && listed.includes('bge-m3');
+})()`), await js("JSON.stringify(window.__su || {})"));
 check("无 JS 运行时错误", errs.length === 0, errs.slice(0, 2).join(" | "));
 
 // 图标：标签页 favicon 是静态 /icon.svg（以前是运行时 data URI，viewBox 写死导致空白）

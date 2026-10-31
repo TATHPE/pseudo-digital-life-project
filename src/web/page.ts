@@ -401,6 +401,13 @@ export const PAGE = `<!doctype html>
 
   /* 能力表（F-2）：一行一类，点开看条目；降级项直接标红 */
   #cap-list { margin-top:6px; }
+  /* 首次配置：一屏一步，行高够点（手机上也是） */
+  #su-steps .step { display:flex; gap:10px; align-items:flex-start; padding:10px; border:1px solid var(--line-dim); margin:6px 0; }
+  #su-steps .step.now { border-color:var(--fg); }
+  #su-steps .step.done { opacity:.55; }
+  #su-steps .k { font:11px/1.4 var(--mono); color:var(--fg); font-weight:700; min-width:86px; }
+  #su-steps .v { font:11px/1.6 var(--mono); color:var(--dim); }
+  #su-steps .step.now .v { color:var(--fg); }
   /* 权限 chip：贴在输入框左边，当前会话可见可切（位置照 DeepSeek Harness） */
   .permchip { flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center;
     align-self:stretch; padding:0 12px; border:1px solid var(--line); background:transparent;
@@ -572,6 +579,7 @@ export const PAGE = `<!doctype html>
       <div id="toolrows"><button class="item on" data-view="chat">对话<span class="m">与鲸鲸说话</span></button></div>
       <button class="item dimmore" id="toolmore" hidden>显示全部</button>
     </div></div>
+  <div class="sec"><h3>SETUP</h3><button class="item" data-view="setupview">首次配置<span class="m">装模型 / 配 API / 人格</span></button></div>
   <div class="sec"><h3>CONFIG</h3>
     <button class="item" data-view="cfg">设置<span class="m">接口 / 人格</span></button>
   </div>
@@ -619,6 +627,20 @@ export const PAGE = `<!doctype html>
       </div>
     </div>
 
+    <div id="setupview" hidden>
+      <div class="panelbox">
+        <h2>S E T U P · 首次配置</h2>
+        <p class="hint" id="su-lead">这台机器还缺几样东西。每一步都可以<b>暂停</b>或<b>终止</b>；终止会把这一步动过的东西<b>按账清回去</b>。</p>
+        <div id="su-steps"></div>
+        <div class="acts">
+          <button id="su-start" class="primary">开始</button>
+          <button id="su-pause">暂停</button>
+          <button id="su-abort" class="no">终止…</button>
+          <span id="su-msg" class="hint"></span>
+        </div>
+        <p class="hint" id="su-job"></p>
+      </div>
+    </div>
     <div id="memview" hidden>
       <div class="panelbox">
         <h2>记忆 · MEMORY</h2>
@@ -811,7 +833,7 @@ function show(v) {
   if (view === "chat" && v !== "chat") chatScroll = $("#scroll").scrollTop;
   view = v;
   document.body.dataset.view = v;   // CSS 用它把「回到最新」锁在对话里
-  for (const id of ["chat", "cfg", "toolview", "memview", "docview", "auditview", "searchview", "propview"]) $("#" + id).hidden = id !== v;
+  for (const id of ["chat", "cfg", "toolview", "memview", "docview", "auditview", "searchview", "propview", "setupview"]) $("#" + id).hidden = id !== v;
   $("#composer").style.display = v === "chat" ? "" : "none";
   // "回到最新"是对话专用的，别的界面不该出现
   if (v !== "chat") $("#jump").classList.remove("on");
@@ -938,7 +960,7 @@ async function pending() {
   const sec = $("#pendsec"), box = $("#pendlist");
   const open = (list || []).filter((p) => p.status === "pending" && !p.expired);
   paintPendBadge(open.length);
-  loadProposals(); loadSurfaceReview(); loadThreads(); loadReceipts(); loadStanding(); loadPermission(); loadEgress();
+  loadProposals(); loadSurfaceReview(); loadThreads(); loadReceipts(); loadStanding(); loadPermission(); loadEgress(); loadSetup(false);
   sec.hidden = open.length === 0;
   if (!open.length) { box.innerHTML = ""; return; }
   box.innerHTML = open.map((p) =>
@@ -1650,6 +1672,98 @@ function pushTicker(msg) {
   TICK_TIMER = setTimeout(function () { TICK_MSG = null; readout(); }, 5000);
 }
 
+// ── 首次配置（H-4）：可暂停、可终止，终止先给预览 ────────
+var SETUP_STEPS = ["detect", "ollama", "embed", "chat", "api", "persona", "smoke", "first"];
+var SU_LABEL = {
+  detect: "① 看看这台机器", ollama: "② 装 Ollama", embed: "③ 装 embedding（不能跳）",
+  chat: "④ 本地对话模型（可选）", api: "⑤ 配云端 API", persona: "⑥ 人格访谈",
+  smoke: "⑦ 试运行", first: "⑧ 让它说第一句话",
+};
+var SU_DESC = {
+  detect: "只读：内存、显卡、ollama、已有模型、有没有云端 key",
+  ollama: "没有就装。装不上会给两条退路（手动装 / 跳过本地只配云端）",
+  embed: "bge-m3。chat 可以云端兜底，embedding 没有语义检索就退化成词法",
+  chat: "按内存推荐。有云端 key 也能跳过 —— 只是夜间抽取会停",
+  api: "云端表达模型。没有它也能记，只是不能聊",
+  persona: "5 个问题 → 6 块草稿 → 逐块确认 → 封存（开第 1 代）",
+  smoke: "用假数据跑一轮抽取 + 自传，先听 voice，不满意免费改",
+  first: "不弹「配置成功」，让它直接说第一句话",
+};
+var SU = null;
+async function loadSetup(detect) {
+  try { SU = await (await fetch("/api/setup" + (detect ? "?detect=1" : ""))).json(); } catch (e) { return; }
+  paintSetup();
+}
+function paintSetup() {
+  var box = $("#su-steps");
+  if (!box) return;
+  var cur = SU && SU.session ? SU.session.step : "detect";
+  var done = SU && SU.session ? SU.session.log.map(function (x) { return x.step; }) : [];
+  box.innerHTML = SETUP_STEPS.map(function (k) {
+    var isDone = done.indexOf(k) >= 0;
+    var isNow = k === cur;
+    return "<div class='step" + (isNow ? " now" : isDone ? " done" : "") + "'>" +
+      "<span class='k'>" + escapeHtml(SU_LABEL[k] || k) + "</span>" +
+      "<span class='v'>" + escapeHtml(SU_DESC[k] || "") + (isDone ? " · 已完成" : "") + "</span></div>";
+  }).join("");
+  var st = SU && SU.session ? SU.session.status : "idle";
+  $("#su-start").textContent = st === "idle" ? "开始" : st === "paused" ? "继续" : "跑这一步";
+  $("#su-msg").textContent = st === "aborted" ? "上一轮已终止并清理" : "";
+  var job = SU && SU.job;
+  $("#su-job").textContent = job && job.running ? "进行中：" + (SU_LABEL[job.step] || job.step) + " …" : (job && job.note ? job.note : "");
+  // 第一次进来：探测一次（只读）
+  if (SU && !SU.detected && !SU._detectedOnce) { SU._detectedOnce = true; loadSetup(true); }
+}
+$("#su-start").addEventListener("click", async function () {
+  var st = SU && SU.session ? SU.session.status : "idle";
+  if (st === "idle" || !SU || !SU.session) {
+    await fetch("/api/setup", { method: "POST", headers: H, body: JSON.stringify({ action: "start" }) });
+    await loadSetup(true);
+    return;
+  }
+  if (st === "paused") {
+    await fetch("/api/setup", { method: "POST", headers: H, body: JSON.stringify({ action: "resume" }) });
+    await loadSetup();
+    return;
+  }
+  var step = SU.session.step;
+  var r = await (await fetch("/api/setup", { method: "POST", headers: H, body: JSON.stringify({ action: "run", step: step }) })).json();
+  $("#su-job").textContent = "进行中：" + (SU_LABEL[step] || step) + " …";
+  if (!r.ok) $("#su-msg").textContent = r.error || "启动失败";
+  pollSetup();
+});
+function pollSetup() {
+  var t = setInterval(async function () {
+    await loadSetup(false);
+    var job = SU && SU.job;
+    if (!job || !job.running) { clearInterval(t); await loadSetup(true); }
+  }, 1500);
+}
+$("#su-pause").addEventListener("click", async function () {
+  await fetch("/api/setup", { method: "POST", headers: H, body: JSON.stringify({ action: "pause" }) });
+  await loadSetup();
+  $("#su-msg").textContent = "已暂停：账本还在，接着跑不会重装";
+});
+$("#su-abort").addEventListener("click", async function () {
+  // **先说再做**：先把会删/会恢复的东西列出来，人确认了才动手
+  var p = await (await fetch("/api/setup", { method: "POST", headers: H, body: JSON.stringify({ action: "abort" }) })).json();
+  if (!p.ok) return;
+  var pv = p.preview || {};
+  var lines = [];
+  if ((pv.models || []).length) lines.push("删掉我们下载的模型：" + pv.models.join("、"));
+  if ((pv.files || []).length) lines.push("把改过的配置恢复原样：" + pv.files.join("、"));
+  if ((pv.processes || []).length) lines.push("停掉我们起的进程：" + pv.processes.join("、"));
+  if ((pv.dirs || []).length) lines.push("删掉临时目录：" + pv.dirs.join("、"));
+  if (!lines.length) lines.push("这一轮还没改动任何东西（只是探测），终止不会删任何文件。");
+  var NL = String.fromCharCode(10);
+  var typed = prompt("终止会做这些：" + NL + NL + lines.join(NL) + NL + NL + "要终止就输入：终止");
+  if (typed !== "终止") { $("#su-msg").textContent = "没有确认，什么都没动"; return; }
+  var done = await (await fetch("/api/setup", { method: "POST", headers: H, body: JSON.stringify({ action: "abort", confirm: true }) })).json();
+  var rep = done.report || {};
+  $("#su-msg").textContent = "已清理：" + ((rep.removedModels || []).length) + " 个模型 / " + ((rep.restoredFiles || []).length) + " 个文件" +
+    ((rep.failed || []).length ? "；没清掉的：" + rep.failed.join("；") : "");
+  await loadSetup();
+});
 // ── 分代（H-5）：显示当前第几代，并说清"改动只向前生效" ──
 async function loadGeneration() {
   var g; try { g = await (await fetch("/api/persona")).json(); } catch (e) { return; }
@@ -2076,6 +2190,7 @@ document.addEventListener("click", (e) => {
   const v = t.dataset.view;
   sideActive = t;
   for (const b of document.querySelectorAll("#side .item")) b.classList.toggle("on", b === t);
+  if (v === "setupview") { show("setupview"); loadSetup(false); return; }
   if (v === "cfg") { show("cfg"); loadConfig().then(() => loadPersona($("#p-file").value)); return; }
   if (v === "toolview") { openTool(Number(t.dataset.tool)); return; }
   if (v === "memview") { openMemory(Number(t.dataset.mem)); return; }

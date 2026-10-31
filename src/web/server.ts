@@ -30,6 +30,8 @@ import { reviewQueue, noteReviewed } from "../surface.ts";
 import { openThreads, closeThread } from "../threads.ts";
 import { openGrant, listGrants, revokeGrant, currentPreset, setPreset, PRESETS, type Preset } from "../grant.ts";
 import { egressStatus, allowOnce, allowFor, revokeEgress } from "../egress.ts";
+import { readSession, startSetup, pauseSetup, resumeSetup, undoSetup, detect, SETUP_STEPS, type SetupStep } from "../setup.ts";
+import { runStep } from "../setupsteps.ts";
 import { listReceipts, markSeen, unseenCount } from "../notify.ts";
 import { listStanding, disableStanding } from "../standing.ts";
 import { cutLink, linkKey } from "../links.ts";
@@ -61,6 +63,10 @@ const posixPath = (p: string) => p.split("\\").join("/");
 import type { StreamTransport } from "../transport.ts";
 import type { Embedder } from "../embed.ts";
 import type { MemoryLine, Tier } from "../types.ts";
+
+// H-4：首次配置的后台任务状态（pull 模型可能要几分钟，不能把 HTTP 请求挂着）
+const jobState: { running: boolean; step: string | null; note: string; done: boolean; ok: boolean } =
+  { running: false, step: null, note: "", done: true, ok: true };
 
 export interface WebDeps {
   db: DatabaseSync;
@@ -1024,6 +1030,62 @@ export function createWebServer(deps: WebDeps) {
         return;
       }
 
+      // ── 首次配置（H-4）：可暂停、可终止、终止先给预览 ──
+      if (req.method === "GET" && url.pathname === "/api/setup") {
+        const session = readSession(deps.home);
+        let d: Awaited<ReturnType<typeof detect>> | null = null;
+        if (url.searchParams.get("detect") === "1") { try { d = await detect(deps.home); } catch { d = null; } }
+        json(res, 200, { session, steps: SETUP_STEPS, job: jobState, detected: d });
+        return;
+      }
+      if (req.method === "POST" && url.pathname === "/api/setup") {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
+        const body = JSON.parse(await readBody(req)) as { action?: string; step?: string; confirm?: boolean };
+        if (body.action === "start") { json(res, 200, { ok: true, session: startSetup(deps.home) }); return; }
+        if (body.action === "pause") { json(res, 200, { ok: true, session: pauseSetup(deps.home) }); return; }
+        if (body.action === "resume") { json(res, 200, { ok: true, session: resumeSetup(deps.home) }); return; }
+        if (body.action === "run") {
+          const step = String(body.step ?? "") as SetupStep;
+          if (!SETUP_STEPS.includes(step)) { json(res, 400, { error: "E_BAD_STEP" }); return; }
+          if (jobState.running) { json(res, 409, { error: "E_SETUP_BUSY" }); return; }
+          Object.assign(jobState, { running: true, step, note: "开始…", done: false, ok: true });
+          // 后台跑：pull 模型可能要几分钟，HTTP 不能挂着
+          void (async () => {
+            try {
+              const { execFileSync } = await import("node:child_process");
+              const runner = {
+                run(cmd: string, args: string[], o?: { timeoutMs?: number }) {
+                  try { return { ok: true, out: String(execFileSync(cmd, args, { encoding: "utf8", windowsHide: true, timeout: o?.timeoutMs ?? 600_000 })) }; }
+                  catch (e) { return { ok: false, out: String((e as Error).message).slice(0, 200) }; }
+                },
+              };
+              const r = runStep(deps.home, step, runner);
+              Object.assign(jobState, { running: false, note: r.note, done: true, ok: r.ok });
+            } catch (e) {
+              Object.assign(jobState, { running: false, done: true, ok: false, note: String(e).slice(0, 200) });
+            }
+          })();
+          json(res, 202, { ok: true, job: jobState });
+          return;
+        }
+        if (body.action === "abort") {
+          const session = readSession(deps.home);
+          const a = session?.artifacts;
+          // **先说再做**：预览里列出会删什么、会恢复什么；没 confirm 就只返回预览
+          const preview = {
+            models: a?.pulledModels ?? [],
+            files: (a?.files ?? []).map((f) => f.path),
+            processes: (a?.startedProcesses ?? []).map((p) => p.name),
+            dirs: a?.tempDirs ?? [],
+          };
+          if (body.confirm !== true) { json(res, 200, { ok: true, needConfirm: true, preview }); return; }
+          const report = undoSetup(deps.home);
+          json(res, 200, { ok: true, report });
+          return;
+        }
+        json(res, 400, { error: "E_BAD_ACTION" });
+        return;
+      }
       // ── 代码外发（H-7）：默认拒；这里让人批「只这一次」/「10 分钟」──
       if (req.method === "GET" && url.pathname === "/api/egress") {
         json(res, 200, egressStatus(deps.home, { now: now() }));

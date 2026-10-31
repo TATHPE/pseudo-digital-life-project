@@ -9,7 +9,7 @@
 | 项 | 数量 |
 |---|---|
 | 源文件（src/**/*.ts） | 81 |
-| 错误码 E_* | 165 |
+| 错误码 E_* | 167 |
 | verbs | 21 |
 | CLI 子命令 | 37 |
 
@@ -50,6 +50,7 @@
 | `E_BAD_ROLE` | `src/cli/jingjing.ts` `src/web/server.ts` |
 | `E_BAD_SENSITIVITY` | `src/web/server.ts` |
 | `E_BAD_SLOT` | `src/shell.ts` |
+| `E_BAD_STEP` | `src/web/server.ts` |
 | `E_BAD_TARGET` | `src/decayparams.ts` |
 | `E_BAD_TEMPLATE` | `src/shell.ts` |
 | `E_CALL` | `src/toolsmoke.ts` |
@@ -169,6 +170,7 @@
 | `E_ROLE_MISSING` | `src/provider.ts` |
 | `E_SANDBOX_UNAVAILABLE` | `src/shell.ts` |
 | `E_SCHEMA_MISMATCH` | `src/startupcheck.ts` |
+| `E_SETUP_BUSY` | `src/web/server.ts` |
 | `E_STANDING_BECAUSE` | `src/standing.ts` |
 | `E_STANDING_ID` | `src/standing.ts` |
 | `E_STANDING_NOT_FOUND` | `src/cli/jingjing.ts` `src/web/server.ts` |
