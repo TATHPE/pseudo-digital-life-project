@@ -719,8 +719,11 @@ test("配色铁律：全站只有鲸鲸气泡用青色，其余是黑底+白边�
   // var(--cyan) 只允许出现在一处：.body（鲸鲸的回话）
   const uses = PAGE.match(/var\(--cyan\)/g) ?? [];
   assert.equal(uses.length, 1, `var(--cyan) 出现在 ${uses.length} 处，只允许 1 处`);
-  const bodyRule = PAGE.slice(PAGE.indexOf(".body { background:rgba(13,31,34"), PAGE.indexOf(".body { background:rgba(13,31,34") + 220);
-  assert.ok(bodyRule.includes("var(--cyan)"), "那一处必须是鲸鲸气泡的左边框");
+  // 按规则块取，不按字面串取：之前钉的是 `.body { background:rgba(13,31,34`，
+  // 只因为我在 .body 里加了个 min-width 就误报（钉错了东西）
+  const bi = PAGE.indexOf(".body {");
+  const bodyRule = PAGE.slice(bi, PAGE.indexOf("}", bi));
+  assert.ok(bi >= 0 && bodyRule.includes("var(--cyan)"), "那一处必须是鲸鲸气泡的左边框");
   // 硬编码的青色 rgba 也不许再出现（除了色板定义本身）
   const hard = (PAGE.match(/rgba\(15,151,164/g) ?? []).length;
   assert.equal(hard, 0, `还有 ${hard} 处硬编码青色`);

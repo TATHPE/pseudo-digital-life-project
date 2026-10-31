@@ -402,6 +402,13 @@ check("能力表的降级项与服务端一致", await (async () => {
   return api.degraded.every((d) => cap.deg.includes(d));
 })(), cap.deg.slice(0, 60));
 
+// ── 横向溢出：加右栏之后中栏变窄，工具卡里的长行曾把对话列撑破 ──
+check("对话区没有横向滚动条", await js(`(() => {
+  const sc = document.querySelector("#scroll");
+  // 允许 1px 的取整误差；超了就是内容把列撑破了（.row 的 1fr 下限曾经是 min-content）
+  return sc.scrollWidth <= sc.clientWidth + 1;
+})()`));
+
 // ── 卷宗（右栏三签）：结构照 Trianon，数据必须是真接口 ────────
 check("卷宗三签都在，且数字来自 /api/dossier", await js(`(async () => {
   const api = await (await fetch("/api/dossier")).json();

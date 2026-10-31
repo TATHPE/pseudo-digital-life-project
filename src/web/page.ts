@@ -184,9 +184,11 @@ export const PAGE = `<!doctype html>
          letter-spacing:.14em; color:var(--ink-dim); }
   .gap::before, .gap::after { content:""; flex:1; height:1px;
          background:repeating-linear-gradient(90deg, var(--line) 0 5px, transparent 5px 10px); }
-  .row { display:grid; grid-template-columns:28px 1fr; gap:12px; margin:14px 0; align-items:start; }
+  /* 列宽下限必须是 0：1fr 的隐含下限是 min-content，工具卡里一条长 argv 就能把整列撑破
+     （加了右栏卷宗之后中栏变窄，这个问题才露出来 —— 横向滚动条就是这么来的） */
+  .row { display:grid; grid-template-columns:28px minmax(0,1fr); gap:12px; margin:14px 0; align-items:start; }
   /* 用户行：头像放右边，正文右对齐（像 pi-web 的对话排列） */
-  .row.user { grid-template-columns:1fr 28px; }
+  .row.user { grid-template-columns:minmax(0,1fr) 28px; }
   .row.user .av { order:2; }
   .row.user > div:nth-child(2) { order:1; }
   .row.user .meta { text-align:right; }
@@ -240,7 +242,8 @@ export const PAGE = `<!doctype html>
   details.tool summary::marker { color:var(--ink); }
   .tms { color:var(--dim); margin-left:auto; }
   .targs, .tres { margin:0; padding:9px 12px; border-top:1px solid var(--line-dim);
-                 white-space:pre-wrap; word-break:break-word; color:#a9c9cf; max-height:220px; overflow:auto; }
+                 white-space:pre-wrap; word-break:break-word; overflow-wrap:anywhere;
+                 color:#a9c9cf; max-height:220px; overflow:auto; }
   .tres { border-top:0; color:var(--dim); }
   .cursor { display:inline-block; width:7px; height:14px; background:var(--ink);
             vertical-align:-2px; animation:breathe 1s steps(2) infinite; }
@@ -408,7 +411,8 @@ export const PAGE = `<!doctype html>
   .avav input[type=file] { display:none; }
 
   /* ── 气泡：两侧一眼分得开；**全站唯一保留青色的地方**就是鲸鲸的回话 ── */
-  .body { background:rgba(13,31,34,.94); border:1px solid var(--line-dim);
+  .body { min-width:0; overflow-wrap:anywhere;
+          background:rgba(13,31,34,.94); border:1px solid var(--line-dim);
           border-left:2px solid var(--cyan); padding:12px 15px; display:inline-block; max-width:100%; }
   /* 用户气泡：inline-block 上的 margin-left:auto 不生效（auto 只作用于块级盒子），改成 block + fit-content 才真的靠右 */
   .row.user .body { background:rgba(38,28,14,.92); border-color:rgba(255,180,84,.34);
