@@ -98,13 +98,53 @@ export class McpClient {
 
   async callTool(name: string, args: Record<string, unknown>): Promise<string> {
     const r = await this.request("tools/call", { name, arguments: args }, 120000) as {
-      content?: Array<{ type: string; text?: string }>; isError?: boolean;
+      content?: Array<{ type: string; text?: string; mimeType?: string }>; isError?: boolean;
     };
-    const text = (r.content ?? []).map((c) => c.text ?? "").join("\n");
+    // P-A：非文本内容不能**静默丢掉**。
+    // 以前这里只拼 c.text → 一个只返回图片的工具会变成空字符串，
+    // 看起来跟“工具返回了空”一模一样（本项目反复踩的“装饰列”形状）。
+    const parts = r.content ?? [];
+    const texts = parts.filter((c) => c.type === "text");
+    const others = parts.filter((c) => c.type !== "text");
+    const text = texts.map((c) => c.text ?? "").join("\n");
+
+    if (others.length) {
+      const kinds = [...new Set(others.map((c) => c.type))];
+      const kind = kinds.join("/");
+      const note = `E_UNSUPPORTED_CONTENT: 本宿主只接受文本，收到 ${others.length} 个 ${kind} 部件（已省略）`;
+      if (!texts.length) return r.isError ? `E_TOOL: ${note}` : note;
+      // 混合内容：文本照给，但必须明说少了什么
+      return (r.isError ? `E_TOOL: ${text.slice(0, 400)}` : text) + String.fromCharCode(10) + note;
+    }
     return r.isError ? `E_TOOL: ${text.slice(0, 400)}` : text;
   }
 
   close(): void { this.closed = true; try { this.proc.kill(); } catch { /* ignore */ } }
+}
+
+export interface ToolCallResult {
+  content?: Array<{ type: string; text?: string; mimeType?: string }>;
+  isError?: boolean;
+}
+
+/**
+ * 把 MCP 的 content[] 渲染成给模型看的字符串（P-A）。
+ *
+ * 非文本部件**不能静默丢**：以前只拼 `c.text`，于是一个只返回图片的工具
+ * 会得到空字符串 —— 跟“工具返回了空”看起来一模一样（本项目的“装饰列”形状）。
+ * 现在：纯文本照旧；有图片/音频时**明说少了什么**；全是非文本时直接报错码。
+ */
+export function renderToolResult(r: ToolCallResult): string {
+  const parts = r.content ?? [];
+  const texts = parts.filter((c) => c.type === "text");
+  const others = parts.filter((c) => c.type !== "text");
+  const text = texts.map((c) => c.text ?? "").join(String.fromCharCode(10));
+  if (!others.length) return r.isError ? `E_TOOL: ${text.slice(0, 400)}` : text;
+
+  const kind = [...new Set(others.map((c) => c.type))].join("/");
+  const note = `E_UNSUPPORTED_CONTENT: 本宿主只接受文本，收到 ${others.length} 个 ${kind} 部件（已省略）`;
+  if (!texts.length) return r.isError ? `E_TOOL: ${note}` : note;
+  return (r.isError ? `E_TOOL: ${text.slice(0, 400)}` : text) + String.fromCharCode(10) + note;
 }
 
 /** 把 MCP server 的工具接进注册表（命名 mcp__<server>__<tool>） */
