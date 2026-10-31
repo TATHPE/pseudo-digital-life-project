@@ -7,3 +7,6 @@ node_modules/
 *.db-wal
 *.db-shm
 .last-reset
+
+desktop/src-tauri/target/
+desktop/src-tauri/gen/

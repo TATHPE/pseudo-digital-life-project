@@ -27,7 +27,9 @@ impl Sidecar {
         let node = std::env::var("JJ_NODE").unwrap_or_else(|_| "node".to_string());
         let mut cmd = Command::new(&node);
         cmd.args(["--experimental-strip-types", "src/cli/jingjing.ts", "serve", &port.to_string()])
-            .env("JJ_HOME", home.join("data"))
+            .env("JJ_HOME", home)
+            // 看门狗：壳被硬杀（任务管理器/崩溃）时，node 也要跟着退，不能变孤儿占着 7700
+            .env("JJ_PARENT_PID", std::process::id().to_string())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
         // 不弹黑框：Windows 上加 CREATE_NO_WINDOW
@@ -40,17 +42,28 @@ impl Sidecar {
         Self { child, port }
     }
 
-    /// 等它活过来：最多 3 次 × 500ms。
+    /// 等它活过来。
+    ///
+    /// 预算是 **10 秒**（20 × 500ms），不是 1.5 秒 —— 实测 Node 起 serve 要 3–4 秒，
+    /// 原来 3 × 500ms 会把它误判成「起不来」，然后白白打开一次浏览器（踩过）。
+    /// 但如果子进程已经退出（真崩了），就别傻等。
     pub fn wait_healthy(&mut self) -> Result<(), String> {
-        for i in 0..3 {
+        for _ in 0..20 {
             if healthy(self.port) {
                 return Ok(());
             }
+            if let Some(c) = self.child.as_mut() {
+                if matches!(c.try_wait(), Ok(Some(_))) {
+                    return Err("sidecar 进程已退出（看桌面/终端里的报错）".to_string());
+                }
+            }
             std::thread::sleep(Duration::from_millis(500));
-            let _ = i;
         }
-        Err(format!("{} 次探测都没通", 3))
+        Err("10 秒内端口都没通".to_string())
     }
+
+    /// 端口号（main 导航窗口时要用）
+    pub fn port(&self) -> u16 { self.port }
 
     /// 三次失败之后：打开系统浏览器。**记忆不丢**，只是回到网页。
     pub fn fallback_to_browser(&self) {

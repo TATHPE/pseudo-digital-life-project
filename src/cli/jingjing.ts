@@ -316,6 +316,16 @@ async function main(): Promise<void> {
         if (applied.egressOpened) console.error("[posture] 代码外发：会话内开放（每次留 audit，面板可一键关）");
         if (applied.paranoid) console.error("[posture] JJ_PARANOID=1：逐次确认 + 外发关闭");
       }
+      // 看门狗：桌面壳会传 JJ_PARENT_PID。壳没了（硬杀/崩溃）就自己退 ——
+      // 否则 node 会变孤儿占着 7700，下次启动起不来（实测踩到）。
+      {
+        const parentPid = Number(process.env.JJ_PARENT_PID ?? "");
+        if (Number.isFinite(parentPid) && parentPid > 0) {
+          setInterval(() => {
+            try { process.kill(parentPid, 0); } catch { console.error("[sidecar] 壳已退出，我也退"); process.exit(0); }
+          }, 2000).unref?.();
+        }
+      }
       const srv = createWebServer({
         db: d.db, inboxDir: inbox, home: HOME, getTransport, getEmbedder, getConfig,
         tools: registry, getChat, pendingOutage: boot1.outage,

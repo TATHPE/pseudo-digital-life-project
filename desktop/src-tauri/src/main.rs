@@ -34,12 +34,21 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(AppState { sidecar: Mutex::new(None) })
         .setup(|app| {
-            let home = app.path().app_data_dir().unwrap_or_else(|_| std::env::current_dir().unwrap());
+            // 数据目录：JJ_HOME 优先（开发/自测用现有库），否则用 AppData 下的独立目录
+            let home = std::env::var("JJ_HOME").map(std::path::PathBuf::from).unwrap_or_else(|_| {
+                app.path().app_data_dir().map(|d| d.join("data")).unwrap_or_else(|_| std::env::current_dir().unwrap())
+            });
             // 1) 拉起 sidecar：开发时 `node src/cli/jingjing.ts serve 7700`
             let mut sc = Sidecar::start(&home);
             // 2) 健康探测：不通就重启，三次失败 → 落回浏览器（记忆不丢，只是回到网页）
             match sc.wait_healthy() {
-                Ok(()) => {}
+                Ok(()) => {
+                    // 窗口加载时 sidecar 还没起来，会停在占位页；这里主动导航一次
+                    if let Some(w) = app.get_webview_window("main") {
+                        let url = format!("http://127.0.0.1:{}/", sc.port());
+                        let _ = w.navigate(url.parse().unwrap());
+                    }
+                }
                 Err(e) => {
                     eprintln!("[shell] sidecar 起不来：{e}；回落到浏览器");
                     sc.fallback_to_browser();
@@ -112,4 +121,8 @@ pub fn run() {
 /// 开发期用 PATH 上的 node；打包后换成随包分发的二进制（见 sidecar.rs 的注释）
 pub fn node_bin() -> String {
     std::env::var("JJ_NODE").unwrap_or_else(|_| "node".to_string())
+}
+
+fn main() {
+    run();
 }

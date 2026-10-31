@@ -44,3 +44,21 @@ test("H-6 图标文件在（打包必需）", () => {
   const conf = JSON.parse(read("tauri.conf.json")) as { bundle: { icon: string[] } };
   for (const p of conf.bundle.icon) assert.ok(existsSync(join(T, p)), p);
 });
+
+test("H-6 壳把 pid 传给 sidecar，serve 挂了看门狗（硬杀也不留孤儿）", async () => {
+  const { readFileSync } = await import("node:fs");
+  const rs = readFileSync(join(T, "src/sidecar.rs"), "utf8");
+  assert.match(rs, /JJ_PARENT_PID/, "壳要把自己的 pid 传下去");
+  const cli = readFileSync(join(process.cwd(), "src/cli/jingjing.ts"), "utf8");
+  assert.match(cli, /JJ_PARENT_PID/, "serve 要按它挂看门狗");
+  assert.match(cli, /process\.kill\(parentPid, 0\)/, "看门狗用 signal 0 探活");
+});
+
+test("H-6 探测预算够 Node 启动（≥8 秒），不误判「起不来」", async () => {
+  const { readFileSync } = await import("node:fs");
+  const rs = readFileSync(join(T, "src/sidecar.rs"), "utf8");
+  const m = rs.match(/for _ in 0\.\.(\d+)/);
+  assert.ok(m, "要有探测循环");
+  const attempts = Number(m![1]);
+  assert.ok(attempts * 500 >= 8000, `探测预算只有 ${attempts * 500}ms —— Node 起 serve 要 3–4 秒`);
+});
