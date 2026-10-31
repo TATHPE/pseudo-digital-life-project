@@ -1,0 +1,96 @@
+/**
+ * H-3：`map:check` —— 三条断言，任何一条不过就红。
+ *
+ * ① **地图与代码一致**：重新生成一遍，与 `docs/map.md` 逐字比。
+ *    这一步同时覆盖"手写了一个代码里不存在的错误码"：
+ *    因为那份手写内容会和重新生成的结果不同。
+ * ② **文件清单一致**：地图里的源文件集合 == 磁盘上的 `src/**\/*.ts` 集合。
+ * ③ **不变量落点真实存在**：六条纪律指向的文件存在，且文件里真的出现了那个符号。
+ *
+ * 为什么不用"读代码再猜"的方式：这三条都能给出**具体差在哪一行**，
+ * 而"猜"只能给出"我觉得不太对"。
+ */
+import { execFileSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+
+const ROOT = process.cwd();
+const MAP = join(ROOT, "docs", "map.md");
+const fails = [];
+const ok = [];
+
+if (!existsSync(MAP)) {
+  console.error("✘ docs/map.md 不存在 —— 先跑 npm run map");
+  process.exit(1);
+}
+
+const before = readFileSync(MAP, "utf8");
+
+// ── ① 重新生成再比 ────────────────────────────────────
+execFileSync(process.execPath, [join(ROOT, "tools", "gen-map.mjs")], { cwd: ROOT, stdio: "ignore" });
+const after = readFileSync(MAP, "utf8");
+
+if (before === after) {
+  ok.push("地图与代码一致（重新生成后逐字相同）");
+} else {
+  const a = before.split("\n");
+  const b = after.split("\n");
+  const extra = a.filter((l) => l.startsWith("|") && !b.includes(l));
+  const missing = b.filter((l) => l.startsWith("|") && !a.includes(l));
+  fails.push(
+    "地图与代码不一致（docs/map.md 里有手改或没更新）：\n" +
+      extra.slice(0, 6).map((l) => "   只在地图里：" + l.slice(0, 100)).join("\n") +
+      (extra.length > 6 ? "\n   …共 " + extra.length + " 行" : "") +
+      (missing.length ? "\n" + missing.slice(0, 6).map((l) => "   只在代码里：" + l.slice(0, 100)).join("\n") : "") +
+      (missing.length > 6 ? "\n   …共 " + missing.length + " 行" : ""),
+  );
+}
+
+// ── ② 文件清单一致 ────────────────────────────────────
+const mapFiles = new Set(
+  [...after.matchAll(/^\| `(src\/[^`]+)` \|/gm)].map((m) => m[1]),
+);
+const disk = execFileSync("git", ["ls-files", "src"], { cwd: ROOT, encoding: "utf8" })
+  .split("\n")
+  .map((l) => l.trim())
+  .filter((l) => l.endsWith(".ts"));
+// 未提交的新文件也算（git ls-files 不含 untracked）
+const untracked = execFileSync("git", ["ls-files", "--others", "--exclude-standard", "src"], { cwd: ROOT, encoding: "utf8" })
+  .split("\n").map((l) => l.trim()).filter((l) => l.endsWith(".ts"));
+for (const f of untracked) disk.push(f);
+
+const diskSet = new Set(disk);
+const onlyMap = [...mapFiles].filter((f) => !diskSet.has(f));
+const onlyDisk = [...diskSet].filter((f) => !mapFiles.has(f));
+if (onlyMap.length === 0 && onlyDisk.length === 0) {
+  ok.push(`文件清单一致（${mapFiles.size} 个源文件）`);
+} else {
+  fails.push(
+    "文件清单不一致：" +
+      (onlyMap.length ? "\n    地图里有、磁盘上没有：" + onlyMap.slice(0, 5).join(", ") : "") +
+      (onlyDisk.length ? "\n    磁盘上有、地图里没有：" + onlyDisk.slice(0, 5).join(", ") : "") +
+      "\n    （跑 npm run map 重新生成）",
+  );
+}
+
+// ── ③ 六条纪律落点 ────────────────────────────────────
+const invRows = [...after.matchAll(/^\| ([^|]+) \| `([^`]+)` \| `([^`]+)` \|$/gm)];
+if (!invRows.length) fails.push("地图里没有「六条纪律落点」表");
+for (const m of invRows) {
+  const [, name, file, sym] = m;
+  const p = join(ROOT, file);
+  if (!existsSync(p)) { fails.push(`纪律「${name.trim()}」指向的文件不存在：${file}`); continue; }
+  if (!readFileSync(p, "utf8").includes(sym)) {
+    fails.push(`纪律「${name.trim()}」说的符号在 ${file} 里找不到：${sym}`);
+  }
+}
+if (!fails.length) ok.push(`六条纪律落点全部可指（${invRows.length} 条）`);
+
+// ── 汇总 ──────────────────────────────────────────────
+for (const o of ok) console.log("✅ " + o);
+if (fails.length) {
+  for (const f of fails) console.error("❌ " + f);
+  console.error(`\n${fails.length} 项不一致 —— 跑 npm run map 重新生成，或改回代码`);
+  process.exit(1);
+}
+console.log("\n✅ 地图、文件清单、纪律落点三者一致");

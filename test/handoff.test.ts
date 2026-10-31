@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync, rmSync, symlinkSync } from "node:fs";
@@ -212,4 +213,11 @@ test("导出：拒绝把导出目录放进 home 里（会自己拷自己），�
   mkdirSync(busy, { recursive: true });
   writeFileSync(join(busy, "already.txt"), "上一家的东西");
   assert.throws(() => exportHome(home, busy), /E_EXPORT_DIR_NOT_EMPTY/);
+});
+
+test("H-3 项目地图与代码一致（map:check 三断言）", () => {
+  // 这条测试本身就是那道闸：它跑的是 tools/map-check.mjs（会重新生成再比）。
+  // 手写一个不存在的错误码、或加了文件没重新生成地图，这里就红。
+  const r = spawnSync(process.execPath, ["tools/map-check.mjs"], { cwd: process.cwd(), encoding: "utf8" });
+  assert.equal(r.status, 0, (r.stdout ?? "") + (r.stderr ?? ""));
 });

@@ -19,3 +19,5 @@ jobs:
         run: npm ci --ignore-scripts
       - name: 类型 + 测试
         run: npm run check
+      - name: 项目地图一致性（H-3）
+        run: npm run map:check
