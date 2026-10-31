@@ -15,7 +15,10 @@ services:
       dockerfile: docker/Dockerfile
     image: jingjing:dev
     container_name: jingjing
-    restart: unless-stopped
+    # D-5：配置坏了容器会以退出码 78 退出。docker 没有 systemd 的
+    # RestartPreventExitStatus=78，所以用"失败 5 次后停住"：日志留得住现场，
+    # 也不会无限重启把错误冲掉。
+    restart: on-failure:5
     ports:
       # 只绑回环。要换端口改左边这个数字。
       - "127.0.0.1:7700:7700"

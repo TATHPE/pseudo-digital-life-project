@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { openDb } from "../src/db.ts";
 import { verbs } from "../src/verbs.ts";
 import { capabilities } from "../src/capabilities.ts";
-import { CLI_COMMANDS } from "../src/cli/jingjing.ts";
+import { CLI_COMMANDS } from "../src/commands.ts";
 
 const H = () => mkdtempSync(join(tmpdir(), "jj-cap-"));
 

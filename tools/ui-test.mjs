@@ -185,6 +185,20 @@ const settle = await js(`(async () => {
 })()`);
 check("回对话仍贴底（贴底离开 → 回来贴底）", settle.ok === true, JSON.stringify(settle));
 
+// F-2：能力自述进面板（数据来自 /api/capabilities，面板只显示）
+const cap = await js(`(() => {
+  const sum = document.querySelector('#cap-sum');
+  const boxes = document.querySelectorAll('#cap-list .capbox, #cap-list .capline');
+  const deg = document.querySelector('#cap-deg');
+  return { sum: sum ? sum.textContent : '', boxes: boxes.length, deg: deg ? deg.textContent : '' };
+})()`);
+check("能力表在设置里渲染", /工具 \d+/.test(cap.sum) && cap.boxes >= 3,
+  `${cap.sum} | 类目 ${cap.boxes}`);
+check("能力表的降级项与服务端一致", await (async () => {
+  const api = await (await fetch(new URL("/api/capabilities", URL_PAGE))).json();
+  return api.degraded.every((d) => cap.deg.includes(d));
+})(), cap.deg.slice(0, 60));
+
 check("分区标题是带粗左边的标签条 + 格子有角标", await js(`(() => {
   const h = document.querySelector(".sec h3");
   const s = getComputedStyle(h);

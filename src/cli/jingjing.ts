@@ -34,19 +34,11 @@ import { modelKeyOf } from "../config.ts";
 import { applyDecayConfig, effectiveParams, currentOverrides, decayVersion, setDecayParam, resetDecayParams, readAudit } from "../decayparams.ts";
 import { reembed as reembedBuild } from "../reembed.ts";
 import { capabilities, summarize } from "../capabilities.ts";
+import { checkConfig, describeProblems, EXIT_CONFIG } from "../startupcheck.ts";
+import { CLI_COMMANDS } from "../commands.ts";
 
 const HOME = process.env.JJ_HOME ?? join(process.cwd(), "data");
 
-/**
- * CLI 子命令表（B-0 用）。它必须与下面 switch 的分支一致 ——
- * 测试会读源文件核对，少一个/多一个都会红（否则这份表就是"装饰列"）。
- */
-export const CLI_COMMANDS = [
-  "migrate", "remember", "search", "verify", "outage", "serve", "config", "models", "links",
-  "capabilities", "reembed", "auth", "usage", "test", "night", "shell", "ingest", "docs",
-  "forget-doc", "export", "verify-export", "import", "smoke-tools", "templates", "redteam",
-  "verb", "beat", "eval", "decay", "bench",
-];
 const dbFile = join(HOME, "memory.db");
 const inbox = join(HOME, "inbox");
 const ensureHome = () => { mkdirSync(HOME, { recursive: true }); mkdirSync(inbox, { recursive: true }); };
@@ -1012,6 +1004,24 @@ ${r.pass}/${r.total} 拦截/放行符合预期`);
   if (Number.isFinite(major) && major < 24) {
     console.error(`⚠ Node ${process.versions.node}：本项目要求 >= 24（node:sqlite 在 22 还是实验性）。`);
     console.error("  行为可能不对（尤其是 sqlite/vec 相关）。升级：https://nodejs.org/ 或 nvm/fnm。");
+  }
+}
+// D-5：配置坏了要**明确停下**（exit 78），而不是带着坏配置假装能跑。
+// migrate / import 例外：它们本来就是用来修库的。
+{
+  const cmd = process.argv[2] ?? "";
+  const exempt = new Set(["migrate", "import", "verify-export"]);
+  if (!exempt.has(cmd)) {
+    const problems = checkConfig(HOME);
+    const fatal = problems.filter((p) => p.fatal);
+    const warn = problems.filter((p) => !p.fatal);
+    for (const w of warn) console.error("⚠ " + describeProblems([w]));
+    if (fatal.length) {
+      console.error("✗ 配置有问题，拒绝启动（exit " + EXIT_CONFIG + "）：");
+      console.error(describeProblems(fatal));
+      console.error(String.fromCharCode(10) + "提示：配置坏了重启循环只会把日志冲掉；docker 里配的是 restart: on-failure:5。");
+      process.exit(EXIT_CONFIG);
+    }
   }
 }
 try { applyDecayConfig(HOME, (m) => console.error(m)); } catch { /* 参数配置有问题不影响其他命令 */ }

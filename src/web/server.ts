@@ -18,6 +18,7 @@ import { isInstalled } from "../ollama.ts";
 import { recompute, w0FromImportance, type Stage } from "../decay.ts";
 import { modelKeyOf } from "../config.ts";
 import { capabilities } from "../capabilities.ts";
+import { CLI_COMMANDS } from "../commands.ts";
 import { preflight, lastPreflight } from "../preflight.ts";
 import { indexState } from "../embedindex.ts";
 import { AVATAR_FRAMES, DEFAULT_AVATAR, isAvatarFrame } from "./avatar.ts";
@@ -673,6 +674,7 @@ export function createWebServer(deps: WebDeps) {
           db: deps.db, home: deps.home, cfg: resolveConfig(deps.home),
           ollama: pf ? { base: pf.base, online: pf.online, names: pf.names, ...(pf.error ? { error: pf.error } : {}) } : null,
           ...(deps.mcpInfo ? { mcp: deps.mcpInfo } : {}),
+          commands: CLI_COMMANDS,
           panel: true,
         });
         json(res, 200, cap);

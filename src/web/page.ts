@@ -368,6 +368,16 @@ export const PAGE = `<!doctype html>
   .ingest #dlg-empty code { color:var(--ink-dim); font:11px/1.6 var(--mono); word-break:break-all; }
   .ingest .acts { margin-top:8px; }
   .ingest .acts button { width:100%; }
+  /* 能力表（F-2）：一行一类，点开看条目；降级项直接标红 */
+  #cap-list { margin-top:6px; }
+  .capbox { border:1px solid var(--line-dim); margin:4px 0; }
+  .capbox > summary { padding:5px 7px; font:10px/1 var(--mono); letter-spacing:.12em;
+                      color:var(--ink-dim); cursor:pointer; list-style:none; }
+  .capbox > summary::-webkit-details-marker { display:none; }
+  .capbox[open] > summary { color:var(--ink); border-bottom:1px solid var(--line-dim); }
+  .capnames { padding:6px 7px; display:flex; flex-wrap:wrap; gap:4px 10px; }
+  .capname { font:10px/1.6 var(--mono); color:var(--fg); }
+  .capline { font:10px/1.8 var(--mono); color:var(--dim); padding:4px 2px; }
   .ingest { margin-top:6px; display:flex; flex-direction:column; gap:6px; }
   .ilab { font:9px/1.2 var(--mono); letter-spacing:.1em; color:var(--ink-dim); font-weight:700; margin:0; }
   .ingest select { font:11px/1.3 var(--mono); padding:6px 8px; }
@@ -593,6 +603,13 @@ export const PAGE = `<!doctype html>
           <div><label>&nbsp;</label><button id="m-save" class="primary">保存本地模型</button></div>
         </div>
         <p class="hint" id="m-msg"></p>
+      </div>
+
+      <div class="panelbox">
+        <h2>CAPABILITIES · 能力</h2>
+        <p class="hint" id="cap-sum">…</p>
+        <div id="cap-list"></div>
+        <p class="hint" id="cap-deg"></p>
       </div>
 
       <div class="panelbox">
@@ -1413,6 +1430,7 @@ $("#c-base").addEventListener("input", paintEndpoint);
 
 async function loadConfig() {
   loadModels();
+  loadCapabilities();
   const c = await (await fetch("/api/config")).json();
   $("#c-provider").value = c.provider;
   $("#c-model").value = c.model;
@@ -1446,6 +1464,36 @@ function fillModels(el, cur, installed, extraEmpty) {
   el.innerHTML = opts.join("");
   el.value = cur || (extraEmpty ? "" : (names[0] || ""));
 }
+// ── 能力自述（B-0 / F-2）：数据全部来自 /api/capabilities，面板只负责显示 ──
+var CAP_CLASSES = [
+  ["tool", "工具"], ["command", "命令"], ["hook", "钩子"],
+  ["cron", "定时"], ["panel", "面板"], ["provider", "供应商"],
+];
+async function loadCapabilities() {
+  var c;
+  try { c = await (await fetch("/api/capabilities")).json(); }
+  catch (e) { $("#cap-sum").textContent = "查不到能力表（服务没起来？）"; return; }
+  var counts = CAP_CLASSES.map(function (p) { return p[1] + " " + ((c.classes[p[0]] || []).length); });
+  $("#cap-sum").textContent = counts.join(" · ");
+  $("#cap-list").innerHTML = CAP_CLASSES.map(function (p) {
+    var id = p[0], items = c.classes[id] || [];
+    if (!items.length) return "<div class='capline dim2'>" + p[1] + "：0（未实现）</div>";
+    var names = items.slice(0, 60).map(function (x) {
+      return "<span class='capname'>" + escapeHtml(x.name) + "</span>" +
+        (x.tier ? " <span class='dim2'>" + x.tier + "</span>" : "") +
+        (x.source === "mcp" ? " <span class='dim2'>mcp</span>" : "");
+    }).join("");
+    return "<details class='capbox'><summary>" + p[1] + " · " + items.length + "</summary>" +
+      "<div class='capnames'>" + names + "</div></details>";
+  }).join("");
+  var deg = c.degraded || [];
+  $("#cap-deg").innerHTML = deg.length
+    ? "<span class='err'>降级 " + deg.length + " 项</span><br>" +
+      "<span class='err'>" + deg.map(escapeHtml).join(" · ") + "</span>" +
+      (c.notes && c.notes.length ? "<br><span class='dim2'>" + c.notes.map(escapeHtml).join("；") + "</span>" : "")
+    : "<span class='dim2'>无降级</span>";
+}
+
 async function loadModels(force) {
   if (MODELS && !force) { paintModels(MODELS); return; }   // 进设置别每次都重新探测
   $("#m-state").textContent = "查询本地模型…";
