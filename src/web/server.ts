@@ -1438,12 +1438,25 @@ export function createWebServer(deps: WebDeps) {
             }
           }
         } catch { /* 浮现失败不影响正常回答 */ }
+        // H-a / H-b：她自己在惦记的事 + 对人的理解（每句都带出处）
+        let agendaLines: string[] = [];
+        let interpLines: string[] = [];
+        try {
+          const ag = await import("../agenda.ts");
+          agendaLines = ag.agendaForBrief(deps.home, 2);
+        } catch { /* 没有就算了 */ }
+        try {
+          const ip = await import("../interpret.ts");
+          interpLines = ip.interpretationsForBrief(deps.db, 2);
+        } catch { /* 没有就算了 */ }
         const selfState = advance(deps.db, { turns: 1, silenceDays: last ? (now().getTime() - new Date(last.ts).getTime()) / 86400000 : 0 }, now());
         const brief = buildBrief({
           now: now(), persona: loadPersona(deps.home), contracts, recalled,
           lastSeenAt: last ? new Date(last.ts) : null,
           outage: pending,
           state: { energy: selfState.energy, closeness: selfState.closeness, mood: selfState.mood ?? undefined },
+          agenda: agendaLines,
+          interpretations: interpLines,
           user: (() => { const note = omissionNote(omitted, rc.omittedDocs); return note ? note + String.fromCharCode(10) : ""; })() + text,
         });
 

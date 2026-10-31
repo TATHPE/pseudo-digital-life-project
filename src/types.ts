@@ -54,6 +54,10 @@ export interface BriefInput {
   lastName?: string | null;  // P8 上次到哪了
   delta?: string | null;     // P9 这次变了什么
   recalled: MemoryLine[];    // P10 ≤8 条
+  /** H-a：她自己惦记的事（每句带出处，≤2 条） */
+  agenda?: string[];
+  /** H-b：她对人的理解（每句带依据 id，≤2 条） */
+  interpretations?: string[];
   user: string;              // P11
   budget?: Partial<BriefBudget>;
 }

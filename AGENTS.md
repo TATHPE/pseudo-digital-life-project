@@ -19,7 +19,7 @@ node src/cli/jingjing.ts serve 7700   # 面板 → http://127.0.0.1:7700
 
 ---
 
-## 2. 八条纪律
+## 2. 十条纪律
 
 1. **一条执行路径。** `verbs → execute → policy → audit`。新能力挂在这条线上；`tools.ts` 只是适配层。
 2. **没接上 = 没做完。** 改完一条链路，去库里/日志里找**一行证据**。类型通过不算。
@@ -34,6 +34,12 @@ node src/cli/jingjing.ts serve 7700   # 面板 → http://127.0.0.1:7700
    这轮真踩到：面板改正文时自己在 `server.ts` 里补写向量，绕开了 `store.updateMemoryText`。
 8. **L0 字节级不变。** 稳定前缀（persona 四块）改一个标点就让 prompt 缓存全掉，且**没有症状**。
    `test/l0-prefix.test.ts` 把 `prefixHash` 钉死了：想改 L0 就故意改那个常量，并在 commit 里写明后果。
+
+9. **本地模型只管理记忆。** 不参与对话（`express` 配成本地 = 对话不可用，不拿它顶班），
+   能调的工具只有记忆类（`src/memoryonly.ts` 的 `MEMORY_ONLY_TOOLS`，**执行侧**也校验）。
+   夜间整理与本地对话共用这一份白名单，不复制第二份。
+10. **改完自己验。** 动过东西的回合，收尾前必须验一次（跑测试 / 读回文件）；验不了就明说没验，
+   不许说「已完成」。这条在 `src/agentguard.ts`，只对干活的会话生效（夜间抽取 `guards: false`）。
 
 动手前先看技能索引 `~/.agents/skills/INDEX.md`，**调用 skill 前说明"用哪个、为什么"**。
 

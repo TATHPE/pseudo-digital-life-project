@@ -18,16 +18,13 @@
 import type { ChatEvent } from "./transport.ts";
 import type { ToolRegistry } from "./tools.ts";
 import { runAgent } from "./agent.ts";
+import { NIGHT_TOOLS as NIGHT_ONLY } from "./memoryonly.ts";
 
-/** 夜间整理允许用的能力：全是只读。加东西之前先问「它会不会因此能改库」 */
-export const NIGHT_TOOLS = [
-  "memory.search",
-  "doc.search",
-  "doc.list",
-  "time.now",
-  "fs.list",
-  "fs.read",
-] as const;
+/**
+ * 夜间整理用的能力 = **和本地模型共享同一份白名单**（memoryonly.ts）。
+ * 不复制第二份：两份名单早晚会跑偏，而这是安全边界。
+ */
+export const NIGHT_TOOLS = NIGHT_ONLY;
 
 export interface ToolTrace {
   name: string;
@@ -67,7 +64,7 @@ export function makeToolExtractor(o: ToolExtractorOpts): (prompt: string) => Pro
   return async (prompt: string): Promise<string> => {
     let text = "";
     let failure = "";
-    const agent = runAgent({ chat: o.chat, tools: o.tools, maxSteps }, NIGHT_SYSTEM, prompt);
+    const agent = runAgent({ chat: o.chat, tools: o.tools, maxSteps, guards: false }, NIGHT_SYSTEM, prompt);
     for await (const ev of agent) {
       if (ev.type === "delta") text += ev.text;
       else if (ev.type === "tool_result") {

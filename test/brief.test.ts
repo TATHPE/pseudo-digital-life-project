@@ -60,10 +60,11 @@ test("不变量 2b：超长输入被封顶（丢弃而不是溢出）", () => {
   assert.equal(heavy.dropped.threads, 2);            // 线头上限 3
 });
 
-test("不变量 3：11 个槽位固定且有序，空内容也占位", () => {
+test("不变量 3：槽位固定且有序（P1–P11 + 她自己的 P12/P13），空内容也占位", () => {
   const r = buildBrief(base());
+  // P12「我惦记的」/ P13「我怎么理解你」是 H-a/H-b 加的两层：在召回之后、用户输入之前
   assert.deepEqual(r.slots.map((s) => s.id),
-    ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10", "P11"]);
+    ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10", "P12", "P13", "P11"]);
   assert.deepEqual(r.slots.filter((s) => s.stable).map((s) => s.id), ["P1", "P2", "P3", "P4"]);
 });
 

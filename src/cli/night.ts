@@ -99,6 +99,14 @@ export async function runNightCli(opts: NightOptions): Promise<number> {
       stateText: st,
     });
   }
+  // H-a：从事实里刷新「她自己在惦记的事」（未闭合承诺 / 拖太久的线索 / 待人判的矛盾）
+  // 纯确定性，不花模型；上限 5 条，超了就不加
+  let agendaAdded = 0;
+  try {
+    const { refreshFromFacts } = await import("../agenda.ts");
+    agendaAdded = refreshFromFacts(d.db, opts.home, now).added;
+  } catch { /* 惦记刷新失败不影响整备 */ }
+
   // 无论抽没抽，这一句都要执行：能量、closeness、silenceDays 全靠它推进
   advance(d.db, { night: true, silenceDays: 1 }, now);
 

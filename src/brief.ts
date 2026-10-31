@@ -21,6 +21,8 @@ const DEFAULT_BUDGET: BriefBudget = {
 
 const MAX_CONTRACTS = 15;
 const MAX_THREADS = 3;
+const MAX_AGENDA = 2;
+const MAX_INTERP = 2;
 const MAX_RECALLED = 8;
 
 function fmtGap(ms: number): string {
@@ -132,6 +134,15 @@ export function buildBrief(input: BriefInput): BriefOutput {
   const p10 = r.lines.length ? `【召回】\n${r.lines.join("\n")}` : "【召回】无";
   slots.push({ id: "P10", label: "召回", tokens: estimateTokens(p10), stable: false });
 
+  // ── 她自己那一层（H-a / H-b）────────────────────────
+  // 她有「自己在惦记的事」和「对人的理解」，不是每轮都靠人提。
+  const ag = (input.agenda ?? []).slice(0, MAX_AGENDA);
+  const p12 = ag.length ? `【我惦记的】${ag.join(" ／ ")}` : "";
+  slots.push({ id: "P12", label: "我惦记的", tokens: estimateTokens(p12), stable: false });
+
+  const it = (input.interpretations ?? []).slice(0, MAX_INTERP);
+  const p13 = it.length ? `【我怎么理解你】${it.join(" ／ ")}` : "";
+  slots.push({ id: "P13", label: "我的理解", tokens: estimateTokens(p13), stable: false });
   // ── 本轮输入 ────────────────────────────────────────
   const p11 = input.user;
   slots.push({ id: "P11", label: "用户输入", tokens: estimateTokens(p11), stable: false });
@@ -140,7 +151,7 @@ export function buildBrief(input: BriefInput): BriefOutput {
   const confidence: BriefOutput["confidence"] =
     input.recalled.length === 0 ? "abstain" : input.recalled.length < 2 ? "need_evidence" : "answer";
 
-  const body = [p5, p6, p7, p8, p9, p10].filter(Boolean).join("\n\n");
+  const body = [p5, p6, p7, p8, p9, p10, p12, p13].filter(Boolean).join("\n\n");
   const text = [prefixText, body, p11].filter(Boolean).join("\n\n");
   const tokens = estimateTokens(text);
 

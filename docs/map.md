@@ -8,8 +8,8 @@
 
 | 项 | 数量 |
 |---|---|
-| 源文件（src/**/*.ts） | 85 |
-| 错误码 E_* | 168 |
+| 源文件（src/**/*.ts） | 89 |
+| 错误码 E_* | 177 |
 | verbs | 21 |
 | CLI 子命令 | 37 |
 
@@ -31,10 +31,14 @@
 | 错误码 | 抛出位置 |
 |---|---|
 | `E_ABSOLUTE_PATH` | `src/project.ts` |
+| `E_AGENDA_DUP` | `src/agenda.ts` |
+| `E_AGENDA_EMPTY` | `src/agenda.ts` |
+| `E_AGENDA_FULL` | `src/agenda.ts` |
+| `E_AGENDA_NO_SOURCE` | `src/agenda.ts` |
 | `E_BAD_ACTION` | `src/web/server.ts` |
 | `E_BAD_ARG_VALUE` | `src/toolsmoke.ts` |
 | `E_BAD_ARGS` | `src/toolsmoke.ts` |
-| `E_BAD_ARGV` | `src/execute.ts` `src/shell.ts` `src/verbs.ts` |
+| `E_BAD_ARGV` | `src/agentguard.ts` `src/execute.ts` `src/shell.ts` `src/verbs.ts` |
 | `E_BAD_ENDPOINT` | `src/transport.ts` |
 | `E_BAD_FRAME` | `src/web/server.ts` |
 | `E_BAD_IMAGE` | `src/web/server.ts` |
@@ -62,7 +66,7 @@
 | `E_CORE_PROTECTED` | `src/verbs.ts` |
 | `E_CSRF` | `src/web/server.ts` |
 | `E_DECAY_PARAM` | `src/startupcheck.ts` |
-| `E_DENIED` | `src/execute.ts` `src/policy.ts` `src/tools.ts` |
+| `E_DENIED` | `src/agentguard.ts` `src/execute.ts` `src/policy.ts` `src/tools.ts` |
 | `E_DEPLOY_FROZEN` | `src/deploy/watchdog.ts` |
 | `E_DEPLOY_NO_REASON` | `src/deploy/slot.ts` |
 | `E_DEPLOY_STATE` | `src/deploy/slot.ts` |
@@ -71,7 +75,7 @@
 | `E_EMBED_COUNT` | `src/transport.ts` |
 | `E_EMBED_DOWN` | `src/retrieve.ts` |
 | `E_EMBED_EMPTY` | `src/retrieve.ts` |
-| `E_EMPTY` | `src/ingest.ts` `src/store.ts` `src/web/server.ts` |
+| `E_EMPTY` | `src/agentguard.ts` `src/ingest.ts` `src/store.ts` `src/web/server.ts` |
 | `E_EMPTY_EMBEDDING` | `src/embed.ts` |
 | `E_ENCODING` | `src/ingest.ts` `src/persona.ts` `src/web/server.ts` |
 | `E_EXISTS` | `src/verbs.ts` |
@@ -93,6 +97,10 @@
 | `E_GRANT_SCOPE` | `src/grant.ts` |
 | `E_GRANT_SECRET` | `src/grant.ts` |
 | `E_INDEX` | `src/assert.ts` |
+| `E_INTERP_BAD_BASIS` | `src/interpret.ts` |
+| `E_INTERP_NO_BASIS` | `src/interpret.ts` |
+| `E_INTERP_RESTATE` | `src/interpret.ts` |
+| `E_INTERP_SHORT` | `src/interpret.ts` |
 | `E_IS_DIR` | `src/verbs.ts` |
 | `E_MAX_STEPS` | `src/agent.ts` |
 | `E_MCP` | `src/mcp.ts` |
@@ -108,6 +116,7 @@
 | `E_NO_ARGV` | `src/shell.ts` |
 | `E_NO_AVATAR` | `src/web/server.ts` |
 | `E_NO_CALL` | `src/toolsmoke.ts` |
+| `E_NO_CANDIDATES` | `src/agentguard.ts` |
 | `E_NO_CAPABILITY` | `src/execute.ts` `src/tools.ts` |
 | `E_NO_CMD` | `src/cli/deploy.ts` |
 | `E_NO_CONVERTER` | `src/ingest.ts` |
@@ -134,14 +143,14 @@
 | `E_NOT_DELETED` | `src/web/server.ts` |
 | `E_NOT_DIR` | `src/project.ts` |
 | `E_NOT_FILE` | `src/project.ts` |
-| `E_NOT_FOUND` | `src/verbs.ts` `src/web/server.ts` |
+| `E_NOT_FOUND` | `src/agentguard.ts` `src/verbs.ts` `src/web/server.ts` |
 | `E_NOTHING_TO_DO` | `src/web/server.ts` |
 | `E_OLLAMA_DOWN` | `src/cli/jingjing.ts` |
 | `E_ORIGIN` | `src/web/server.ts` |
-| `E_OUT_OF_PROJECT` | `src/project.ts` |
+| `E_OUT_OF_PROJECT` | `src/agentguard.ts` `src/project.ts` |
 | `E_OUT_OF_RANGE` | `src/decayparams.ts` |
 | `E_OUTSIDE_HOME` | `src/web/server.ts` |
-| `E_PATH_DENIED` | `src/project.ts` `src/shell.ts` `src/verbs.ts` |
+| `E_PATH_DENIED` | `src/agentguard.ts` `src/project.ts` `src/shell.ts` `src/verbs.ts` |
 | `E_PENDING_` | `src/web/server.ts` |
 | `E_PENDING_EXPIRED` | `src/web/server.ts` |
 | `E_PENDING_ID` | `src/confirm.ts` |
@@ -195,7 +204,7 @@
 | `E_UNSUPPORTED` | `src/ingest.ts` `src/transport.ts` `src/web/server.ts` |
 | `E_UNSUPPORTED_CONTENT` | `src/mcp.ts` |
 | `E_UPLOAD` | `src/web/server.ts` |
-| `E_VERB` | `src/execute.ts` |
+| `E_VERB` | `src/agentguard.ts` `src/execute.ts` |
 | `E_WRITE` | `src/reembed.ts` |
 | `E_WRONG_TOOL` | `src/toolsmoke.ts` |
 
@@ -233,7 +242,9 @@
 
 | 文件 | 干什么 |
 |---|---|
+| `src/agenda.ts` | 她自己的惦记（H-a）—— 人性缺的第一块。 |
 | `src/agent.ts` | 工具循环（agent loop）：模型 → 工具 → 模型 … → 回答。 |
+| `src/agentguard.ts` | Agent 回路的三条硬规矩（C-1 / C-3 / C-2）。 |
 | `src/assert.ts` | 越界即抛（比 `!` 安全：漏了会炸而不是 NaN 悄悄传播） */ |
 | `src/auth.ts` | 凭据存储（13 §3） |
 | `src/autobio.ts` | 自传（01 §9.1）：一天一条，第一人称，只能引用当日记忆 id。 |
@@ -274,11 +285,13 @@
 | `src/handoff.ts` | 搬家协议（19 §7.4 / 09 §5）：**quiesce → export → 校验 → import → 补跑** |
 | `src/heartbeat.ts` | 心跳与主动性（01 §10）。 |
 | `src/ingest.ts` | 摄入管道（02 §5.1 转换 → §5.2 分块 → §5.3 幂等） |
+| `src/interpret.ts` | 记忆的「意义层」（H-b）—— 人性缺的第二块。 |
 | `src/interview.ts` | 人格访谈（H-4 第 ⑥ 步）。 |
 | `src/journal.ts` | inbox：原始事件的唯一事实源（18 §1.1） |
 | `src/links.ts` | 记忆之间的线（J-5）：抽检与"一句话拆线"。 |
 | `src/mcp.ts` | 最小 MCP stdio 客户端（11 §3 方向 B）。 |
 | `src/md.ts` | 极简 Markdown → HTML（够用、可测、零依赖；所有文本先转义） */ |
+| `src/memoryonly.ts` | 「本地模型只管理记忆」这条边界，写成**结构**（用户 2026-10-31 再次确认）。 |
 | `src/nightagent.ts` | 夜间整理的「工具循环」抽取器（P0-2） |
 | `src/nightly.ts` | 夜间整备（01 §9）：消化 inbox → 抽取 → 冲突消解 → 归并。 |
 | `src/notify.ts` | 回执通道（D-3 的前置，`docs/25 §4`）。 |

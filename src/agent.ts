@@ -4,6 +4,10 @@
  */
 import type { ChatEvent } from "./transport.ts";
 import type { ToolRegistry } from "./tools.ts";
+import {
+  newGuard, noteToolResult, isError, canRetry, needPlan, needVerify, spendNudge,
+  PLAN_NUDGE, PLAN_ACT_NUDGE, verifyNudge, retryNudge,
+} from "./agentguard.ts";
 
 export type AgentEvent =
   | { type: "delta"; text: string }
@@ -47,6 +51,12 @@ export interface AgentDeps {
   maxSteps?: number;
   /** 单个工具输出给模型的长度上限（11 §3：别把上下文撑爆） */
   maxToolChars?: number;
+  /**
+   * C-1/C-2/C-3 三条回路规矩（默认开）。
+   * 结构化抽取（夜间整理）必须关掉：它要的是「先查库再交 JSON」，
+   * 不是「先列步骤、改完自己验」——那会把两轮变成三轮。
+   */
+  guards?: boolean;
 }
 
 type Msg =
@@ -56,9 +66,17 @@ type Msg =
 
 export async function* runAgent(deps: AgentDeps, system: string, user: string): AsyncGenerator<AgentEvent, void, void> {
   const maxSteps = deps.maxSteps ?? 6;
+  const guards = deps.guards !== false;
   const cap = deps.maxToolChars ?? 4000;
   const messages: Msg[] = [{ role: "system", content: system }, { role: "user", content: user }];
   const schema = deps.tools.schema();
+  const guard = newGuard();
+
+  // C-2：像任务就先讨一个步骤清单（只讨一次）
+  if (guards && needPlan(guard, user) && spendNudge(guard)) {
+    messages.push({ role: "user", content: PLAN_NUDGE });
+    yield { type: "notice", text: "先列步骤（C-2）" };
+  }
 
   for (let step = 1; step <= maxSteps; step++) {
     let text = "";
@@ -77,7 +95,30 @@ export async function* runAgent(deps: AgentDeps, system: string, user: string): 
       yield { type: "error", message: String((e as Error).message ?? e).slice(0, 300) };
       return;
     }
-    if (!calls.length) { yield { type: "done", steps: step, finish }; return; }
+    if (!calls.length) {
+      // C-1：动过东西却没验，就不许收尾 —— 补一次；补过还不验，就**如实说没验**
+      // C-2 后半段：列完计划就停 = 没干活。推它一把（只推一次）
+      if (guards && guard.planned && !guard.planActed && spendNudge(guard)) {
+        guard.planActed = true;
+        yield { type: "notice", text: "计划列完了，让它开始执行（C-2）" };
+        messages.push({ role: "assistant", content: text });
+        messages.push({ role: "user", content: PLAN_ACT_NUDGE });
+        continue;
+      }
+      if (guards && needVerify(guard) && spendNudge(guard)) {
+        guard.nudgedVerify = true;
+        yield { type: "notice", text: "改完了但没验证，我让它先验一次（C-1）" };
+        messages.push({ role: "assistant", content: text });
+        messages.push({ role: "user", content: verifyNudge(guard.mutated) });
+        continue;
+      }
+      if (guard.mutated.length && !guard.verified) {
+        // 催过还不验：把这件事说在明面上，别让用户以为验过了
+        yield { type: "notice", text: "注意：这次改动**没有验证**（它自己说的）" };
+      }
+      yield { type: "done", steps: step, finish };
+      return;
+    }
 
     messages.push({
       role: "assistant", content: text,
@@ -93,8 +134,18 @@ export async function* runAgent(deps: AgentDeps, system: string, user: string): 
       const res = await deps.tools.run(c.name, args);
       let out = res.output;
       if (out.length > cap) out = out.slice(0, cap) + `…（已截断，共 ${out.length} 字符）`;
+      noteToolResult(guard, c.name, res.ok, out);
       yield { type: "tool_result", id: c.id, name: c.name, result: out, ms: Date.now() - t0 };
       messages.push({ role: "tool", tool_call_id: c.id, content: out });
+      // C-3：错误当作输入 —— 同名工具允许补一次，并给出"下一步"
+      if (guards && (!res.ok || isError(out))) {
+        if (canRetry(guard, c.name, out)) {
+          yield { type: "notice", text: `${c.name} 报错，让它补一次（C-3）` };
+          messages.push({ role: "user", content: retryNudge(c.name, out, false) });
+        } else {
+          yield { type: "notice", text: `${c.name} 又失败了，这一次不再补` };
+        }
+      }
     }
     yield { type: "phase", step, note: `第 ${step} 轮工具完成，继续` };
   }
