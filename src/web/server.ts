@@ -28,6 +28,8 @@ import { listProposals, getProposal, setProposalStatus } from "../proposals.ts";
 import { reviewQueue, noteReviewed } from "../surface.ts";
 import { openThreads, closeThread } from "../threads.ts";
 import { openGrant, listGrants, revokeGrant } from "../grant.ts";
+import { listReceipts, markSeen, unseenCount } from "../notify.ts";
+import { listStanding, disableStanding } from "../standing.ts";
 import { cutLink, linkKey } from "../links.ts";
 import { readStateSafe } from "../deploy/slot.ts";
 import { listDocs, forgetDoc, setDocSensitivity, ingestPath, collectFiles } from "../ingest.ts";
@@ -998,6 +1000,33 @@ export function createWebServer(deps: WebDeps) {
         return;
       }
 
+      // ── 回执（D-3 的前置通道）：它做完的事必须能被看见 ──
+      if (req.method === "GET" && url.pathname === "/api/receipts") {
+        const unseenOnly = url.searchParams.get("unseen") !== "0";
+        json(res, 200, { unseen: unseenCount(deps.home), items: listReceipts(deps.home, { unseenOnly, limit: 20 }) });
+        return;
+      }
+      const seenId = url.pathname.match(/^\/api\/receipts\/(rcp_[0-9a-z]{6,40})\/seen$/);
+      if (req.method === "POST" && seenId) {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
+        const r = markSeen(deps.home, String(seenId[1]), now());
+        json(res, r ? 200 : 404, r ? { ok: true, seen: true } : { error: "E_RECEIPT_NOT_FOUND" });
+        return;
+      }
+
+      // ── 常驻指令（D-3）：只读 + 停用；真正的触发由外部调 `jingjing standing tick` ──
+      if (req.method === "GET" && url.pathname === "/api/standing") {
+        json(res, 200, listStanding(deps.home));
+        return;
+      }
+      const standingOff = url.pathname.match(/^\/api\/standing\/([a-z][a-z0-9-]{2,30})\/disable$/);
+      if (req.method === "POST" && standingOff) {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
+        const body = JSON.parse(await readBody(req)) as { reason?: string };
+        const o = disableStanding(deps.home, String(standingOff[1]), String(body.reason ?? "面板上停用"), now());
+        json(res, o ? 200 : 404, o ? { ok: true, enabled: o.enabled } : { error: "E_STANDING_NOT_FOUND" });
+        return;
+      }
       // ── 会话授权（K-3）：窗口活在**这个进程**里，重启即失效 ──
       if (req.method === "GET" && url.pathname === "/api/grants") {
         json(res, 200, listGrants(deps.home, now()));

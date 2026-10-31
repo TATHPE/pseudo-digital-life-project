@@ -212,6 +212,29 @@ check("F-3 记忆列表能翻页", await js(`(async () => {
   const after = document.querySelectorAll('#memlist .item').length;
   return before <= 9 && after > before;
 })()`));
+// ── D-3 回执：送达 ≠ 已读，点「知道了」才算看见 ─────────
+check("D-3 回执能标已读", await js(`(async () => {
+  const before = document.querySelectorAll('#rcplist [data-rcp]').length;
+  if (!before) return false;
+  document.querySelector('#rcplist button[data-act=seen]').click();
+  await new Promise((r) => setTimeout(r, 900));
+  const after = document.querySelectorAll('#rcplist [data-rcp]').length;
+  return after === before - 1;
+})()`));
+
+// ── D-3 常驻指令：列表能看到，停用是一句话的事 ──────────
+check("D-3 常驻指令能停用", await js(`(async () => {
+  document.querySelector('#side .item[data-view=cfg]').click();
+  await new Promise((r) => setTimeout(r, 500));
+  const card = document.querySelector('#st-list [data-std]');
+  if (!card) return false;
+  const btn = card.querySelector('button[data-act=off]');
+  if (!btn) return false;
+  btn.click();
+  await new Promise((r) => setTimeout(r, 900));
+  const c2 = document.querySelector('#st-list [data-std]');
+  return !!c2 && /已停用/.test(c2.textContent);
+})()`));
 check("无 JS 运行时错误", errs.length === 0, errs.slice(0, 2).join(" | "));
 
 // 图标：标签页 favicon 是静态 /icon.svg（以前是运行时 data URI，viewBox 写死导致空白）

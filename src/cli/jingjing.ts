@@ -19,6 +19,8 @@ import { listLinks, cutLink } from "../links.ts";
 import { listProposals, getProposal, setProposalStatus } from "../proposals.ts";
 import { openThreads, closeThread } from "../threads.ts";
 import { openGrant, listGrants, revokeGrant } from "../grant.ts";
+import { addStanding, listStanding, disableStanding, runDue, parseWhen } from "../standing.ts";
+import { listReceipts, markSeen, unseenCount } from "../notify.ts";
 import { createWebServer } from "../web/server.ts";
 import { execute } from "../execute.ts";
 import { createStreamTransport, createChatTransport } from "../transport.ts";
@@ -434,6 +436,104 @@ async function main(): Promise<void> {
       }
 
       console.error("用法: jingjing models [list | use <名> [--role X] | doctor]");
+      process.exitCode = 2;
+      return;
+    }
+    case "standing": {
+      // D-3：常驻指令 —— 只收模板、必须指定通知通道、每次触发自己开 60 秒窗口
+      const op = rest[0] ?? "list";
+      const arg = (n: string) => {
+        const i = rest.indexOf("--" + n);
+        return i >= 0 ? rest[i + 1] : undefined;
+      };
+      if (op === "add") {
+        const r = addStanding(HOME, {
+          id: arg("id"), when: arg("when"), template: arg("run"),
+          because: arg("because"), notify: arg("notify") ?? "panel",
+          slots: (() => { try { return JSON.parse(String(arg("slots") ?? "{}")); } catch { return {}; } })(),
+          ttlDays: arg("ttl-days"), maxPerDay: arg("max-per-day"),
+        });
+        console.log(JSON.stringify(r, null, 2));
+        if (!r.ok) process.exitCode = 1;
+        return;
+      }
+      if (op === "list") {
+        const rows = listStanding(HOME);
+        if (!rows.length) { console.log("（没有常驻指令）"); return; }
+        rows.forEach((o) => {
+          const w = parseWhen(o.when);
+          console.log(`${o.id}  ${o.when}  ${o.template}  ${o.enabled ? "启用" : "已停用"}`);
+          console.log(`    为什么：${o.because}`);
+          console.log(`    到期：${o.expiresAt.slice(0, 16)}  今天已跑 ${o.lastDay === new Date().toISOString().slice(0, 10) ? 0 : (o.countToday ?? 0)} 次` +
+            (o.disabledReason ? `  停用原因：${o.disabledReason}` : ""));
+          void w;
+        });
+        console.log(String.fromCharCode(10) + `没读的回执：${unseenCount(HOME)} 条（jingjing standing inbox）`);
+        return;
+      }
+      if (op === "disable") {
+        const id = String(rest[1] ?? "");
+        const o = disableStanding(HOME, id, rest.slice(2).join(" ") || "人手动停用");
+        console.log(JSON.stringify(o ? { ok: true, id, enabled: o.enabled } : { ok: false, error: "E_STANDING_NOT_FOUND" }, null, 2));
+        if (!o) process.exitCode = 1;
+        return;
+      }
+      if (op === "inbox") {
+        const rows = listReceipts(HOME, { unseenOnly: rest.includes("--all") ? false : true, limit: 20 });
+        if (!rows.length) { console.log("（没有待读回执）"); return; }
+        rows.forEach((r) => {
+          console.log(`[${r.id}] ${r.at.slice(0, 16)} ${r.ok ? "✓" : "✗"} ${r.title}`);
+          if (r.body) console.log("    " + r.body.split(String.fromCharCode(10)).slice(0, 3).join(" ").slice(0, 200));
+        });
+        console.log(String.fromCharCode(10) + "标记已读：jingjing standing seen <id>");
+        return;
+      }
+      if (op === "seen") {
+        const id = String(rest[1] ?? "");
+        const r = markSeen(HOME, id);
+        console.log(JSON.stringify(r ? { ok: true, id, seen: true } : { ok: false, error: "E_RECEIPT_NOT_FOUND" }, null, 2));
+        if (!r) process.exitCode = 1;
+        return;
+      }
+      if (op === "tick") {
+        // 由外部调度（任务计划 / 面板定时器）调用：跑掉到点的那些，写完回执就退
+        const d = openDb(dbFile);
+        const policy = await import("../policy.ts").then((m) => m.loadPolicy(HOME));
+        const embedder = createEmbedder("ollama", { baseUrl: resolveConfig(HOME).ollama, model: resolveConfig(HOME).roles["embed"]!.model });
+        const report = await runDue({
+          home: HOME,
+          async run(o) {
+            // ④ 每次触发**自己开一个 60 秒窗口**，跑完立刻收回 —— 常驻 ≠ 永久授权
+            const sh = await import("../shell.ts");
+            const t = sh.templateById(o.template);
+            if (!t) return { ok: false, output: `E_STANDING_TEMPLATE: ${o.template}` };
+            // 窗口的白名单要的是**二进制名**（node），不是模板 id（node.run_script）
+            let bin = "";
+            try {
+              const rendered = sh.renderTemplate(HOME, o.template, o.slots);
+              bin = String(sh.planRun(rendered).argv[0] ?? "").split(/[\\/]/).pop()!.replace(/\.(exe|cmd)$/i, "").toLowerCase();
+            } catch { /* 渲染不出来就让后面报错 */ }
+            const g = openGrant(HOME, {
+              commands: [bin], scope: "workspace", ttlMs: 60_000,
+              because: `standing:${o.id} — ${o.because}`,
+            });
+            try {
+              if (!t) return { ok: false, output: `E_STANDING_TEMPLATE: ${o.template}` };
+              const r = await execute(
+                { db: d.db, policy, ctx: { home: HOME, now: () => new Date(), db: d.db, embedder } },
+                "shell.run", { template: o.template, slots: o.slots },
+              );
+              return { ok: r.ok, output: String(r.output).slice(0, 1500) };
+            } finally {
+              if (g.ok) revokeGrant(HOME, g.grant.id);
+            }
+          },
+        });
+        console.log(JSON.stringify(report, null, 2));
+        if (report.disabled.length) process.exitCode = 1;
+        return;
+      }
+      console.error("用法: jingjing standing add --id x --when \"workdays 09:00\" --run node.run_script --because \"...\" | list | disable <id> | inbox | seen <id> | tick");
       process.exitCode = 2;
       return;
     }

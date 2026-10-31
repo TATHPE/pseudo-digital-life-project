@@ -496,6 +496,9 @@ export const PAGE = `<!doctype html>
 <aside id="side">
   <div class="sec" id="pendsec" hidden><h3>PENDING · 待确认</h3><div id="pendlist"></div></div>
   <div class="sec" id="propsec" hidden><h3><button type="button" data-tog="prop">它想做的 <span class="n" id="propcount"></span></button></h3><div id="proplist"></div></div>
+  <div class="sec" id="rcpsec" hidden><h3><button type="button" data-tog="rcp">它做完的事 <span class="n" id="rcpcount"></span></button></h3>
+    <p class="hint">后台跑过的东西都在这里。<b>点了「知道了」才算我看见了</b> —— 三天没人看的，对应常驻指令会自动停用。</p>
+    <div id="rcplist"></div></div>
   <div class="sec" id="threadsec" hidden><h3><button type="button" data-tog="thread">未闭合 <span class="n" id="threadcount"></span></button></h3>
     <p class="hint">它答应过、还没了结的事。办完了点一下；太久没动静的会标「拖了 N 天」。</p>
     <div id="threadlist"></div></div>
@@ -697,6 +700,12 @@ export const PAGE = `<!doctype html>
         <p class="hint" id="g-warn" hidden><span class="err">完全权限 ≠ 钥匙：删/磁盘/系统配置/下载器/壳/内联求值仍然永久拒绝；env 里的 *_KEY、TOKEN、SECRET 依然不传；每次调用都会留痕。</span></p>
         <div class="acts"><button id="g-open" class="primary">开窗口</button><span id="g-msg" class="hint"></span></div>
         <div id="g-list"></div>
+      </div>
+      <div class="panelbox">
+        <h2>STANDING · 常驻指令</h2>
+        <p class="hint">它在你不在的时候按点做事。只收注册过的模板，每次触发自己开 60 秒窗口，跑完写回执；
+          <b>回执三天没人读就自动停用</b>。真正的触发要外部调 jingjing standing tick（面板不会偷偷跑）。</p>
+        <div id="st-list"></div>
       </div>
       <div class="panelbox">
         <h2>CAPABILITIES · 能力</h2>
@@ -910,7 +919,7 @@ async function pending() {
   const sec = $("#pendsec"), box = $("#pendlist");
   const open = (list || []).filter((p) => p.status === "pending" && !p.expired);
   paintPendBadge(open.length);
-  loadProposals(); loadSurfaceReview(); loadThreads();
+  loadProposals(); loadSurfaceReview(); loadThreads(); loadReceipts(); loadStanding();
   sec.hidden = open.length === 0;
   if (!open.length) { box.innerHTML = ""; return; }
   box.innerHTML = open.map((p) =>
@@ -1612,6 +1621,55 @@ $("#proplist").onclick = function (e) {
   if (b) openProposal(b.dataset.prop);
 };
 
+// ── 回执（D-3 前置）：送达 ≠ 已读 ───────────────────
+async function loadReceipts() {
+  var j;
+  try { j = await (await fetch("/api/receipts")).json(); } catch (e) { return; }
+  var rows = (j && j.items) || [];
+  $("#rcpcount").textContent = rows.length ? rows.length + " 条" : "";
+  $("#rcpsec").hidden = rows.length === 0;
+  $("#rcplist").innerHTML = rows.map(function (r) {
+    return "<div class='pend rcp' data-rcp='" + escapeHtml(r.id) + "'>" +
+      "<span class='cmd'>" + (r.ok ? "" : "<span class='err'>失败 </span>") + escapeHtml(r.title) + "</span>" +
+      "<span class='dir'>" + escapeHtml(String(r.at).slice(0, 16)) + (r.source ? " · " + escapeHtml(r.source) : "") + "</span>" +
+      "<div class='acts'><button class='ok' data-act='seen'>知道了</button></div>" +
+      "<span class='msg'></span></div>";
+  }).join("") || "<p class='hint'>没有待读回执。</p>";
+}
+$("#rcplist").onclick = async function (e) {
+  var b = e.target.closest("button[data-act=seen]");
+  if (!b) return;
+  var card = b.closest("[data-rcp]");
+  b.disabled = true;
+  await fetch("/api/receipts/" + card.dataset.rcp + "/seen", { method: "POST", headers: H });
+  await loadReceipts();
+};
+
+// ── 常驻指令（D-3）：只读列表 + 停用 ─────────────────
+async function loadStanding() {
+  var rows;
+  try { rows = await (await fetch("/api/standing")).json(); } catch (e) { return; }
+  rows = Array.isArray(rows) ? rows : [];
+  var el = $("#st-list");
+  if (!el) return;
+  el.innerHTML = rows.length ? rows.map(function (o) {
+    return "<div class='pend' data-std='" + escapeHtml(o.id) + "'>" +
+      "<span class='cmd'>" + escapeHtml(o.id) + " · " + escapeHtml(o.when) + " · " + escapeHtml(o.template) + "</span>" +
+      "<span class='dir'>" + (o.enabled ? "启用" : "<span class='err'>已停用</span>") +
+        " · 到期 " + escapeHtml(String(o.expiresAt).slice(0, 10)) + " · 为什么：" + escapeHtml(o.because) + "</span>" +
+      (o.enabled ? "<div class='acts'><button class='no' data-act='off'>停用</button></div>" : "") +
+      (o.disabledReason ? "<span class='hint'>" + escapeHtml(o.disabledReason) + "</span>" : "") +
+      "<span class='msg'></span></div>";
+  }).join("") : "<p class='hint'>还没有常驻指令。加一条：jingjing standing add --id x --when 09:00 --run node.run_script --because 理由（必须写为什么）</p>";
+}
+$("#st-list").onclick = async function (e) {
+  var b = e.target.closest("button[data-act=off]");
+  if (!b) return;
+  var card = b.closest("[data-std]");
+  b.disabled = true;
+  await fetch("/api/standing/" + card.dataset.std + "/disable", { method: "POST", headers: H, body: JSON.stringify({ reason: "面板上停用" }) });
+  await loadStanding();
+};
 // ── 会话授权（K-3）：窗口开在服务进程里，页面只负责开关 ──
 // 全权勾上就展开警示（不做花哨动效：这里要的是看清）
 $("#g-full").addEventListener("change", function () { $("#g-warn").hidden = !this.checked; });
@@ -2062,7 +2120,7 @@ if ("serviceWorker" in navigator && (location.protocol === "https:" || location.
 }
 // 手机上侧栏是抽屉：没有这个按钮，SESSIONS/DOCS/MEMORY/TOOLS/CONFIG 全都不可达
 $("#menu").onclick = (e) => { e.stopPropagation(); $("#side").classList.toggle("open"); };
-loadAvatars(); applySections(); state(); timeline(); sessions(); tools(); memories(); docs(); audit(); readout(); loadConfig(); loadUi(); pending(); usage(); loadProposals(); loadSurfaceReview(); loadThreads();
+loadAvatars(); applySections(); state(); timeline(); sessions(); tools(); memories(); docs(); audit(); readout(); loadConfig(); loadUi(); pending(); usage(); loadProposals(); loadSurfaceReview(); loadThreads(); loadReceipts(); loadStanding();
 setInterval(() => { state(); pending(); audit(); readout(); }, 20000);
 </script>
 </body></html>`;

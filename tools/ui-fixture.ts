@@ -12,6 +12,8 @@ import { join } from "node:path";
 import { openDb } from "../src/db.ts";
 import { remember } from "../src/store.ts";
 import { createProposal } from "../src/proposals.ts";
+import { pushReceipt } from "../src/notify.ts";
+import { addStanding } from "../src/standing.ts";
 import { appendEvent, newEventId } from "../src/journal.ts";
 
 const ROOT = process.cwd();
@@ -74,6 +76,11 @@ for (const [i, ev] of [
   });
 }
 
+// ⑤ D-3 夹具：一条待读回执 + 一条常驻指令（面板要能显示、能标读、能停用）
+pushReceipt(HOME, { kind: "standing", ok: true, title: "std-check 跑完了：node.run_script",
+  body: "exit=0 std-ok", source: "standing:std-check" }, now);
+addStanding(HOME, { id: "std-check", when: "daily 09:00", template: "node.run_script",
+  slots: { script: "x.mjs" }, because: "每天看一眼日志里有没有 E_", notify: "panel" }, now);
 // ── 起服务（独立端口，不与日常面板抢 7700）────────────
 const log = join(ROOT, "tmp", "ui-home-serve.log");
 const srv = spawn(process.execPath, ["src/cli/jingjing.ts", "serve", String(PORT)], {
