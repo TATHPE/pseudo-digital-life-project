@@ -57,6 +57,8 @@ export interface NightlyReport {
   noop: number;
   superseded: number;
   refined: number;
+  /** P1-2：被跨层合并掉的条数（同一件事在 narrative / contract 各出现一次） */
+  merged: number;
   decayed: number;
   cursorFrom: string | null;
   cursorTo: string | null;
@@ -211,6 +213,62 @@ export function segmentEvents<T>(items: readonly T[], max = 20): T[][] {
 
 const PUNCT = /[\s，。！？、；：""''（）()【】\[\]…—]/g;const normalize = (s: string): string => s.toLowerCase().replace(PUNCT, "");
 
+/**
+ * 层强弱（P1-2）：contract 永不衰减、参与动作闸门 → 同一件事只该以 contract 存在。
+ * 跨层重复时**保留强的、吞掉弱的**，而不是两份都留着把计数撑大。
+ */
+const LAYER_RANK: Record<Layer, number> = { narrative: 1, contract: 2 };
+
+/**
+ * 字符二元组 Jaccard：判断"是不是同一件事"，而不是"同一个话题"。
+ * 光看 cosine 不够：bge-m3 里「生日买蛋糕」和「生日那天吵架」能到 0.9，但它们是两件事。
+ */
+export function bigramSim(a: string, b: string): number {
+  const grams = (s: string): Set<string> => {
+    const t = normalize(s);
+    const out = new Set<string>();
+    for (let i = 0; i < t.length - 1; i++) out.add(t.slice(i, i + 2));
+    if (!out.size && t) out.add(t);
+    return out;
+  };
+  const A = grams(a);
+  const B = grams(b);
+  if (!A.size || !B.size) return 0;
+  let hit = 0;
+  for (const x of A) if (B.has(x)) hit++;
+  return hit / (A.size + B.size - hit);
+}
+
+/**
+ * 找"同一件事"：槽位键是 `layer|subject`，所以两处都撞不见 ——
+ *   · 同内容落到不同层（contract 的承诺 + narrative 的经历）
+ *   · 模型给同一件事起了不同 subject（"生日" vs "生日提醒"）
+ * 这里按**向量 + 二元组双重判定**，只扫最近 500 条 active。
+ * 注意：embedding 单独相似不够（同一个话题会被压得很近），必须再过字面闸门。
+ */
+function findSameThing(
+  db: DatabaseSync,
+  vec: Float32Array,
+  text: string,
+  threshold: number,
+): { id: number; layer: Layer; text: string; cos: number; sim: number } | null {
+  const rows = db
+    .prepare(`SELECT id, layer, text, embedding FROM memories
+              WHERE status='active' AND embedding IS NOT NULL
+              ORDER BY id DESC LIMIT 500`)
+    .all() as Array<{ id: number; layer: string; text: string; embedding: Uint8Array }>;
+  let best: { id: number; layer: Layer; text: string; cos: number; sim: number } | null = null;
+  for (const r of rows) {
+    const old = new Float32Array(r.embedding.buffer, r.embedding.byteOffset, r.embedding.byteLength / 4);
+    const cos = cosine(vec, old);
+    if (cos < threshold) continue;
+    const sim = bigramSim(r.text, text);
+    if (sim < 0.35) continue;                     // 同一个话题 ≠ 同一件事
+    if (!best || cos > best.cos) best = { id: r.id, layer: r.layer as Layer, text: r.text, cos, sim };
+  }
+  return best;
+}
+
 function cosine(a: Float32Array, b: Float32Array): number {
   let d = 0;
   const n = Math.min(a.length, b.length);
@@ -239,6 +297,7 @@ export async function runNightly(deps: NightlyDeps): Promise<NightlyReport> {
     added: 0,
     noop: 0,
     superseded: 0,
+    merged: 0,
     refined: 0,
     decayed: 0,
     cursorFrom,
@@ -320,6 +379,27 @@ export async function runNightly(deps: NightlyDeps): Promise<NightlyReport> {
           break;
         }
         if (cos >= 0.75) { verdict = "refine"; target = s.id; }
+      }
+    }
+
+    // P1-2：同槽位撞不见时，再按"同一件事"跨层找一次。
+    // 真实案例："下周三生日提醒买蛋糕" 被抽成 contract/promise 和 narrative/promise 两份，
+    // 因为槽位键带 layer，两份都留下了 —— 计数虚高，检索时也会重复浮现。
+    if (!verdict && vec) {
+      const cross = findSameThing(deps.db, vec, c.text, th);
+      if (cross && LAYER_RANK[c.layer] > LAYER_RANK[cross.layer]) {
+          // 新的是强层（contract）→ 覆盖掉旧的弱层版本
+          verdict = "supersede";
+          target = cross.id;
+          notes.push(`MERGE↑ ${c.layer}>${cross.layer} 覆盖 #${cross.id}（cos ${cross.cos.toFixed(2)} 字面 ${cross.sim.toFixed(2)}）`);
+      } else if (cross) {
+        // 弱层版本或同层另一个槽位 → 不插，只抬旧条 confidence（同一件事不该有第二份）
+        deps.db.prepare("UPDATE memories SET confidence=MIN(1,confidence+0.05), updated_at=? WHERE id=?")
+          .run(now.toISOString(), cross.id);
+        report.merged++;
+        const arrow = c.layer === cross.layer ? "=" : "<";
+        notes.push(`MERGE${arrow} ${c.layer}${arrow}${cross.layer} 吞掉（#${cross.id} 已有）：${c.text.slice(0, 18)}`);
+        continue;
       }
     }
 
