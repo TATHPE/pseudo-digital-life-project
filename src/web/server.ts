@@ -24,6 +24,7 @@ import { preflight, lastPreflight } from "../preflight.ts";
 import { indexState } from "../embedindex.ts";
 import { AVATAR_FRAMES, DEFAULT_AVATAR, isAvatarFrame } from "./avatar.ts";
 import { listPending, getPending, updatePending } from "../confirm.ts";
+import { bumpGenerationIfChanged, currentGeneration } from "../generation.ts";
 import { listProposals, getProposal, setProposalStatus } from "../proposals.ts";
 import { reviewQueue, noteReviewed } from "../surface.ts";
 import { openThreads, closeThread } from "../threads.ts";
@@ -798,7 +799,9 @@ export function createWebServer(deps: WebDeps) {
         return;
       }
       if (req.method === "GET" && url.pathname === "/api/persona") {
-        json(res, 200, { files: loadPersonaText(deps.home), editable: PERSONA_FILES });
+        // H-5：连当前代一起给面板（面板要显示「第几代」）
+        const gen = currentGeneration(deps.db, deps.home);
+        json(res, 200, { files: loadPersonaText(deps.home), editable: PERSONA_FILES, generation: gen });
         return;
       }
       if (req.method === "PUT" && url.pathname === "/api/persona") {
@@ -806,7 +809,25 @@ export function createWebServer(deps: WebDeps) {
         const body = JSON.parse(await readBody(req)) as { file?: string; content?: string; because?: string };
         try {
           const r = savePersonaFile(deps.home, body.file as PersonaFile, body.content ?? "", now(), String(body.because ?? "").slice(0, 500));
-          json(res, 200, { ok: true, ...r });
+          // H-5 分代：人格**真的变了**才开新代（重复保存不该产生新一代）
+          let gen = null;
+          if ((r as { changed?: boolean }).changed) {
+            const b = bumpGenerationIfChanged(deps.db, deps.home, String(body.because ?? ""), now());
+            gen = b.generation;
+            if (b.bumped) {
+              appendEvent(deps.inboxDir, {
+                v: 1, id: newEventId(), ts: now().toISOString(), kind: "persona_gen", actor: "user",
+                payload: { gen: gen.gen, fingerprint: gen.fingerprint, because: gen.because },
+              } as never);
+            }
+          } else {
+            gen = currentGeneration(deps.db, deps.home);
+          }
+          json(res, 200, {
+            ok: true, ...r,
+            generation: gen,
+            note: "之后的记忆属于这一代；旧记忆仍按原来的代解释（要追溯请用 jingjing persona migrate）",
+          });
         } catch (e) {
           json(res, 400, { error: String(e).replace(/^Error: /, "") });
         }
@@ -835,7 +856,7 @@ export function createWebServer(deps: WebDeps) {
         const id = Number(memId[1]);
         const row = deps.db.prepare(
           `SELECT id,text,kind,layer,subject,stage,weight,w0,importance,sensitivity,taint,scored_by,status,
-                  quote,source_kind,source_ref,superseded_by,created_at,updated_at,last_decay_at
+                  quote,source_kind,source_ref,superseded_by,created_under_gen,created_at,updated_at,last_decay_at
            FROM memories WHERE id=?`).get(id) as Record<string, unknown> | undefined;
         if (!row) { json(res, 404, { error: "E_NOT_FOUND" }); return; }
 
@@ -866,7 +887,17 @@ export function createWebServer(deps: WebDeps) {
             if (d) doc = { id: d.id, title: d.title };
           } catch { /* 没有 documents 表也不该 500 */ }
         }
-        json(res, 200, { ...row, provenance: { changes, doc } });
+        // H-5：这条记忆出生时是哪一代人格（改人格不改写旧记忆的解释）
+        let generation: { gen: number; fingerprint: string; createdAt: string; because: string } | null = null;
+        try {
+          const g = Number((row.created_under_gen as number | undefined) ?? 0);
+          const { generationOf } = await import("../generation.ts");
+          generation = generationOf(deps.db, g) ?? {
+            gen: g, fingerprint: "", createdAt: "",
+            because: g === 0 ? "未封存（迁移前的老记忆）" : "那条分代记录已不在日志里",
+          };
+        } catch { /* 读不到不影响详情 */ }
+        json(res, 200, { ...row, generation, provenance: { changes, doc } });
         return;
       }
       // F-3：忘记的**撤销**。忘记是软删（status='deleted'），所以能原样放回；

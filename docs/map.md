@@ -8,10 +8,10 @@
 
 | 项 | 数量 |
 |---|---|
-| 源文件（src/**/*.ts） | 78 |
-| 错误码 E_* | 163 |
+| 源文件（src/**/*.ts） | 79 |
+| 错误码 E_* | 165 |
 | verbs | 21 |
-| CLI 子命令 | 35 |
+| CLI 子命令 | 36 |
 
 ## 六条纪律落点
 
@@ -77,6 +77,8 @@
 | `E_EXPORT_DIR_NOT_EMPTY` | `src/handoff.ts` |
 | `E_EXPORT_INSIDE_HOME` | `src/handoff.ts` |
 | `E_EXTRACT` | `src/nightagent.ts` `src/nightly.ts` |
+| `E_GEN_NONE` | `src/generation.ts` |
+| `E_GEN_REASON` | `src/generation.ts` |
 | `E_GRANT_ARGV` | `src/grant.ts` |
 | `E_GRANT_BECAUSE` | `src/grant.ts` |
 | `E_GRANT_COMMAND` | `src/grant.ts` |
@@ -222,7 +224,7 @@
 
 ## CLI 子命令
 
-`migrate` · `remember` · `search` · `verify` · `outage` · `serve` · `config` · `models` · `links` · `threads` · `proposal` · `grant` · `standing` · `capabilities` · `doctor` · `reembed` · `auth` · `usage` · `test` · `night` · `shell` · `ingest` · `docs` · `forget-doc` · `export` · `verify-export` · `import` · `smoke-tools` · `templates` · `redteam` · `verb` · `beat` · `eval` · `decay` · `bench`
+`migrate` · `remember` · `search` · `verify` · `outage` · `serve` · `config` · `models` · `links` · `threads` · `proposal` · `grant` · `standing` · `persona` · `capabilities` · `doctor` · `reembed` · `auth` · `usage` · `test` · `night` · `shell` · `ingest` · `docs` · `forget-doc` · `export` · `verify-export` · `import` · `smoke-tools` · `templates` · `redteam` · `verb` · `beat` · `eval` · `decay` · `bench`
 
 ## 源文件
 
@@ -262,6 +264,7 @@
 | `src/eval.ts` | 评估（19 §0.1 W-B / 01 §13）：唯一能证明"它变好了"的东西。 |
 | `src/execute.ts` | 执行入口（04 §4）：**策略 → 执行 → 审计**，一个都不能少。 |
 | `src/fsx.ts` | 原子写 + fsync（18 §1.2） |
+| `src/generation.ts` | 设定封存的**分代**（H-5）。 |
 | `src/grant.ts` | 会话式授权（K-3）：**窗口内**可以用模型给的 argv，窗口外回到 6 个模板。 |
 | `src/handoff.ts` | 搬家协议（19 §7.4 / 09 §5）：**quiesce → export → 校验 → import → 补跑** |
 | `src/heartbeat.ts` | 心跳与主动性（01 §10）。 |

@@ -72,6 +72,10 @@ export function openDb(path: string): Db {
       // E-3：权重/重要性是谁打的分，必须能查（否则"这条为什么比那条重"永远说不清）
       ensureColumn(db, "memories", "scored_by", "TEXT");
     }
+    if (Number(cur.value) < 11) {
+      // H-5 分代：旧数据一律记为第 0 代（未封存），迁移时才能显式区分"老记忆"
+      ensureColumn(db, "memories", "created_under_gen", "INTEGER NOT NULL DEFAULT 0");
+    }
     if (Number(cur.value) < 9) {
       // J 组：原话层（J-2）+ 关系带 why 与止期（J-3）
       ensureColumn(db, "memories", "quote", "TEXT");

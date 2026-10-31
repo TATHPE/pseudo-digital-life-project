@@ -739,6 +739,7 @@ export const PAGE = `<!doctype html>
         </div>
         <textarea id="p-text" spellcheck="false"></textarea>
         <div class="acts"><button id="p-save" class="primary">保存人格</button><span id="p-msg" class="hint"></span></div>
+        <p class="hint" id="p-gen"></p>
       </div>
 
       <div class="panelbox">
@@ -1649,6 +1650,15 @@ function pushTicker(msg) {
   TICK_TIMER = setTimeout(function () { TICK_MSG = null; readout(); }, 5000);
 }
 
+// ── 分代（H-5）：显示当前第几代，并说清"改动只向前生效" ──
+async function loadGeneration() {
+  var g; try { g = await (await fetch("/api/persona")).json(); } catch (e) { return; }
+  var el = $("#p-gen");
+  if (!el) return;
+  if (!g || !g.generation) { el.textContent = ""; return; }
+  el.innerHTML = "当前第 <b>" + g.generation.gen + "</b> 代（" + escapeHtml(String(g.generation.createdAt).slice(0, 10)) +
+    "）· 改动只影响<b>之后</b>写下的记忆；旧记忆仍按原来的代解释。";
+}
 // ── 代码外发（H-7）：它想读、被挡下、等人批 ─────────────
 async function loadEgress() {
   var st;

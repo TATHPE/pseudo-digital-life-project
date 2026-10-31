@@ -537,6 +537,55 @@ async function main(): Promise<void> {
       process.exitCode = 2;
       return;
     }
+    case "persona": {
+      // H-5：设定封存 = 分代（改动只向前生效；追溯要显式 + 带理由）
+      const d = openDb(dbFile);
+      const op = rest[0] ?? "gen";
+      const { currentGeneration, generationLog, migrateToCurrentGen, personaFingerprint } =
+        await import("../generation.ts");
+      if (op === "gen") {
+        const g = currentGeneration(d.db, HOME);
+        const fp = personaFingerprint(HOME);
+        const n = (d.db.prepare("SELECT count(*) c FROM memories WHERE created_under_gen=?").get(g.gen) as { c: number }).c;
+        console.log(JSON.stringify({
+          gen: g.gen,
+          fingerprint: g.fingerprint,
+          drift: fp !== g.fingerprint ? "人格文件已改但还没封存（下次在面板保存时会开新一代）" : null,
+          createdAt: g.createdAt,
+          because: g.because,
+          memories: n,
+        }, null, 2));
+        return;
+      }
+      if (op === "log") {
+        const list = generationLog(d.db);
+        if (!list.length) { console.log("（还没有封存过任何一代）"); return; }
+        list.forEach((g) => {
+          const n = (d.db.prepare("SELECT count(*) c FROM memories WHERE created_under_gen=?").get(g.gen) as { c: number }).c;
+          console.log(`第 ${g.gen} 代  ${g.createdAt.slice(0, 16)}  ${g.fingerprint}  ${n} 条记忆`);
+          console.log(`    为什么：${g.because}`);
+        });
+        return;
+      }
+      if (op === "migrate") {
+        // 唯一允许"改写旧记忆解释"的通道：**必须带理由**，并留事件
+        const ri = rest.indexOf("--reason");
+        const reason = ri >= 0 ? rest[ri + 1] : "";
+        const fi = rest.indexOf("--from");
+        const fromGen = fi >= 0 ? Number(rest[fi + 1]) : undefined;
+        try {
+          const r = migrateToCurrentGen(d.db, HOME, { reason, ...(Number.isFinite(fromGen) ? { fromGen } : {}) });
+          console.log(JSON.stringify({ ok: true, ...r, note: "已追溯迁移；事件里留了理由" }, null, 2));
+        } catch (e) {
+          console.error(String((e as Error).message));
+          process.exitCode = 1;
+        }
+        return;
+      }
+      console.error("用法: jingjing persona gen | log | migrate --reason \"...\" [--from N]");
+      process.exitCode = 2;
+      return;
+    }
     case "grant": {
       // K-3：会话级授权窗口（**活在当前进程里**，进程一退就没了）
       const op = rest[0] ?? "list";

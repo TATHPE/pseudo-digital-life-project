@@ -17,6 +17,8 @@ export interface NewMemory {
   scoredBy?: string | null;
   w0?: number;
   embedding?: Float32Array | null;
+  /** H-5：这条记忆出生时是哪一代人格（默认读 meta 里的当前代） */
+  createdUnderGen?: number;
   now?: Date;
 }
 
@@ -45,16 +47,18 @@ export function remember(db: DatabaseSync, m: NewMemory): number {
   const importance = Math.max(1, Math.min(5, Math.round(Number(m.importance ?? 3))));
   const w0 = m.w0 ?? w0FromImportance(importance, m.layer);
   const emb = m.embedding ? new Uint8Array(m.embedding.buffer.slice(0)) : null;
+  // H-5：记下这条记忆出生时是哪一代人格（改人格不改写旧记忆的解释）
+  const gen = m.createdUnderGen ?? Number((db.prepare("SELECT json_extract(value,'$.gen') AS g FROM meta WHERE key='persona_gen'").get() as { g?: number } | undefined)?.g ?? 0);
   const r = db.prepare(`
     INSERT INTO memories(layer,kind,scope,subject,text,text_bigram,importance,salience,
       sensitivity,taint,source_kind,source_ref,quote,scored_by,w0,beta,floorw,weight,stage,last_decay_at,
-      embedding,created_at,updated_at)
-    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+      embedding,created_under_gen,created_at,updated_at)
+    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
       m.layer, m.kind, m.scope ?? "global", m.subject ?? null, m.text, bigramText(m.text),
       importance, m.salience ?? 0.3, m.sensitivity ?? "local_only", m.taint ?? "trusted",
       m.sourceKind ?? "user", m.sourceRef ?? null, m.quote ?? null, m.scoredBy ?? "system",
       w0, p.beta, p.floor, m.layer === "contract" ? 1 : w0,
-      m.layer === "contract" ? "active" : "active", now, emb, now, now,
+      m.layer === "contract" ? "active" : "active", now, emb, gen, now, now,
     );
   const id = Number(r.lastInsertRowid);
   db.prepare("INSERT INTO memories_fts(memory_id,bigram) VALUES(?,?)").run(id, bigramText(m.text));

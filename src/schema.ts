@@ -1,5 +1,5 @@
 /** M0 schema（02 §4 + 18 §1 的 outage/审计） */
-export const SCHEMA_VERSION = 10;
+export const SCHEMA_VERSION = 11;
 
 export const MIGRATION_001 = `
 PRAGMA journal_mode=WAL;
@@ -62,6 +62,8 @@ CREATE TABLE IF NOT EXISTS memories (
   quote TEXT,
   /** 这个 importance/w0 是谁定的（E-3）：human:panel / extract:qwen2.5:7b / rule:outage / tool:memory.remember */
   scored_by TEXT,
+  -- H-5 分代：这条记忆出生时是哪一代人格（0 = 未封存/迁移前的老数据）
+  created_under_gen INTEGER NOT NULL DEFAULT 0,
   w0 REAL NOT NULL DEFAULT 0.55,
   beta REAL NOT NULL DEFAULT 0.85,
   floorw REAL NOT NULL DEFAULT 0.05,
