@@ -310,3 +310,57 @@ test("P0-2 抽取失败时游标不推进（否则这批对话永久丢失）", 
   });
   assert.ok(ok.cursorTo, "成功才推进");
 });
+
+// ── P1-1a：噪声过滤 + 分段 + 少样本提示 ──────────────────────
+test("P1-1a 噪声判定：短句/测试句/断电提示被剔，短但完整的句子保留", async () => {
+  const { isNoise } = await import("../src/nightly.ts");
+  assert.equal(isNoise("在。"), true);
+  assert.equal(isNoise("行"), true);
+  assert.equal(isNoise("用三个字回答：在吗"), true);
+  assert.equal(isNoise("进程被杀 12 分钟，其间无经历"), true);
+  // 关键反例：4–5 字的完整信息不能被误杀（6 字阈值实测会杀它）
+  assert.equal(isNoise("我住在杭州"), false);
+  assert.equal(isNoise("我妈下周三生日，记得提醒我买蛋糕"), false);
+});
+
+test("P1-1a 分段：88 条按 20 切成 5 段，且不丢不重", async () => {
+  const { segmentEvents } = await import("../src/nightly.ts");
+  const items = Array.from({ length: 88 }, (_, i) => i);
+  const w = segmentEvents(items, 20);
+  assert.equal(w.length, 5);
+  assert.deepEqual(w.flat(), items);
+});
+
+test("P1-1a 整轮：噪声被跳过、真内容按窗口抽取、跨窗口去重", async () => {
+  const home = H();
+  const inbox = seed(home, [
+    "在。",                                   // 噪声
+    "用三个字回答：在吗",                       // 噪声
+    "我妈下周三生日，记得提醒我买蛋糕",           // 真内容
+    "记住了。",                                // 噪声
+  ]);
+  const d = openDb(join(home, "m.db"));
+  let calls = 0;
+  const report = await runNightly({
+    db: d.db, inboxDir: inbox, home, embedder: emb,
+    extract: async (prompt: string) => {
+      calls++;
+      // 断言：噪声行**不该**出现在给模型的 prompt 里
+      assert.ok(!prompt.includes("用三个字回答"), "噪声行不能进 prompt");
+      return '[{"kind":"promise","layer":"contract","subject":"生日","text":"下周三提醒买生日蛋糕","salience":0.9}]';
+    },
+    now: new Date(Date.UTC(2026, 9, 31, 3)),
+  });
+  assert.equal(calls, 1, "过滤后只剩 2 条可用事件 → 只问一次");
+  assert.equal(report.added, 1);
+  assert.ok(report.notes.some((n) => n.startsWith("NOISE:")));
+  assert.ok(report.notes.some((n) => n.startsWith("WINDOW 1/1")));
+});
+
+test("P1-1a 原话阈值：0.30 的重合也要带上（0.34 会漏掉真实的边界记忆）", async () => {
+  const { pickQuote } = await import("../src/nightly.ts");
+  const ev = (text: string) => ({ v: 1, id: "e" + text.length, ts: new Date().toISOString(), kind: "utterance", actor: "user", payload: { text } });
+  const events = [ev("以后别叫我「助手」，叫名字就行"), ev("今天天气不错，出去走了走")];
+  const q = pickQuote(events as never, "不要叫他助手，直接叫名字");
+  assert.equal(q, "以后别叫我「助手」，叫名字就行", "真实原话要能贴上，哪怕字面只重合三成");
+});

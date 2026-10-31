@@ -32,6 +32,8 @@ export interface NightlyDeps {
   embedder: Embedder | null;
   /** 调本地模型做抽取（非流式）。返回模型原始文本 */
   extract: (prompt: string) => Promise<string>;
+  /** 每个窗口多少条事件（P1-1a：长上下文会稀释注意力，默认 20） */
+  windowSize?: number;
   /** 打分者的名字（E-3）：写进 scored_by，让“这条为什么重”能查 */
   scoredBy?: string;
   /**
@@ -88,7 +90,9 @@ export function pickQuote(events: readonly Event[], memoryText: string): string 
     let hit = 0;
     for (const x of b) if (target.has(x)) hit++;
     const score = hit / Math.max(1, Math.min(b.length, target.size));
-    if (score >= 0.34 && (!best || score > best.score)) best = { text: t, score };   // 至少三成字面重合
+    // 阈值 0.28：实测「不要叫他助手，直接叫名字」与原话「以后别叫我「助手」，叫名字就行」重合 0.30，
+    // 0.34 会漏。原话取自 journal 逐字，放宽的代价只是“贴得稍不切题”，不会变成编造。
+    if (score >= 0.28 && (!best || score > best.score)) best = { text: t, score };
   }
   return best ? best.text.slice(0, 120) : null;
 }
@@ -119,13 +123,28 @@ export function linkIfNew(
 
 
 
-const EXTRACT_PROMPT = (transcript: string): string => [
-  "你是记忆抽取器。从下面的对话里抽取「值得长期记住」的东西，只输出 JSON 数组，不要解释。",
-  '每条格式：{"kind":"' + NIGHTLY_KINDS.join("|") + '","layer":"narrative|contract","subject":"不超过8字的主题","text":"一句话，不超过60字","salience":0到1,"reason":"为什么值得记"}',
-  "规则：",
-  "1) 承诺、边界、硬性事实 → layer=contract（永不衰减）；其余 → narrative",
-  "2) 最多 5 条。宁缺毋滥：没有值得记的就输出 []",
-  "3) 不要编造对话里没出现的内容；不要记录寒暄",
+/**
+ * 抽取提示（P1-1a）。
+ *
+ * 改版原因（实测）：原来的长规则列表 + 88 条事件上下文 → qwen2.5:7b 直接回 []；
+ * 同一批尾部对话用"短提示 + 一个例子"却能抽出 2 条。
+ * 结论：7B 对**例子**敏感、对规则列表不敏感，且长上下文会稀释注意力。
+ */
+export const EXTRACT_PROMPT = (transcript: string): string => [
+  "你是记忆抽取器。读下面的对话，只输出 JSON 数组（不要解释、不要代码围栏）。",
+  '每条：{"kind":"episode|thought|preference_hard|fact_hard|promise|boundary","layer":"narrative|contract","subject":"≤8字","text":"一句话","salience":0.9,"reason":"为什么值得记"}',
+  "",
+  "值得记：承诺 / 边界 / 硬事实（→contract）、稳定偏好、重要经历、想通了的事。",
+  "不值得记：寒暄、测试句、系统提示、重复的话、一次性的闲聊。",
+  "最多 3 条；没有值得记的就输出 []。",
+  "",
+  "例①（值得记）：",
+  "对话：用户：以后别叫我助手，叫名字就行",
+  '输出：[{"kind":"boundary","layer":"contract","subject":"称呼","text":"不要叫他助手，直接叫名字","salience":0.9,"reason":"明确的称呼边界"}]',
+  "",
+  "例②（不值得记）：",
+  "对话：用户：在吗  鲸鲸：在。",
+  "输出：[]",
   "",
   "对话：",
   transcript,
@@ -164,6 +183,29 @@ export function parseCandidates(raw: string, cap = 5): Candidate[] {
     });
     if (out.length >= cap) break;
   }
+  return out;
+}
+
+/**
+ * 噪声行（P1-1a）：这些进了上下文只会稀释注意力。
+ * 只看**文本本身**，不看事件类型——噪声的特征在文字里。
+ *
+ * 阈值取 4 而不是 6：中文 4–5 字就可能是完整信息（"我住在杭州"），
+ * 实测 6 会把它误杀，连带把真记忆一起丢掉。
+ */
+export function isNoise(text: string): boolean {
+  const t = String(text ?? "").trim();
+  if (t.length < 4) return true;
+  if (/^进程被杀|^断电|^关机|其间无经历|信号中断/.test(t)) return true;
+  if (/用三个字回答|用两个字回答|说一句就行/.test(t)) return true;
+  if (/^(在|好|嗯|行|来了来了|记住了)[。！]?$/.test(t)) return true;
+  return false;
+}
+
+/** 把事件切成若干窗口（每段单独问一次模型）：长上下文会稀释注意力 */
+export function segmentEvents<T>(items: readonly T[], max = 20): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += max) out.push(items.slice(i, i + max));
   return out;
 }
 
@@ -222,22 +264,36 @@ export async function runNightly(deps: NightlyDeps): Promise<NightlyReport> {
     return report;
   }
 
-  const transcript = fresh
-    .map((e) => `${e.kind === "utterance" ? "用户" : "鲸鲸"}：${String((e.payload as { text?: string })?.text ?? "")}`)
-    .join("\n")
-    .slice(0, 6000);
+  // P1-1a：先把噪声剔掉（短句 / 测试句 / 断电提示），再**分段**问。
+  // 实测：88 条原始事件 → 模型回 []；同样的尾部用短提示 + 分段能抽出东西。
+  const textOf = (e: Event) => String((e.payload as { text?: string })?.text ?? "");
+  const usable = fresh.filter((e) => !isNoise(textOf(e)));
+  const dropped = fresh.length - usable.length;
+  if (dropped) notes.push(`NOISE: 跳过 ${dropped} 条噪声`);
 
-  let raw = "";
+  const windows = segmentEvents(usable, deps.windowSize ?? 20);
+  const cands: Candidate[] = [];
   let extractFailed = false;
-  try {
-    raw = await deps.extract(EXTRACT_PROMPT(transcript));
-  } catch (e) {
-    // 抽取失败 ≠ 今天没什么可记的：**游标不能推进**，否则这批对话永久丢掉
-    extractFailed = true;
-    notes.push(`E_EXTRACT: ${String(e).slice(0, 120)}`);
+  for (const [i, win] of windows.entries()) {
+    const transcript = win
+      .map((e) => `${e.kind === "utterance" ? "用户" : "鲸鲸"}：${textOf(e)}`)
+      .join(String.fromCharCode(10));
+    try {
+      const raw = await deps.extract(EXTRACT_PROMPT(transcript));
+      const got = parseCandidates(raw, cap);
+      notes.push(`WINDOW ${i + 1}/${windows.length}: ${win.length} 条 → ${got.length} 条候选`);
+      for (const c of got) {
+        // 跳窗口去重（同一句话被两段都抽到）
+        if (!cands.some((x) => x.layer === c.layer && normalize(x.text) === normalize(c.text))) cands.push(c);
+      }
+    } catch (e) {
+      // 抽取失败 ≠ 今天没什么可记的：**游标不能推进**，否则这批对话永久丢掉
+      extractFailed = true;
+      notes.push(`E_EXTRACT: ${String(e).slice(0, 120)}`);
+      break;
+    }
   }
-
-  const cands = parseCandidates(raw, cap);
+  cands.splice(cap);   // 总量上限：宁缺毋滥
   report.candidates = cands.length;
 
   for (const c of cands) {
