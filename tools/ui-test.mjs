@@ -4,9 +4,15 @@ const EDGE = "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe";
 const PORT = 9333;
 const [VW, VH] = (process.env.UI_VIEWPORT ?? '1440x900').split('x').map(Number);
 import { spawn } from "node:child_process";
+import { rmSync } from "node:fs";
+
+// 每次跑都建一个临时 profile；**必须删**，否则一个月能攒出几十 GB（实测 38581 个目录 / 24 GB）
+const PROFILE = `${process.env.TEMP || "/tmp"}/jj-edge-${Date.now()}`;
+const cleanupProfile = () => { try { rmSync(PROFILE, { recursive: true, force: true }); } catch { /* 占用中就算了 */ } };
+process.on("exit", cleanupProfile);
 
 const proc = spawn(EDGE, ["--headless=new", "--disable-gpu", "--no-sandbox",
-  `--user-data-dir=${process.env.TEMP || "/tmp"}/jj-edge-${Date.now()}`, "--hide-scrollbars",
+  `--user-data-dir=${PROFILE}`, "--hide-scrollbars",
   `--remote-debugging-port=${PORT}`, `--window-size=${VW},${VH}`, "about:blank"], { stdio: "ignore" });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let target;

@@ -83,6 +83,10 @@ function pct(xs: number[], p: number): number {
 }
 
 async function bench(rows: number, mode: "real" | "worst"): Promise<void> {
+  try { await benchInner(rows, mode); } finally { /* cleanup 挂在 exit 上 */ }
+}
+
+async function benchInner(rows: number, mode: "real" | "worst"): Promise<void> {
   const file = join(tmpdir(), `jj-bench-${Date.now()}.db`);
   const d = openDb(file);
   const text = (i: number) => (mode === "real" ? realCorpus(i) : `${at(TEMPLATES, i % TEMPLATES.length)} #${i}`);

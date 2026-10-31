@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync, mkdirSync, existsSync, statSync, readFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync, mkdirSync, existsSync, statSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -95,13 +95,19 @@ test("路径槽：必须在 workspace/ 下，且必须真的存在", () => {
   writeFileSync(join(home, "workspace", "ok.mjs"), "console.log(1)");
   assert.deepEqual(renderTemplate(home, "node.run_script", { script: "ok.mjs" }).argv, ["node", "ok.mjs"]);
   // 目录联接逃逸（红队 #4 同款）：workspace/up → home 上级
-  writeFileSync(join(home, "..", `jj-out-${process.pid}.mjs`), "console.log('out')");
+  // 越界文件写在**专用临时目录**里，不能直接丢到 %TEMP% 根：
+  // 以前按 PID 命名且从不删除，实测攒了 194 个（见 C 盘清理）
+  const outDir = mkdtempSync(join(tmpdir(), "jj-outside-"));
+  const outsideFile = join(outDir, "jj-out.mjs");
+  writeFileSync(outsideFile, "console.log('out')");
   try {
     const { symlinkSync } = require("node:fs") as typeof import("node:fs");
-    symlinkSync(join(home, ".."), join(home, "workspace", "up"), "junction");
+    symlinkSync(outDir, join(home, "workspace", "up"), "junction");
     assert.throws(() => renderTemplate(home, "node.run_script", { script: "up/jj-out.mjs" }), /E_BAD_ARGV/);
   } catch (e) {
     if (!String(e).includes("E_BAD_ARGV")) return; // 平台不让建联接就跳过
+  } finally {
+    try { rmSync(outDir, { recursive: true, force: true }); } catch { /* ignore */ }
   }
 });
 
