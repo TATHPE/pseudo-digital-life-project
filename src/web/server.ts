@@ -27,7 +27,7 @@ import { listPending, getPending, updatePending } from "../confirm.ts";
 import { listProposals, getProposal, setProposalStatus } from "../proposals.ts";
 import { reviewQueue, noteReviewed } from "../surface.ts";
 import { openThreads, closeThread } from "../threads.ts";
-import { openGrant, listGrants, revokeGrant } from "../grant.ts";
+import { openGrant, listGrants, revokeGrant, currentPreset, setPreset, PRESETS, type Preset } from "../grant.ts";
 import { listReceipts, markSeen, unseenCount } from "../notify.ts";
 import { listStanding, disableStanding } from "../standing.ts";
 import { cutLink, linkKey } from "../links.ts";
@@ -1000,6 +1000,50 @@ export function createWebServer(deps: WebDeps) {
         return;
       }
 
+      // ── 权限档位（形状照 DSH：当前会话用输入框旁的选择器切）──
+      if (req.method === "GET" && url.pathname === "/api/permission") {
+        const cur = currentPreset(deps.home, now());
+        const file = deps.home + "/config.json";
+        let def: Preset = "ask";
+        try { def = (JSON.parse(readFileSync(file, "utf8")).permission?.default ?? "ask") as Preset; } catch { /* 没配就是 ask */ }
+        json(res, 200, { ...cur, default: def, presets: PRESETS });
+        return;
+      }
+      if (req.method === "POST" && url.pathname === "/api/permission") {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
+        const body = JSON.parse(await readBody(req)) as { preset?: string; because?: string; ttlMin?: number };
+        const preset = String(body.preset ?? "") as Preset;
+        if (!PRESETS.some((x) => x.id === preset)) { json(res, 400, { error: "E_BAD_PRESET" }); return; }
+        const r = setPreset(deps.home, preset, {
+          ...(body.because ? { because: body.because } : {}),
+          ...(body.ttlMin ? { ttlMs: Math.min(120, Math.max(1, Number(body.ttlMin))) * 60_000 } : {}),
+        }, now());
+        if (r.ok && preset === "full") {
+          try {
+            appendEvent(deps.inboxDir, {
+              v: 1, id: newEventId(), ts: now().toISOString(), kind: "grant_full_open", actor: "user",
+              payload: { preset, because: body.because ?? "", expiresAt: r.grant?.expiresAt ?? null },
+            });
+          } catch { /* 事件写不下不影响切档 */ }
+        }
+        json(res, r.ok ? 200 : 400, r);
+        return;
+      }
+
+      // ── 新会话默认档（设置里那一行；只影响以后新建的会话）──
+      if (req.method === "PUT" && url.pathname === "/api/permission/default") {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
+        const body = JSON.parse(await readBody(req)) as { default?: string };
+        const preset = String(body.default ?? "") as Preset;
+        if (!PRESETS.some((x) => x.id === preset)) { json(res, 400, { error: "E_BAD_PRESET" }); return; }
+        const file = deps.home + "/config.json";
+        let cfg: Record<string, unknown> = {};
+        try { cfg = JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>; } catch { /* 新文件 */ }
+        cfg.permission = { ...(cfg.permission as Record<string, unknown> | undefined ?? {}), default: preset };
+        writeFileSync(file, JSON.stringify(cfg, null, 2), "utf8");
+        json(res, 200, { ok: true, default: preset, note: "只影响之后新建的会话；当前会话请用输入框旁的选择器" });
+        return;
+      }
       // ── 回执（D-3 的前置通道）：它做完的事必须能被看见 ──
       if (req.method === "GET" && url.pathname === "/api/receipts") {
         const unseenOnly = url.searchParams.get("unseen") !== "0";

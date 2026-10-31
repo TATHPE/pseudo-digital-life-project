@@ -1,0 +1,21 @@
+# H-2：别人 clone 下来会不会挂，靠这条流水线回答。
+# 只跑 check（类型 + 全部测试）—— 不跑 UI 测试（它要 Edge + 面板进程），
+# 也不跑 eval（它要 ollama）。那些是本地验收，不是 PR 门。
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: 装依赖（不跑脚本：本项目没有构建步骤，但 e2e 测试会 spawn node）
+        run: npm ci --ignore-scripts
+      - name: 类型 + 测试
+        run: npm run check

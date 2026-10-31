@@ -70,7 +70,11 @@ export function convertToMarkdown(file: string, env: Record<string, string | und
   }
 
   const py = resolvePython({ env });
-  if (!py) throw new Error("E_NO_PYTHON: " + pythonHint());
+  if (!py) {
+    // H-2：没有 Python 时要说清「什么还能用」，而不是只把人挡在门外
+    throw new Error("E_NO_CONVERTER: 这个格式需要 Python + markitdown" +
+      "（.md / .markdown / .txt 不需要，现在就能用）" + String.fromCharCode(10) + pythonHint());
+  }
 
   const script = [
     "import sys",

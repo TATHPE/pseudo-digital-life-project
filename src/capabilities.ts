@@ -19,6 +19,7 @@ import { preflight, missingFrom, describeSkip } from "./preflight.ts";
 import { readMeta } from "./embedindex.ts";
 import type { AppConfig } from "./config.ts";
 import type { RoleConfig } from "./provider.ts";
+import { converterStatus, warmConverter } from "./pyenv.ts";
 
 export type CapabilityClass = "tool" | "command" | "hook" | "cron" | "panel" | "provider";
 
@@ -44,6 +45,8 @@ export interface Capabilities {
     roles: Array<{ role: string; kind: string; provider: string; model: string | null; source: string }>;
     ollama: { base: string; online: boolean | null; models: string[]; error?: string };
   };
+  /** 转换器（markitdown）现状：没有 Python 时 .md/.txt 照用，PDF 明说不支持 */
+  converter?: { available: boolean; source: string | null; passthrough: string[]; needsPython: string[]; hint: string | null } | null;
   /** 降级项：**每一条都对应一个具体观测** */
   degraded: string[];
   /** 人类可读的"哪儿缺" */
@@ -145,6 +148,17 @@ export async function capabilities(deps: CapabilitiesDeps): Promise<Capabilities
     if (ix.stale) { degraded.push("embed-index-stale"); notes.push(`索引是用 ${ix.built ?? "未知模型"} 建的，当前是 ${ix.current ?? "未配置"}`); }
   } catch { /* ignore */ }
 
+  // ── 转换器（H-2）：markitdown 变可选后，「没 Python」是一种可观测的降级 ──
+  let conv: ReturnType<typeof converterStatus> | null = null;
+  try {
+    const py = await warmConverter();
+    conv = converterStatus(py);
+    if (!conv.available) {
+      degraded.push("converter-unavailable");
+      notes.push(`PDF/Office 转换不可用（.md / .txt 不受影响）：${(conv.hint ?? "").split(String.fromCharCode(10))[0]}`);
+    }
+  } catch { /* 探测失败本身不该把能力表搞崩 */ }
+
   // 去重（同一个降级项可能被两处观测到）
   const uniq = [...new Set(degraded)];
 
@@ -160,6 +174,7 @@ export async function capabilities(deps: CapabilitiesDeps): Promise<Capabilities
       provider: providerItems,
     },
     providers: { roles: roleRows, ollama: ollamaState },
+    converter: conv,
     degraded: uniq,
     notes,
   };

@@ -9,7 +9,7 @@
 > 找解释器的顺序：`JJ_PYTHON` → 项目 `.venv` → PATH 上的 `py -3` / `python3` / `python`。
 
 ```bash
-npm run check                         # 类型检查 + 295 条测试（CI 入口）
+npm run check                         # 类型检查 + 386 条测试（CI 入口；GitHub Actions 就跑这条）
 npm test                              # 295 条断言
 npm run ui:test                       # headless Edge 真点真发，20 项交互断言（面板要在跑）
 node src/cli/jingjing.ts migrate      # 建库 + 自检
@@ -46,6 +46,7 @@ node src/cli/jingjing.ts serve 7700   # 本地面板 http://127.0.0.1:7700
 npm run ui:test                       # headless Edge 真点真发（CDP），12 项断言
 UI_VIEWPORT=390x844 node tools/ui-test.mjs http://127.0.0.1:7700/   # 手机尺寸同一套断言
 npm run ui:shot tmp/shot.png          # 截一张图肉眼验收
+npm run docs:sync                     # 把上层文档仓单向同步进 docs/（产物别手改）
 node src/cli/brief-demo.ts --full     # M1.1：第 1 轮 vs 第 100 轮简报
 ```
 

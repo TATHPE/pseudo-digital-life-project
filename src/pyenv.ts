@@ -72,9 +72,92 @@ export function resolvePython(o: Partial<ProbeEnv> = {}): PyCmd | null {
 /** 给人看的补救办法（错误信息里要能照做，而不是"去找 python"） */
 export function pythonHint(): string {
   return [
-    "这个格式需要 Python + markitdown（.md / .txt 不需要）：",
+    "这个格式需要 Python + markitdown（.md / .markdown / .txt 不需要）：",
     "  · 任选：pip install markitdown",
     "  · 或用项目 venv：python -m venv .venv && .venv/bin/pip install markitdown（Windows: .venv\\Scripts\\pip）",
     "  · 或指定解释器：JJ_PYTHON=/path/to/python",
   ].join(String.fromCharCode(10));
+}
+
+/**
+ * 带缓存的探测（H-2）：resolvePython 要 spawn 解释器试 import markitdown，
+ * 冷的时候几百毫秒 —— 而能力表每次面板加载都会问。所以按进程缓存 5 分钟。
+ * null 也要缓存：没有同样是一个要记住的事实。
+ */
+const probeCache = new Map<string, { at: number; py: PyCmd | null }>();
+export function resolvePythonCached(ttlMs = 5 * 60_000): PyCmd | null {
+  const key = process.env.JJ_PYTHON ?? "(default)";
+  const hit = probeCache.get(key);
+  if (hit && Date.now() - hit.at < ttlMs) return hit.py;
+  const py = resolvePython();
+  probeCache.set(key, { at: Date.now(), py });
+  return py;
+}
+
+/** 测试用：丢掉缓存（换环境变量或换了机器时） */
+export function _resetPyProbe(): void { probeCache.clear(); }
+
+/**
+ * 异步探测（**不要在请求里 spawnSync**）：
+ * `spawnSync` 会把 Node 的事件循环整个堵住 —— 面板请求会排队，UI 就表现为卡死/超时。
+ * 这条是实测踩出来的：能力表一加载，记忆详情就点不开了。
+ */
+let warmPromise: Promise<PyCmd | null> | null = null;
+export function warmConverter(): Promise<PyCmd | null> {
+  const key = process.env.JJ_PYTHON ?? "(default)";
+  const hit = probeCache.get(key);
+  if (hit) return Promise.resolve(hit.py);
+  if (warmPromise) return warmPromise;
+  const cands: Array<{ cmd: string; args: string[]; source: string }> = [];
+  const explicit = process.env.JJ_PYTHON?.trim();
+  if (explicit) cands.push({ cmd: explicit, args: [], source: "JJ_PYTHON" });
+  else if (process.platform === "win32") {
+    cands.push({ cmd: "py", args: ["-3"], source: "path" });
+    cands.push({ cmd: "python", args: [], source: "path" });
+  } else {
+    cands.push({ cmd: "python3", args: [], source: "path" });
+    cands.push({ cmd: "python", args: [], source: "path" });
+  }
+  warmPromise = (async () => {
+    const { spawn } = await import("node:child_process");
+    for (const c of cands) {
+      const ok = await new Promise<boolean>((resolve) => {
+        try {
+          const ch = spawn(c.cmd, [...c.args, "-c", "import markitdown"], { windowsHide: true });
+          const t = setTimeout(() => { try { ch.kill(); } catch { /* ignore */ } resolve(false); }, 15_000);
+          ch.on("error", () => { clearTimeout(t); resolve(false); });
+          ch.on("close", (code) => { clearTimeout(t); resolve(code === 0); });
+        } catch { resolve(false); }
+      });
+      if (ok) {
+        const py: PyCmd = { cmd: c.cmd, args: c.args, source: c.source };
+        probeCache.set(key, { at: Date.now(), py });
+        return py;
+      }
+    }
+    probeCache.set(key, { at: Date.now(), py: null });
+    return null;
+  })();
+  return warmPromise;
+}
+
+/** 现在能不能转非纯文本格式（能力表与面板用）。传 py 就用它，没传只读缓存。 */
+export function converterStatus(pyArg?: PyCmd | null): {
+  available: boolean;
+  source: string | null;
+  passthrough: string[];
+  needsPython: string[];
+  hint: string | null;
+} {
+  const cached = probeCache.get(process.env.JJ_PYTHON ?? "(default)")?.py ?? null;
+  const py = pyArg === undefined ? cached : pyArg;
+  const passthrough = [".md", ".markdown", ".txt"];
+  const needsPython = [".pdf", ".docx", ".pptx", ".xlsx", ".html", ".htm", ".epub", ".csv", ".json", ".xml", ".rtf", ".ipynb"];
+  return {
+    available: py !== null,
+    source: py ? py.source : null,
+    passthrough,
+    needsPython,
+    hint: py ? null : pythonHint(),
+  };
 }

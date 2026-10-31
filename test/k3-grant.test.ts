@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openDb } from "../src/db.ts";
-import { openGrant, checkGrant, listGrants, revokeGrant, revokeAll, sanitizedEnv, MAX_TTL_MS, FULL_MAX_TTL_MS, GRANT_COMMANDS } from "../src/grant.ts";
+import { openGrant, checkGrant, listGrants, revokeGrant, revokeAll, sanitizedEnv, MAX_TTL_MS, FULL_MAX_TTL_MS, GRANT_COMMANDS, setPreset, currentPreset } from "../src/grant.ts";
 import { execute } from "../src/execute.ts";
 import { DEFAULT_POLICY } from "../src/policy.ts";
 
@@ -207,5 +207,54 @@ test("K-3 全权窗口：路径逃逸有专门的错误码（不是含混的 NEE
   const d = checkGrant(home, { argv: ["node", "C:/Windows/system32/x.mjs"], cwd: join(home, "workspace"), verb: "shell.exec" });
   assert.equal(d.ok, false);
   if (!d.ok) assert.equal(d.code, "E_GRANT_PATH");
+  revokeAll(home);
+});
+
+// ── 权限预设（形状照 DSH：当前会话在输入框旁切）───────────
+test("K-3 预设四档：ask 无窗口 / read 一律拒 / write 走模板 / full 任意 argv", () => {
+  const home = H();
+  const ws = join(home, "workspace");
+  const now = new Date();
+
+  // ask：没有窗口
+  let r = setPreset(home, "ask", {}, now);
+  assert.equal(r.ok, true);
+  assert.equal(currentPreset(home, now).preset, "ask");
+  assert.equal(checkGrant(home, { argv: ["node", "a.mjs"], cwd: ws, verb: "shell.run" }, now).ok, false);
+
+  // read：窗口在，但任何 T3 都拒
+  r = setPreset(home, "read", {}, now);
+  assert.equal(r.ok, true);
+  assert.equal(currentPreset(home, now).preset, "read");
+  const d = checkGrant(home, { argv: ["node", "a.mjs"], cwd: ws, verb: "shell.run" }, now);
+  assert.equal(d.ok, false);
+  if (!d.ok) assert.equal(d.code, "E_PRESET_READ_ONLY");
+
+  // write：注册模板可以，任意 argv 不行
+  r = setPreset(home, "write", {}, now);
+  assert.equal(r.ok, true);
+  assert.equal(currentPreset(home, now).preset, "write");
+  assert.equal(checkGrant(home, { argv: ["node", "a.mjs"], cwd: ws, verb: "shell.run" }, now).ok, true);
+  assert.equal(checkGrant(home, { argv: ["node", "a.mjs"], cwd: ws, verb: "shell.exec" }, now).ok, false);
+
+  // full：任意 argv 可以，硬禁仍然拒
+  r = setPreset(home, "full", { because: "面板上切到完全权限来验证" }, now);
+  assert.equal(r.ok, true);
+  assert.equal(currentPreset(home, now).preset, "full");
+  assert.equal(checkGrant(home, { argv: ["node", "a.mjs"], cwd: ws, verb: "shell.exec" }, now).ok, true);
+  const rm = checkGrant(home, { argv: ["rm", "x"], cwd: ws, verb: "shell.exec" }, now);
+  assert.equal(rm.ok, false);
+  if (!rm.ok) assert.equal(rm.code, "E_GRANT_FULL_DENY");
+
+  // 切档先收回：档位永远只有一个答案
+  setPreset(home, "ask", {}, now);
+  assert.equal(listGrants(home, now).length, 0);
+  revokeAll(home);
+});
+
+test("K-3 切到 full 也要守理由闸（面板选择器不能绕过 ≥10 字）", () => {
+  const home = H();
+  const r = setPreset(home, "full", { because: "短" });
+  assert.equal(r.ok, false, "短理由应当被拒");
   revokeAll(home);
 });

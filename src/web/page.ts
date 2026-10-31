@@ -393,6 +393,20 @@ export const PAGE = `<!doctype html>
 
   /* 能力表（F-2）：一行一类，点开看条目；降级项直接标红 */
   #cap-list { margin-top:6px; }
+  /* 权限 chip：贴在输入框左边，当前会话可见可切（位置照 DeepSeek Harness） */
+  .permchip { flex:0 0 auto; padding:4px 8px; border:1px solid var(--line); background:transparent;
+    color:var(--dim); font:inherit; font-size:12px; font-weight:600; border-radius:2px; cursor:pointer; }
+  .permchip:hover { color:var(--fg); border-color:var(--fg); }
+  .permchip.full { color:var(--fg); border-color:var(--fg); }
+  #permpop { position:fixed; left:0; right:0; top:0; bottom:0; z-index:60; background:rgba(0,0,0,.72);
+    display:flex; align-items:flex-end; justify-content:center; padding:0 16px 88px; }
+  #permpop .permbox { width:100%; max-width:520px; border:1px solid var(--line); background:#000; padding:14px 16px; }
+  #permpop .opt { display:block; width:100%; text-align:left; padding:10px; margin:6px 0;
+    border:1px solid var(--line); background:transparent; color:var(--fg); font:inherit; cursor:pointer; }
+  #permpop .opt:hover, #permpop .opt.on { border-color:var(--fg); }
+  #permpop .opt b { display:block; font-weight:700; }
+  #permpop .opt span { color:var(--dim); font-size:12px; }
+
   /* 提议卡 / 抽检 / 溯源：都跟全站同一套（黑底 · 白细线 · 加粗白字），不引入新颜色 */
   .surf .cmd { font-weight: 600; }
   .provbox { margin: 10px 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 2px; }
@@ -681,9 +695,12 @@ export const PAGE = `<!doctype html>
       </div>
 
       <div class="panelbox">
-        <h2>GRANT · 会话授权</h2>
-        <p class="hint">开一个窗口：这段时间内它可以按你给的范围跑命令，不用每次点确认。
-          **进程重启或到点即失效**，密钥类环境变量不会传给它。</p>
+        <h2>DEFAULT · 新会话默认权限</h2>
+        <p class="hint">这里选的只是<b>以后新建会话</b>的默认值；当前会话请在输入框左边的开关上切。
+          窗口到点即失效，密钥类环境变量不会传给它；切「完全权限」时仍要手输确认。</p>
+        <div class="two"><div><label>默认档</label><select id="pd-sel"></select></div>
+          <div><label>&nbsp;</label><button id="pd-save" class="primary">保存默认</button></div></div>
+        <p class="hint" id="pd-msg"></p>
         <div class="two">
           <div><label>允许的命令</label><input id="g-cmds" placeholder="node,git" value="node"></div>
           <div><label>目录范围</label><input id="g-scope" placeholder="workspace" value="workspace"></div>
@@ -768,12 +785,19 @@ export const PAGE = `<!doctype html>
 
   <div class="ticker" id="ticker"></div>
   <form id="composer"><div class="wrap">
+    <button type="button" id="perm" class="permchip" title="当前会话的权限档（点开切换）">逐次确认</button>
     <span class="prompt">&gt;</span>
     <textarea id="m" rows="1" placeholder="说点什么…（Enter 发送 · Shift+Enter 换行）"></textarea>
     <button id="stop" type="button" title="停止生成">■</button>
     <button class="send">▲</button>
   </div></form>
 </main>
+
+<div id="permpop" hidden><div class="permbox">
+  <p class="hint">切的是<b>当前会话</b>的权限档；设置里那一行只管以后新建的会话。</p>
+  <div id="permopts"></div>
+  <div class="acts"><button type="button" id="permclose">关闭</button><span id="permmsg" class="hint"></span></div>
+</div></div>
 <script>
 window.SOURCES_DIR = null;   // 服务端会把它替换成 data/sources 的绝对路径（点“摄入”的人才知道文件该放哪）
 const $ = (s) => document.querySelector(s);
@@ -919,7 +943,7 @@ async function pending() {
   const sec = $("#pendsec"), box = $("#pendlist");
   const open = (list || []).filter((p) => p.status === "pending" && !p.expired);
   paintPendBadge(open.length);
-  loadProposals(); loadSurfaceReview(); loadThreads(); loadReceipts(); loadStanding();
+  loadProposals(); loadSurfaceReview(); loadThreads(); loadReceipts(); loadStanding(); loadPermission();
   sec.hidden = open.length === 0;
   if (!open.length) { box.innerHTML = ""; return; }
   box.innerHTML = open.map((p) =>
@@ -1621,6 +1645,94 @@ $("#proplist").onclick = function (e) {
   if (b) openProposal(b.dataset.prop);
 };
 
+// 极小的提示：写进底部 ticker，5 秒后由 readout 自己刷回真实状态
+var TICK_MSG = null, TICK_TIMER = null;
+function pushTicker(msg) {
+  TICK_MSG = msg;
+  var tb = document.getElementById("ticker");
+  if (tb) tb.innerHTML = "<span class='tk'>" + escapeHtml(msg) + "</span>";
+  if (TICK_TIMER) clearTimeout(TICK_TIMER);
+  TICK_TIMER = setTimeout(function () { TICK_MSG = null; readout(); }, 5000);
+}
+
+// ── 权限档：当前会话在输入框旁切；设置只放「以后新建会话的默认值」──
+var PERM = { preset: "ask", remainingS: 0 };
+var PERM_LABEL = { ask: "逐次确认", read: "仅可查看", write: "工作区内修改", full: "完全权限" };
+async function loadPermission() {
+  try { PERM = await (await fetch("/api/permission")).json(); } catch (e) { return; }
+  paintPermission();
+}
+function paintPermission() {
+  var b = document.getElementById("perm");
+  if (!b) return;
+  var label = PERM_LABEL[PERM.preset] || PERM.preset;
+  if (PERM.remainingS > 0) label += " · 剩 " + Math.ceil(PERM.remainingS / 60) + " 分";
+  b.textContent = label;
+  b.className = "permchip" + (PERM.preset === "full" ? " full" : "");
+}
+async function setPermission(preset, because) {
+  var r;
+  try {
+    r = await (await fetch("/api/permission", {
+      method: "POST", headers: H, body: JSON.stringify({ preset: preset, because: because || "" }),
+    })).json();
+  } catch (e) { return false; }
+  if (r.ok) { await loadPermission(); return true; }
+  var msg = document.getElementById("permmsg");
+  if (msg) msg.textContent = r.why || r.code || "切换失败";
+  return false;
+}
+function renderPermOptions() {
+  var cur = PERM.preset;
+  var box = document.getElementById("permopts");
+  box.innerHTML = (PERM.presets || []).map(function (x) {
+    var on = x.id === cur ? " on" : "";
+    var warn = x.id === "full" ? " ⚠" : "";
+    return "<button class='opt" + on + "' data-preset='" + escapeHtml(x.id) + "'>" +
+      "<b>" + escapeHtml(x.label) + warn + "</b><span>" + escapeHtml(x.hint) + "</span></button>";
+  }).join("");
+}
+document.getElementById("perm").addEventListener("click", function () {
+  renderPermOptions();
+  document.getElementById("permpop").hidden = false;
+});
+document.getElementById("permclose").addEventListener("click", function () {
+  document.getElementById("permpop").hidden = true;
+});
+document.getElementById("permpop").addEventListener("click", function (e) {
+  if (e.target.id === "permpop") document.getElementById("permpop").hidden = true;
+});
+document.getElementById("permopts").addEventListener("click", async function (e) {
+  var b = e.target.closest("button[data-preset]");
+  if (!b) return;
+  var preset = b.dataset.preset;
+  if (preset === "full") {
+    var typed = prompt("完全权限：任意命令 + 整个 home（最多 15 分钟）。删/系统/下载/壳仍然拒绝，密钥仍然不传。要切就输入：我明白");
+    if (typed !== "我明白") { document.getElementById("permmsg").textContent = "没有确认，保持原档"; return; }
+  }
+  if (await setPermission(preset, "面板选择器切换")) document.getElementById("permpop").hidden = true;
+});
+// 每分钟刷一次剩余时间：让人看得见它什么时候自动回到逐次确认
+setInterval(function () {
+  if (PERM.remainingS <= 0) return;
+  PERM.remainingS = Math.max(0, PERM.remainingS - 60);
+  if (!PERM.remainingS) loadPermission(); else paintPermission();
+}, 60000);
+
+// /permission 斜杠命令：带参直接切，不带参打开选择器（同 DSH）
+async function handleSlash(text) {
+  // 不用正则：page.ts 是模板字符串，反斜杠在这一层就会被吃掉（踩过）
+  var t = String(text || "").trim();
+  if (t !== "/permission" && t.indexOf("/permission ") !== 0) return false;
+  var arg = t === "/permission" ? "" : t.slice(11).trim().split(" ")[0].toLowerCase();
+  if (!arg) { document.getElementById("perm").click(); return true; }
+  var alias = { full: "full", write: "write", read: "read", ask: "ask" };
+  var preset = alias[arg];
+  if (!preset) { pushTicker("未知档位：" + arg + "（可用 ask / read / write / full）"); return true; }
+  if (await setPermission(preset, "/permission " + arg)) pushTicker("权限已切到 " + preset);
+  return true;
+}
+
 // ── 回执（D-3 前置）：送达 ≠ 已读 ───────────────────
 async function loadReceipts() {
   var j;
@@ -2040,6 +2152,8 @@ $("#p-save").onclick = async () => {
 $("#composer").onsubmit = async (e) => {
   e.preventDefault();
   const text = $("#m").value.trim(); if (!text) return;
+  // 斜杠命令先过一道：/permission 之类的本地动作不该被当成聊天发出去
+  if (await handleSlash(text)) { $("#m").value = ""; fitComposer(); return; }
   if (inflight) return;                       // 上一轮还没完就别叠
   $("#m").value = ""; fitComposer();
   const el = $("#chat");

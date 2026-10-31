@@ -157,25 +157,31 @@ if (hasMem) {
   })()`));
 } else skip("记忆详情显示来源", "空库");
 
-// ── K-3 会话授权：能开、能看到、能收回 ──────────────
-check("K-3 会话授权能开能收", await js(`(async () => {
-  document.querySelector('#side .item[data-view=cfg]').click();
-  await new Promise((r) => setTimeout(r, 400));
-  const why = document.querySelector('#g-why');
-  const open = document.querySelector('#g-open');
-  if (!why || !open) return false;
-  // 先试没理由 → 必须被拒（闸门在服务端）
-  why.value = ''; open.click();
-  await new Promise((r) => setTimeout(r, 600));
-  const err = document.querySelector('#g-msg').textContent;
-  why.value = '测一下窗口'; open.click();
+// ── 权限档（位置照 DSH：输入框旁的选择器，不是设置里）──────
+check("权限 chip 在输入框旁，且能切档", await js(`(async () => {
+  const chip = document.querySelector('#composer #perm');
+  if (!chip) return false;
+  const before = chip.textContent.trim();
+  chip.click();
+  await new Promise((r) => setTimeout(r, 300));
+  const opts = document.querySelectorAll('#permopts button[data-preset]');
+  if (opts.length < 3) return false;
+  const readOnly = [...opts].find((b) => b.dataset.preset === 'read');
+  if (!readOnly) return false;
+  readOnly.click();
   await new Promise((r) => setTimeout(r, 900));
-  const one = document.querySelectorAll('#g-list [data-grant]').length;
-  const btn = document.querySelector('#g-list button[data-act=revoke]');
-  if (btn) btn.click();
-  await new Promise((r) => setTimeout(r, 900));
-  const after = document.querySelectorAll('#g-list [data-grant]').length;
-  return err.length > 0 && one === 1 && after === 0;
+  const after = chip.textContent.trim();
+  window.__perm = { before, after, n: opts.length };
+  return after !== before && /仅可查看/.test(after);
+})()`), await js("JSON.stringify(window.__perm || {})"));
+
+check("/permission 斜杠命令能切回逐次确认", await js(`(async () => {
+  const i = document.querySelector('#m');
+  i.value = '/permission ask';
+  document.querySelector('#composer').dispatchEvent(new Event('submit', { cancelable: true }));
+  await new Promise((r) => setTimeout(r, 1000));
+  const chip = document.querySelector('#composer #perm');
+  return /逐次确认/.test(chip.textContent);
 })()`));
 
 // ── F-3 记忆撤销：忘记之后 5 秒内能撤回 ─────────────

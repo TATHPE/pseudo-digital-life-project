@@ -31,9 +31,26 @@ interface Grant {
   expiresAt: number;
   /** 完全权限：任意命令（除硬禁名单）、home 全域、可用 shell.exec 跑任意 argv */
   full: boolean;
+  /** 这一档是哪来的（ask 不会产生 grant） */
+  preset: Preset;
 }
 
 /** 默认允许的命令（和 shell 模板里出现过的那几种保持一致，陌生人别进来） */
+/**
+ * 权限预设（形状照 DeepSeek Harness 的 permission presets）：
+ *   ask   逐次确认（我们的默认）
+ *   read  仅可查看：任何 T3 都拒
+ *   write 工作区内修改：注册过的模板 + workspace，30 分钟
+ *   full  完全权限：任意命令（除硬禁）+ 整个 home，15 分钟
+ * 当前会话用 composer 旁的选择器切；设置里那行只管「以后新建会话的默认值」。
+ */
+export type Preset = "ask" | "read" | "write" | "full";
+export const PRESETS: Array<{ id: Preset; label: string; hint: string }> = [
+  { id: "ask", label: "逐次确认", hint: "每次动作都要你看一眼（最安全，也最啰嗦）" },
+  { id: "read", label: "仅可查看", hint: "只读；任何要动手的命令都拒绝" },
+  { id: "write", label: "工作区内修改", hint: "注册过的模板 + workspace 内，30 分钟" },
+  { id: "full", label: "完全权限", hint: "任意命令 + 整个 home，15 分钟；删/系统/下载/壳仍拒绝" },
+];
 export const GRANT_COMMANDS = [
   "node", "npm", "npx", "git", "python", "py", "ffmpeg", "ffprobe", "tsc", "vitest",
 ] as const;
@@ -100,6 +117,7 @@ export function openGrant(
       scope: "",
       because, createdAt: now.getTime(), expiresAt: now.getTime() + ttlMs,
       full: true,
+      preset: "full",
     };
     const perHomeF = store.get(home) ?? new Map<string, Grant>();
     perHomeF.set(g.id, g);
@@ -137,6 +155,7 @@ export function openGrant(
     createdAt: now.getTime(),
     expiresAt: now.getTime() + ttlMs,
     full: false,
+    preset: "write",
   };
   const perHome = store.get(home) ?? new Map<string, Grant>();
   perHome.set(g.id, g);
@@ -173,6 +192,50 @@ export function revokeGrant(home: string, id: string): boolean {
   const perHome = store.get(home);
   if (!perHome) return false;
   return perHome.delete(id);
+}
+
+/** 当前会话的档位：有窗口就是那一档，没有就是逐次确认 */
+export function currentPreset(home: string, now = new Date()): { preset: Preset; remainingS: number; grantId: string | null } {
+  const rows = listGrants(home, now);
+  if (!rows.length) return { preset: "ask", remainingS: 0, grantId: null };
+  const top = rows[0]!;
+  const preset: Preset = top.full ? "full" : top.commands.length === 0 ? "read" : "write";
+  return { preset, remainingS: top.remainingS, grantId: top.id };
+}
+
+/**
+ * 切档：**先收回现有窗口**，再按新档开一个（ask 就是全收回）。
+ * 为什么先收：两档并存会让「当前是什么权限」没有唯一答案，而权限必须能一句话说清。
+ */
+export function setPreset(
+  home: string,
+  preset: Preset,
+  input: { because?: unknown; ttlMs?: number; commands?: readonly string[] } = {},
+  now = new Date(),
+): { ok: true; preset: Preset; grant: { id: string; expiresAt: string; full?: boolean } | null } | { ok: false; code: string; why: string } {
+  revokeAll(home);
+  if (preset === "ask") return { ok: true, preset, grant: null };
+
+  const because = String(input.because ?? "").trim() || `档位切到 ${preset}（输入框旁的选择器）`;
+  if (preset === "read") {
+    const g: Grant = {
+      id: `grn_${now.getTime().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+      commands: new Set(), scope: "", because,
+      createdAt: now.getTime(), expiresAt: now.getTime() + Math.min(8 * 3600_000, Math.max(60_000, Number(input.ttlMs ?? 8 * 3600_000))),
+      full: false, preset: "read",
+    };
+    const perHome = store.get(home) ?? new Map<string, Grant>();
+    perHome.set(g.id, g);
+    store.set(home, perHome);
+    return { ok: true, preset, grant: { id: g.id, expiresAt: new Date(g.expiresAt).toISOString() } };
+  }
+  if (preset === "full") {
+    const r = openGrant(home, { full: true, because, ...(input.ttlMs ? { ttlMs: input.ttlMs } : {}) }, now);
+    return r.ok ? { ok: true, preset, grant: { id: r.grant.id, expiresAt: r.grant.expiresAt, full: true } } : r;
+  }
+  const commands = input.commands && input.commands.length ? [...input.commands] : [...GRANT_COMMANDS];
+  const r = openGrant(home, { commands, scope: "workspace", because, ttlMs: input.ttlMs ?? 30 * 60_000 }, now);
+  return r.ok ? { ok: true, preset, grant: { id: r.grant.id, expiresAt: r.grant.expiresAt } } : r;
 }
 
 /** 测试/关停用：清空某个 home 的所有窗口 */
@@ -218,8 +281,12 @@ export function checkGrant(
   let sawFullOnlyMismatch = false;
   let sawFullDeny = "";
   let sawPathEscape = "";
+  let sawReadOnly = false;
   for (const g of perHome.values()) {
     if (g.expiresAt <= now.getTime()) { perHome.delete(g.id); continue; }
+
+    // 仅可查看：任何 T3 都拒（只读 verb 本来就是 T0/T1，不需要窗口）
+    if (g.preset === "read") { sawReadOnly = true; continue; }
 
     // 完全权限窗口：任意命令（除硬禁名单）+ 整个 home；但**普通窗口不因此变宽**
     if (g.full) {
@@ -263,6 +330,9 @@ export function checkGrant(
   }
 
   if (!picked) {
+    if (sawReadOnly && !sawFullDeny) {
+      return { ok: false, code: "E_PRESET_READ_ONLY", why: "当前是「仅可查看」：要动手就得先换一档（输入框旁的选择器）" };
+    }
     if (wantFull && sawPathEscape) {
       return {
         ok: false, code: "E_GRANT_PATH",
