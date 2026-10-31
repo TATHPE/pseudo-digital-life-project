@@ -1033,9 +1033,15 @@ export function createWebServer(deps: WebDeps) {
       // ── 新会话默认档（设置里那一行；只影响以后新建的会话）──
       if (req.method === "PUT" && url.pathname === "/api/permission/default") {
         const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
-        const body = JSON.parse(await readBody(req)) as { default?: string };
+        const body = JSON.parse(await readBody(req)) as { default?: string; confirm?: string };
         const preset = String(body.default ?? "") as Preset;
         if (!PRESETS.some((x) => x.id === preset)) { json(res, 400, { error: "E_BAD_PRESET" }); return; }
+        // 当前会话一键切可以不要确认；但把「全权」写成**以后新会话的默认值**要一句明确的话 ——
+        // 实测踩到：选择器开着时一次误点就把 config.json 的 default 改成了 full。
+        if (preset === "full" && String(body.confirm ?? "") !== "我明白") {
+          json(res, 400, { error: "E_NEEDS_CONFIRM", why: "把完全权限设为默认要确认（输入「我明白」）；当前会话可以直接一键切" });
+          return;
+        }
         const file = deps.home + "/config.json";
         let cfg: Record<string, unknown> = {};
         try { cfg = JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>; } catch { /* 新文件 */ }

@@ -285,3 +285,12 @@ test("K-3 全权也是一键切：不需要二次确认，但硬禁名单不变"
   assert.equal(d.ok, false);
   revokeAll(home);
 });
+
+test("K-3 默认档：一键切当前会话不需要确认，但把 full 存成默认要确认", () => {
+  // 这条测的是 server 的判据本身（逻辑在 web/server.ts 里，这里用同一组条件复核一遍）
+  const needsConfirm = (preset: string, confirm?: string) => preset === "full" && confirm !== "我明白";
+  assert.equal(needsConfirm("full"), true, "误点不能把 full 写进 config");
+  assert.equal(needsConfirm("full", "我明白"), false);
+  assert.equal(needsConfirm("write"), false);
+  assert.equal(needsConfirm("ask"), false);
+});

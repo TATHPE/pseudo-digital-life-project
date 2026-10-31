@@ -1761,7 +1761,7 @@ document.getElementById("pd-save").addEventListener("click", async function () {
     msg.textContent = "已保存：" + (PERM_LABEL[r.default] || r.default) + "（只影响以后新建的会话）";
   } else {
     msg.className = "err";
-    msg.textContent = r.error || "保存失败";
+    msg.textContent = r.why || r.error || "保存失败";
   }
 });
 
