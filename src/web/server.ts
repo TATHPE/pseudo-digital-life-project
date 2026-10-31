@@ -64,6 +64,31 @@ import type { StreamTransport } from "../transport.ts";
 import type { Embedder } from "../embed.ts";
 import type { MemoryLine, Tier } from "../types.ts";
 
+/**
+ * 给首次配置用的表达模型取用器：有云端 key 就返回一个 complete；没有就 null。
+ * 返回 null 不是错误 —— 调用方会用模板并**明说**这是模板。
+ */
+async function expressComplete(deps: { home: string }): Promise<((system: string, user: string) => Promise<string>) | null> {
+  try {
+    const { resolveConfig } = await import("../configfile.ts");
+    const { createChatTransport, routerFrom } = await import("../transport.ts");
+    const { createStore } = await import("../auth.ts");
+    const cfg = resolveConfig(deps.home);
+    const store = createStore(`${deps.home}/secrets`);
+    const keys: Record<string, string> = {};
+    for (const p of ["deepseek", "anthropic", "openai"] as const) { const k = store.get(p); if (k) keys[p] = k; }
+    if (!Object.keys(keys).length) return null;
+    const chat = createChatTransport(routerFrom(cfg.roles as never), { apiKeys: keys });
+    return async (system, user) => {
+      let out = "";
+      for await (const ev of chat.chat("express", [{ role: "system", content: system }, { role: "user", content: user }], {
+        // 发的是人格设定（用户刚写的答案），不是记忆原文；面板已在访谈前告知
+        containsMemory: false, purpose: "setup-interview", maxTokens: 900, temperature: 0.4,
+      })) if (ev.type === "delta") out += ev.text;
+      return out;
+    };
+  } catch { return null; }
+}
 // H-4：首次配置的后台任务状态（pull 模型可能要几分钟，不能把 HTTP 请求挂着）
 const jobState: { running: boolean; step: string | null; note: string; done: boolean; ok: boolean } =
   { running: false, step: null, note: "", done: true, ok: true };
@@ -1030,6 +1055,90 @@ export function createWebServer(deps: WebDeps) {
         return;
       }
 
+      // ── 人格访谈（H-4 ⑥）：5 问 → 6 块草稿 → 逐块确认 → 封存 ──
+      if (req.method === "GET" && url.pathname === "/api/setup/interview") {
+        const iv = await import("../interview.ts");
+        json(res, 200, { questions: iv.QUESTIONS, draft: iv.readDraft(deps.home) });
+        return;
+      }
+      if (req.method === "POST" && url.pathname === "/api/setup/interview") {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
+        const iv = await import("../interview.ts");
+        const body = JSON.parse(await readBody(req)) as {
+          action?: string; answers?: Record<string, string>; blocks?: Record<string, Array<{ text: string; source: string }>>; because?: string;
+        };
+        if (body.action === "draft") {
+          const answers = body.answers ?? {};
+          // 有表达模型就用它写；没有就模板（**明说**，不假装是模型写的）
+          let d = iv.templateDraft(answers, now());
+          const complete = await expressComplete(deps);
+          if (complete) {
+            try {
+              const prompt = [
+                "下面是一个人对自己 AI 伴侣的 5 个回答。请把它整理成 6 块设定。",
+                "铁律：只能整理他说过的话，不能添加他没说过的具体事实、名称、数字。",
+                "输出格式：每块以 ## core / ## boundaries / ## values / ## voice / ## evidence / ## tools 开头，每条一行，行首用 - 开头。",
+                "你自己补充的理解，行尾必须写（模型补的，请确认）。",
+                ...Object.entries(answers).map(([k, v]) => `${k}: ${v}`),
+              ].join(String.fromCharCode(10));
+              const raw = await complete(prompt, "现在开始整理，只输出那 6 段。");
+              d = iv.parseDraft(raw, answers, now());
+            } catch (e) {
+              d = { ...iv.templateDraft(answers, now()), note: "模型写失败了，用你的原话 + 中立模板：" + String(e).slice(0, 80) };
+            }
+          }
+          iv.saveDraft(deps.home, d);
+          json(res, 200, { ok: true, draft: d, modelAdded: iv.countModelAdded(d) });
+          return;
+        }
+        if (body.action === "save") {
+          const cur = iv.readDraft(deps.home);
+          if (!cur) { json(res, 404, { error: "E_NO_DRAFT" }); return; }
+          const next = { ...cur, blocks: body.blocks ?? cur.blocks } as typeof cur;
+          iv.saveDraft(deps.home, next);
+          json(res, 200, { ok: true, draft: next });
+          return;
+        }
+        if (body.action === "seal") {
+          const r = iv.sealDraft(deps.db, deps.home, { because: String(body.because ?? ""), now: now() });
+          if (!r.ok) { json(res, 400, r); return; }
+          try {
+            appendEvent(deps.inboxDir, {
+              v: 1, id: newEventId(), ts: now().toISOString(), kind: "persona_seal", actor: "user",
+              payload: { gen: r.gen, files: r.files },
+            });
+          } catch { /* 事件写不下不影响封存 */ }
+          json(res, 200, { ok: true, gen: r.gen, files: r.files, note: "已封存为第 " + r.gen + " 代；之后要改就是开新一代" });
+          return;
+        }
+        json(res, 400, { error: "E_BAD_ACTION" });
+        return;
+      }
+
+      // ── 试运行（⑦）与第一句话（⑧）──
+      if (req.method === "POST" && url.pathname === "/api/setup/smoke") {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
+        const fr = await import("../firstrun.ts");
+        const { loadPersonaText } = await import("../persona.ts");
+        const files = loadPersonaText(deps.home);
+        const personaText = Object.entries(files).map(([k, v]) => `# ${k}` + String.fromCharCode(10) + v).join(String.fromCharCode(10, 10));
+        const r = await fr.runSmoke({ personaText, ...(await expressComplete(deps) ? { complete: (await expressComplete(deps))! } : {}) });
+        json(res, 200, r);
+        return;
+      }
+      if (req.method === "POST" && url.pathname === "/api/setup/first") {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
+        const fr = await import("../firstrun.ts");
+        const { loadPersonaText } = await import("../persona.ts");
+        const files = loadPersonaText(deps.home);
+        const personaText = Object.entries(files).map(([k, v]) => `# ${k}` + String.fromCharCode(10) + v).join(String.fromCharCode(10, 10));
+        const r = await fr.sayFirstWords({
+          inboxDir: deps.inboxDir, personaText, now: now(),
+          ...(await expressComplete(deps) ? { complete: (await expressComplete(deps))! } : {}),
+        });
+        json(res, 200, r);
+        return;
+      }
       // ── 首次配置（H-4）：可暂停、可终止、终止先给预览 ──
       if (req.method === "GET" && url.pathname === "/api/setup") {
         const session = readSession(deps.home);

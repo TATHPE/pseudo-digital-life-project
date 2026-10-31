@@ -8,8 +8,8 @@
 
 | 项 | 数量 |
 |---|---|
-| 源文件（src/**/*.ts） | 81 |
-| 错误码 E_* | 167 |
+| 源文件（src/**/*.ts） | 83 |
+| 错误码 E_* | 168 |
 | verbs | 21 |
 | CLI 子命令 | 37 |
 
@@ -112,6 +112,7 @@
 | `E_NO_CONVERTER` | `src/ingest.ts` |
 | `E_NO_DB` | `src/cli/jingjing.ts` `src/verbs.ts` |
 | `E_NO_DOC` | `src/web/page.ts` `src/web/server.ts` |
+| `E_NO_DRAFT` | `src/interview.ts` `src/web/server.ts` |
 | `E_NO_EMBED_MODEL` | `src/cli/jingjing.ts` |
 | `E_NO_EMBEDDER` | `src/verbs.ts` |
 | `E_NO_GRANT` | `src/grant.ts` `src/web/server.ts` |
@@ -265,12 +266,14 @@
 | `src/embedindex.ts` | 索引身份（C-2） |
 | `src/eval.ts` | 评估（19 §0.1 W-B / 01 §13）：唯一能证明"它变好了"的东西。 |
 | `src/execute.ts` | 执行入口（04 §4）：**策略 → 执行 → 审计**，一个都不能少。 |
+| `src/firstrun.ts` | 试运行 + 第一句话（H-4 第 ⑦⑧ 步）。 |
 | `src/fsx.ts` | 原子写 + fsync（18 §1.2） |
 | `src/generation.ts` | 设定封存的**分代**（H-5）。 |
 | `src/grant.ts` | 会话式授权（K-3）：**窗口内**可以用模型给的 argv，窗口外回到 6 个模板。 |
 | `src/handoff.ts` | 搬家协议（19 §7.4 / 09 §5）：**quiesce → export → 校验 → import → 补跑** |
 | `src/heartbeat.ts` | 心跳与主动性（01 §10）。 |
 | `src/ingest.ts` | 摄入管道（02 §5.1 转换 → §5.2 分块 → §5.3 幂等） |
+| `src/interview.ts` | 人格访谈（H-4 第 ⑥ 步）。 |
 | `src/journal.ts` | inbox：原始事件的唯一事实源（18 §1.1） |
 | `src/links.ts` | 记忆之间的线（J-5）：抽检与"一句话拆线"。 |
 | `src/mcp.ts` | 最小 MCP stdio 客户端（11 §3 方向 B）。 |

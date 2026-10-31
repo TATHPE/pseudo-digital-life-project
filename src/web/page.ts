@@ -408,6 +408,14 @@ export const PAGE = `<!doctype html>
   #su-steps .k { font:11px/1.4 var(--mono); color:var(--fg); font-weight:700; min-width:86px; }
   #su-steps .v { font:11px/1.6 var(--mono); color:var(--dim); }
   #su-steps .step.now .v { color:var(--fg); }
+  #su-panel { margin-top:14px; border:1px solid var(--line); padding:12px; }
+  #su-panel textarea { width:100%; min-height:64px; }
+  #su-panel .q { margin:10px 0; }
+  #su-panel .q label { display:block; font:11px/1.6 var(--mono); color:var(--fg); font-weight:700; margin-bottom:4px; }
+  #su-panel .draftline { display:flex; gap:6px; align-items:baseline; padding:4px 0; border-bottom:1px solid var(--line-dim); }
+  #su-panel .draftline .src { font:9px/1.4 var(--mono); padding:1px 4px; border:1px solid var(--line); color:var(--dim); white-space:nowrap; }
+  #su-panel .draftline.mine .src { color:var(--fg); border-color:var(--fg); }
+  #su-panel .reply { white-space:pre-wrap; border-left:1px solid var(--line); padding-left:10px; margin:8px 0; }
   /* 权限 chip：贴在输入框左边，当前会话可见可切（位置照 DeepSeek Harness） */
   .permchip { flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center;
     align-self:stretch; padding:0 12px; border:1px solid var(--line); background:transparent;
@@ -639,6 +647,7 @@ export const PAGE = `<!doctype html>
           <span id="su-msg" class="hint"></span>
         </div>
         <p class="hint" id="su-job"></p>
+        <div id="su-panel" class="panelbox" hidden></div>
       </div>
     </div>
     <div id="memview" hidden>
@@ -1711,6 +1720,7 @@ function paintSetup() {
   $("#su-msg").textContent = st === "aborted" ? "上一轮已终止并清理" : "";
   var job = SU && SU.job;
   $("#su-job").textContent = job && job.running ? "进行中：" + (SU_LABEL[job.step] || job.step) + " …" : (job && job.note ? job.note : "");
+  paintSetupPanel();
   // 第一次进来：探测一次（只读）
   if (SU && !SU.detected && !SU._detectedOnce) { SU._detectedOnce = true; loadSetup(true); }
 }
@@ -1764,6 +1774,113 @@ $("#su-abort").addEventListener("click", async function () {
     ((rep.failed || []).length ? "；没清掉的：" + rep.failed.join("；") : "");
   await loadSetup();
 });
+// ── 首次配置：当前步骤的实际界面（⑤ API ⑥ 人格 ⑦ 试运行 ⑧ 第一句话）──
+var SU_IV = null;
+async function paintSetupPanel() {
+  var box = $("#su-panel");
+  if (!box) return;
+  var step = SU && SU.session ? SU.session.step : null;
+  if (!step || !["api", "persona", "smoke", "first"].includes(step)) { box.hidden = true; return; }
+  box.hidden = false;
+  if (step === "api") {
+    box.innerHTML = "<p class='hint'>云端表达模型：没有它也能记，只是不能聊。key 存在本机（DPAPI 加密）。</p>" +
+      "<div class='two'><div><label>provider</label><select id='su-prov'><option value='deepseek'>deepseek</option><option value='openai'>openai</option><option value='anthropic'>anthropic</option></select></div>" +
+      "<div><label>model</label><input id='su-model' placeholder='deepseek-chat'></div></div>" +
+      "<label>api key</label><input id='su-key' type='password' placeholder='sk-…' autocomplete='off'>" +
+      "<div class='acts'><button id='su-api-save' class='primary'>保存并继续</button><span id='su-api-msg' class='hint'></span></div>";
+    $("#su-api-save").onclick = async function () {
+      var msg = $("#su-api-msg"); msg.textContent = "保存中…";
+      var body = { provider: $("#su-prov").value, model: $("#su-model").value || undefined, key: $("#su-key").value || undefined };
+      var r = await (await fetch("/api/config", { method: "PUT", headers: H, body: JSON.stringify(body) })).json();
+      if (!r.ok) { msg.className = "err"; msg.textContent = r.error || "保存失败"; return; }
+      await fetch("/api/setup", { method: "POST", headers: H, body: JSON.stringify({ action: "run", step: "api" }) });
+      msg.className = "ok"; msg.textContent = "已保存";
+      await loadSetup();
+    };
+    return;
+  }
+  if (step === "persona") {
+    box.innerHTML = "<p class='hint'><b>先说一句：这 5 个回答会发给云端模型做整理</b>（只这一次；不写进记忆，也不发你的记忆原文）。</p>" +
+      "<p class='hint'>5 个问题 → 模型写成 6 块草稿 → 你逐块确认 → 封存。<b>只有你自己说过的话才会被标成「你原话」</b>（这一条是代码校验的，不是提示词）。</p>" +
+      "<div id='su-qs'><p class='hint'>正在取问题…</p></div>";
+    var iv = SU_IV || await (await fetch("/api/setup/interview")).json();
+    SU_IV = iv;
+    $("#su-qs").innerHTML = (iv.questions || []).map(function (q) {
+      return "<div class='q'><label>" + escapeHtml(q.q) + "</label>" +
+        "<textarea id='su-a-" + escapeHtml(q.id) + "' placeholder='" + escapeHtml(q.fallback) + "'></textarea></div>";
+    }).join("") + "<div class='acts'><button id='su-draft' class='primary'>让模型写草稿</button><span id='su-iv-msg' class='hint'></span></div><div id='su-draft'></div>";
+    $("#su-draft").onclick = async function () {
+      var msg = $("#su-iv-msg"); msg.textContent = "写草稿中…";
+      var answers = {};
+      (SU_IV.questions || []).forEach(function (q) { answers[q.id] = ($("#su-a-" + q.id).value || "").trim(); });
+      var r = await (await fetch("/api/setup/interview", { method: "POST", headers: H, body: JSON.stringify({ action: "draft", answers: answers }) })).json();
+      if (!r.ok) { msg.className = "err"; msg.textContent = r.error || "写不出来"; return; }
+      msg.className = "hint"; msg.textContent = (r.draft.via === "template" ? "（没有可用模型，用你的原话 + 中立模板拼的）" : "模型写的") + " · 需要你确认的 " + r.modelAdded + " 条";
+      renderDraft(r.draft);
+    };
+    if (iv.draft) renderDraft(iv.draft);
+    return;
+  }
+  if (step === "smoke") {
+    box.innerHTML = "<p class='hint'>用假数据跑一轮，先听 voice。不满意就回上一步改（<b>封存前的修改是免费的</b>）。</p>" +
+      "<div class='acts'><button id='su-smoke' class='primary'>跑一次</button><span id='su-smoke-msg' class='hint'></span></div><div id='su-smoke-out'></div>";
+    $("#su-smoke").onclick = async function () {
+      $("#su-smoke-msg").textContent = "跑…";
+      var r = await (await fetch("/api/setup/smoke", { method: "POST", headers: H, body: JSON.stringify({}) })).json();
+      $("#su-smoke-msg").textContent = r.via === "template" ? "没有表达模型，下面是模板" : ("用时 " + r.ms + "ms");
+      $("#su-smoke-out").innerHTML = "<div class='reply'>" + escapeHtml(r.reply) + "</div>" +
+        ((r.note) ? "<p class='hint'>" + escapeHtml(r.note) + "</p>" : "") +
+        "<p class='hint'>它会这样看待这段假对话：</p>" + (r.extracted || []).map(function (x) { return "<div class='hint'>· " + escapeHtml(x) + "</div>"; }).join("");
+      await fetch("/api/setup", { method: "POST", headers: H, body: JSON.stringify({ action: "run", step: "smoke" }) });
+      await loadSetup();
+    };
+    return;
+  }
+  if (step === "first") {
+    box.innerHTML = "<p class='hint'>不弹「配置成功」。让它直接说第一句话 —— 同时验证整条链路通了。</p>" +
+      "<div class='acts'><button id='su-first' class='primary'>让它开口</button><span id='su-first-msg' class='hint'></span></div><div id='su-first-out'></div>";
+    $("#su-first").onclick = async function () {
+      $("#su-first-msg").textContent = "…";
+      var r = await (await fetch("/api/setup/first", { method: "POST", headers: H, body: JSON.stringify({}) })).json();
+      $("#su-first-msg").textContent = r.written ? "（已写进 journal，之后它就是这条时间线的第一句）" : "（没写进 journal）";
+      $("#su-first-out").innerHTML = "<div class='reply' style='color:var(--cyan-hi)'>" + escapeHtml(r.text) + "</div>";
+      await fetch("/api/setup", { method: "POST", headers: H, body: JSON.stringify({ action: "run", step: "first" }) });
+      await loadSetup();
+    };
+    return;
+  }
+}
+function renderDraft(d) {
+  var box = $("#su-draft");
+  if (!box) return;
+  var html = "";
+  ["core", "boundaries", "values", "voice", "evidence", "tools"].forEach(function (k) {
+    var lines = (d.blocks || {})[k] || [];
+    if (!lines.length) return;
+    html += "<p class='hint' style='margin-top:12px'>#" + k + "</p>";
+    lines.forEach(function (l, i) {
+      var mine = l.source === "你原话";
+      html += "<div class='draftline" + (mine ? " mine" : "") + "'>" +
+        "<span class='src'>" + (mine ? "你原话" : "请确认") + "</span>" +
+        "<input data-blk='" + k + "' data-i='" + i + "' value='" + escapeHtml(l.text) + "'></div>";
+    });
+  });
+  html += "<div class='acts' style='margin-top:12px'><button id='su-seal' class='primary'>封存（开第 1 代）</button><span id='su-seal-msg' class='hint'></span></div>";
+  box.innerHTML = html;
+  $("#su-seal").onclick = async function () {
+    var msg = $("#su-seal-msg"); msg.textContent = "封存中…";
+    var blocks = {};
+    document.querySelectorAll("#su-draft input[data-blk]").forEach(function (inp) {
+      var k = inp.dataset.blk; (blocks[k] = blocks[k] || []).push({ text: inp.value, source: "你原话" });
+    });
+    await fetch("/api/setup/interview", { method: "POST", headers: H, body: JSON.stringify({ action: "save", blocks: blocks }) });
+    var r = await (await fetch("/api/setup/interview", { method: "POST", headers: H, body: JSON.stringify({ action: "seal", because: "首次封存（面板）" }) })).json();
+    if (!r.ok) { msg.className = "err"; msg.textContent = r.error || "封存失败"; return; }
+    msg.className = "ok"; msg.textContent = r.note;
+    await fetch("/api/setup", { method: "POST", headers: H, body: JSON.stringify({ action: "run", step: "persona" }) });
+    await loadSetup();
+  };
+}
 // ── 分代（H-5）：显示当前第几代，并说清"改动只向前生效" ──
 async function loadGeneration() {
   var g; try { g = await (await fetch("/api/persona")).json(); } catch (e) { return; }
