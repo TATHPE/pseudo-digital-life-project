@@ -8,8 +8,8 @@
 
 | 项 | 数量 |
 |---|---|
-| 源文件（src/**/*.ts） | 77 |
-| 错误码 E_* | 161 |
+| 源文件（src/**/*.ts） | 78 |
+| 错误码 E_* | 162 |
 | verbs | 21 |
 | CLI 子命令 | 35 |
 
@@ -21,7 +21,7 @@
 | 没接上 = 没做完 | `tools/ui-test.mjs` | `check(` |
 | 闸门先于模型 | `src/nightly.ts` | `export function isNoise` |
 | 参数有界 | `src/decayparams.ts` | `RANGES` |
-| 内容只是资料 | `src/verbs.ts` | `E_PROJECT_EGRESS` |
+| 内容只是资料 | `src/verbs.ts` | `E_NEEDS_EGRESS` |
 | 改功能先列清单 | `AGENTS.md` | `改一个功能先列清单` |
 
 ## 错误码 E_*
@@ -40,6 +40,7 @@
 | `E_BAD_LINK` | `src/web/server.ts` |
 | `E_BAD_MODEL` | `src/web/server.ts` |
 | `E_BAD_NAME` | `src/web/server.ts` |
+| `E_BAD_PATH` | `src/web/server.ts` |
 | `E_BAD_PRESET` | `src/web/server.ts` |
 | `E_BAD_RANGE` | `src/decayparams.ts` |
 | `E_BAD_REGEX` | `src/project.ts` |
@@ -97,6 +98,7 @@
 | `E_MISSING_ARG` | `src/toolsmoke.ts` |
 | `E_MODEL` | `src/autobio.ts` `src/eval.ts` `src/provider.ts` `src/transport.ts` |
 | `E_NEEDS_CONFIRM` | `src/confirm.ts` `src/execute.ts` |
+| `E_NEEDS_EGRESS` | `src/egress.ts` `src/project.ts` `src/verbs.ts` |
 | `E_NO_ARGV` | `src/shell.ts` |
 | `E_NO_AVATAR` | `src/web/server.ts` |
 | `E_NO_CALL` | `src/toolsmoke.ts` |
@@ -144,7 +146,6 @@
 | `E_POLICY_MODEL_CORRUPT` | `src/startupcheck.ts` |
 | `E_PRESET_READ_ONLY` | `src/grant.ts` |
 | `E_PRIVACY` | `src/provider.ts` |
-| `E_PROJECT_EGRESS` | `src/project.ts` `src/verbs.ts` |
 | `E_PROPOSAL_ARGV_BIN` | `src/proposals.ts` |
 | `E_PROPOSAL_ARGV_PIPE` | `src/proposals.ts` |
 | `E_PROPOSAL_BACKLOG` | `src/proposals.ts` |
@@ -252,6 +253,7 @@
 | `src/deploy/smoke.ts` | 冒烟 20 项（18 §4.3 / §4.5，99 §5.1） |
 | `src/deploy/watchdog.ts` | 看门狗 + 自动回滚（18 §4.3 / §4.5，99 §5.1） |
 | `src/doctor.ts` | 体检（D-6） |
+| `src/egress.ts` | H-7：代码外发的**按次授权**。 |
 | `src/embed.ts` | Embedding（13 §2 role: embed） |
 | `src/embedindex.ts` | 索引身份（C-2） |
 | `src/eval.ts` | 评估（19 §0.1 W-B / 01 §13）：唯一能证明"它变好了"的东西。 |

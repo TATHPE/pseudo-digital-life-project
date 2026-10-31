@@ -28,6 +28,7 @@ import { listProposals, getProposal, setProposalStatus } from "../proposals.ts";
 import { reviewQueue, noteReviewed } from "../surface.ts";
 import { openThreads, closeThread } from "../threads.ts";
 import { openGrant, listGrants, revokeGrant, currentPreset, setPreset, PRESETS, type Preset } from "../grant.ts";
+import { egressStatus, allowOnce, allowFor, revokeEgress } from "../egress.ts";
 import { listReceipts, markSeen, unseenCount } from "../notify.ts";
 import { listStanding, disableStanding } from "../standing.ts";
 import { cutLink, linkKey } from "../links.ts";
@@ -1000,6 +1001,34 @@ export function createWebServer(deps: WebDeps) {
         return;
       }
 
+      // ── 代码外发（H-7）：默认拒；这里让人批「只这一次」/「10 分钟」──
+      if (req.method === "GET" && url.pathname === "/api/egress") {
+        json(res, 200, egressStatus(deps.home, { now: now() }));
+        return;
+      }
+      if (req.method === "POST" && url.pathname === "/api/egress") {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
+        const body = JSON.parse(await readBody(req)) as { action?: string; path?: string; ttlMin?: number };
+        if (body.action === "once") {
+          if (!body.path) { json(res, 400, { error: "E_BAD_PATH" }); return; }
+          allowOnce(deps.home, body.path);
+          json(res, 200, { ok: true, ...egressStatus(deps.home, { now: now() }) });
+          return;
+        }
+        if (body.action === "window") {
+          const ttl = Math.min(60, Math.max(1, Number(body.ttlMin ?? 10))) * 60_000;
+          const r = allowFor(deps.home, ttl, "面板上批了「这段时间可以」");
+          json(res, 200, { ok: true, ...r, ...egressStatus(deps.home, { now: now() }) });
+          return;
+        }
+        if (body.action === "revoke") {
+          revokeEgress(deps.home);
+          json(res, 200, { ok: true, ...egressStatus(deps.home, { now: now() }) });
+          return;
+        }
+        json(res, 400, { error: "E_BAD_ACTION" });
+        return;
+      }
       // ── 权限档位（形状照 DSH：当前会话用输入框旁的选择器切）──
       if (req.method === "GET" && url.pathname === "/api/permission") {
         const cur = currentPreset(deps.home, now());

@@ -18,6 +18,8 @@ export interface VerbCtx {
    * shell.run 看到它就必须**脱敏环境变量**再跑 —— 窗口不该顺带把密钥也借出去。
    */
   grant?: { id: string; commands: string[]; scope: string; full?: boolean };
+  /** 当前 verb 名（出网闸与面板提示用） */
+  currentVerb?: string;
   /** 记忆类 verb 需要（不是所有 verb 都用得上） */
   db?: import("node:sqlite").DatabaseSync;
   embedder?: import("./embed.ts").Embedder | null;
@@ -88,6 +90,7 @@ import { search, searchDocs } from "./retrieve.ts";
 import { remember } from "./store.ts";
 import { createProposal } from "./proposals.ts";
 import { sanitizedEnv } from "./grant.ts";
+import { checkEgress, noteEgressRequest } from "./egress.ts";
 import { renderTemplate, templateCatalog, templateById, planRun, runArgv } from "./shell.ts";
 import { listDocs } from "./ingest.ts";
 import { dedupeTitle } from "./chunk.ts";
@@ -118,19 +121,27 @@ function staleNote(ctx: VerbCtx): string {
 }
 
 /**
- * 项目读取的出网闸（K-1 / H-7 的临时形态）。
+ * 项目读取的出网闸（H-7：按次授权）。
  *
  * 代码与记忆是两种隐私：读到的源码如果正被云端表达模型使用，就等于外发。
- * 默认拒绝，要显式 JJ_PROJECT_EGRESS=1 才放行；等 K-3 的 grant 上线后换成"按次授权"。
+ * 现在有三档，**默认最短**：
+ *   1. 默认拒：抛 E_NEEDS_EGRESS 并带上**具体路径**，面板据此问人
+ *   2. 人批「只这一次」→ 读一次就消耗
+ *   3. 人批「10 分钟内都行」→ 一扇短窗
+ * 外加无人值守模式 `JJ_PROJECT_EGRESS=1`（文档与 CI 用，不给人日常用）。
  */
-function egressEnv(ctx: VerbCtx): Record<string, string | undefined> {
+function egressEnv(ctx: VerbCtx, target: string): Record<string, string | undefined> {
   // 默认读 process.env；ctx.env 只是给测试注入用。
   // （踩过：只查 ctx.env 的话，命令行设了 JJ_PROJECT_EGRESS=1 也不会生效）
   const env = ctx.env ?? process.env;
-  if (expressIsRemote(ctx) && env.JJ_PROJECT_EGRESS !== "1") {
-    throw new Error("E_PROJECT_EGRESS: 当前表达模型在云端，读项目等于把代码发出去；要允许请设 JJ_PROJECT_EGRESS=1");
-  }
-  return env;
+  if (!expressIsRemote(ctx)) return env;              // 表达模型在本地：不发出去，不用批
+  const r = checkEgress(ctx.home, target, { env });
+  if (r.ok) return env;
+  noteEgressRequest(ctx.home, target, ctx.currentVerb ?? "project.read");
+  throw new Error(
+    "E_NEEDS_EGRESS: 当前表达模型在云端，读这一条等于把代码/文档发出去：" + target +
+    String.fromCharCode(10) + "  在面板上批「只这一次」或「10 分钟内都行」；无人值守用 JJ_PROJECT_EGRESS=1",
+  );
 }
 
 function expressIsRemote(ctx: VerbCtx): boolean {
@@ -413,7 +424,7 @@ export const verbs: VerbDef[] = [
     async run(a, ctx) {
       const r = project.readProjectFile(String(a.path ?? ""), {
         ...(a.from ? { from: Number(a.from) } : {}), ...(a.to ? { to: Number(a.to) } : {}),
-        env: egressEnv(ctx),
+        env: egressEnv(ctx, String(a.path ?? "")),
       });
       const head = `[${r.path}] ${r.bytes} 字节${r.truncated ? "（已截断，用 from/to 读其余）" : ""}` + String.fromCharCode(10);
       return head + r.text;
@@ -425,7 +436,7 @@ export const verbs: VerbDef[] = [
     params: S({ dir: { type: "string" } }, []),
     target: () => "internal",
     async run(a, ctx) {
-      const rows = project.listProject(String(a.dir ?? ""), egressEnv(ctx));
+      const rows = project.listProject(String(a.dir ?? ""), egressEnv(ctx, String(a.dir ?? "")));
       if (!rows.length) return "（空目录）";
       return rows.map((x) => (x.type === "dir" ? x.path + "/" : `${x.path}  ${x.bytes} B`)).join(String.fromCharCode(10));
     },
@@ -438,7 +449,8 @@ export const verbs: VerbDef[] = [
     async run(a, ctx) {
       const hits = project.searchProject(String(a.pattern ?? ""), {
         ...(a.glob ? { glob: String(a.glob) } : {}), ...(a.limit ? { limit: Number(a.limit) } : {}),
-        env: egressEnv(ctx),
+        // 搜索的目标是整棵树：批的时候人看到的是 glob/pattern
+        env: egressEnv(ctx, String(a.glob ?? a.pattern ?? ".")),
       });
       if (!hits.length) return "（没有匹配）";
       return hits.map((h) => `${h.path}:${h.line}: ${h.text}`).join(String.fromCharCode(10));

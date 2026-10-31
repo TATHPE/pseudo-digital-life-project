@@ -66,14 +66,15 @@ test("K-1 搜索：非法正则回落成字面量（搜 foo( 不该报错）", (
   assert.ok(docHits.some((h) => h.path === "docs/22-x.md"), "docs/ 也要能搜到");
 });
 
-test("K-1 出网闸：云端表达模型 + 未显式同意 → 拒（返回 E_PROJECT_EGRESS）", async () => {
+test("K-1/H-7 出网闸：云端表达模型 + 未批 → 拒（返回 E_NEEDS_EGRESS，带路径）", async () => {
   const { root, env } = fixture();
   const v = verbs.find((x) => x.name === "project.read")!;
   const base = { home: root, now: () => new Date() };
   // 未给 JJ_PROJECT_EGRESS：默认配置里 express 是云端 → 必须拒
   const deny = await v.run({ path: "src/recall.ts" }, { ...base, env: { JJ_PROJECT_HOME: root } } as never)
     .then((r: string) => r, (e: Error) => e.message);
-  assert.match(String(deny), /E_PROJECT_EGRESS/);
+  assert.match(String(deny), /E_NEEDS_EGRESS/);
+  assert.ok(String(deny).includes("src/recall.ts"), "要带上具体路径，人才知道在批什么");
   // 显式同意后放行
   const ok = await v.run({ path: "src/recall.ts" }, { ...base, env } as never);
   assert.match(String(ok), /recallForBrief/);

@@ -241,6 +241,30 @@ check("D-3 常驻指令能停用", await js(`(async () => {
   const c2 = document.querySelector('#st-list [data-std]');
   return !!c2 && /已停用/.test(c2.textContent);
 })()`));
+// ── H-7 代码外发：待批 → 批一次 → 收回 ────────────────
+check("H-7 外发待批能看见、能批一次", await js(`(async () => {
+  const card = document.querySelector('#egrlist [data-egrpath]');
+  if (!card) return false;
+  const path = card.dataset.egrpath;
+  const once = card.querySelector('button[data-egr=once]');
+  if (!once) return false;
+  once.click();
+  await new Promise((r) => setTimeout(r, 900));
+  const st = await (await fetch('/api/egress')).json();
+  return st.once >= 1 || (st.pending || []).every((p) => p.path !== path);
+})()`));
+
+check("H-7 外发窗口能收回", await js(`(async () => {
+  await fetch('/api/egress', { method: 'POST', headers: H, body: JSON.stringify({ action: 'window', ttlMin: 5 }) });
+  await new Promise((r) => setTimeout(r, 400));
+  const open = await (await fetch('/api/egress')).json();
+  if (!open.until) return false;
+  await fetch('/api/egress', { method: 'POST', headers: H, body: JSON.stringify({ action: 'revoke' }) });
+  const closed = await (await fetch('/api/egress')).json();
+  return !closed.until && !closed.open;
+})()`));
+
+
 check("无 JS 运行时错误", errs.length === 0, errs.slice(0, 2).join(" | "));
 
 // 图标：标签页 favicon 是静态 /icon.svg（以前是运行时 data URI，viewBox 写死导致空白）
@@ -380,3 +404,4 @@ for (const [n, ok, d] of out) {
 if (bad) console.log(`\n❌ ${bad} 项失败` + (skipped ? `｜⏭ ${skipped} 项跳过` : ""));
 else console.log("\n✅ 交互全部通过" + (skipped ? `｜⏭ ${skipped} 项跳过（空库）` : ""));
 process.exitCode = bad ? 1 : 0;
+

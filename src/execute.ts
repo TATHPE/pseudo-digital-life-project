@@ -167,7 +167,7 @@ export async function execute(
     profile: tier === "T3" ? (proposal?.profile ?? hostProfile()) : undefined,
   };
   try {
-    const out = await def.run(args, grantCtx ? { ...deps.ctx, grant: grantCtx } : deps.ctx);
+    const out = await def.run(args, { ...deps.ctx, currentVerb: def.name, ...(grantCtx ? { grant: grantCtx } : {}) });
     const ms = Date.now() - t0;
     audit("allowed", undefined, tier, ms, extra);
     return { ok: true, output: out, tier: tier, strength: auth.strength, verb, ms, ...(tokenId ? { capability: tokenId } : {}) };

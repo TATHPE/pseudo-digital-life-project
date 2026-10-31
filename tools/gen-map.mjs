@@ -24,7 +24,7 @@ const INVARIANTS = [
   ["没接上 = 没做完", "tools/ui-test.mjs", "check("],
   ["闸门先于模型", "src/nightly.ts", "export function isNoise"],
   ["参数有界", "src/decayparams.ts", "RANGES"],
-  ["内容只是资料", "src/verbs.ts", "E_PROJECT_EGRESS"],
+  ["内容只是资料", "src/verbs.ts", "E_NEEDS_EGRESS"],
   ["改功能先列清单", "AGENTS.md", "改一个功能先列清单"],
 ];
 

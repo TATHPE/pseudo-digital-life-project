@@ -523,6 +523,9 @@ export const PAGE = `<!doctype html>
 <aside id="side">
   <div class="sec" id="pendsec" hidden><h3>PENDING · 待确认</h3><div id="pendlist"></div></div>
   <div class="sec" id="propsec" hidden><h3><button type="button" data-tog="prop">它想做的 <span class="n" id="propcount"></span></button></h3><div id="proplist"></div></div>
+  <div class="sec" id="egrsec" hidden><h3><button type="button" data-tog="egr">它想读代码 <span class="n" id="egrcount"></span></button></h3>
+    <p class="hint">表达模型在云端时，读源码等于把代码发出去。默认拒；你可以只批一次，或批一段时间。</p>
+    <div id="egrlist"></div></div>
   <div class="sec" id="rcpsec" hidden><h3><button type="button" data-tog="rcp">它做完的事 <span class="n" id="rcpcount"></span></button></h3>
     <p class="hint">后台跑过的东西都在这里。<b>点了「知道了」才算我看见了</b> —— 三天没人看的，对应常驻指令会自动停用。</p>
     <div id="rcplist"></div></div>
@@ -934,7 +937,7 @@ async function pending() {
   const sec = $("#pendsec"), box = $("#pendlist");
   const open = (list || []).filter((p) => p.status === "pending" && !p.expired);
   paintPendBadge(open.length);
-  loadProposals(); loadSurfaceReview(); loadThreads(); loadReceipts(); loadStanding(); loadPermission();
+  loadProposals(); loadSurfaceReview(); loadThreads(); loadReceipts(); loadStanding(); loadPermission(); loadEgress();
   sec.hidden = open.length === 0;
   if (!open.length) { box.innerHTML = ""; return; }
   box.innerHTML = open.map((p) =>
@@ -1646,6 +1649,39 @@ function pushTicker(msg) {
   TICK_TIMER = setTimeout(function () { TICK_MSG = null; readout(); }, 5000);
 }
 
+// ── 代码外发（H-7）：它想读、被挡下、等人批 ─────────────
+async function loadEgress() {
+  var st;
+  try { st = await (await fetch("/api/egress")).json(); } catch (e) { return; }
+  var rows = (st && st.pending) || [];
+  $("#egrcount").textContent = st.until ? "开放中" : (rows.length ? rows.length + " 条" : "");
+  $("#egrsec").hidden = !rows.length && !st.until;
+  var head = st.until
+    ? "<div class='pend'><span class='cmd'>代码外发：开放中（到 " + escapeHtml(String(st.until).slice(11, 16)) + "）</span>" +
+      "<div class='acts'><button class='no' data-egr='revoke'>收回</button></div></div>"
+    : (st.forced ? "<p class='hint'>当前由 JJ_PROJECT_EGRESS=1 强制放行（无人值守模式）。</p>" : "");
+  $("#egrlist").innerHTML = head + rows.map(function (r) {
+    return "<div class='pend' data-egrpath='" + escapeHtml(r.path) + "'>" +
+      "<span class='cmd'>" + escapeHtml(r.path) + "</span>" +
+      "<span class='dir'>" + escapeHtml(String(r.at).slice(0, 16)) + " · " + escapeHtml(r.verb) + "</span>" +
+      "<div class='acts'>" +
+        "<button class='ok' data-egr='once'>只这一次</button>" +
+        "<button class='ok' data-egr='window'>10 分钟内都行</button>" +
+        "<button class='no' data-egr='deny'>拒绝</button>" +
+      "</div><span class='msg'></span></div>";
+  }).join("");
+}
+$("#egrlist").onclick = async function (e) {
+  var b = e.target.closest("button[data-egr]");
+  if (!b) return;
+  var card = b.closest("[data-egrpath]");
+  var act = b.dataset.egr;
+  var body = { action: act === "window" ? "window" : act };
+  if (act === "once" && card) body.path = card.dataset.egrpath;
+  if (act === "deny") { if (card) card.remove(); var left = $("#egrlist").children.length; $("#egrcount").textContent = left ? left + " 条" : ""; $("#egrsec").hidden = left === 0; return; }
+  await fetch("/api/egress", { method: "POST", headers: H, body: JSON.stringify(body) });
+  await loadEgress();
+};
 // ── 权限档：当前会话在输入框旁切；设置只放「以后新建会话的默认值」──
 var PERM = { preset: "ask", remainingS: 0 };
 var PERM_LABEL = { ask: "逐次确认", read: "仅可查看", write: "工作区内修改", full: "完全权限" };

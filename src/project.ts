@@ -12,7 +12,7 @@
  *     以及任何 `*.secret` / `.env*`。它们不是"项目源码"，是运行期私密状态。
  *
  * 出网：代码和记忆是两种隐私。读到的内容如果正被云端表达模型使用，
- * 默认**拒绝**（`E_PROJECT_EGRESS`），要显式 `JJ_PROJECT_EGRESS=1`。
+ * 默认**拒绝**（`E_NEEDS_EGRESS`），要显式 `JJ_PROJECT_EGRESS=1`。
  * 这是 H-7（按次授权）的临时形态，等 K-3 的 grant 上线后换成按次。
  */
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
