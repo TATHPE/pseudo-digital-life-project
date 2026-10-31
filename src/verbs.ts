@@ -81,6 +81,7 @@ const maxList = 200;
 
 import { search, searchDocs } from "./retrieve.ts";
 import { remember } from "./store.ts";
+import { createProposal } from "./proposals.ts";
 import { renderTemplate, templateCatalog, templateById, planRun, runArgv } from "./shell.ts";
 import { listDocs } from "./ingest.ts";
 import { dedupeTitle } from "./chunk.ts";
@@ -191,6 +192,26 @@ export const verbs: VerbDef[] = [
         scoredBy: "tool:memory.remember",
       });
       return `已记住 [mem:${id}]（${layer}/${kind}）`;
+    },
+  },
+  {
+    name: "proposal.create", tier: "T1", reversible: true,
+    description: "把你「想做但需要人点头」的事写成一张提议卡（写 data/pending，不执行、不改代码）。" +
+      "必须说清楚：做什么、为什么、影响哪些文件。人看完可以说「不做」。",
+    params: S({
+      title: { type: "string", description: "一句话：我想做 X（4–80 字）" },
+      why: { type: "string", description: "为什么值得做（来自对话里的需求，别编）" },
+      plan: { type: "array", description: "大概怎么做，最多 8 步", items: { type: "string" } },
+      argv: { type: "array", description: "如果是一条命令就能做的，给出确切命令（只作为展示，不会被自动执行）", items: { type: "string" } },
+      touches: { type: "array", description: "会改哪些文件（仓库相对路径，必须 jingjing/ 或 docs/ 开头）", items: { type: "string" } },
+      risk: { type: "string", enum: ["low", "medium", "high"] },
+    }, ["title", "why"]),
+    target: () => "data/pending",
+    async run(a, ctx) {
+      const r = createProposal(ctx.home, { ...(a as Record<string, unknown>), from: "agent" } as never, ctx.now());
+      return r.deduped
+        ? `同一件事已经有一张卡了 [${r.proposal.id}]（第 ${r.proposal.seen} 次提到）：${r.proposal.title}`
+        : `已提议 [${r.proposal.id}]：${r.proposal.title}`;
     },
   },
   {

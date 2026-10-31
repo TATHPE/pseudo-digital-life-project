@@ -95,7 +95,68 @@ await js(`(() => { const i = document.querySelector('#m'); i.value = '用三个�
   document.querySelector('#composer').dispatchEvent(new Event('submit', { cancelable: true })); return true; })()`);
 await sleep(6000);
 const after = await js(countMsgs);
-check("发送后有新内容", after >= before + 2, `${before} → ${after} 条`);
+// 断言的是「发送这条链路通」：用户那条一定出现；回复取决于有没有可用模型
+// （夹具是独立 home，通常没有云端 key —— 所以不把"模型必须回"当成面板的错）
+check("发送后有新内容", after >= before + 1, `${before} → ${after} 条`);
+// ── K-2 提议卡（F-1 要求"每条一条断言"）────────────
+const hasProp = await js("!!document.querySelector('#proplist button[data-prop]')");
+if (hasProp) {
+  check("提议卡能点开（带确切 argv + 会动哪些文件）", await js(`(() => {
+    const b = document.querySelector('#proplist button[data-prop]');
+    if (!b) return false; b.click();
+    const v = document.querySelector('#propview');
+    return !v.hidden && document.querySelector('#pv-argv').textContent.length > 0
+      && document.querySelector('#pv-why').textContent.length > 3
+      && /会动：/.test(document.querySelector('#pv-touch').textContent);
+  })()`));
+  check("「不做」真的落盘（卡从待办里消失）", await js(`(async () => {
+    const before = document.querySelectorAll('#proplist button[data-prop]').length;
+    document.querySelector('#pv-no').click();
+    await new Promise((r) => setTimeout(r, 1200));
+    const after = document.querySelectorAll('#proplist button[data-prop]').length;
+    return after === before - 1;
+  })()`));
+} else skip("提议卡能点开", "没有待回应的提议");
+
+// ── J-5b 抽检：送到眼前，且能当场断 ────────────────
+const hasSurf = await js("!!document.querySelector('#surflist [data-key]')");
+if (hasSurf) {
+  check("抽检把「为什么连」一起送到眼前", await js(`(() => {
+    const c = document.querySelector('#surflist [data-key]');
+    return /为什么连：/.test(c.textContent) && !!c.querySelector("button[data-act=no]");
+  })()`));
+  check("点「不对」→ 卡片消失（线已断）", await js(`(async () => {
+    const c = document.querySelector('#surflist [data-key]');
+    const key = c.dataset.key;
+    c.querySelector("button[data-act=no]").click();
+    await new Promise((r) => setTimeout(r, 1600));
+    const rows = [...document.querySelectorAll('#surflist [data-key]')].map((x) => x.dataset.key);
+    return !rows.includes(key);
+  })()`));
+} else skip("抽检把「为什么连」一起送到眼前", "没有待抽检的线");
+
+// ── F-1 #3 工具列表可筛 + 默认折叠 ─────────────────
+check("工具列表默认只铺 6 项 + 能筛", await js(`(() => {
+  const rows = document.querySelectorAll('#toolrows button[item], #toolrows button.item').length;
+  const q = document.querySelector('#toolq');
+  if (!q) return false;
+  q.value = "memory"; q.dispatchEvent(new Event("input"));
+  const filtered = document.querySelectorAll('#toolrows button.item').length;
+  q.value = ""; q.dispatchEvent(new Event("input"));
+  return rows <= 7 && filtered > 0 && filtered < 22;
+})()`));
+
+// ── F-1 #5 记忆详情：看得出来源、改过什么 ──────────
+if (hasMem) {
+  check("记忆详情显示来源 / 原话 / 改动痕迹", await js(`(async () => {
+    const b = document.querySelector('#side .item[data-view=memview]');
+    if (!b) return false; b.click();
+    await new Promise((r) => setTimeout(r, 900));
+    const t = document.querySelector('#mv-prov').textContent;
+    return /来自：/.test(t);
+  })()`));
+} else skip("记忆详情显示来源", "空库");
+
 check("无 JS 运行时错误", errs.length === 0, errs.slice(0, 2).join(" | "));
 
 // 图标：标签页 favicon 是静态 /icon.svg（以前是运行时 data URI，viewBox 写死导致空白）

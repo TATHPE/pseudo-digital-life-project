@@ -23,7 +23,10 @@ import { gate as coolGate, reset as coolReset } from "../cooldown.ts";
 import { preflight, lastPreflight } from "../preflight.ts";
 import { indexState } from "../embedindex.ts";
 import { AVATAR_FRAMES, DEFAULT_AVATAR, isAvatarFrame } from "./avatar.ts";
-import { getPending, listPending, updatePending } from "../confirm.ts";
+import { listPending, getPending, updatePending } from "../confirm.ts";
+import { listProposals, getProposal, setProposalStatus } from "../proposals.ts";
+import { reviewQueue, noteReviewed } from "../surface.ts";
+import { cutLink, linkKey } from "../links.ts";
 import { readStateSafe } from "../deploy/slot.ts";
 import { listDocs, forgetDoc, setDocSensitivity, ingestPath, collectFiles } from "../ingest.ts";
 import { bigramText } from "../text.ts";
@@ -822,17 +825,51 @@ export function createWebServer(deps: WebDeps) {
             : [])
           : (deps.db.prepare(
             `SELECT id,text,stage,weight,kind FROM memories WHERE status='active'
-             ORDER BY weight DESC, updated_at DESC LIMIT 40`).all() as Array<{ id: number; text: string; stage: string; weight: number; kind: string }>);
+             ORDER BY weight DESC, updated_at DESC LIMIT ? OFFSET ?`)
+            .all(
+              Math.min(200, Math.max(1, Number(url.searchParams.get("limit") ?? 40))),
+              Math.max(0, Number(url.searchParams.get("offset") ?? 0)),
+            ) as Array<{ id: number; text: string; stage: string; weight: number; kind: string }>);
         json(res, 200, rows);
         return;
       }
       const memId = url.pathname.match(/^\/api\/memories\/(\d+)$/);
       if (req.method === "GET" && memId) {
+        const id = Number(memId[1]);
         const row = deps.db.prepare(
-          `SELECT id,text,kind,layer,stage,weight,w0,importance,sensitivity,taint,scored_by,status,created_at,last_decay_at
-           FROM memories WHERE id=?`).get(Number(memId[1]));
+          `SELECT id,text,kind,layer,subject,stage,weight,w0,importance,sensitivity,taint,scored_by,status,
+                  quote,source_kind,source_ref,superseded_by,created_at,updated_at,last_decay_at
+           FROM memories WHERE id=?`).get(id) as Record<string, unknown> | undefined;
         if (!row) { json(res, 404, { error: "E_NOT_FOUND" }); return; }
-        json(res, 200, row);
+
+        // F-1 #5「看不出来源」：一条记忆必须能回答"它从哪来、改过什么"
+        // pre-image 来自 events(kind='memory_text_changed')，旧正文存在 payload 里（E-4/E-5 写的）
+        const changes = (deps.db.prepare(
+          `SELECT ts, actor, payload FROM events WHERE kind='memory_text_changed' AND target=? ORDER BY ts DESC LIMIT 10`,
+        ).all(String(id)) as Array<{ ts: string; actor: string; payload: string }>)
+          .map((e) => {
+            // 字段名是 store.ts 写的 `before_text`（不是 old）—— 这里猜错过一次
+            let old = "";
+            try {
+              const j = JSON.parse(e.payload) as { before_text?: string; old?: string };
+              old = String(j.before_text ?? j.old ?? "");
+            } catch { /* 老记录没有 pre-image */ }
+            return { at: e.ts, by: e.actor, old };
+          })
+          .filter((x) => x.old);
+
+        // 文档来源：source_ref 存的是相对路径（ingest 时写的），能对上的给出 doc id
+        let doc: { id: string; title: string } | null = null;
+        const ref = String(row.source_ref ?? "");
+        if (row.source_kind === "doc" && ref) {
+          try {
+            const d = deps.db.prepare(
+              "SELECT id,title FROM documents WHERE rel_path=? AND deleted_at IS NULL LIMIT 1",
+            ).get(ref) as { id: string; title: string } | undefined;
+            if (d) doc = { id: d.id, title: d.title };
+          } catch { /* 没有 documents 表也不该 500 */ }
+        }
+        json(res, 200, { ...row, provenance: { changes, doc } });
         return;
       }
       const forget = url.pathname.match(/^\/api\/memories\/(\d+)\/forget$/);
@@ -915,6 +952,50 @@ export function createWebServer(deps: WebDeps) {
         json(res, 200, { ok: true, chunks: rows.length });
         return;
       }
+      // ── 提议（K-2）：它想做的事，人一句话决定 ──────────
+      if (req.method === "GET" && url.pathname === "/api/proposals") {
+        const st = (url.searchParams.get("status") ?? "open") as "open" | "accepted" | "rejected" | "all";
+        json(res, 200, listProposals(deps.home, { status: st }));
+        return;
+      }
+      const propId = url.pathname.match(/^\/api\/proposals\/(prp_[0-9a-z]{6,40})$/);
+      if (req.method === "POST" && propId) {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
+        const body = JSON.parse(await readBody(req)) as { action?: string; reason?: string };
+        const p = getProposal(deps.home, String(propId[1]));
+        if (!p) { json(res, 404, { error: "E_PROPOSAL_NOT_FOUND" }); return; }
+        if (body.action !== "accept" && body.action !== "reject") { json(res, 400, { error: "E_BAD_ACTION" }); return; }
+        const next = setProposalStatus(
+          deps.home, p.id, body.action === "accept" ? "accepted" : "rejected",
+          String(body.reason ?? "").slice(0, 300) || (body.action === "accept" ? "我同意，你来做" : "不做"),
+        );
+        // 让它记住这次决定（下次别再提同一张卡）
+        appendEvent(deps.inboxDir, {
+          v: 1, id: newEventId(), ts: now().toISOString(), kind: "utterance", actor: "user",
+          payload: { text: `（关于「${p.title}」：${body.action === "accept" ? "我同意，你来做" : "不做"}${body.reason ? "，因为" + String(body.reason).slice(0, 80) : ""}）` },
+        });
+        json(res, 200, { ok: true, status: next?.status ?? null });
+        return;
+      }
+
+      // ── 抽检（J-5b）：把线送到眼前，当场能断 ────────────
+      if (req.method === "GET" && url.pathname === "/api/surface/review") {
+        json(res, 200, reviewQueue(deps.db, now()));
+        return;
+      }
+      if (req.method === "POST" && url.pathname === "/api/surface/review") {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
+        const body = JSON.parse(await readBody(req)) as { src_id?: number; dst_id?: number; rel?: string; ok?: boolean };
+        if (!body.src_id || !body.dst_id || !body.rel) { json(res, 400, { error: "E_BAD_LINK" }); return; }
+        const key = linkKey(body.src_id, body.dst_id, body.rel);
+        noteReviewed(deps.db, now(), key);
+        if (body.ok === false) {
+          cutLink(deps.db, { src_id: body.src_id, dst_id: body.dst_id, rel: body.rel }, now());
+        }
+        json(res, 200, { ok: true, cut: body.ok === false, key });
+        return;
+      }
+
       if (req.method === "GET" && url.pathname === "/api/pending") {
         // 待确认的 T3 提案（面板上那张卡）：带确切 argv，人看完才能点
         json(res, 200, listPending(deps.home, now()).map((p) => ({

@@ -124,3 +124,74 @@ function jaccard(a: string, b: string): number {
   for (const x of A) if (B.has(x)) inter++;
   return inter / (A.size + B.size - inter);
 }
+
+/**
+ * J-5b：把"抽检"送到眼前。
+ *
+ * 前面 `pickSurface` 是"它自己想提一句"（一天 ≤2 次、7 天内不重复）；
+ * 这里是**人要看的那几根线**：最没把握的先看（weight 最低），一天最多 3 根，
+ * 判完就记账（`surface_reviewed`），不重复烦人。
+ *
+ * 为什么要有这一层：`jingjing links list` 只有开了终端的人看得见，
+ * 而"关系判得对不对"这件事，只有人在日常里顺手瞄一眼才能发现 ——
+ * 送不到眼前的抽检等于没做。
+ */
+export const REVIEW_PER_DAY = 3;
+
+export function reviewQueue(db: DatabaseSync, now: Date, limit = REVIEW_PER_DAY): Array<{
+  src_id: number; dst_id: number; rel: string; weight: number; why: string | null;
+  a_text: string; b_text: string; key: string;
+}> {
+  const day = localDay(now);
+  const seen = new Set(reviewedToday(db, now));
+  const rows = db
+    .prepare(
+      `SELECT l.src_id, l.dst_id, l.rel, l.weight, l.why,
+              a.text AS a_text, b.text AS b_text
+       FROM memory_links l
+       JOIN memories a ON a.id = l.src_id
+       JOIN memories b ON b.id = l.dst_id
+       WHERE (l.valid_to IS NULL OR julianday(l.valid_to) > julianday(?))
+         -- supersedes 是规则自己建的（同一件事的新旧版本），不是需要人判的关系，
+         -- 混进抽检只会稀释注意力：真正该看的是“它推出来的那些 like/可能相关”
+         AND l.rel <> 'supersedes'
+       ORDER BY l.weight ASC, l.created_at DESC`,
+    )
+    .all(now.toISOString()) as unknown as Array<{
+      src_id: number; dst_id: number; rel: string; weight: number; why: string | null;
+      a_text: string; b_text: string;
+    }>;
+  const out: Array<{ src_id: number; dst_id: number; rel: string; weight: number; why: string | null; a_text: string; b_text: string; key: string }> = [];
+  for (const r of rows) {
+    const key = `${r.src_id}:${r.dst_id}:${r.rel}`;
+    if (seen.has(key)) continue;
+    out.push({ ...r, key });
+    if (out.length >= limit) break;
+  }
+  void day;
+  return out;
+}
+
+/** 记一笔"人看过了"（对/不对都记，否则同一条会天天问） */
+export function noteReviewed(db: DatabaseSync, now: Date, key: string): void {
+  const day = localDay(now);
+  const cur = readReviewed(db);
+  const next = cur.filter((x) => x.day >= day).slice(-200);
+  next.push({ day, key });
+  db.prepare("INSERT INTO meta(key,value) VALUES('surface_reviewed',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value")
+    .run(JSON.stringify(next));
+}
+
+function reviewedToday(db: DatabaseSync, now: Date): string[] {
+  const day = localDay(now);
+  return readReviewed(db).filter((x) => x.day === day).map((x) => x.key);
+}
+
+function readReviewed(db: DatabaseSync): Array<{ day: string; key: string }> {
+  try {
+    const r = db.prepare("SELECT value FROM meta WHERE key='surface_reviewed'").get() as { value?: string } | undefined;
+    if (!r?.value) return [];
+    const j = JSON.parse(r.value) as Array<{ day: string; key: string }>;
+    return Array.isArray(j) ? j.filter((x) => x && typeof x.day === "string" && typeof x.key === "string") : [];
+  } catch { return []; }
+}

@@ -12,9 +12,10 @@
     "typecheck": "tsc --noEmit",
     "check": "npm run typecheck && npm test",
     "brief": "node src/cli/brief-demo.ts",
-    "ui:test": "node tools/ui-test.mjs",
+    "ui:test": "node tools/ui-fixture.ts",
     "ui:shot": "node tools/ui-shot.mjs",
-    "deploy": "node src/cli/deploy.ts"
+    "deploy": "node src/cli/deploy.ts",
+    "ui:test:live": "node tools/ui-test.mjs"
   },
   "dependencies": {
     "casbin": "^5.51.1",

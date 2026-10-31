@@ -15,6 +15,8 @@ import { routerFrom, createTransport, assertAllLoopback } from "../transport.ts"
 import { validateRouter, PrivacyError } from "../provider.ts";
 import { createStore, fingerprint, type Provider } from "../auth.ts";
 import { record, checkBudget, estimateCost, spentToday } from "../budget.ts";
+import { listLinks, cutLink } from "../links.ts";
+import { listProposals, getProposal, setProposalStatus } from "../proposals.ts";
 import { createWebServer } from "../web/server.ts";
 import { execute } from "../execute.ts";
 import { createStreamTransport, createChatTransport } from "../transport.ts";
@@ -433,6 +435,38 @@ async function main(): Promise<void> {
       process.exitCode = 2;
       return;
     }
+    case "proposal": {
+      // K-2：它提的要求就在 data/pending 里；人一句话就能拒
+      const op = rest[0] ?? "list";
+      if (op === "list") {
+        const st = (rest[1] as "open" | "all" | "accepted" | "rejected") ?? "open";
+        const rows = listProposals(HOME, { status: st });
+        if (!rows.length) { console.log("（没有等回应的提议）"); return; }
+        rows.forEach((x, i) => {
+          console.log(`P${i + 1}  [${x.id}] ${x.title}  （${x.risk} 风险 · 提到过 ${x.seen} 次）`);
+          console.log(`    为什么：${x.why}`);
+          if (x.touches.length) console.log(`    会动：${x.touches.join(", ")}`);
+          if (x.argv.length) console.log(`    命令：${x.argv.join(" ")}（只是展示，不会自动跑）`);
+          x.plan.forEach((step, j) => console.log(`      ${j + 1}. ${step}`));
+        });
+        console.log(String.fromCharCode(10) + "接受 / 拒绝：jingjing proposal accept|reject <id> [理由]");
+        return;
+      }
+      if (op === "accept" || op === "reject") {
+        const id = String(rest[1] ?? "").trim();
+        if (!getProposal(HOME, id)) { console.error("E_PROPOSAL_NOT_FOUND: " + id); process.exitCode = 1; return; }
+        const reason = rest.slice(2).join(" ") || (op === "accept" ? "我同意，你来做" : "不做");
+        const next = setProposalStatus(HOME, id, op === "accept" ? "accepted" : "rejected", reason);
+        console.log(JSON.stringify({
+          ok: true, id, status: next?.status,
+          note: op === "accept" ? "已同意 —— 具体执行仍要授权（K-3）或你自己跑" : "已拒绝",
+        }, null, 2));
+        return;
+      }
+      console.error("用法: jingjing proposal list|accept|reject <id>");
+      process.exitCode = 2;
+      return;
+    }
     case "links": {
       // J-5：抽检与一句话拆线。关系必须"送到眼前"，而且**当场能断**。
       const d = openDb(dbFile);
@@ -463,23 +497,10 @@ async function main(): Promise<void> {
         const arg = String(rest[1] ?? "").trim();
         const idx = Number(arg.replace(/^L/i, ""));
         if (!Number.isFinite(idx) || idx < 1) { console.error("用法: jingjing links cut L<编号>（编号来自 jingjing links）"); process.exitCode = 2; return; }
-        const rows = d.db.prepare(`
-          SELECT l.src_id, l.dst_id, l.rel FROM memory_links l
-          WHERE l.valid_to IS NULL OR julianday(l.valid_to) > julianday(?)
-          ORDER BY l.created_at DESC LIMIT ?`).all(now.toISOString(), idx) as Array<{ src_id: number; dst_id: number; rel: string }>;
+        const rows = listLinks(d.db, now, idx);
         const t = rows[idx - 1];
         if (!t) { console.error("E_NO_LINK: 没有这个编号（先跑 jingjing links 看当前列表）"); process.exitCode = 1; return; }
-        // 作废写止期（历史仍查得到），同时进黑名单（永不自动接回）
-        d.db.prepare("UPDATE memory_links SET valid_to=? WHERE src_id=? AND dst_id=? AND rel=?")
-          .run(now.toISOString(), t.src_id, t.dst_id, t.rel);
-        const key = `${t.src_id}:${t.dst_id}:${t.rel}`;
-        const cur = String((d.db.prepare("SELECT value FROM meta WHERE key='links_blocked'").get() as { value?: string } | undefined)?.value ?? "");
-        const set = new Set(cur.split(String.fromCharCode(10)).filter(Boolean));
-        set.add(key);
-        d.db.prepare("INSERT INTO meta(key,value) VALUES('links_blocked',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value")
-          .run([...set].join(String.fromCharCode(10)));
-        d.db.prepare("INSERT INTO events(ts,kind,actor,target,payload,ok) VALUES(?,?,?,?,?,1)")
-          .run(now.toISOString(), "link_cut", "user", key, "人拆掉了这根线");
+        const key = cutLink(d.db, t, now);
         console.log(JSON.stringify({ ok: true, cut: key, note: "作废写止期 + 进黑名单，夜间不会再自动接回" }, null, 2));
         return;
       }

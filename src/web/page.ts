@@ -393,6 +393,16 @@ export const PAGE = `<!doctype html>
 
   /* 能力表（F-2）：一行一类，点开看条目；降级项直接标红 */
   #cap-list { margin-top:6px; }
+  /* 提议卡 / 抽检 / 溯源：都跟全站同一套（黑底 · 白细线 · 加粗白字），不引入新颜色 */
+  .surf .cmd { font-weight: 600; }
+  .provbox { margin: 10px 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 2px; }
+  .provbox .quote { margin: 6px 0; color: var(--fg); opacity: .85; font-style: normal; }
+  .provbox .hist summary { cursor: pointer; color: var(--dim); }
+  .provbox .oldver { margin-top: 8px; padding-left: 8px; border-left: 1px solid var(--line); opacity: .8; }
+  #toollist .searchbox { margin: 6px 0; }
+  .item.mini { padding: 4px 6px; font-size: 12px; }
+  .dimmore { color: var(--dim); }
+
   .capbox { border:1px solid var(--line-dim); margin:4px 0; }
   .capbox > summary { padding:5px 7px; font:10px/1 var(--mono); letter-spacing:.12em;
                       color:var(--ink-dim); cursor:pointer; list-style:none; }
@@ -485,6 +495,10 @@ export const PAGE = `<!doctype html>
 
 <aside id="side">
   <div class="sec" id="pendsec" hidden><h3>PENDING · 待确认</h3><div id="pendlist"></div></div>
+  <div class="sec" id="propsec" hidden><h3><button type="button" data-tog="prop">它想做的 <span class="n" id="propcount"></span></button></h3><div id="proplist"></div></div>
+  <div class="sec" id="surfsec" hidden><h3><button type="button" data-tog="surf">抽检 <span class="n" id="surfcount"></span></button></h3>
+    <p class="hint">这几根线是它自己连的，最没把握的排前面。判错了就点「不对」，当场断。</p>
+    <div id="surflist"></div></div>
   <div class="sec"><input id="q" class="searchbox" placeholder="搜记忆 / 文档…（Ctrl+K）" autocomplete="off"></div>
   <div class="sec"><h3>最近</h3><div id="sesslist"></div></div>
   <!-- 内容在前、参考在后：TOOLS 有 16 项，放在中间会把 DOCS / MEMORY 挤到折叠线以下 -->
@@ -516,7 +530,12 @@ export const PAGE = `<!doctype html>
     </div></div>
   <div class="sec" data-sec="mem"><h3><button type="button" data-tog="mem">MEMORY <span class="n" id="memcount"></span></button></h3><div id="memlist"></div></div>
   <div class="sec" data-sec="actions"><h3><button type="button" data-tog="actions">ACTIONS <span class="n" id="actcount"></span></button></h3><div id="auditlist"></div></div>
-  <div class="sec"><button class="fold" id="foldtools">TOOLS <span class="n" id="toolcount"></span></button><div id="toollist" hidden><button class="item on" data-view="chat">对话<span class="m">与鲸鲸说话</span></button></div></div>
+  <div class="sec"><button class="fold" id="foldtools">TOOLS <span class="n" id="toolcount"></span></button>
+    <div id="toollist" hidden>
+      <input id="toolq" class="searchbox" placeholder="筛工具名 / 说明…" autocomplete="off">
+      <div id="toolrows"><button class="item on" data-view="chat">对话<span class="m">与鲸鲸说话</span></button></div>
+      <button class="item dimmore" id="toolmore" hidden>显示全部</button>
+    </div></div>
   <div class="sec"><h3>CONFIG</h3>
     <button class="item" data-view="cfg">设置<span class="m">接口 / 人格</span></button>
   </div>
@@ -547,11 +566,29 @@ export const PAGE = `<!doctype html>
       </div>
     </div>
 
+    <div id="propview" hidden>
+      <div class="panelbox">
+        <h2 id="pv-title">它想做的一件事</h2>
+        <p class="hint" id="pv-meta"></p>
+        <p id="pv-why" style="white-space:pre-wrap"></p>
+        <div id="pv-plan"></div>
+        <p class="hint">命令（只是它写下的原样，**不会**自动执行）</p>
+        <pre class="code" id="pv-argv" style="white-space:pre-wrap"></pre>
+        <p class="hint" id="pv-touch"></p>
+        <div class="acts">
+          <button id="pv-yes" class="primary">做吧</button>
+          <button id="pv-no">不做</button>
+          <span id="pv-msg" class="hint"></span>
+        </div>
+      </div>
+    </div>
+
     <div id="memview" hidden>
       <div class="panelbox">
         <h2>记忆 · MEMORY</h2>
         <p id="mv-text" style="white-space:pre-wrap"></p>
         <p class="hint" id="mv-meta"></p>
+        <div id="mv-prov" class="provbox"></div>
         <label class="hint">改正文（纠错就改这里，不用碰数据库）</label>
         <textarea id="mv-edit" spellcheck="false"></textarea>
         <div class="rowmini">
@@ -722,7 +759,7 @@ function show(v) {
   if (view === "chat" && v !== "chat") chatScroll = $("#scroll").scrollTop;
   view = v;
   document.body.dataset.view = v;   // CSS 用它把「回到最新」锁在对话里
-  for (const id of ["chat", "cfg", "toolview", "memview", "docview", "auditview", "searchview"]) $("#" + id).hidden = id !== v;
+  for (const id of ["chat", "cfg", "toolview", "memview", "docview", "auditview", "searchview", "propview"]) $("#" + id).hidden = id !== v;
   $("#composer").style.display = v === "chat" ? "" : "none";
   // "回到最新"是对话专用的，别的界面不该出现
   if (v !== "chat") $("#jump").classList.remove("on");
@@ -849,6 +886,7 @@ async function pending() {
   const sec = $("#pendsec"), box = $("#pendlist");
   const open = (list || []).filter((p) => p.status === "pending" && !p.expired);
   paintPendBadge(open.length);
+  loadProposals(); loadSurfaceReview();
   sec.hidden = open.length === 0;
   if (!open.length) { box.innerHTML = ""; return; }
   box.innerHTML = open.map((p) =>
@@ -1445,14 +1483,31 @@ function jumpToDay(label) {
   const el = els.find((e) => e.textContent.startsWith(label));
   if (el) el.scrollIntoView({ block: "start" });
 }
+var TOOLQ = "", TOOLALL = false;
 async function tools() {
   const ts = await (await fetch("/api/tools")).json();
   TOOLS = ts;
   var cnt = $("#toolcount"); if (cnt) cnt.textContent = ts.length + " 项";
-  $("#toollist").innerHTML = ts.map((t, i) =>
-    "<button class='item' data-view='toolview' data-tool='" + i + "'><span class='preview tname'>" + t.name +
-    "<span class='tier'>" + t.tier + "</span></span><span class='m'>" + escapeHtml(t.description) + "</span></button>").join("");
+  paintTools();
 }
+/** F-1 #3：16 项全铺开会把 DOCS/MEMORY 挤到折叠线以下，所以默认只给 6 项 + 搜索 */
+function paintTools() {
+  var q = TOOLQ.trim().toLowerCase();
+  var rows = TOOLS.map(function (t, i) { return { t: t, i: i }; })
+    .filter(function (x) { return !q || (x.t.name + " " + x.t.description).toLowerCase().indexOf(q) >= 0; });
+  var shown = TOOLALL || q ? rows : rows.slice(0, 6);
+  $("#toolrows").innerHTML = shown.length
+    ? shown.map(function (x) {
+      return "<button class='item' data-view='toolview' data-tool='" + x.i + "'><span class='preview tname'>" + x.t.name +
+        "<span class='tier'>" + x.t.tier + "</span></span><span class='m'>" + escapeHtml(x.t.description) + "</span></button>";
+    }).join("")
+    : "<div class='hint'>没有匹配的工具</div>";
+  var more = $("#toolmore");
+  more.hidden = Boolean(q) || TOOLALL || rows.length <= 6;
+  more.textContent = "显示全部 " + rows.length + " 项";
+}
+$("#toolq").addEventListener("input", function () { TOOLQ = this.value; paintTools(); });
+$("#toolmore").addEventListener("click", function () { TOOLALL = true; paintTools(); });
 const renderTools = () => tools();
 async function memories() {
   const rows = await (await fetch("/api/memories")).json();
@@ -1473,6 +1528,88 @@ async function openTool(i) {
   $("#t-use").onclick = () => { show("chat"); $("#m").value = "用 " + t.name + " "; $("#m").focus(); };
   show("toolview");
 }
+// ── 它想做的事（K-2）：一张卡说清 做什么 / 为什么 / 会动哪些文件 ──
+var PROPS = [];
+async function loadProposals() {
+  var rows;
+  try { rows = await (await fetch("/api/proposals?status=open")).json(); }
+  catch (e) { return; }
+  PROPS = Array.isArray(rows) ? rows : [];
+  var sec = $("#propsec"), n = PROPS.length;
+  $("#propcount").textContent = n ? n + " 件" : "";
+  sec.hidden = n === 0;
+  $("#proplist").innerHTML = PROPS.map(function (x) {
+    return "<button class='item' data-prop='" + escapeHtml(x.id) + "'>" +
+      "<span class='preview'>" + escapeHtml(x.title) + "</span>" +
+      "<span class='m'>" + escapeHtml(x.risk) + " 风险" + (x.seen > 1 ? " · 提过 " + x.seen + " 次" : "") + "</span></button>";
+  }).join("");
+}
+function openProposal(id) {
+  var x = PROPS.filter(function (y) { return y.id === id; })[0];
+  if (!x) return;
+  $("#pv-title").textContent = x.title;
+  $("#pv-meta").textContent = x.id + " · " + x.risk + " 风险 · 提到过 " + x.seen + " 次 · " +
+    String(x.at).slice(0, 19) + " · 来源 " + (x.from || "agent");
+  $("#pv-why").textContent = x.why;
+  $("#pv-plan").innerHTML = (x.plan || []).length
+    ? "<ol class='hint'>" + x.plan.map(function (t) { return "<li>" + escapeHtml(t) + "</li>"; }).join("") + "</ol>"
+    : "";
+  $("#pv-argv").textContent = (x.argv || []).length ? x.argv.join(" ") : "（不是一条命令能做完的）";
+  $("#pv-touch").textContent = (x.touches || []).length ? "会动：" + x.touches.join(", ") : "会动：（它没写）";
+  $("#pv-msg").textContent = "";
+  var send = async function (action) {
+    $("#pv-msg").textContent = "处理中…";
+    try {
+      var r = await (await fetch("/api/proposals/" + encodeURIComponent(id), {
+        method: "POST", headers: H, body: JSON.stringify({ action: action }),
+      })).json();
+      if (r.ok) {
+        $("#pv-msg").className = "ok";
+        $("#pv-msg").textContent = action === "accept" ? "已同意（执行仍要授权）" : "已拒绝";
+        await loadProposals();
+        if (action === "accept") { $("#pv-msg").textContent += " —— 现在可以照上面的命令自己跑"; }
+      } else { $("#pv-msg").className = "err"; $("#pv-msg").textContent = r.error || "失败"; }
+    } catch (e) { $("#pv-msg").className = "err"; $("#pv-msg").textContent = "请求失败"; }
+  };
+  $("#pv-yes").onclick = function () { send("accept"); };
+  $("#pv-no").onclick = function () { send("reject"); };
+  show("propview");
+}
+$("#proplist").onclick = function (e) {
+  var b = e.target.closest("button[data-prop]");
+  if (b) openProposal(b.dataset.prop);
+};
+
+// ── 抽检（J-5b）：把最没把握的线送到眼前，当场能断 ──
+async function loadSurfaceReview() {
+  var rows;
+  try { rows = await (await fetch("/api/surface/review")).json(); } catch (e) { return; }
+  rows = Array.isArray(rows) ? rows : [];
+  $("#surfcount").textContent = rows.length ? rows.length + " 根" : "";
+  $("#surfsec").hidden = rows.length === 0;
+  $("#surflist").innerHTML = rows.map(function (r) {
+    return "<div class='pend surf' data-key='" + escapeHtml(r.key) + "' data-src='" + r.src_id + "' data-dst='" + r.dst_id + "' data-rel='" + escapeHtml(r.rel) + "'>" +
+      "<span class='cmd'>" + escapeHtml(String(r.a_text).slice(0, 26)) + " ↔ " + escapeHtml(String(r.b_text).slice(0, 26)) + "</span>" +
+      "<span class='dir'>为什么连：" + escapeHtml(r.why || "（没有理由）") + " · 把握 " + Number(r.weight).toFixed(2) + "</span>" +
+      "<div class='acts'><button class='ok' data-act='yes'>对</button><button class='no' data-act='no'>不对，断掉</button></div>" +
+      "<span class='msg'></span></div>";
+  }).join("");
+}
+$("#surflist").onclick = async function (e) {
+  var btn = e.target.closest("button[data-act]");
+  if (!btn) return;
+  var card = btn.closest("[data-key]");
+  var msg = card.querySelector(".msg");
+  btn.disabled = true;
+  msg.textContent = "处理中…";
+  var body = { src_id: Number(card.dataset.src), dst_id: Number(card.dataset.dst), rel: card.dataset.rel, ok: btn.dataset.act === "yes" };
+  try {
+    var r = await (await fetch("/api/surface/review", { method: "POST", headers: H, body: JSON.stringify(body) })).json();
+    msg.textContent = r.ok ? (r.cut ? "已断" : "已记下") : (r.error || "失败");
+    setTimeout(function () { card.remove(); var left = $("#surflist").children.length; $("#surfcount").textContent = left ? left + " 根" : ""; $("#surfsec").hidden = left === 0; }, 700);
+  } catch (err) { msg.textContent = "请求失败"; btn.disabled = false; }
+};
+
 async function openMemory(id) {
   const r = await (await fetch("/api/memories/" + id)).json();
   $("#mv-text").textContent = r.text;
@@ -1484,6 +1621,23 @@ async function openMemory(id) {
   $("#mv-edit").value = r.text;
   $("#mv-imp").value = String(r.importance ?? 3);
   $("#mv-sens").value = r.sensitivity === "shareable" ? "shareable" : "local_only";
+  // F-1 #5：一条记忆必须能回答"它从哪来、改过什么"
+  var prov = r.provenance || { changes: [], doc: null };
+  var bits = [];
+  var fromText = r.source_kind === "doc" ? "文档" : r.source_kind === "extract" ? "夜间抽取" : r.source_kind === "user" ? "你说的话" : (r.source_kind || "未知");
+  bits.push("<div class='hint'>来自：" + escapeHtml(fromText) + (r.source_ref ? " · " + escapeHtml(String(r.source_ref).slice(0, 120)) : "") + "</div>");
+  if (r.quote) bits.push("<div class='quote'>原话：「" + escapeHtml(r.quote) + "」</div>");
+  if (prov.doc) bits.push("<button class='item mini' data-doc='" + escapeHtml(prov.doc.id) + "'>打开来源文档：" + escapeHtml(prov.doc.title) + "</button>");
+  if (r.superseded_by) bits.push("<div class='hint'>被 #" + r.superseded_by + " 取代（旧的留着可追溯）</div>");
+  if ((prov.changes || []).length) {
+    bits.push("<details class='hist'><summary>改过 " + prov.changes.length + " 次（点开看旧正文）</summary>" +
+      prov.changes.map(function (c) {
+        return "<div class='oldver'><span class='dim2'>" + String(c.at).slice(0, 19) + " · " + escapeHtml(c.by) + "</span><br>" + escapeHtml(c.old) + "</div>";
+      }).join("") + "</details>");
+  }
+  $("#mv-prov").innerHTML = bits.join("");
+  var docBtn = $("#mv-prov").querySelector("button[data-doc]");
+  if (docBtn) docBtn.onclick = function () { openDoc(docBtn.dataset.doc); };
   $("#mv-save").dataset.id = String(id);
   $("#mv-forget").onclick = async () => {
     const j = await (await fetch("/api/memories/" + id + "/forget", { method: "POST", headers: H })).json();
@@ -1792,7 +1946,8 @@ if ("serviceWorker" in navigator && (location.protocol === "https:" || location.
 }
 // 手机上侧栏是抽屉：没有这个按钮，SESSIONS/DOCS/MEMORY/TOOLS/CONFIG 全都不可达
 $("#menu").onclick = (e) => { e.stopPropagation(); $("#side").classList.toggle("open"); };
-loadAvatars(); applySections(); state(); timeline(); sessions(); tools(); memories(); docs(); audit(); readout(); loadConfig(); loadUi(); pending(); usage();
+loadAvatars(); applySections(); state(); timeline(); sessions(); tools(); memories(); docs(); audit(); readout(); loadConfig(); loadUi(); pending(); usage(); loadProposals(); loadSurfaceReview();
 setInterval(() => { state(); pending(); audit(); readout(); }, 20000);
 </script>
 </body></html>`;
+
