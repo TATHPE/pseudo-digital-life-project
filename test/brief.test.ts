@@ -62,9 +62,10 @@ test("不变量 2b：超长输入被封顶（丢弃而不是溢出）", () => {
 
 test("不变量 3：槽位固定且有序（P1–P11 + 她自己的 P12/P13），空内容也占位", () => {
   const r = buildBrief(base());
-  // P12「我惦记的」/ P13「我怎么理解你」是 H-a/H-b 加的两层：在召回之后、用户输入之前
+  // P12「我惦记的」/ P13「我怎么理解你」是 H-a/H-b 加的两层；P14「可用技能」是 docs/11 的第二优先
+  // 都在召回之后、用户输入之前；全都是易变槽（装了技能不该让 prefixHash 变）
   assert.deepEqual(r.slots.map((s) => s.id),
-    ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10", "P12", "P13", "P11"]);
+    ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10", "P12", "P13", "P14", "P11"]);
   assert.deepEqual(r.slots.filter((s) => s.stable).map((s) => s.id), ["P1", "P2", "P3", "P4"]);
 });
 
@@ -86,4 +87,14 @@ test("时间措辞三态（18 §2.3）：断片 / 间隔 / 首次", () => {
 
   const first = timeLine(base());
   assert.ok(!/距上次|断电/.test(first));
+});
+
+test("P14 技能索引：进了正文，但不改稳定前缀（装了技能不该动 prefixHash）", () => {
+  const idx = "【可用的说明书】deploy（上线跑一遍）／note（写周报）。要看某一份的正文，用 skill_read。";
+  const withSk = buildBrief({ ...base(), skills: idx });
+  const without = buildBrief(base());
+  assert.ok(withSk.text.includes("deploy（上线跑一遍）"), "索引要进正文，模型才知道有这份说明书");
+  assert.ok(withSk.slots.some((x) => x.id === "P14"), "P14 槽要在（空内容也占位）");
+  assert.equal(withSk.prefixHash, without.prefixHash, "prefixHash 只能由 P1–P4 决定");
+  assert.ok(withSk.tokens > without.tokens, "多一句话，token 应该多一点");
 });

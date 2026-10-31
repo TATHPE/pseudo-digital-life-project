@@ -15,14 +15,15 @@ let sideActive = null;   // 侧栏里最后点的那一项（文档/工具/记�
 
 var chatScroll = 0;   // 切走前记下对话滚到哪了
 const VIEWNAME = { chat: "对话 · CHAT", cfg: "设置 · CONFIG", toolview: "工具 · TOOL",
-  memview: "记忆 · MEMORY", docview: "文档 · DOC", auditview: "动作 · ACTIONS",
+  memview: "记忆 · MEMORY", memlistview: "记忆 · MEMORY", docview: "文档 · DOC", capview: "能力 · CAPABILITIES",
+  docsview: "文档 · DOCS", auditview: "动作 · ACTIONS",
   searchview: "搜索 · SEARCH", propview: "它想做的一件事", setupview: "首次配置 · SETUP" };
 function show(v) {
   // 切走时把滚动位置存下来：隐藏 #chat 会让 #scroll 的 scrollHeight 塌成 0，浏览器会把 scrollTop 归零
   if (view === "chat" && v !== "chat") chatScroll = $("#scroll").scrollTop;
   view = v;
   document.body.dataset.view = v;   // CSS 用它把「回到最新」锁在对话里
-  for (const id of ["chat", "cfg", "toolview", "memview", "docview", "auditview", "searchview", "propview", "setupview"]) $("#" + id).hidden = id !== v;
+  for (const id of ["chat", "cfg", "toolview", "memview", "memlistview", "docview", "docsview", "auditview", "capview", "searchview", "propview", "setupview"]) $("#" + id).hidden = id !== v;
   $("#composer").style.display = v === "chat" ? "" : "none";
   // "回到最新"是对话专用的，别的界面不该出现
   if (v !== "chat") $("#jump").classList.remove("on");
@@ -72,7 +73,9 @@ function clock(iso) {
 async function state() {
   const s = await (await fetch("/api/state")).json();
   $("#state").textContent = s.line;
-  $("#statetext").textContent = s.state?.text ? " · " + s.state.text : "";
+  var stTxt = s.state?.text ? " · " + s.state.text : "";
+  $("#statetext").textContent = stTxt;
+  var ws = $("#wingstate"); if (ws) ws.textContent = s.state?.text ? s.state.text : "…";
   var hud = document.querySelector(".hud"); if (hud) hud.title = s.line + (s.state?.text ? " · " + s.state.text : "");
   // 断电提示：只在重启后第一次显示（服务端只给一次）
   if (s.outage) {
@@ -152,7 +155,7 @@ async function pending() {
   const sec = $("#pendsec"), box = $("#pendlist");
   const open = (list || []).filter((p) => p.status === "pending" && !p.expired);
   paintPendBadge(open.length);
-  loadProposals(); loadSurfaceReview(); loadThreads(); loadReceipts(); loadStanding(); loadPermission(); loadEgress(); loadSetup(false);
+  loadProposals(); loadSurfaceReview(); loadThreads(); loadReceipts(); loadStanding(); loadPermission(); loadEgress(); loadSetup(false); loadCapPage();
   sec.hidden = open.length === 0;
   if (!open.length) { box.innerHTML = ""; return; }
   box.innerHTML = open.map((p) =>
@@ -508,27 +511,17 @@ document.addEventListener("keydown", function (e) {
 
 // ── 动作审计（P0 #3）────────────────────────────────────
 async function audit() {
+  // 左栏的「动作」只是一行入口 + 计数；列表本体在 openAudit() 里渲染。
   var rows = [], total = 0;
-  try { var j = await (await fetch("/api/audit?limit=40")).json(); rows = j.rows || []; total = j.total || rows.length; } catch (e) { return; }
-  var ac = $("#actcount"); if (ac) ac.textContent = total + " 条";
-  var box = $("#auditlist");
-  if (!rows || !rows.length) { box.innerHTML = "<div class='hint' style='padding:4px 2px'>还没有动作</div>"; return; }
-  box.innerHTML = rows.slice(0, 8).map(function (r) {
-    var cls = r.decision === "allowed" ? "d-ok" : r.decision === "needs_confirm" ? "d-wait" : "d-no";
-    return "<button class='item' data-view='auditview' title='" + escapeHtml(r.verb + " " + (r.reason || r.decision)) + "'>" +
-      escapeHtml(r.verb) + "<span class='m'><span class='" + cls + "'>" + escapeHtml(r.decision) + "</span> · " +
-      escapeHtml(r.tier) + " · " + clock(r.ts) + "</span></button>";
-  }).join("") +
-    // 这行必须是真的控件：以前写成 hint，写着“点开看全部”却点不动
-    "<button class='item' data-view='auditview'><span class='preview'>查看全部（最近 " + rows.length + " / 共 " + total + " 条）</span>" +
-    "<span class='m'>exec_audit · 含被拒绝的调用</span></button>";
+  try { var j = await (await fetch('/api/audit?limit=1')).json(); total = j.total || (j.rows || []).length; } catch (e) { return; }
+  var ac = $('#actcount'); if (ac) ac.textContent = total + ' 条';
 }
 async function openAudit() {
   show("auditview");
   var rows = [], total = 0;
   try { var j2 = await (await fetch("/api/audit?limit=80")).json(); rows = j2.rows || []; total = j2.total || rows.length; } catch (e) { rows = []; }
   var am = $("#av-meta"); if (am) am.textContent = "exec_audit 共 " + total + " 条 · 下面显示最近 " + rows.length + " 条（含被拒绝的）";
-  $("#av-list").innerHTML = (rows || []).map(function (r) {
+  $("#auditlist").innerHTML = (rows || []).map(function (r) {
     var cls = r.decision === "allowed" ? "d-ok" : r.decision === "needs_confirm" ? "d-wait" : "d-no";
     return "<div class='arow'><span class='t'>" + escapeHtml(clock(r.ts)) + "</span>" +
       "<span class='v'>" + escapeHtml(r.verb) + "</span>" +
@@ -585,6 +578,7 @@ var PAL_ACTIONS = [
   { id: "tools", label: "工具列表", key: "视图", run: function () { $("#foldtools").click(); } },
   { id: "new", label: "说点什么（聚焦输入框）", key: "动作", run: function () { show("chat"); $("#m").focus(); } },
   { id: "ingest", label: "加文档（跳到 DOCS 的摄入区）", key: "动作", run: function () { docs(); setTimeout(function () { var el = $("#dlg-path"); if (el) el.focus(); }, 300); } },
+  { id: "search", label: "搜记忆 / 文档…", key: "动作", run: function () { show("memlistview"); memories(); setTimeout(function () { var el = $("#q"); if (el) el.focus(); }, 300); } },
   { id: "cap", label: "看能力与降级项", key: "动作", run: function () { show("cfg"); setTimeout(function () { var el = $("#cap-sum"); if (el) el.scrollIntoView({ block: "center" }); }, 600); } },
 ];
 var palOpen = false, palIdx = 0, palShown = PAL_ACTIONS;
@@ -1033,38 +1027,113 @@ async function paintSetupPanel() {
     return;
   }
 }
+// 草稿：**六块全列**（空的也列，写「还是出厂默认」），每行带着它的出处。
+// 出处不能被面板改掉：interview.ts 的铁律是「模型写的每一行要么能在你回答里逐字找到，
+// 要么标成『模型补的，请确认』」。之前这里保存时不看 source、一律写成「你原话」，
+// 等于把那条校验绕过去了 —— 封存出来的 persona 会把模型编的话挂上你的名字。
+var DRAFT_BLOCKS = ['core', 'boundaries', 'values', 'voice', 'evidence', 'tools'];
 function renderDraft(d) {
-  var box = $("#su-draft");
+  var box = document.getElementById('su-draft');
   if (!box) return;
-  var html = "";
-  ["core", "boundaries", "values", "voice", "evidence", "tools"].forEach(function (k) {
+  var html = '';
+  var empty = [];
+  DRAFT_BLOCKS.forEach(function (k) {
     var lines = (d.blocks || {})[k] || [];
-    if (!lines.length) return;
-    html += "<p class='hint' style='margin-top:12px'>#" + k + "</p>";
+    if (!lines.length) { empty.push(k); return; }
+    html += '<p class="hint" style="margin-top:12px">#' + k + '</p>';
     lines.forEach(function (l, i) {
-      var mine = l.source === "你原话";
-      html += "<div class='draftline" + (mine ? " mine" : "") + "'>" +
-        "<span class='src'>" + (mine ? "你原话" : "请确认") + "</span>" +
-        "<input data-blk='" + k + "' data-i='" + i + "' value='" + escapeHtml(l.text) + "'></div>";
+      var mine = l.source === '你原话';
+      html += '<div class="draftline' + (mine ? ' mine' : '') + '">' +
+        '<span class="src">' + (mine ? '你原话' : '请确认') + '</span>' +
+        '<input data-blk="' + k + '" data-i="' + i + '" data-src="' + (mine ? '你原话' : '模型补的') + '" value="' + escapeHtml(l.text) + '"></div>';
     });
   });
-  html += "<div class='acts' style='margin-top:12px'><button id='su-seal' class='primary'>封存（开第 1 代）</button><span id='su-seal-msg' class='hint'></span></div>";
+  if (empty.length) {
+    html += '<p class="hint" style="margin-top:12px">这几块访谈里没说到，封存后会**保持出厂默认**：' +
+      empty.map(function (k) { return '#' + k; }).join(' · ') + '（之后可在设置 → 人格里补）</p>';
+  }
+  html += '<div class="acts" style="margin-top:12px"><button id="su-seal" class="primary">封存（开第 1 代）</button><span id="su-seal-msg" class="hint"></span></div>';
   box.innerHTML = html;
-  $("#su-seal").onclick = async function () {
-    var msg = $("#su-seal-msg"); msg.textContent = "封存中…";
+  document.getElementById('su-seal').onclick = async function () {
+    var msg = document.getElementById('su-seal-msg'); msg.className = 'hint'; msg.textContent = '封存中…';
     var blocks = {};
-    document.querySelectorAll("#su-draft input[data-blk]").forEach(function (inp) {
-      var k = inp.dataset.blk; (blocks[k] = blocks[k] || []).push({ text: inp.value, source: "你原话" });
+    document.querySelectorAll('#su-draft input[data-blk]').forEach(function (inp) {
+      var k = inp.dataset.blk;
+      var src = inp.dataset.src === '你原话' ? '你原话' : '模型补的（请确认）';
+      (blocks[k] = blocks[k] || []).push({ text: inp.value, source: src });
     });
-    await fetch("/api/setup/interview", { method: "POST", headers: H, body: JSON.stringify({ action: "save", blocks: blocks }) });
-    var r = await (await fetch("/api/setup/interview", { method: "POST", headers: H, body: JSON.stringify({ action: "seal", because: "首次封存（面板）" }) })).json();
-    if (!r.ok) { msg.className = "err"; msg.textContent = r.error || "封存失败"; return; }
-    msg.className = "ok"; msg.textContent = r.note;
-    await fetch("/api/setup", { method: "POST", headers: H, body: JSON.stringify({ action: "run", step: "persona" }) });
+    await fetch('/api/setup/interview', { method: 'POST', headers: H, body: JSON.stringify({ action: 'save', blocks: blocks }) });
+    var r = await (await fetch('/api/setup/interview', { method: 'POST', headers: H, body: JSON.stringify({ action: 'seal', because: '首次封存（面板）' }) })).json();
+    if (!r.ok) { msg.className = 'err'; msg.textContent = r.error || '封存失败'; return; }
+    msg.className = 'ok'; msg.textContent = r.note;
+    await fetch('/api/setup', { method: 'POST', headers: H, body: JSON.stringify({ action: 'run', step: 'persona' }) });
+    // 封存后立刻把世代/人格读回来：不然设置里看到的还是旧的（要刷新才变）
+    await loadGeneration();
+    if (document.getElementById('p-file')) await loadPersona(document.getElementById('p-file').value);
     await loadSetup();
   };
 }
 // ── 分代（H-5）：显示当前第几代，并说清"改动只向前生效" ──
+// ── 能力屏：插件（MCP）/ 技能 / 原生工具 / 降级项 ────────────────
+// 三件事都只读：这里不装、不启、不改配置 —— 装是跑 jingjing mcp add，或往目录里放文件。
+function capline(k, v, bad) {
+  return '<div class="capline' + (bad ? ' bad' : '') + '">' +
+    '<span class="k">' + escapeHtml(k) + '</span>' +
+    '<span class="v">' + escapeHtml(v == null ? '' : String(v)) + '</span></div>';
+}
+async function loadCapPage() {
+  var cap = null, sk = null;
+  try { cap = await (await fetch('/api/capabilities')).json(); } catch (e) { /* 下面显示空 */ }
+  try { sk = await (await fetch('/api/skills')).json(); } catch (e) { /* 同上 */ }
+
+  var cls = (cap && cap.classes) || {};
+  var mcpTools = ((cls.tool) || []).filter(function (t) { return t.source === 'mcp'; });
+  var byServer = {};
+  mcpTools.forEach(function (t) {
+    var m = /^mcp__([^_]+(?:_[^_]+)*?)__/.exec(t.name);
+    var server = m ? m[1] : '?';
+    (byServer[server] = byServer[server] || []).push(t);
+  });
+  var errs = ((cap && cap.degraded) || []).filter(function (d) { return d.indexOf('mcp-unavailable') === 0; });
+  var html = '';
+  Object.keys(byServer).filter(function (k) { return k !== '?'; }).forEach(function (name) {
+    html += capline(name, byServer[name].length + ' 个工具 · ok');
+    byServer[name].forEach(function (t) {
+      html += '<div class="hint">· ' + escapeHtml(t.name.replace(/^mcp__[^_]+__/, '')) + '（' + escapeHtml(t.tier) + '）</div>';
+    });
+  });
+  errs.forEach(function (d) { html += capline(d.replace('mcp-unavailable:', ''), '连不上', true); });
+  document.getElementById('cap-mcp').innerHTML = html ||
+    '<p class="hint">没装插件。插件是 MCP server：写进 data/mcp.json 的 servers 里，重启面板就会出现在这里。</p>';
+
+  var list = (sk && sk.skills) || [];
+  var dirsEl = document.getElementById('cap-skills-dirs');
+  if (dirsEl) {
+    dirsEl.textContent = '放这里就会被认到：' + ((sk && sk.dirs) || []).join(' 或 ') + '（和 pi / Claude Code 同一套目录）';
+  }
+  var skHtml = '';
+  list.forEach(function (x) {
+    skHtml += capline(x.id, x.source + ' · ' + Math.max(1, Math.round(x.bytes / 1024)) + 'KB');
+    skHtml += '<div class="hint">' + escapeHtml(x.description || '（没有描述）') + '</div>';
+  });
+  document.getElementById('cap-skills').innerHTML = skHtml ||
+    '<p class="hint">还没有技能。一份 SKILL.md 就是一个技能：<b>一句话说明 + 做法</b>。对话时只把名字和那句说明放进简报，正文由它自己 skill_read 取 —— 不占每轮的上下文。</p>';
+
+  var cnt = function (k) { return ((cls[k] || []).filter(function (t) { return t.source !== 'mcp'; })).length; };
+  document.getElementById('cap-native').innerHTML =
+    capline('工具（verbs）', cnt('tool') + ' 个') +
+    capline('命令（CLI）', cnt('command') + ' 个') +
+    capline('面板能力', cnt('panel') + ' 个') +
+    capline('定时模板', cnt('cron') + ' 个');
+
+  var deg = (cap && cap.degraded) || [];
+  document.getElementById('cap-degraded').innerHTML = deg.length
+    ? deg.map(function (d) { return capline(d, '缺', true); }).join('')
+    : '<p class="hint">没有降级项：当前能自述的能力都是真的。</p>';
+
+  var cc = document.getElementById('capcount');
+  if (cc) cc.textContent = (mcpTools.length + list.length + cnt('tool')) + ' 项';
+}
 async function loadGeneration() {
   var g; try { g = await (await fetch("/api/persona")).json(); } catch (e) { return; }
   var el = $("#p-gen");
@@ -1485,16 +1554,23 @@ async function loadPersona(file) {
   $("#p-text").value = p.files[file] || "";
 }
 document.addEventListener("click", (e) => {
-  const t = e.target.closest("#side .item");
-  if (!t || !t.dataset.view) return;
+  // 认任何带 data-view 的 .item：左栏是导航，中栏的列表项（记忆/文档/审计）也走这里。
+  // 之前只认 #side 里的 .item，列表搬出左栏之后点不动了（回归过一次）。
+  const t = e.target.closest(".item[data-view]");
+  if (!t) return;
   const v = t.dataset.view;
-  sideActive = t;
-  for (const b of document.querySelectorAll("#side .item")) b.classList.toggle("on", b === t);
+  if (t.closest("#side")) {
+    sideActive = t;
+    for (const b of document.querySelectorAll("#side .item")) b.classList.toggle("on", b === t);
+  }
   if (v === "setupview") { show("setupview"); loadSetup(false); return; }
   if (v === "cfg") { show("cfg"); loadConfig().then(() => loadPersona($("#p-file").value)); return; }
   if (v === "toolview") { openTool(Number(t.dataset.tool)); return; }
   if (v === "memview") { openMemory(Number(t.dataset.mem)); return; }
   if (v === "docview") { openDoc(t.dataset.doc); return; }
+  if (v === "capview") { show("capview"); loadCapPage(); return; }
+  if (v === "memlistview") { show("memlistview"); memories(); return; }
+  if (v === "docsview") { show("docsview"); docs(); return; }
   if (v === "auditview") { openAudit(); return; }
   show("chat");
   if (t.dataset.day) jumpToDay(t.dataset.day);
@@ -1569,6 +1645,43 @@ function dline(k, v, t) {
   return '<div class="dline"><span class="k">' + escapeHtml(k) + '</span>' +
     '<span class="t" title="' + escapeHtml(t || v) + '">' + escapeHtml(v) + '</span></div>';
 }
+// 「等你点头」那张卡：五块各自有 loader 在维护 DOM，这里只负责
+//   · 数一数有几条（卡片标题上的数字）
+//   · 全空时显示「没有等你点头的事」
+// 坑（踩过）：回调里改 #dc-inbox-empty 的 hidden，而观察器正盯着 #dc-inbox 的 attributes
+// → 自己触发自己，微任务无限循环，整页卡死。所以**值没变就不写**，并且用 rAF 合并。
+var inboxRaf = 0;
+function paintInbox() {
+  var box = document.getElementById('dc-inbox');
+  if (!box) return;
+  var n = 0;
+  ['pendsec', 'propsec', 'egrsec', 'rcpsec', 'threadsec'].forEach(function (id) {
+    var sec = document.getElementById(id);
+    if (!sec || sec.hidden) return;
+    n += sec.querySelectorAll('.pend, .item, .card').length;
+  });
+  var badge = document.getElementById('dc-inbox-n');
+  if (badge) {
+    var txt = n ? n + ' 条' : '';
+    if (badge.textContent !== txt) badge.textContent = txt;
+  }
+  var empty = document.getElementById('dc-inbox-empty');
+  if (empty) {
+    var hide = n > 0;
+    if (empty.hidden !== hide) empty.hidden = hide;   // 值不变不写 → 不会自触发
+  }
+}
+function paintInboxSoon() {
+  if (inboxRaf) return;
+  inboxRaf = requestAnimationFrame(function () { inboxRaf = 0; paintInbox(); });
+}
+function watchInbox() {
+  var box = document.getElementById('dc-inbox');
+  if (!box || !window.MutationObserver) return;
+  new MutationObserver(paintInboxSoon).observe(box, { childList: true, subtree: true });
+  paintInbox();
+}
+watchInbox();
 function renderDossier() {
   var d = DOSSIER; if (!d) return;
   var ag = d.plan.agenda || [], th = d.plan.threads || [];
@@ -1599,7 +1712,9 @@ function renderDossier() {
   ctxh += dline('文档', (c.docs || 0) + ' 篇 / ' + (c.chunks || 0) + ' 块', '');
   ctxh += dline('模型', c.model || '未配置', '');
   ctxh += dline('今天用量', (c.todayTokens || 0) + ' tok · $' + Number(c.todayUsd || 0).toFixed(4), '');
-  document.getElementById('dc-ctx').innerHTML = ctxh;
+  var pl = c.plugins || {};
+  ctxh += dline('能借的手脚', '插件 ' + (pl.servers || 0) + ' · 工具 ' + (c.tools || 0) + ' · 技能 ' + (c.skills || 0), 'MCP / verbs / SKILL.md');
+  document.getElementById('dc-ctx-stats').innerHTML = ctxh;
 }
 async function loadDossier() {
   try {
@@ -1616,6 +1731,71 @@ var ws = document.getElementById('wspath');
 if (ws) ws.textContent = 'data/ · persona/ · workspace/';
 loadDossier();
 setInterval(loadDossier, 20000);
+
+// ── 边栏收纳：收起来是「收」，不是「删」────────────────────────────
+// 状态存在 localStorage：这是**这台机器的视觉偏好**，不该进 data/config.json
+// （那是会跟着搬家走的东西；换台机器屏幕宽度不同，不该跟着搬）。
+function applyLayout() {
+  // 窄屏不套用这两个偏好：那里它们由抽屉管
+  var narrow = innerWidth <= 1180;
+  var wing = !narrow && localStorage.getItem('jj.wing') === 'off';
+  var folio = !narrow && localStorage.getItem('jj.folio') === 'off';
+  document.body.classList.toggle('wing-off', wing);
+  document.body.classList.toggle('folio-off', folio);
+  var h = document.getElementById('wingHandle');
+  if (h) h.hidden = !wing;
+}
+function toggleWing(on) {
+  var off = (typeof on === 'boolean') ? !on : !document.body.classList.contains('wing-off');
+  localStorage.setItem('jj.wing', off ? 'off' : 'on');
+  applyLayout();
+}
+function toggleFolio(on) {
+  var off = (typeof on === 'boolean') ? !on : !document.body.classList.contains('folio-off');
+  localStorage.setItem('jj.folio', off ? 'off' : 'on');
+  applyLayout();
+}
+applyLayout();
+var wingHandle = document.getElementById('wingHandle');
+if (wingHandle) wingHandle.onclick = function () { toggleWing(true); };
+// ── 卷宗的开/关（唯一入口）──────────────────────────────────────
+// 两套状态不能混：窄屏是**抽屉**（folio-open，只在内存里），宽屏是**收纳**（folio-off，记 localStorage）。
+// 之前 » 在手机上也去写 folio-off，于是抽屉一关，◧ 再也打不开（folio-off 压着 display:none）。
+var NARROW = function () { return innerWidth <= 1180; };
+function folioIsOpen() {
+  return NARROW() ? document.body.classList.contains('folio-open')
+                  : !document.body.classList.contains('folio-off');
+}
+function setFolioOpen(open) {
+  if (NARROW()) {
+    document.body.classList.toggle('folio-open', open);
+    document.body.classList.remove('folio-off');   // 窄屏不认宽屏留下的收纳状态
+    return;
+  }
+  toggleFolio(open);
+}
+var folioX = document.getElementById('folioX');
+if (folioX) folioX.onclick = function () { setFolioOpen(false); };
+var folioTog2 = document.getElementById('folioTog');
+if (folioTog2) folioTog2.onclick = function () { setFolioOpen(!folioIsOpen()); };
+// 左栏的 «：窄屏只是关抽屉，别把「收起」记成偏好
+var wingTog2 = document.getElementById('wingTog');
+if (wingTog2) wingTog2.onclick = function () {
+  if (NARROW()) { document.getElementById('side').classList.remove('open'); return; }
+  toggleWing(false);
+};
+// 窗口跨过 1180：把另一种模式的状态清干净（窄屏拖宽不该带着 folio-open）
+addEventListener('resize', function () {
+  if (NARROW()) document.body.classList.remove('wing-off', 'folio-off');
+  else document.body.classList.remove('folio-open');
+  applyLayout();
+});
+document.addEventListener('keydown', function (e) {
+  if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+  var k = (e.key || '').toLowerCase();
+  if (k === 'b') { e.preventDefault(); toggleWing(); }
+  else if (k === 'j') { e.preventDefault(); toggleFolio(); }
+});
 
 $("#composer").onsubmit = async (e) => {
   e.preventDefault();
@@ -1713,5 +1893,5 @@ if ("serviceWorker" in navigator && (location.protocol === "https:" || location.
 }
 // 手机上侧栏是抽屉：没有这个按钮，SESSIONS/DOCS/MEMORY/TOOLS/CONFIG 全都不可达
 $("#menu").onclick = (e) => { e.stopPropagation(); $("#side").classList.toggle("open"); };
-loadAvatars(); applySections(); state(); timeline(); sessions(); tools(); memories(); docs(); audit(); readout(); loadConfig(); loadUi(); pending(); usage(); loadProposals(); loadSurfaceReview(); loadThreads(); loadReceipts(); loadStanding();
-setInterval(() => { state(); pending(); audit(); readout(); }, 20000);
+loadAvatars(); applySections(); state(); timeline(); sessions(); tools(); memories(); docs(); audit(); readout(); loadConfig(); loadUi(); pending(); usage(); loadProposals(); loadSurfaceReview(); loadThreads(); loadReceipts(); loadStanding(); loadEgress(); loadSetup(false);
+setInterval(() => { state(); pending(); audit(); readout(); loadEgress(); }, 20000);

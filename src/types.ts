@@ -58,6 +58,8 @@ export interface BriefInput {
   agenda?: string[];
   /** H-b：她对人的理解（每句带依据 id，≤2 条） */
   interpretations?: string[];
+  /** 技能索引（P14）：只有名字 + 一句描述，正文要模型自己 skill.read 取 */
+  skills?: string | null;
   user: string;              // P11
   budget?: Partial<BriefBudget>;
 }

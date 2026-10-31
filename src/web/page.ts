@@ -379,6 +379,16 @@ export const PAGE = `<!doctype html>
   #dc-inbox .item, #dc-ctx .item { font:10px/1.45 var(--mono); padding:4px 6px; }
   #dc-inbox .item .m, #dc-ctx .item .m { font:9px/1.4 var(--mono); }
   #dc-inbox .dempty, #dc-ctx .dempty { margin:2px 0 0; }
+  /* 能力屏：一行一个（名字在左、数在右），和入口行同一套语气 */
+  .cap-h { margin:18px 0 6px; padding:2px 0 2px 8px; border-left:3px solid var(--ink);
+           font:10px/1.3 var(--mono); letter-spacing:.18em; color:var(--ink); font-weight:700; }
+  .capline { display:flex; align-items:baseline; gap:10px; padding:5px 0;
+             border-bottom:1px solid rgba(233,240,242,.07); }
+  .capline .k { font:12px/1.4 var(--mono); color:var(--ink); font-weight:700; }
+  .capline .v { margin-left:auto; font:10px/1 var(--mono); color:var(--ink-dim); white-space:nowrap; }
+  .capline.bad .k { color:var(--amber); }
+  #capview .hint { font:11px/1.6 var(--mono); }
+
   /* 入口行（去处）：一行一个，名字在左、计数在右（flex 而不是靠 text-align） */
   #side .wingtop > .item, #side .wingtop > #foldtools { display:flex; align-items:baseline;
     justify-content:space-between; gap:8px; margin-bottom:3px; }
@@ -689,6 +699,7 @@ export const PAGE = `<!doctype html>
     <button class="item" type="button" data-view="memlistview">记忆<span class="m" id="memcount">…</span></button>
     <button class="item" type="button" data-view="docsview">文档<span class="m" id="doccount">…</span></button>
     <button class="item" type="button" data-view="auditview">动作<span class="m" id="actcount">…</span></button>
+    <button class="item" type="button" data-view="capview">能力<span class="m" id="capcount">…</span></button>
     <button class="item" type="button" id="foldtools">工具<span class="m" id="toolcount">…</span></button>
     <div id="toollist" hidden>
       <input id="toolq" class="searchbox" placeholder="筛工具名 / 说明…" autocomplete="off">
@@ -830,6 +841,27 @@ export const PAGE = `<!doctype html>
         <p class="hint">按活跃度排；点一条看正文、出处与它的来历。</p>
         <input id="q" class="searchbox" placeholder="搜记忆 / 文档…（Ctrl+K 也能到这儿）" autocomplete="off">
         <div id="memlist"></div>
+      </div>
+    </div>
+
+    <div id="capview" hidden>
+      <div class="panelbox">
+        <h2>能力 · CAPABILITIES</h2>
+        <p class="hint">它能借到的手脚分四类：<b>插件</b>（MCP server 提供的工具）、<b>技能</b>（SKILL.md，说明书）、
+          <b>原生工具</b>（verbs，走同一条闸门）、<b>命令</b>（CLI）。降级项会明说是哪一项缺什么。</p>
+
+        <h3 class="cap-h">插件 · MCP</h3>
+        <div id="cap-mcp"></div>
+
+        <h3 class="cap-h">技能 · SKILL.md</h3>
+        <p class="hint" id="cap-skills-dirs"></p>
+        <div id="cap-skills"></div>
+
+        <h3 class="cap-h">原生工具 · VERBS</h3>
+        <div id="cap-native"></div>
+
+        <h3 class="cap-h">降级项</h3>
+        <div id="cap-degraded"></div>
       </div>
     </div>
 
@@ -1030,7 +1062,7 @@ let sideActive = null;   // 侧栏里最后点的那一项（文档/工具/记�
 
 var chatScroll = 0;   // 切走前记下对话滚到哪了
 const VIEWNAME = { chat: "对话 · CHAT", cfg: "设置 · CONFIG", toolview: "工具 · TOOL",
-  memview: "记忆 · MEMORY", memlistview: "记忆 · MEMORY", docview: "文档 · DOC",
+  memview: "记忆 · MEMORY", memlistview: "记忆 · MEMORY", docview: "文档 · DOC", capview: "能力 · CAPABILITIES",
   docsview: "文档 · DOCS", auditview: "动作 · ACTIONS",
   searchview: "搜索 · SEARCH", propview: "它想做的一件事", setupview: "首次配置 · SETUP" };
 function show(v) {
@@ -1038,7 +1070,7 @@ function show(v) {
   if (view === "chat" && v !== "chat") chatScroll = $("#scroll").scrollTop;
   view = v;
   document.body.dataset.view = v;   // CSS 用它把「回到最新」锁在对话里
-  for (const id of ["chat", "cfg", "toolview", "memview", "memlistview", "docview", "docsview", "auditview", "searchview", "propview", "setupview"]) $("#" + id).hidden = id !== v;
+  for (const id of ["chat", "cfg", "toolview", "memview", "memlistview", "docview", "docsview", "auditview", "capview", "searchview", "propview", "setupview"]) $("#" + id).hidden = id !== v;
   $("#composer").style.display = v === "chat" ? "" : "none";
   // "回到最新"是对话专用的，别的界面不该出现
   if (v !== "chat") $("#jump").classList.remove("on");
@@ -1170,7 +1202,7 @@ async function pending() {
   const sec = $("#pendsec"), box = $("#pendlist");
   const open = (list || []).filter((p) => p.status === "pending" && !p.expired);
   paintPendBadge(open.length);
-  loadProposals(); loadSurfaceReview(); loadThreads(); loadReceipts(); loadStanding(); loadPermission(); loadEgress(); loadSetup(false);
+  loadProposals(); loadSurfaceReview(); loadThreads(); loadReceipts(); loadStanding(); loadPermission(); loadEgress(); loadSetup(false); loadCapPage();
   sec.hidden = open.length === 0;
   if (!open.length) { box.innerHTML = ""; return; }
   box.innerHTML = open.map((p) =>
@@ -2089,6 +2121,80 @@ function renderDraft(d) {
   };
 }
 // ── 分代（H-5）：显示当前第几代，并说清"改动只向前生效" ──
+// ── 能力屏：插件（MCP）/ 技能 / 原生工具 / 降级项 ────────────────
+// 三件事都只读：这里不装、不启、不改配置 —— 装是跑 jingjing mcp add，或往目录里放文件。
+function capline(k, v, bad) {
+  return '<div class="capline' + (bad ? ' bad' : '') + '">' +
+    '<span class="k">' + escapeHtml(k) + '</span>' +
+    '<span class="v">' + escapeHtml(v == null ? '' : String(v)) + '</span></div>';
+}
+async function loadCapPage() {
+  var cap = null, sk = null;
+  try { cap = await (await fetch('/api/capabilities')).json(); } catch (e) { /* 下面显示空 */ }
+  try { sk = await (await fetch('/api/skills')).json(); } catch (e) { /* 同上 */ }
+
+  var cls = (cap && cap.classes) || {};
+  var mcpTools = ((cls.tool) || []).filter(function (t) { return t.source === 'mcp'; });
+  var byServer = {};
+  mcpTools.forEach(function (t) {
+    var m = /^mcp__([^_]+(?:_[^_]+)*?)__/.exec(t.name);
+    var server = m ? m[1] : '?';
+    (byServer[server] = byServer[server] || []).push(t);
+  });
+  var errs = ((cap && cap.degraded) || []).filter(function (d) { return d.indexOf('mcp-unavailable') === 0; });
+  var html = '';
+  Object.keys(byServer).filter(function (k) { return k !== '?'; }).forEach(function (name) {
+    html += capline(name, byServer[name].length + ' 个工具 · ok');
+    byServer[name].forEach(function (t) {
+      html += '<div class="hint">· ' + escapeHtml(t.name.replace(/^mcp__[^_]+__/, '')) + '（' + escapeHtml(t.tier) + '）</div>';
+    });
+  });
+  errs.forEach(function (d) { html += capline(d.replace('mcp-unavailable:', ''), '连不上', true); });
+  document.getElementById('cap-mcp').innerHTML = html ||
+    '<p class="hint">没装插件。插件是 MCP server：写进 data/mcp.json 的 servers 里，重启面板就会出现在这里。</p>';
+
+  var list = (sk && sk.skills) || [];
+  var dirsEl = document.getElementById('cap-skills-dirs');
+  if (dirsEl) {
+    dirsEl.textContent = '放这里就会被认到：' + ((sk && sk.dirs) || []).join(' 或 ') + '（和 pi / Claude Code 同一套目录）';
+  }
+  // 分两组：她自己的（会进简报索引）/ 使用者的开发技能（默认不进简报，折起来）
+  var mine = list.filter(function (x) { return x.source !== 'agents'; });
+  var devs = list.filter(function (x) { return x.source === 'agents'; });
+  var skHtml = '';
+  function skillRow(x) {
+    return capline(x.id, x.source + ' · ' + Math.max(1, Math.round(x.bytes / 1024)) + 'KB') +
+      '<div class="hint">' + escapeHtml(x.description || '（没有描述）') + '</div>';
+  }
+  if (mine.length) {
+    skHtml += '<p class="hint">她自己的（会进简报索引：名字 + 一句描述）</p>';
+    skHtml += mine.map(skillRow).join('');
+  }
+  if (devs.length) {
+    skHtml += '<p class="hint">使用者的开发技能（共 ' + devs.length + ' 个；默认不进简报，要看用 skill_list）' +
+      '<button type="button" id="cap-more" class="dimmore" style="margin-left:8px;padding:3px 6px">展开</button></p>';
+    skHtml += '<div id="cap-dev" hidden>' + devs.map(skillRow).join('') + '</div>';
+  }
+  document.getElementById('cap-skills').innerHTML = skHtml ||
+    '<p class="hint">还没有技能。一份 SKILL.md 就是一个技能：<b>一句话说明 + 做法</b>。对话时只把名字和那句说明放进简报，正文由它自己 skill_read 取 —— 不占每轮的上下文。</p>';
+  var more = document.getElementById('cap-more'), dev = document.getElementById('cap-dev');
+  if (more && dev) more.onclick = function () { dev.hidden = !dev.hidden; more.textContent = dev.hidden ? '展开' : '收起'; };
+
+  var cnt = function (k) { return ((cls[k] || []).filter(function (t) { return t.source !== 'mcp'; })).length; };
+  document.getElementById('cap-native').innerHTML =
+    capline('工具（verbs）', cnt('tool') + ' 个') +
+    capline('命令（CLI）', cnt('command') + ' 个') +
+    capline('面板能力', cnt('panel') + ' 个') +
+    capline('定时模板', cnt('cron') + ' 个');
+
+  var deg = (cap && cap.degraded) || [];
+  document.getElementById('cap-degraded').innerHTML = deg.length
+    ? deg.map(function (d) { return capline(d, '缺', true); }).join('')
+    : '<p class="hint">没有降级项：当前能自述的能力都是真的。</p>';
+
+  var cc = document.getElementById('capcount');
+  if (cc) cc.textContent = (mcpTools.length + list.length + cnt('tool')) + ' 项';
+}
 async function loadGeneration() {
   var g; try { g = await (await fetch("/api/persona")).json(); } catch (e) { return; }
   var el = $("#p-gen");
@@ -2523,6 +2629,7 @@ document.addEventListener("click", (e) => {
   if (v === "toolview") { openTool(Number(t.dataset.tool)); return; }
   if (v === "memview") { openMemory(Number(t.dataset.mem)); return; }
   if (v === "docview") { openDoc(t.dataset.doc); return; }
+  if (v === "capview") { show("capview"); loadCapPage(); return; }
   if (v === "memlistview") { show("memlistview"); memories(); return; }
   if (v === "docsview") { show("docsview"); docs(); return; }
   if (v === "auditview") { openAudit(); return; }
@@ -2666,6 +2773,8 @@ function renderDossier() {
   ctxh += dline('文档', (c.docs || 0) + ' 篇 / ' + (c.chunks || 0) + ' 块', '');
   ctxh += dline('模型', c.model || '未配置', '');
   ctxh += dline('今天用量', (c.todayTokens || 0) + ' tok · $' + Number(c.todayUsd || 0).toFixed(4), '');
+  var pl = c.plugins || {};
+  ctxh += dline('能借的手脚', '插件 ' + (pl.servers || 0) + ' · 工具 ' + (c.tools || 0) + ' · 技能 ' + (c.skills || 0), 'MCP / verbs / SKILL.md');
   document.getElementById('dc-ctx-stats').innerHTML = ctxh;
 }
 async function loadDossier() {

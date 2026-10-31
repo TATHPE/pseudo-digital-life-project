@@ -8,9 +8,9 @@
 
 | 项 | 数量 |
 |---|---|
-| 源文件（src/**/*.ts） | 91 |
-| 错误码 E_* | 178 |
-| verbs | 21 |
+| 源文件（src/**/*.ts） | 92 |
+| 错误码 E_* | 181 |
+| verbs | 23 |
 | CLI 子命令 | 37 |
 
 ## 六条纪律落点
@@ -138,6 +138,7 @@
 | `E_NO_RELEASE` | `src/cli/deploy.ts` `src/deploy/slot.ts` `src/deploy/watchdog.ts` |
 | `E_NO_ROLE` | `src/cli/jingjing.ts` |
 | `E_NO_RULE` | `src/policy.ts` |
+| `E_NO_SKILL` | `src/skills.ts` |
 | `E_NO_TARGET` | `src/cli/deploy.ts` |
 | `E_NO_TEMPLATE` | `src/shell.ts` |
 | `E_NO_TRASH` | `src/verbs.ts` |
@@ -182,6 +183,8 @@
 | `E_SANDBOX_UNAVAILABLE` | `src/shell.ts` |
 | `E_SCHEMA_MISMATCH` | `src/startupcheck.ts` |
 | `E_SETUP_BUSY` | `src/web/server.ts` |
+| `E_SKILL_NAME` | `src/skills.ts` |
+| `E_SKILL_READ` | `src/skills.ts` |
 | `E_STANDING_BECAUSE` | `src/standing.ts` |
 | `E_STANDING_ID` | `src/standing.ts` |
 | `E_STANDING_NOT_FOUND` | `src/cli/jingjing.ts` `src/web/server.ts` |
@@ -233,6 +236,8 @@
 | `shell.exec` | T3 |
 | `shell.run` | T3 |
 | `shell.templates` | T0 |
+| `skill.list` | T0 |
+| `skill.read` | T0 |
 | `time.now` | T0 |
 
 ## CLI 子命令
@@ -312,6 +317,7 @@
 | `src/setup.ts` | 首次配置事务（H-4）。 |
 | `src/setupsteps.ts` | 引导步骤的执行（H-4 的第 2–4 步）。 |
 | `src/shell.ts` | T3 受限命令执行（04 §5.2 模板 / §4.1 一次性令牌 / §6 宿主层） |
+| `src/skills.ts` | 技能（SKILL.md）—— docs/11 的第二优先。 |
 | `src/standing.ts` | 常驻指令（D-3）：有范围的预授权 + 调度。 |
 | `src/startup.ts` | 启动自检（18 §1.3 / §2.2）：断电检测 → 记 outage → 写一条记忆 → 补算衰减。 |
 | `src/startupcheck.ts` | 启动前配置校验（D-5） |

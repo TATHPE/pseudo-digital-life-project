@@ -416,6 +416,28 @@ check("能力表的降级项与服务端一致", await (async () => {
 })(), cap.deg.slice(0, 60));
 
 // ── 横向溢出：加右栏之后中栏变窄，工具卡里的长行曾把对话列撑破 ──
+// ── 技能与插件：harness 的两层"借来的手脚" ──────────────────
+check("能力屏能看见插件与技能", await js(`(async () => {
+  const entry = document.querySelector("#side .item[data-view=capview]");
+  if (!entry) return "NO_ENTRY";
+  entry.click();
+  await new Promise((r) => setTimeout(r, 900));
+  const mcp = document.getElementById("cap-mcp").textContent;
+  const sk = document.getElementById("cap-skills").textContent;
+  const nat = document.getElementById("cap-native").textContent;
+  const api = await (await fetch("/api/skills")).json();
+  // 三块都要有内容；技能数要对得上接口
+  const skOk = api.skills.length ? sk.includes(api.skills[0].id) : /还没有技能/.test(sk);
+  const mcpOk = /个工具|没装插件/.test(mcp);
+  return (/工具（verbs）/.test(nat) && skOk && mcpOk) ? true : "mcp:" + mcp.slice(0,40) + " sk:" + sk.slice(0,40);
+})()`));
+
+check("卷宗上下文写着能借多少手脚（插件/工具/技能）", await js(`(async () => {
+  const d = await (await fetch("/api/dossier")).json();
+  const txt = document.getElementById("dc-ctx-stats").textContent;
+  return /插件/.test(txt) && /技能/.test(txt) && txt.includes(String(d.context.skills));
+})()`));
+
 // ── 收纳：两个边栏能收成窄带，也要能收回原样 + 记住选择 ──────────
 check("左右边栏能收起来、也能再展开", await js(`(async () => {
   const cols = () => getComputedStyle(document.body).gridTemplateColumns.split(" ").map((x) => parseFloat(x));
@@ -503,6 +525,9 @@ check("卷宗卡片能折叠（点了收起，再点展开）", await js(`(async
 })()`));
 
 check("标题条跟着视图变（stage 顶部的当前屏名）", await js(`(async () => {
+  // 先回对话：前面的用例可能把视图停在别处（曾经因此偶发失败）
+  document.querySelector("#side .item[data-view=chat]").click();
+  await new Promise((r) => setTimeout(r, 300));
   const before = document.querySelector("#stTitle").textContent;
   document.querySelector("#side .item[data-view=cfg]").click();
   await new Promise((r) => setTimeout(r, 400));

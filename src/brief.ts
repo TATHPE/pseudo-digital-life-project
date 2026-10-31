@@ -143,6 +143,11 @@ export function buildBrief(input: BriefInput): BriefOutput {
   const it = (input.interpretations ?? []).slice(0, MAX_INTERP);
   const p13 = it.length ? `【我怎么理解你】${it.join(" ／ ")}` : "";
   slots.push({ id: "P13", label: "我的理解", tokens: estimateTokens(p13), stable: false });
+
+  // P14 技能索引（docs/11 第二优先）：只报"有这么一份说明书"，正文按需取。
+  // 放在易变区：装了/删了技能不该让稳定前缀（prefixHash）变。
+  const p14 = input.skills ? input.skills : "";
+  slots.push({ id: "P14", label: "可用技能", tokens: estimateTokens(p14), stable: false });
   // ── 本轮输入 ────────────────────────────────────────
   const p11 = input.user;
   slots.push({ id: "P11", label: "用户输入", tokens: estimateTokens(p11), stable: false });
@@ -151,7 +156,7 @@ export function buildBrief(input: BriefInput): BriefOutput {
   const confidence: BriefOutput["confidence"] =
     input.recalled.length === 0 ? "abstain" : input.recalled.length < 2 ? "need_evidence" : "answer";
 
-  const body = [p5, p6, p7, p8, p9, p10, p12, p13].filter(Boolean).join("\n\n");
+  const body = [p5, p6, p7, p8, p9, p10, p12, p13, p14].filter(Boolean).join("\n\n");
   const text = [prefixText, body, p11].filter(Boolean).join("\n\n");
   const tokens = estimateTokens(text);
 

@@ -98,8 +98,10 @@
   body {
     margin:0; color:var(--fg); background:var(--void);
     font:15px/1.72 -apple-system,"Segoe UI","Microsoft YaHei","PingFang SC","Noto Sans SC",sans-serif;
-    display:grid; grid-template-rows:var(--head) var(--readh) 1fr; grid-template-columns:var(--rail) 1fr;
-    grid-template-areas:"head head" "readout readout" "side main"; height:100vh; overflow:hidden;
+    display:grid; grid-template-rows:var(--head) var(--readh) 1fr;
+    grid-template-columns:var(--rail) minmax(0,1fr) var(--folio);
+    grid-template-areas:"head head head" "readout readout readout" "side main folio";
+    height:100vh; overflow:hidden;
     background-image:
       radial-gradient(900px 420px at 60% -140px, rgba(233,240,242,.06), transparent 70%),
       repeating-linear-gradient(0deg, rgba(233,240,242,.04) 0 1px, transparent 1px 36px),
@@ -160,9 +162,11 @@
          letter-spacing:.14em; color:var(--ink-dim); }
   .gap::before, .gap::after { content:""; flex:1; height:1px;
          background:repeating-linear-gradient(90deg, var(--line) 0 5px, transparent 5px 10px); }
-  .row { display:grid; grid-template-columns:28px 1fr; gap:12px; margin:14px 0; align-items:start; }
+  /* 列宽下限必须是 0：1fr 的隐含下限是 min-content，工具卡里一条长 argv 就能把整列撑破
+     （加了右栏卷宗之后中栏变窄，这个问题才露出来 —— 横向滚动条就是这么来的） */
+  .row { display:grid; grid-template-columns:28px minmax(0,1fr); gap:12px; margin:14px 0; align-items:start; }
   /* 用户行：头像放右边，正文右对齐（像 pi-web 的对话排列） */
-  .row.user { grid-template-columns:1fr 28px; }
+  .row.user { grid-template-columns:minmax(0,1fr) 28px; }
   .row.user .av { order:2; }
   .row.user > div:nth-child(2) { order:1; }
   .row.user .meta { text-align:right; }
@@ -216,7 +220,8 @@
   details.tool summary::marker { color:var(--ink); }
   .tms { color:var(--dim); margin-left:auto; }
   .targs, .tres { margin:0; padding:9px 12px; border-top:1px solid var(--line-dim);
-                 white-space:pre-wrap; word-break:break-word; color:#a9c9cf; max-height:220px; overflow:auto; }
+                 white-space:pre-wrap; word-break:break-word; overflow-wrap:anywhere;
+                 color:#a9c9cf; max-height:220px; overflow:auto; }
   .tres { border-top:0; color:var(--dim); }
   .cursor { display:inline-block; width:7px; height:14px; background:var(--ink);
             vertical-align:-2px; animation:breathe 1s steps(2) infinite; }
@@ -276,8 +281,10 @@
   .wingtop { margin-bottom:10px; }
   .wmark { display:flex; align-items:baseline; gap:8px; padding:2px 2px 8px;
            border-bottom:1px solid var(--line-dim); margin-bottom:8px; }
-  .wmark b { font:15px/1 var(--mono); letter-spacing:.34em; color:var(--ink); font-weight:700; }
-  .wmark span { font:8px/1 var(--mono); letter-spacing:.2em; color:var(--ink-dim); }
+  .wmark b { font:15px/1 var(--mono); letter-spacing:.3em; color:var(--ink); font-weight:700;
+             flex:none; white-space:nowrap; }
+  .wmark span { font:8px/1.4 var(--mono); letter-spacing:.14em; color:var(--ink-dim);
+                min-width:0; overflow:hidden; }
   .wsearch { position:relative; margin-bottom:10px; }
   .wsearch kbd { position:absolute; right:6px; top:50%; transform:translateY(-50%);
                  font:9px/1 var(--mono); color:var(--ink-dim); border:1px solid var(--line-dim);
@@ -285,6 +292,9 @@
   .wsec { display:flex; align-items:center; gap:8px; margin:10px 0 5px;
           font:9px/1 var(--mono); letter-spacing:.26em; color:var(--ink-dim); font-weight:700; }
   .wsec::after { content:""; flex:1; height:1px; background:var(--line-dim); }
+  .witem { border:1px solid var(--line-dim); background:#000; color:var(--ink);
+           font:12px/1.5 inherit; padding:5px 9px; margin-bottom:6px; }
+  .witem .m { display:block; font:9px/1.5 var(--mono); color:var(--ink-dim); letter-spacing:.04em; }
   /* 中栏标题条：会话名 + 状态 + 卷宗开关 */
   #stagebar { display:flex; align-items:center; gap:10px; flex:none; height:44px; padding:0 22px;
               border-bottom:1px solid var(--line-dim); background:rgba(8,11,10,.9); }
@@ -329,8 +339,66 @@
           color:var(--ink-dim); max-height:200px; overflow:auto; margin:0; }
   .dbar { height:3px; background:rgba(233,240,242,.16); margin-top:5px; }
   .dbar i { display:block; height:100%; background:var(--ink); }
+  /* 卷宗里的分区：从左栏搬过来，尺寸要收（这里是 330px 宽，不是 240px 的侧栏） */
+  #dc-inbox .sec, #dc-ctx .sec { margin:0 0 8px; }
+  #dc-inbox .sec h3, #dc-ctx .sec h3 { margin:0 0 4px; padding:2px 0 2px 6px; background:none;
+    border:0; border-left:2px solid var(--line); font:9px/1.2 var(--mono); letter-spacing:.16em;
+    color:var(--ink-dim); font-weight:700; }
+  #dc-inbox .sec h3 .n, #dc-ctx .sec h3 .n { color:var(--ink-dim); font-weight:700; }
+  #dc-inbox .hint, #dc-ctx .hint, #surfsec .hint { font:9px/1.5 var(--mono); color:var(--ink-dim); margin:3px 0; }
+  #dc-inbox .pend, #dc-ctx .pend { border:1px solid var(--line-dim); background:#000; padding:6px 7px; margin:0 0 5px; }
+  #dc-inbox .pend .cmd, #dc-ctx .pend .cmd { font:10px/1.4 var(--mono); color:var(--ink); word-break:break-all; }
+  #dc-inbox .pend .dir, #dc-ctx .pend .dir { font:9px/1.4 var(--mono); color:var(--ink-dim); }
+  #dc-inbox .pend .fp { font:9px/1.4 var(--mono); color:var(--ink-dim); }
+  #dc-inbox .acts, #dc-ctx .acts { display:flex; gap:5px; flex-wrap:wrap; margin-top:5px; }
+  #dc-inbox .acts button, #dc-ctx .acts button { font:9px/1 var(--mono); padding:4px 6px; background:#000;
+    color:var(--ink); border:1px solid var(--line-dim); cursor:pointer; }
+  #dc-inbox .acts button:hover, #dc-ctx .acts button:hover { border-color:var(--ink); }
+  #dc-inbox .item, #dc-ctx .item { font:10px/1.45 var(--mono); padding:4px 6px; }
+  #dc-inbox .item .m, #dc-ctx .item .m { font:9px/1.4 var(--mono); }
+  #dc-inbox .dempty, #dc-ctx .dempty { margin:2px 0 0; }
+  /* 能力屏：一行一个（名字在左、数在右），和入口行同一套语气 */
+  .cap-h { margin:18px 0 6px; padding:2px 0 2px 8px; border-left:3px solid var(--ink);
+           font:10px/1.3 var(--mono); letter-spacing:.18em; color:var(--ink); font-weight:700; }
+  .capline { display:flex; align-items:baseline; gap:10px; padding:5px 0;
+             border-bottom:1px solid rgba(233,240,242,.07); }
+  .capline .k { font:12px/1.4 var(--mono); color:var(--ink); font-weight:700; }
+  .capline .v { margin-left:auto; font:10px/1 var(--mono); color:var(--ink-dim); white-space:nowrap; }
+  .capline.bad .k { color:var(--amber); }
+  #capview .hint { font:11px/1.6 var(--mono); }
+
+  /* 入口行（去处）：一行一个，名字在左、计数在右（flex 而不是靠 text-align） */
+  #side .wingtop > .item, #side .wingtop > #foldtools { display:flex; align-items:baseline;
+    justify-content:space-between; gap:8px; margin-bottom:3px; }
+  #side .wingtop > .item .m, #side .wingtop > #foldtools .n { display:inline; flex:none;
+    text-align:right; font:9px/1 var(--mono); color:var(--ink-dim); white-space:nowrap; }
+
+  /* ── 收纳：两个边栏都能收成一条窄带，状态记在 localStorage ──────────
+     收起来不是删掉：窄带上留一个能点开的把手，键盘 Tab 也够得着。 */
+  /* 收纳只在宽屏成立：≤1180 时两个边栏本来就是抽屉，再叠一层「收起」只会互相打架
+     （之前左栏一收，右栏卷宗跟着 display:none，点了也打不开 —— 就是这条的锅） */
+  @media (min-width: 1181px) {
+  body.wing-off { --rail:34px; }
+  body.wing-off #side > *:not(#wingHandle) { display:none; }
+  body.wing-off #side { padding:0; overflow:hidden; }
+  body.wing-off #wingHandle { writing-mode:vertical-rl; letter-spacing:.4em; width:100%; height:100%;
+                               display:flex; align-items:center; justify-content:flex-start;
+                               padding:12px 0; border:0; background:#000; color:var(--ink);
+                               font:10px/1 var(--mono); font-weight:700; cursor:pointer; }
+  body.wing-off #wingHandle:hover { color:var(--fg); background:rgba(233,240,242,.08); }
+  #wingTog { margin-left:auto; background:#000; border:1px solid var(--line-dim); color:var(--ink-dim);
+             font:10px/1 var(--mono); padding:4px 6px; cursor:pointer; }
+  #wingTog:hover { color:var(--ink); border-color:var(--ink); }
+  body.folio-off #folio { display:none; }
+  body.folio-off { --folio:0px; }
+  body.folio-off #folioTog { display:inline-block; }
+  #folioX { background:#000; border:1px solid var(--line-dim); color:var(--ink-dim); font:10px/1 var(--mono);
+            padding:4px 7px; cursor:pointer; margin-left:auto; }
+  #folioX:hover { color:var(--ink); border-color:var(--ink); }
+  }   /* @media (min-width:1181px)：收纳规则结束 */
   /* 1181–1440px：卷宗变窄；≤1180px：卷宗收成抽屉（照它把 folio 抽出来的做法） */
   @media (max-width: 1440px) { :root { --folio:290px; --rail:220px; } }
+  @media (max-width: 1366px) { .ro:nth-last-child(-n+2) { display:none; } }
   @media (max-width: 1180px) {
     body { grid-template-columns:var(--rail) 1fr;
            grid-template-areas:"head head" "readout readout" "side main"; }
@@ -347,12 +415,16 @@
     #composer .wrap { align-items:center; }
     #m { overflow:hidden; }
     /* 抽屉：手机上不能是半透明的——聊天内容会透出来，看不出哪层在上 */
-    aside { position:fixed; z-index:12; top:var(--head); bottom:0; left:0; width:82vw; max-width:320px;
+    aside#side { position:fixed; z-index:12; top:var(--head); bottom:0; left:0; width:82vw; max-width:320px;
             transform:translateX(-102%); transition:.22s; border-right:1px solid var(--line);
             background:var(--void); }
-    aside.open { transform:none; }
+    aside#side.open { transform:none; }
     /* 遮罩用 box-shadow 而不是伪元素：伪元素 z-index:-1 会被 aside 自己的背景盖住，等于没有 */
-    aside.open { box-shadow:0 0 0 100vmax rgba(0,0,0,.5); }
+    aside#side.open { box-shadow:0 0 0 100vmax rgba(0,0,0,.5); }
+    /* 卷宗在手机上就是一张从右边推出来的抽屉，默认完全藏起来 */
+    #folioTog { display:inline-block; }
+    #folio { left:auto; right:0; width:min(88vw,380px); max-width:none; transform:translateX(103%); }
+    body.folio-open #folio { transform:none; box-shadow:0 0 0 100vmax rgba(0,0,0,.5); }
     .chip { display:none; }
     /* 窄屏状态行分级：保留时间与计数，收起那句描述（它最长、最容易被截成半句） */
     #statetext { display:none; }
@@ -374,7 +446,8 @@
   .avav input[type=file] { display:none; }
 
   /* ── 气泡：两侧一眼分得开；**全站唯一保留青色的地方**就是鲸鲸的回话 ── */
-  .body { background:rgba(13,31,34,.94); border:1px solid var(--line-dim);
+  .body { min-width:0; overflow-wrap:anywhere;
+          background:rgba(13,31,34,.94); border:1px solid var(--line-dim);
           border-left:2px solid var(--cyan); padding:12px 15px; display:inline-block; max-width:100%; }
   /* 用户气泡：inline-block 上的 margin-left:auto 不生效（auto 只作用于块级盒子），改成 block + fit-content 才真的靠右 */
   .row.user .body { background:rgba(38,28,14,.92); border-color:rgba(255,180,84,.34);
@@ -592,66 +665,27 @@
 </header>
 
 <aside id="side">
+  <button id="wingHandle" type="button" title="展开左栏（Ctrl+B）" aria-label="展开左栏" hidden>鲸鲸</button>
   <div class="wingtop">
-    <div class="wmark"><b>鲸鲸</b><span>PSEUDO · DIGITAL · LIFE</span></div>
-    <div class="wsearch"><input id="q" class="searchbox" placeholder="搜记忆 / 文档…" autocomplete="off"><kbd>Ctrl K</kbd></div>
-    <div class="wsec">工 作 区</div>
-    <button class="item" id="wsroot" data-view="chat" title="本机工作区与项目">本机 · 记忆库<span class="m" id="wspath">…</span></button>
+    <div class="wmark"><b>鲸鲸</b><span id="wingstate">…</span>
+      <button id="wingTog" type="button" title="收起左栏（Ctrl+B）" aria-label="收起左栏">«</button></div>
+
     <div class="wsec">今 天</div>
     <div id="sesslist"></div>
-  </div>
-  <div class="sec" id="pendsec" hidden><h3>PENDING · 待确认</h3><div id="pendlist"></div></div>
-  <div class="sec" id="propsec" hidden><h3><button type="button" data-tog="prop">它想做的 <span class="n" id="propcount"></span></button></h3><div id="proplist"></div></div>
-  <div class="sec" id="egrsec" hidden><h3><button type="button" data-tog="egr">它想读代码 <span class="n" id="egrcount"></span></button></h3>
-    <p class="hint">表达模型在云端时，读源码等于把代码发出去。默认拒；你可以只批一次，或批一段时间。</p>
-    <div id="egrlist"></div></div>
-  <div class="sec" id="rcpsec" hidden><h3><button type="button" data-tog="rcp">它做完的事 <span class="n" id="rcpcount"></span></button></h3>
-    <p class="hint">后台跑过的东西都在这里。<b>点了「知道了」才算我看见了</b> —— 三天没人看的，对应常驻指令会自动停用。</p>
-    <div id="rcplist"></div></div>
-  <div class="sec" id="threadsec" hidden><h3><button type="button" data-tog="thread">未闭合 <span class="n" id="threadcount"></span></button></h3>
-    <p class="hint">它答应过、还没了结的事。办完了点一下；太久没动静的会标「拖了 N 天」。</p>
-    <div id="threadlist"></div></div>
-  <div class="sec" id="surfsec" hidden><h3><button type="button" data-tog="surf">抽检 <span class="n" id="surfcount"></span></button></h3>
-    <p class="hint">这几根线是它自己连的，最没把握的排前面。判错了就点「不对」，当场断。</p>
-    <div id="surflist"></div></div>
-  <!-- 内容在前、参考在后：TOOLS 有 16 项，放在中间会把 DOCS / MEMORY 挤到折叠线以下 -->
-  <div class="sec" data-sec="docs"><h3><button type="button" data-tog="docs">DOCS <span class="n" id="doccount"></span></button></h3><div id="doclist"></div>
-    <div class="ingest">
-      <label class="ilab">加文档 · 只在本机读取，跟云端无关</label>
-      <!-- 候选优先：sources/ 里有文件就直接选，没有才提示放哪 -->
-      <div id="dlg-cands" hidden>
-        <select id="dlg-pick" class="searchbox"></select>
-      </div>
-      <div id="dlg-empty" class="hint">
-        还没有待摄入的文件。放这里：<br><code id="dlg-dir">data/sources</code>
-      </div>
-      <div class="rowmini">
-        <button type="button" id="dlg-file-btn">选文件…</button>
-        <input type="file" id="dlg-file" hidden multiple accept=".md,.markdown,.txt,.pdf,.docx,.pptx,.xlsx,.html,.htm,.epub,.csv,.json,.xml,.rtf,.ipynb">
-        <span class="hint">或手动填路径 ↓</span>
-      </div>
-      <input id="dlg-path" class="searchbox" placeholder="data/ 里的相对路径，如 sources/笔记.md" autocomplete="off">
-      <!-- 提示紧贴它抱怨的那个输入框（不是复选框，也不是按钮） -->
-      <span id="dlg-msg" class="hint"></span>
 
-      <!-- 这里**没有**隐私复选框：摄入是一个动作，去哪里是一个属性，
-           两者放在同一个表单里怎么摆都会被读成“勾了才能摄”。
-           所以摄入永远只在本机（默认最安全），能不能进云端是那篇文档之后的事。 -->
-      <div class="acts"><button id="dlg-go" class="primary">摄入到本机</button></div>
-      <p class="hint">录入后只在本机检索。要让它引用原文（随简报发给云端模型），
-        打开那篇文档点「标为可发送」。</p>
-    </div></div>
-  <div class="sec" data-sec="mem"><h3><button type="button" data-tog="mem">MEMORY <span class="n" id="memcount"></span></button></h3><div id="memlist"></div></div>
-  <div class="sec" data-sec="actions"><h3><button type="button" data-tog="actions">ACTIONS <span class="n" id="actcount"></span></button></h3><div id="auditlist"></div></div>
-  <div class="sec"><button class="fold" id="foldtools">TOOLS <span class="n" id="toolcount"></span></button>
+    <div class="wsec">去 处</div>
+    <button class="item" type="button" data-view="memlistview">记忆<span class="m" id="memcount">…</span></button>
+    <button class="item" type="button" data-view="docsview">文档<span class="m" id="doccount">…</span></button>
+    <button class="item" type="button" data-view="auditview">动作<span class="m" id="actcount">…</span></button>
+    <button class="item" type="button" data-view="capview">能力<span class="m" id="capcount">…</span></button>
+    <button class="item" type="button" id="foldtools">工具<span class="m" id="toolcount">…</span></button>
     <div id="toollist" hidden>
       <input id="toolq" class="searchbox" placeholder="筛工具名 / 说明…" autocomplete="off">
       <div id="toolrows"><button class="item on" data-view="chat">对话<span class="m">与鲸鲸说话</span></button></div>
       <button class="item dimmore" id="toolmore" hidden>显示全部</button>
-    </div></div>
-  <div class="sec"><h3>SETUP</h3><button class="item" data-view="setupview">首次配置<span class="m">装模型 / 配 API / 人格</span></button></div>
-  <div class="sec"><h3>CONFIG</h3>
-    <button class="item" data-view="cfg">设置<span class="m">接口 / 人格</span></button>
+    </div>
+    <button class="item" type="button" data-view="setupview">首次配置<span class="m">装模型 / 配 API / 人格</span></button>
+    <button class="item" type="button" data-view="cfg">设置<span class="m">接口 / 人格</span></button>
   </div>
 </aside>
 
@@ -754,12 +788,67 @@
       </div>
     </div>
 
+    <div id="docsview" hidden>
+      <div class="panelbox">
+        <h2>文档 · DOCS</h2>
+        <p class="hint" id="dv-listmeta">只在本机读取与检索；要让它把原文随简报发出去，打开那篇点「标为可发送」。</p>
+        <div id="doclist"></div>
+        <div class="ingest">
+          <label class="ilab">加文档 · 只在本机读取，跟云端无关</label>
+          <div id="dlg-cands" hidden>
+            <select id="dlg-pick" class="searchbox"></select>
+          </div>
+          <div id="dlg-empty" class="hint">
+            还没有待摄入的文件。放这里：<br><code id="dlg-dir">data/sources</code>
+          </div>
+          <div class="rowmini">
+            <button type="button" id="dlg-file-btn">选文件…</button>
+            <input type="file" id="dlg-file" hidden multiple accept=".md,.markdown,.txt,.pdf,.docx,.pptx,.xlsx,.html,.htm,.epub,.csv,.json,.xml,.rtf,.ipynb">
+            <span class="hint">或手动填路径 ↓</span>
+          </div>
+          <input id="dlg-path" class="searchbox" placeholder="data/ 里的相对路径，如 sources/笔记.md" autocomplete="off">
+          <span id="dlg-msg" class="hint"></span>
+          <div class="acts"><button id="dlg-go" class="primary">摄入到本机</button></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="memlistview" hidden>
+      <div class="panelbox">
+        <h2>记忆 · MEMORY</h2>
+        <p class="hint">按活跃度排；点一条看正文、出处与它的来历。</p>
+        <input id="q" class="searchbox" placeholder="搜记忆 / 文档…（Ctrl+K 也能到这儿）" autocomplete="off">
+        <div id="memlist"></div>
+      </div>
+    </div>
+
+    <div id="capview" hidden>
+      <div class="panelbox">
+        <h2>能力 · CAPABILITIES</h2>
+        <p class="hint">它能借到的手脚分四类：<b>插件</b>（MCP server 提供的工具）、<b>技能</b>（SKILL.md，说明书）、
+          <b>原生工具</b>（verbs，走同一条闸门）、<b>命令</b>（CLI）。降级项会明说是哪一项缺什么。</p>
+
+        <h3 class="cap-h">插件 · MCP</h3>
+        <div id="cap-mcp"></div>
+
+        <h3 class="cap-h">技能 · SKILL.md</h3>
+        <p class="hint" id="cap-skills-dirs"></p>
+        <div id="cap-skills"></div>
+
+        <h3 class="cap-h">原生工具 · VERBS</h3>
+        <div id="cap-native"></div>
+
+        <h3 class="cap-h">降级项</h3>
+        <div id="cap-degraded"></div>
+      </div>
+    </div>
+
     <div id="auditview" hidden>
       <div class="panelbox">
         <h2>动作 · ACTIONS</h2>
         <p class="hint">来自 exec_audit：每一次能力调用（含被拒）都在这里。被拒的也留痕，这是"越权为零"能被验证的地方。</p>
         <p class="hint" id="av-meta"></p>
-        <div id="av-list"></div>
+        <div id="auditlist"></div>
       </div>
     </div>
 
@@ -889,7 +978,25 @@
 
 <!-- 右栏「卷宗」（结构照 Trianon 的 Dossier：Plan / Changes / Context 三张可折卡） -->
 <aside id="folio" aria-label="卷宗">
-  <div class="fcap"><b>卷 宗</b><span>DOSSIER</span></div>
+  <div class="fcap"><b>卷 宗</b><span>DOSSIER</span><button id="folioX" type="button" title="收起卷宗（⌘/Ctrl+J）" aria-label="收起卷宗">»</button></div>
+
+  <div class="dcard" data-card="inbox">
+    <button class="dtab" type="button"><i>0</i><b>等 你 点 头</b><span class="n" id="dc-inbox-n"></span></button>
+    <div class="din" id="dc-inbox">
+      <div class="sec" id="pendsec" data-sec="pend" hidden><h3>待确认</h3><div id="pendlist"></div></div>
+      <div class="sec" id="propsec" data-sec="prop" hidden><h3><button type="button" data-tog="prop">它想做的 <span class="n" id="propcount"></span></button></h3><div id="proplist"></div></div>
+      <div class="sec" id="egrsec" data-sec="egr" hidden><h3><button type="button" data-tog="egr">它想读代码 <span class="n" id="egrcount"></span></button></h3>
+        <p class="hint">表达模型在云端时，读源码等于把代码发出去。默认拒；可以只批一次，或批一段时间。</p>
+        <div id="egrlist"></div></div>
+      <div class="sec" id="rcpsec" data-sec="rcp" hidden><h3><button type="button" data-tog="rcp">它做完的事 <span class="n" id="rcpcount"></span></button></h3>
+        <p class="hint">点了「知道了」才算看见了 —— 三天没人看的，对应常驻指令会自动停用。</p>
+        <div id="rcplist"></div></div>
+      <div class="sec" id="threadsec" data-sec="thread" hidden><h3><button type="button" data-tog="thread">未闭合 <span class="n" id="threadcount"></span></button></h3>
+        <p class="hint">它答应过、还没了结的事。办完了点一下；太久没动静的会标「拖了 N 天」。</p>
+        <div id="threadlist"></div></div>
+      <p class="dempty" id="dc-inbox-empty">没有等你点头的事。</p>
+    </div>
+  </div>
 
   <div class="dcard" data-card="plan">
     <button class="dtab" type="button"><i>I</i><b>计 划</b><span class="n" id="dc-plan-n"></span></button>
@@ -903,7 +1010,11 @@
 
   <div class="dcard" data-card="ctx">
     <button class="dtab" type="button"><i>III</i><b>上 下 文</b><span class="n" id="dc-ctx-n"></span></button>
-    <div class="din" id="dc-ctx"><p class="dempty">…</p></div>
+    <div class="din"><div id="dc-ctx-stats"><p class="dempty">…</p></div>
+      <div class="sec" id="surfsec" data-sec="surf" hidden><h3><button type="button" data-tog="surf">抽检 <span class="n" id="surfcount"></span></button></h3>
+        <p class="hint">这几根线是它自己连的，最没把握的排前面。判错了就点「不对」，当场断。</p>
+        <div id="surflist"></div></div>
+    </div>
   </div>
 </aside>
 
@@ -929,14 +1040,15 @@ let sideActive = null;   // 侧栏里最后点的那一项（文档/工具/记�
 
 var chatScroll = 0;   // 切走前记下对话滚到哪了
 const VIEWNAME = { chat: "对话 · CHAT", cfg: "设置 · CONFIG", toolview: "工具 · TOOL",
-  memview: "记忆 · MEMORY", docview: "文档 · DOC", auditview: "动作 · ACTIONS",
+  memview: "记忆 · MEMORY", memlistview: "记忆 · MEMORY", docview: "文档 · DOC", capview: "能力 · CAPABILITIES",
+  docsview: "文档 · DOCS", auditview: "动作 · ACTIONS",
   searchview: "搜索 · SEARCH", propview: "它想做的一件事", setupview: "首次配置 · SETUP" };
 function show(v) {
   // 切走时把滚动位置存下来：隐藏 #chat 会让 #scroll 的 scrollHeight 塌成 0，浏览器会把 scrollTop 归零
   if (view === "chat" && v !== "chat") chatScroll = $("#scroll").scrollTop;
   view = v;
   document.body.dataset.view = v;   // CSS 用它把「回到最新」锁在对话里
-  for (const id of ["chat", "cfg", "toolview", "memview", "docview", "auditview", "searchview", "propview", "setupview"]) $("#" + id).hidden = id !== v;
+  for (const id of ["chat", "cfg", "toolview", "memview", "memlistview", "docview", "docsview", "auditview", "capview", "searchview", "propview", "setupview"]) $("#" + id).hidden = id !== v;
   $("#composer").style.display = v === "chat" ? "" : "none";
   // "回到最新"是对话专用的，别的界面不该出现
   if (v !== "chat") $("#jump").classList.remove("on");
@@ -986,7 +1098,9 @@ function clock(iso) {
 async function state() {
   const s = await (await fetch("/api/state")).json();
   $("#state").textContent = s.line;
-  $("#statetext").textContent = s.state?.text ? " · " + s.state.text : "";
+  var stTxt = s.state?.text ? " · " + s.state.text : "";
+  $("#statetext").textContent = stTxt;
+  var ws = $("#wingstate"); if (ws) ws.textContent = s.state?.text ? s.state.text : "…";
   var hud = document.querySelector(".hud"); if (hud) hud.title = s.line + (s.state?.text ? " · " + s.state.text : "");
   // 断电提示：只在重启后第一次显示（服务端只给一次）
   if (s.outage) {
@@ -1066,7 +1180,7 @@ async function pending() {
   const sec = $("#pendsec"), box = $("#pendlist");
   const open = (list || []).filter((p) => p.status === "pending" && !p.expired);
   paintPendBadge(open.length);
-  loadProposals(); loadSurfaceReview(); loadThreads(); loadReceipts(); loadStanding(); loadPermission(); loadEgress(); loadSetup(false);
+  loadProposals(); loadSurfaceReview(); loadThreads(); loadReceipts(); loadStanding(); loadPermission(); loadEgress(); loadSetup(false); loadCapPage();
   sec.hidden = open.length === 0;
   if (!open.length) { box.innerHTML = ""; return; }
   box.innerHTML = open.map((p) =>
@@ -1422,27 +1536,17 @@ document.addEventListener("keydown", function (e) {
 
 // ── 动作审计（P0 #3）────────────────────────────────────
 async function audit() {
+  // 左栏的「动作」只是一行入口 + 计数；列表本体在 openAudit() 里渲染。
   var rows = [], total = 0;
-  try { var j = await (await fetch("/api/audit?limit=40")).json(); rows = j.rows || []; total = j.total || rows.length; } catch (e) { return; }
-  var ac = $("#actcount"); if (ac) ac.textContent = total + " 条";
-  var box = $("#auditlist");
-  if (!rows || !rows.length) { box.innerHTML = "<div class='hint' style='padding:4px 2px'>还没有动作</div>"; return; }
-  box.innerHTML = rows.slice(0, 8).map(function (r) {
-    var cls = r.decision === "allowed" ? "d-ok" : r.decision === "needs_confirm" ? "d-wait" : "d-no";
-    return "<button class='item' data-view='auditview' title='" + escapeHtml(r.verb + " " + (r.reason || r.decision)) + "'>" +
-      escapeHtml(r.verb) + "<span class='m'><span class='" + cls + "'>" + escapeHtml(r.decision) + "</span> · " +
-      escapeHtml(r.tier) + " · " + clock(r.ts) + "</span></button>";
-  }).join("") +
-    // 这行必须是真的控件：以前写成 hint，写着“点开看全部”却点不动
-    "<button class='item' data-view='auditview'><span class='preview'>查看全部（最近 " + rows.length + " / 共 " + total + " 条）</span>" +
-    "<span class='m'>exec_audit · 含被拒绝的调用</span></button>";
+  try { var j = await (await fetch('/api/audit?limit=1')).json(); total = j.total || (j.rows || []).length; } catch (e) { return; }
+  var ac = $('#actcount'); if (ac) ac.textContent = total + ' 条';
 }
 async function openAudit() {
   show("auditview");
   var rows = [], total = 0;
   try { var j2 = await (await fetch("/api/audit?limit=80")).json(); rows = j2.rows || []; total = j2.total || rows.length; } catch (e) { rows = []; }
   var am = $("#av-meta"); if (am) am.textContent = "exec_audit 共 " + total + " 条 · 下面显示最近 " + rows.length + " 条（含被拒绝的）";
-  $("#av-list").innerHTML = (rows || []).map(function (r) {
+  $("#auditlist").innerHTML = (rows || []).map(function (r) {
     var cls = r.decision === "allowed" ? "d-ok" : r.decision === "needs_confirm" ? "d-wait" : "d-no";
     return "<div class='arow'><span class='t'>" + escapeHtml(clock(r.ts)) + "</span>" +
       "<span class='v'>" + escapeHtml(r.verb) + "</span>" +
@@ -1499,6 +1603,7 @@ var PAL_ACTIONS = [
   { id: "tools", label: "工具列表", key: "视图", run: function () { $("#foldtools").click(); } },
   { id: "new", label: "说点什么（聚焦输入框）", key: "动作", run: function () { show("chat"); $("#m").focus(); } },
   { id: "ingest", label: "加文档（跳到 DOCS 的摄入区）", key: "动作", run: function () { docs(); setTimeout(function () { var el = $("#dlg-path"); if (el) el.focus(); }, 300); } },
+  { id: "search", label: "搜记忆 / 文档…", key: "动作", run: function () { show("memlistview"); memories(); setTimeout(function () { var el = $("#q"); if (el) el.focus(); }, 300); } },
   { id: "cap", label: "看能力与降级项", key: "动作", run: function () { show("cfg"); setTimeout(function () { var el = $("#cap-sum"); if (el) el.scrollIntoView({ block: "center" }); }, 600); } },
 ];
 var palOpen = false, palIdx = 0, palShown = PAL_ACTIONS;
@@ -1947,38 +2052,113 @@ async function paintSetupPanel() {
     return;
   }
 }
+// 草稿：**六块全列**（空的也列，写「还是出厂默认」），每行带着它的出处。
+// 出处不能被面板改掉：interview.ts 的铁律是「模型写的每一行要么能在你回答里逐字找到，
+// 要么标成『模型补的，请确认』」。之前这里保存时不看 source、一律写成「你原话」，
+// 等于把那条校验绕过去了 —— 封存出来的 persona 会把模型编的话挂上你的名字。
+var DRAFT_BLOCKS = ['core', 'boundaries', 'values', 'voice', 'evidence', 'tools'];
 function renderDraft(d) {
-  var box = $("#su-draft");
+  var box = document.getElementById('su-draft');
   if (!box) return;
-  var html = "";
-  ["core", "boundaries", "values", "voice", "evidence", "tools"].forEach(function (k) {
+  var html = '';
+  var empty = [];
+  DRAFT_BLOCKS.forEach(function (k) {
     var lines = (d.blocks || {})[k] || [];
-    if (!lines.length) return;
-    html += "<p class='hint' style='margin-top:12px'>#" + k + "</p>";
+    if (!lines.length) { empty.push(k); return; }
+    html += '<p class="hint" style="margin-top:12px">#' + k + '</p>';
     lines.forEach(function (l, i) {
-      var mine = l.source === "你原话";
-      html += "<div class='draftline" + (mine ? " mine" : "") + "'>" +
-        "<span class='src'>" + (mine ? "你原话" : "请确认") + "</span>" +
-        "<input data-blk='" + k + "' data-i='" + i + "' value='" + escapeHtml(l.text) + "'></div>";
+      var mine = l.source === '你原话';
+      html += '<div class="draftline' + (mine ? ' mine' : '') + '">' +
+        '<span class="src">' + (mine ? '你原话' : '请确认') + '</span>' +
+        '<input data-blk="' + k + '" data-i="' + i + '" data-src="' + (mine ? '你原话' : '模型补的') + '" value="' + escapeHtml(l.text) + '"></div>';
     });
   });
-  html += "<div class='acts' style='margin-top:12px'><button id='su-seal' class='primary'>封存（开第 1 代）</button><span id='su-seal-msg' class='hint'></span></div>";
+  if (empty.length) {
+    html += '<p class="hint" style="margin-top:12px">这几块访谈里没说到，封存后会**保持出厂默认**：' +
+      empty.map(function (k) { return '#' + k; }).join(' · ') + '（之后可在设置 → 人格里补）</p>';
+  }
+  html += '<div class="acts" style="margin-top:12px"><button id="su-seal" class="primary">封存（开第 1 代）</button><span id="su-seal-msg" class="hint"></span></div>';
   box.innerHTML = html;
-  $("#su-seal").onclick = async function () {
-    var msg = $("#su-seal-msg"); msg.textContent = "封存中…";
+  document.getElementById('su-seal').onclick = async function () {
+    var msg = document.getElementById('su-seal-msg'); msg.className = 'hint'; msg.textContent = '封存中…';
     var blocks = {};
-    document.querySelectorAll("#su-draft input[data-blk]").forEach(function (inp) {
-      var k = inp.dataset.blk; (blocks[k] = blocks[k] || []).push({ text: inp.value, source: "你原话" });
+    document.querySelectorAll('#su-draft input[data-blk]').forEach(function (inp) {
+      var k = inp.dataset.blk;
+      var src = inp.dataset.src === '你原话' ? '你原话' : '模型补的（请确认）';
+      (blocks[k] = blocks[k] || []).push({ text: inp.value, source: src });
     });
-    await fetch("/api/setup/interview", { method: "POST", headers: H, body: JSON.stringify({ action: "save", blocks: blocks }) });
-    var r = await (await fetch("/api/setup/interview", { method: "POST", headers: H, body: JSON.stringify({ action: "seal", because: "首次封存（面板）" }) })).json();
-    if (!r.ok) { msg.className = "err"; msg.textContent = r.error || "封存失败"; return; }
-    msg.className = "ok"; msg.textContent = r.note;
-    await fetch("/api/setup", { method: "POST", headers: H, body: JSON.stringify({ action: "run", step: "persona" }) });
+    await fetch('/api/setup/interview', { method: 'POST', headers: H, body: JSON.stringify({ action: 'save', blocks: blocks }) });
+    var r = await (await fetch('/api/setup/interview', { method: 'POST', headers: H, body: JSON.stringify({ action: 'seal', because: '首次封存（面板）' }) })).json();
+    if (!r.ok) { msg.className = 'err'; msg.textContent = r.error || '封存失败'; return; }
+    msg.className = 'ok'; msg.textContent = r.note;
+    await fetch('/api/setup', { method: 'POST', headers: H, body: JSON.stringify({ action: 'run', step: 'persona' }) });
+    // 封存后立刻把世代/人格读回来：不然设置里看到的还是旧的（要刷新才变）
+    await loadGeneration();
+    if (document.getElementById('p-file')) await loadPersona(document.getElementById('p-file').value);
     await loadSetup();
   };
 }
 // ── 分代（H-5）：显示当前第几代，并说清"改动只向前生效" ──
+// ── 能力屏：插件（MCP）/ 技能 / 原生工具 / 降级项 ────────────────
+// 三件事都只读：这里不装、不启、不改配置 —— 装是跑 jingjing mcp add，或往目录里放文件。
+function capline(k, v, bad) {
+  return '<div class="capline' + (bad ? ' bad' : '') + '">' +
+    '<span class="k">' + escapeHtml(k) + '</span>' +
+    '<span class="v">' + escapeHtml(v == null ? '' : String(v)) + '</span></div>';
+}
+async function loadCapPage() {
+  var cap = null, sk = null;
+  try { cap = await (await fetch('/api/capabilities')).json(); } catch (e) { /* 下面显示空 */ }
+  try { sk = await (await fetch('/api/skills')).json(); } catch (e) { /* 同上 */ }
+
+  var cls = (cap && cap.classes) || {};
+  var mcpTools = ((cls.tool) || []).filter(function (t) { return t.source === 'mcp'; });
+  var byServer = {};
+  mcpTools.forEach(function (t) {
+    var m = /^mcp__([^_]+(?:_[^_]+)*?)__/.exec(t.name);
+    var server = m ? m[1] : '?';
+    (byServer[server] = byServer[server] || []).push(t);
+  });
+  var errs = ((cap && cap.degraded) || []).filter(function (d) { return d.indexOf('mcp-unavailable') === 0; });
+  var html = '';
+  Object.keys(byServer).filter(function (k) { return k !== '?'; }).forEach(function (name) {
+    html += capline(name, byServer[name].length + ' 个工具 · ok');
+    byServer[name].forEach(function (t) {
+      html += '<div class="hint">· ' + escapeHtml(t.name.replace(/^mcp__[^_]+__/, '')) + '（' + escapeHtml(t.tier) + '）</div>';
+    });
+  });
+  errs.forEach(function (d) { html += capline(d.replace('mcp-unavailable:', ''), '连不上', true); });
+  document.getElementById('cap-mcp').innerHTML = html ||
+    '<p class="hint">没装插件。插件是 MCP server：写进 data/mcp.json 的 servers 里，重启面板就会出现在这里。</p>';
+
+  var list = (sk && sk.skills) || [];
+  var dirsEl = document.getElementById('cap-skills-dirs');
+  if (dirsEl) {
+    dirsEl.textContent = '放这里就会被认到：' + ((sk && sk.dirs) || []).join(' 或 ') + '（和 pi / Claude Code 同一套目录）';
+  }
+  var skHtml = '';
+  list.forEach(function (x) {
+    skHtml += capline(x.id, x.source + ' · ' + Math.max(1, Math.round(x.bytes / 1024)) + 'KB');
+    skHtml += '<div class="hint">' + escapeHtml(x.description || '（没有描述）') + '</div>';
+  });
+  document.getElementById('cap-skills').innerHTML = skHtml ||
+    '<p class="hint">还没有技能。一份 SKILL.md 就是一个技能：<b>一句话说明 + 做法</b>。对话时只把名字和那句说明放进简报，正文由它自己 skill_read 取 —— 不占每轮的上下文。</p>';
+
+  var cnt = function (k) { return ((cls[k] || []).filter(function (t) { return t.source !== 'mcp'; })).length; };
+  document.getElementById('cap-native').innerHTML =
+    capline('工具（verbs）', cnt('tool') + ' 个') +
+    capline('命令（CLI）', cnt('command') + ' 个') +
+    capline('面板能力', cnt('panel') + ' 个') +
+    capline('定时模板', cnt('cron') + ' 个');
+
+  var deg = (cap && cap.degraded) || [];
+  document.getElementById('cap-degraded').innerHTML = deg.length
+    ? deg.map(function (d) { return capline(d, '缺', true); }).join('')
+    : '<p class="hint">没有降级项：当前能自述的能力都是真的。</p>';
+
+  var cc = document.getElementById('capcount');
+  if (cc) cc.textContent = (mcpTools.length + list.length + cnt('tool')) + ' 项';
+}
 async function loadGeneration() {
   var g; try { g = await (await fetch("/api/persona")).json(); } catch (e) { return; }
   var el = $("#p-gen");
@@ -2399,16 +2579,23 @@ async function loadPersona(file) {
   $("#p-text").value = p.files[file] || "";
 }
 document.addEventListener("click", (e) => {
-  const t = e.target.closest("#side .item");
-  if (!t || !t.dataset.view) return;
+  // 认任何带 data-view 的 .item：左栏是导航，中栏的列表项（记忆/文档/审计）也走这里。
+  // 之前只认 #side 里的 .item，列表搬出左栏之后点不动了（回归过一次）。
+  const t = e.target.closest(".item[data-view]");
+  if (!t) return;
   const v = t.dataset.view;
-  sideActive = t;
-  for (const b of document.querySelectorAll("#side .item")) b.classList.toggle("on", b === t);
+  if (t.closest("#side")) {
+    sideActive = t;
+    for (const b of document.querySelectorAll("#side .item")) b.classList.toggle("on", b === t);
+  }
   if (v === "setupview") { show("setupview"); loadSetup(false); return; }
   if (v === "cfg") { show("cfg"); loadConfig().then(() => loadPersona($("#p-file").value)); return; }
   if (v === "toolview") { openTool(Number(t.dataset.tool)); return; }
   if (v === "memview") { openMemory(Number(t.dataset.mem)); return; }
   if (v === "docview") { openDoc(t.dataset.doc); return; }
+  if (v === "capview") { show("capview"); loadCapPage(); return; }
+  if (v === "memlistview") { show("memlistview"); memories(); return; }
+  if (v === "docsview") { show("docsview"); docs(); return; }
   if (v === "auditview") { openAudit(); return; }
   show("chat");
   if (t.dataset.day) jumpToDay(t.dataset.day);
@@ -2483,6 +2670,43 @@ function dline(k, v, t) {
   return '<div class="dline"><span class="k">' + escapeHtml(k) + '</span>' +
     '<span class="t" title="' + escapeHtml(t || v) + '">' + escapeHtml(v) + '</span></div>';
 }
+// 「等你点头」那张卡：五块各自有 loader 在维护 DOM，这里只负责
+//   · 数一数有几条（卡片标题上的数字）
+//   · 全空时显示「没有等你点头的事」
+// 坑（踩过）：回调里改 #dc-inbox-empty 的 hidden，而观察器正盯着 #dc-inbox 的 attributes
+// → 自己触发自己，微任务无限循环，整页卡死。所以**值没变就不写**，并且用 rAF 合并。
+var inboxRaf = 0;
+function paintInbox() {
+  var box = document.getElementById('dc-inbox');
+  if (!box) return;
+  var n = 0;
+  ['pendsec', 'propsec', 'egrsec', 'rcpsec', 'threadsec'].forEach(function (id) {
+    var sec = document.getElementById(id);
+    if (!sec || sec.hidden) return;
+    n += sec.querySelectorAll('.pend, .item, .card').length;
+  });
+  var badge = document.getElementById('dc-inbox-n');
+  if (badge) {
+    var txt = n ? n + ' 条' : '';
+    if (badge.textContent !== txt) badge.textContent = txt;
+  }
+  var empty = document.getElementById('dc-inbox-empty');
+  if (empty) {
+    var hide = n > 0;
+    if (empty.hidden !== hide) empty.hidden = hide;   // 值不变不写 → 不会自触发
+  }
+}
+function paintInboxSoon() {
+  if (inboxRaf) return;
+  inboxRaf = requestAnimationFrame(function () { inboxRaf = 0; paintInbox(); });
+}
+function watchInbox() {
+  var box = document.getElementById('dc-inbox');
+  if (!box || !window.MutationObserver) return;
+  new MutationObserver(paintInboxSoon).observe(box, { childList: true, subtree: true });
+  paintInbox();
+}
+watchInbox();
 function renderDossier() {
   var d = DOSSIER; if (!d) return;
   var ag = d.plan.agenda || [], th = d.plan.threads || [];
@@ -2513,7 +2737,9 @@ function renderDossier() {
   ctxh += dline('文档', (c.docs || 0) + ' 篇 / ' + (c.chunks || 0) + ' 块', '');
   ctxh += dline('模型', c.model || '未配置', '');
   ctxh += dline('今天用量', (c.todayTokens || 0) + ' tok · $' + Number(c.todayUsd || 0).toFixed(4), '');
-  document.getElementById('dc-ctx').innerHTML = ctxh;
+  var pl = c.plugins || {};
+  ctxh += dline('能借的手脚', '插件 ' + (pl.servers || 0) + ' · 工具 ' + (c.tools || 0) + ' · 技能 ' + (c.skills || 0), 'MCP / verbs / SKILL.md');
+  document.getElementById('dc-ctx-stats').innerHTML = ctxh;
 }
 async function loadDossier() {
   try {
@@ -2530,6 +2756,71 @@ var ws = document.getElementById('wspath');
 if (ws) ws.textContent = 'data/ · persona/ · workspace/';
 loadDossier();
 setInterval(loadDossier, 20000);
+
+// ── 边栏收纳：收起来是「收」，不是「删」────────────────────────────
+// 状态存在 localStorage：这是**这台机器的视觉偏好**，不该进 data/config.json
+// （那是会跟着搬家走的东西；换台机器屏幕宽度不同，不该跟着搬）。
+function applyLayout() {
+  // 窄屏不套用这两个偏好：那里它们由抽屉管
+  var narrow = innerWidth <= 1180;
+  var wing = !narrow && localStorage.getItem('jj.wing') === 'off';
+  var folio = !narrow && localStorage.getItem('jj.folio') === 'off';
+  document.body.classList.toggle('wing-off', wing);
+  document.body.classList.toggle('folio-off', folio);
+  var h = document.getElementById('wingHandle');
+  if (h) h.hidden = !wing;
+}
+function toggleWing(on) {
+  var off = (typeof on === 'boolean') ? !on : !document.body.classList.contains('wing-off');
+  localStorage.setItem('jj.wing', off ? 'off' : 'on');
+  applyLayout();
+}
+function toggleFolio(on) {
+  var off = (typeof on === 'boolean') ? !on : !document.body.classList.contains('folio-off');
+  localStorage.setItem('jj.folio', off ? 'off' : 'on');
+  applyLayout();
+}
+applyLayout();
+var wingHandle = document.getElementById('wingHandle');
+if (wingHandle) wingHandle.onclick = function () { toggleWing(true); };
+// ── 卷宗的开/关（唯一入口）──────────────────────────────────────
+// 两套状态不能混：窄屏是**抽屉**（folio-open，只在内存里），宽屏是**收纳**（folio-off，记 localStorage）。
+// 之前 » 在手机上也去写 folio-off，于是抽屉一关，◧ 再也打不开（folio-off 压着 display:none）。
+var NARROW = function () { return innerWidth <= 1180; };
+function folioIsOpen() {
+  return NARROW() ? document.body.classList.contains('folio-open')
+                  : !document.body.classList.contains('folio-off');
+}
+function setFolioOpen(open) {
+  if (NARROW()) {
+    document.body.classList.toggle('folio-open', open);
+    document.body.classList.remove('folio-off');   // 窄屏不认宽屏留下的收纳状态
+    return;
+  }
+  toggleFolio(open);
+}
+var folioX = document.getElementById('folioX');
+if (folioX) folioX.onclick = function () { setFolioOpen(false); };
+var folioTog2 = document.getElementById('folioTog');
+if (folioTog2) folioTog2.onclick = function () { setFolioOpen(!folioIsOpen()); };
+// 左栏的 «：窄屏只是关抽屉，别把「收起」记成偏好
+var wingTog2 = document.getElementById('wingTog');
+if (wingTog2) wingTog2.onclick = function () {
+  if (NARROW()) { document.getElementById('side').classList.remove('open'); return; }
+  toggleWing(false);
+};
+// 窗口跨过 1180：把另一种模式的状态清干净（窄屏拖宽不该带着 folio-open）
+addEventListener('resize', function () {
+  if (NARROW()) document.body.classList.remove('wing-off', 'folio-off');
+  else document.body.classList.remove('folio-open');
+  applyLayout();
+});
+document.addEventListener('keydown', function (e) {
+  if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+  var k = (e.key || '').toLowerCase();
+  if (k === 'b') { e.preventDefault(); toggleWing(); }
+  else if (k === 'j') { e.preventDefault(); toggleFolio(); }
+});
 
 $("#composer").onsubmit = async (e) => {
   e.preventDefault();
@@ -2627,7 +2918,7 @@ if ("serviceWorker" in navigator && (location.protocol === "https:" || location.
 }
 // 手机上侧栏是抽屉：没有这个按钮，SESSIONS/DOCS/MEMORY/TOOLS/CONFIG 全都不可达
 $("#menu").onclick = (e) => { e.stopPropagation(); $("#side").classList.toggle("open"); };
-loadAvatars(); applySections(); state(); timeline(); sessions(); tools(); memories(); docs(); audit(); readout(); loadConfig(); loadUi(); pending(); usage(); loadProposals(); loadSurfaceReview(); loadThreads(); loadReceipts(); loadStanding();
-setInterval(() => { state(); pending(); audit(); readout(); }, 20000);
+loadAvatars(); applySections(); state(); timeline(); sessions(); tools(); memories(); docs(); audit(); readout(); loadConfig(); loadUi(); pending(); usage(); loadProposals(); loadSurfaceReview(); loadThreads(); loadReceipts(); loadStanding(); loadEgress(); loadSetup(false);
+setInterval(() => { state(); pending(); audit(); readout(); loadEgress(); }, 20000);
 </script>
 </body></html>

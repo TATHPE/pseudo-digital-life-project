@@ -57,6 +57,7 @@ import { renderMarkdown, esc } from "../md.ts";
 import { loadState, advance, describe } from "../state.ts";
 import type { Outage } from "../types.ts";
 import { dirname, extname, join, relative } from "node:path";
+import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 const joinDir = (a: string, b: string) => join(a, b);
 const posixPath = (p: string) => p.split("\\").join("/");
@@ -722,6 +723,20 @@ export function createWebServer(deps: WebDeps) {
       }
       // ── 本地模型（C-4）：一个端点、列已装、拿当前生效值，面板据此分两块 ──
       // B-0：能力自述（工具来自 verbs / provider 来自配置 / degraded 来自真探测）
+      // ── 技能（docs/11 第二优先）：只读列表；正文走 skill.read（同一条闸门） ──
+      if (req.method === "GET" && url.pathname === "/api/skills") {
+        const sk = await import("../skills.ts");
+        const agentsDir = join(process.env.AGENTS_HOME ?? join(homedir(), ".agents"), "skills");
+        json(res, 200, {
+          dirs: [join(deps.home, "skills"), agentsDir],
+          skills: sk.scanSkills(deps.home).map((x) => ({
+            id: x.id, name: x.name, description: x.description, source: x.source,
+            bytes: x.bytes, parsed: x.parsed, file: x.file,
+          })),
+        });
+        return;
+      }
+
       if (req.method === "GET" && url.pathname === "/api/capabilities") {
         const cfgNow = deps.getConfig();
         const pf = lastPreflight(cfgNow.ollama);          // 只读缓存，不在这里探头
@@ -1367,6 +1382,16 @@ export function createWebServer(deps: WebDeps) {
         const docs = (deps.db.prepare("SELECT count(*) c FROM documents WHERE deleted_at IS NULL").get() as { c: number }).c;
         const chunks = (deps.db.prepare("SELECT count(*) c FROM chunks").get() as { c: number }).c;
         const usage = deps.db.prepare("SELECT coalesce(sum(in_tokens),0) p, coalesce(sum(out_tokens),0) c, coalesce(sum(usd),0) u FROM usage WHERE substr(ts,1,10)=?").get(nowD.toISOString().slice(0, 10)) as { p: number; c: number; u: number };
+        let skillsN = 0;
+        try { const sk = await import("../skills.ts"); skillsN = sk.scanSkills(deps.home).length; } catch { /* 没装技能 */ }
+        let mcpServers = 0, mcpTools = 0;
+        try {
+          const mc = (await import("../mcp.ts")).loadMcpConfig(deps.home);
+          mcpServers = Object.keys(mc.servers ?? {}).length;
+          for (const v of Object.values(mc.servers ?? {})) mcpTools += (v.tools ?? []).length;
+        } catch { /* 没配 MCP */ }
+        // 只数原生 verbs：MCP 那些已经在「插件」里算过一次了（否则同一个工具数两遍）
+        const toolN = deps.tools ? deps.tools.list().filter((t) => !t.name.startsWith("mcp__")).length : 0;
         let model: string | null = null;
         try { model = meta(deps.db, "model_express") ?? null; } catch { /* 没记录 */ }
 
@@ -1375,6 +1400,7 @@ export function createWebServer(deps: WebDeps) {
           changes: chg.map((r) => ({ verb: r.verb, argv: r.argv_json.slice(0, 160), ts: r.ts, ok: r.exit_code === 0 })),
           context: {
             memories: memAll, stages: mem, docs, chunks,
+            tools: toolN, plugins: { servers: mcpServers, tools: mcpTools }, skills: skillsN,
             model, todayTokens: usage.p + usage.c, todayUsd: usage.u,
           },
         });
@@ -1518,6 +1544,12 @@ export function createWebServer(deps: WebDeps) {
           const ip = await import("../interpret.ts");
           interpLines = ip.interpretationsForBrief(deps.db, 2);
         } catch { /* 没有就算了 */ }
+        // 技能索引：只放「名字（一句描述）」，正文让模型自己 skill.read 取
+        let skillIdx: string | null = null;
+        try {
+          const sk = await import("../skills.ts");
+          skillIdx = sk.skillsIndexText(sk.indexableSkills(sk.scanSkills(deps.home))) || null;
+        } catch { /* 没有技能不影响对话 */ }
         const selfState = advance(deps.db, { turns: 1, silenceDays: last ? (now().getTime() - new Date(last.ts).getTime()) / 86400000 : 0 }, now());
         const brief = buildBrief({
           now: now(), persona: loadPersona(deps.home), contracts, recalled,
@@ -1526,6 +1558,7 @@ export function createWebServer(deps: WebDeps) {
           state: { energy: selfState.energy, closeness: selfState.closeness, mood: selfState.mood ?? undefined },
           agenda: agendaLines,
           interpretations: interpLines,
+          skills: skillIdx,
           user: (() => { const note = omissionNote(omitted, rc.omittedDocs); return note ? note + String.fromCharCode(10) : ""; })() + text,
         });
 
