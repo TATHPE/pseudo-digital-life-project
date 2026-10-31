@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createTransport, createChatTransport, assertAllLoopback, isLoopback, hostOf, EndpointError } from "../src/transport.ts";
+import { createTransport, createChatTransport, routerFrom, assertAllLoopback, isLoopback, hostOf, EndpointError } from "../src/transport.ts";
 import { createRouter, PrivacyError, type RoleConfig } from "../src/provider.ts";
 import { at } from "../src/assert.ts";
 
@@ -160,4 +160,24 @@ test("没有本地兜底时，错误原样抛（不吞）", async () => {
   await assert.rejects(async () => {
     for await (const _ of withFallback(() => broken(), null)) { /* drain */ }
   }, /401/);
+});
+
+// ── 闸门抓到的真 bug：Ollama 的 tool arguments 是对象，不是 JSON 字符串 ──────
+test("ollama 流式：function.arguments 是对象时也要还原成合法 JSON", async () => {
+  const { createChatTransport } = await import("../src/transport.ts");
+  const ndjson = [
+    JSON.stringify({ message: { content: "", tool_calls: [{ function: { name: "time_now", arguments: {} } }] } }),
+    JSON.stringify({ message: { content: "" }, done: true, done_reason: "stop" }),
+  ].join(String.fromCharCode(10)) + String.fromCharCode(10);
+
+  const fetchImpl = (async () => new Response(ndjson, { status: 200, headers: { "content-type": "application/x-ndjson" } })) as never;
+  const t = createChatTransport(routerFrom({ ...CFG, night: CFG.route } as never), { fetchImpl });
+  const events = [];
+  for await (const ev of t.chat("route" as never, [{ role: "user", content: "几点了" }], { containsMemory: false, purpose: "t" })) events.push(ev);
+
+  const calls = events.find((e) => e.type === "tool_calls") as { calls: Array<{ name: string; args: string }> } | undefined;
+  assert.ok(calls, "应当解析出 tool_calls");
+  assert.equal(calls!.calls[0]!.name, "time_now");
+  assert.equal(calls!.calls[0]!.args, "{}", "对象要序列化成 JSON 文本，而不是 [object Object]");
+  assert.doesNotThrow(() => JSON.parse(calls!.calls[0]!.args));
 });

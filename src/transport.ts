@@ -197,6 +197,13 @@ export function createTransport(
 
 
 
+/** 把 tool_calls 里的 arguments 归一化成 JSON 文本（字符串 / 对象 / 空 三种形态都见过） */
+function asArgsText(v: unknown): string {
+  if (v === undefined || v === null) return "";
+  if (typeof v === "string") return v;
+  try { return JSON.stringify(v); } catch { return ""; }
+}
+
 /** 缺 model 在**调用点**报（而不是启动时报）：云端聊天不该被“还没装本地模型”挡住 */
 function needModel(role: Role, c: RoleConfig): RoleConfig {
   if (!c.model) {
@@ -369,7 +376,9 @@ export function createChatTransport(router: Router, opts: TransportOpts = {}) {
             for (const [i, tc] of (d.tool_calls ?? []).entries()) {
               const cur = acc.get(i) ?? { id: `call_${i}`, name: "", args: "" };
               cur.name = tc.function?.name ?? cur.name;
-              cur.args += tc.function?.arguments ?? "";
+              // ⚠️ Ollama 的 arguments 是**对象**（不是 JSON 字符串）。直接 += 会得到 "[object Object]"，
+              // 下游 JSON.parse 必然失败 —— 看起来像"模型不会调工具"，实际是我们解析错了。
+              cur.args += asArgsText(tc.function?.arguments);
               acc.set(i, cur);
             }
             if (j.done) {
@@ -386,7 +395,7 @@ export function createChatTransport(router: Router, opts: TransportOpts = {}) {
               const cur = acc.get(i) ?? { id: tc.id ?? `call_${i}`, name: "", args: "" };
               if (tc.id) cur.id = tc.id;
               if (tc.function?.name) cur.name = tc.function.name;
-              if (tc.function?.arguments) cur.args += tc.function.arguments;
+              if (tc.function?.arguments) cur.args += asArgsText(tc.function.arguments);
               acc.set(i, cur);
             }
             if (ch.finish_reason) finish = ch.finish_reason;
