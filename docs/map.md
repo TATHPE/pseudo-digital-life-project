@@ -9,7 +9,7 @@
 | 项 | 数量 |
 |---|---|
 | 源文件（src/**/*.ts） | 95 |
-| 错误码 E_* | 188 |
+| 错误码 E_* | 189 |
 | verbs | 26 |
 | CLI 子命令 | 37 |
 
@@ -208,6 +208,7 @@
 | `E_TOKEN_USED` | `src/cli/redteam.ts` `src/shell.ts` |
 | `E_TOO_BIG` | `src/ingest.ts` `src/plugins.ts` `src/project.ts` `src/verbs.ts` `src/web/server.ts` |
 | `E_TOOL` | `src/mcp.ts` `src/tools.ts` |
+| `E_TOOL_FAILED` | `src/agent.ts` |
 | `E_UNKNOWN_FIELD` | `src/decayparams.ts` |
 | `E_UNKNOWN_KIND` | `src/decayparams.ts` |
 | `E_UNKNOWN_PARAM` | `src/decayparams.ts` |

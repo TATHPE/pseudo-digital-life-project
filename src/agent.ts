@@ -125,28 +125,42 @@ export async function* runAgent(deps: AgentDeps, system: string, user: string): 
       tool_calls: calls.map((c) => ({ id: c.id, type: "function", function: { name: c.name, arguments: c.args || "{}" } })),
     });
 
+    // 协议硬约束：assistant(tool_calls) 之后，**每一个** tool_call_id 都要有一条 tool 消息，
+    // 而且它们必须**连续**（中间不能插 user）。所以这一圈只做两件事：跑工具、回填 tool。
+    const nudges: string[] = [];
     for (const c of calls) {
       yield { type: "tool", id: c.id, name: c.name, args: c.args };
       const t0 = Date.now();
       let args: Record<string, unknown> = {};
       try { args = JSON.parse(c.args || "{}") as Record<string, unknown>; }
       catch { args = {}; }
-      const res = await deps.tools.run(c.name, args);
-      let out = res.output;
+      let out = "";
+      let ok = false;
+      try {
+        const res = await deps.tools.run(c.name, args);
+        ok = res.ok;
+        out = res.output;
+      } catch (e) {
+        // 工具自己炸了也要**回一条 tool 消息** —— 少一条就是 400（实测踩到）
+        ok = false;
+        out = "E_TOOL_FAILED: " + String((e as Error).message ?? e).slice(0, 300);
+      }
       if (out.length > cap) out = out.slice(0, cap) + `…（已截断，共 ${out.length} 字符）`;
-      noteToolResult(guard, c.name, res.ok, out);
+      noteToolResult(guard, c.name, ok, out);
       yield { type: "tool_result", id: c.id, name: c.name, result: out, ms: Date.now() - t0 };
       messages.push({ role: "tool", tool_call_id: c.id, content: out });
-      // C-3：错误当作输入 —— 同名工具允许补一次，并给出"下一步"
-      if (guards && (!res.ok || isError(out))) {
+      // C-3：错误当作输入。**先攒着**，等所有 tool 消息都回填完再发。
+      if (guards && (!ok || isError(out))) {
         if (canRetry(guard, c.name, out)) {
           yield { type: "notice", text: `${c.name} 报错，让它补一次（C-3）` };
-          messages.push({ role: "user", content: retryNudge(c.name, out, false) });
+          nudges.push(retryNudge(c.name, out, false));
         } else {
           yield { type: "notice", text: `${c.name} 又失败了，这一次不再补` };
         }
       }
     }
+    // 到这里 tool 序列已经完整；现在才允许插一条 user 提醒
+    for (const n of nudges) messages.push({ role: "user", content: n });
     yield { type: "phase", step, note: `第 ${step} 轮工具完成，继续` };
   }
   yield { type: "error", message: `E_MAX_STEPS: 超过 ${maxSteps} 轮，停止（避免空转）` };
