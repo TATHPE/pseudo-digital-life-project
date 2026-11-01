@@ -930,7 +930,7 @@ description: 周日晚上把这一周压成三句话。
 
       <div class="panelbox">
         <h2>AGENT · 她的名字</h2>
-        <p class="hint">「鲸鲸」只是<b>预置人格</b>的名字，不是这个项目的名字（项目叫 Pseudo Digital Life）。
+        <p class="hint">「鲸鲸」只是<b>预置人格</b>的名字，不是这个项目的名字（项目叫 Pseudo Digital Life Project）。
           你可以自己取一个 —— 面板、引导页、回执里都用它。</p>
         <div class="filerow">
           <input id="agentname" class="searchbox" maxlength="16" placeholder="给它取个名字（≤16 字）" autocomplete="off">
@@ -1112,7 +1112,7 @@ const NL2 = String.fromCharCode(10, 10);
 // 标签页标题：待确认闪烁时也要闪回这个名字
 const TITLE = 'Pseudo Digital Life Project';
 // 她叫什么：默认是**预置人格**的名字（鲸鲸），用户可以在设置里改成自己的。
-// 项目名（Pseudo Digital Life）与她无关 —— exe 的 productName 用的是项目名。
+// 项目名（Pseudo Digital Life Project）与她无关 —— exe 的 productName 用的是项目名。
 var AGENT = (typeof window !== 'undefined' && window.AGENT_NAME) ? window.AGENT_NAME : '鲸鲸';
 function applyAgentName() {
   document.querySelectorAll('[data-agent]').forEach(function (el) { el.textContent = AGENT; });

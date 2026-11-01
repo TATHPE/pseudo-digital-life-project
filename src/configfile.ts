@@ -41,7 +41,7 @@ export interface FileConfig {
 }
 
 /**
- * 预置人格的名字。**这不是项目名** —— 项目叫 Pseudo Digital Life（见 tauri.conf 的 productName）。
+ * 预置人格的名字。**这不是项目名** —— 项目叫 Pseudo Digital Life Project（见 tauri.conf 的 productName）。
  * 用户第一次进来就该能改：这里只是"没人取名时"的默认值。
  */
 export const PRESET_AGENT_NAME = "鲸鲸";

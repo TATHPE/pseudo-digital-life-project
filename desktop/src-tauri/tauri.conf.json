@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Pseudo Digital Life",
+  "productName": "Pseudo Digital Life Project",
   "version": "0.1.0",
   "identifier": "life.jingjing.desktop",
   "build": {
@@ -10,7 +10,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Pseudo Digital Life",
+        "title": "Pseudo Digital Life Project",
         "url": "about:blank",
         "width": 1200,
         "height": 760,

@@ -1,6 +1,12 @@
-# jingjing
+# Pseudo Digital Life Project
 
 跑在本机的"伪数字生命"原型：**记忆 + 衰减 + 人格**（定义与验收口径见 `../docs/0-定义-数字生命.md`）。
+
+> **名字的两层，别搞混：**
+> · **项目** = **Pseudo Digital Life Project** —— `tauri.conf.json` 的 `productName`、窗口标题、`<title>` 都用它。
+> · **她** = 用户给的名字 —— 默认 `agent.name` 是**预置人格**「鲸鲸」（测试人格），
+>   第一次打开引导页/设置里就能改（设置 → 「AGENT · 她的名字」）。
+> · 仓库目录 `jingjing` 是历史遗留，**不是产品名**。
 
 **无构建**（Node 24 直接跑 TypeScript，类型剥离）；运行时依赖只有两个：`casbin`（策略）与 `sqlite-vec`（向量扩展，缺了会降级成纯 FTS 并在 `/health` 里报出来）。
 
@@ -9,8 +15,8 @@
 > 找解释器的顺序：`JJ_PYTHON` → 项目 `.venv` → PATH 上的 `py -3` / `python3` / `python`。
 
 ```bash
-npm run check                         # 类型检查 + 477 条测试 + 地图不漂移（CI 入口；GitHub Actions 就跑这条）
-npm test                              # 477 条断言（node --test）
+npm run check                         # 类型检查 + 499 条测试 + 地图不漂移（CI 入口；GitHub Actions 就跑这条）
+npm test                              # 499 条断言（node --test）
 npm run ui:test                       # headless Edge 真点真发：48 项交互断言（+3 项空库跳过；面板要在跑）
 node src/cli/jingjing.ts migrate      # 建库 + 自检
 node src/cli/jingjing.ts remember "重要性应该影响衰减速率"
