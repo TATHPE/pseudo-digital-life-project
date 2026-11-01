@@ -14,7 +14,7 @@ import { buildBrief } from "../brief.ts";
 import { loadPersona } from "../persona.ts";
 import { expenseLine } from "./state.ts";
 import { loadPersonaText, savePersonaFile, PERSONA_FILES, type PersonaFile } from "../persona.ts";
-import { writeFileConfig, readFileConfig, resolveConfig, configSources } from "../configfile.ts";
+import { writeFileConfig, readFileConfig, resolveConfig, configSources, normalizeAgentName } from "../configfile.ts";
 import { isInstalled } from "../ollama.ts";
 import { recompute, w0FromImportance, type Stage } from "../decay.ts";
 import { modelKeyOf } from "../config.ts";
@@ -288,7 +288,7 @@ export function createWebServer(deps: WebDeps) {
         res.end(
           "<!doctype html><html lang='zh-CN'><meta charset='utf-8'><title>从这里打不开</title>" +
           "<body style='background:#0b0e0b;color:#e9f0f2;font:14px/1.8 ui-monospace,Consolas,monospace;padding:48px'>" +
-          "<p><b>鲸鲸是桌面应用。</b></p>" +
+          "<p><b>" + normalizeAgentName(readFileConfig(deps.home).agent?.name) + " 是桌面应用。</b></p>" +
           "<p>这一页不能从浏览器直接打开 —— 从桌面上的鲸鲸图标启动，它会带着自己的一次性令牌加载界面。</p>" +
           "<p style='color:#9fb0b3'>（排障用：令牌在 data/.desk.json，每次启动重新生成。）</p>" +
           "</body></html>",
@@ -318,8 +318,11 @@ export function createWebServer(deps: WebDeps) {
         const skip = url.searchParams.get("skip") === "1";
         if (forced || (!skip && needsWelcome(deps.home))) {
           const { WELCOME } = await import("./welcome.ts");
+          // 名字可能是用户自己取的（默认是预置人格「鲸鲸」）
+          const nm = normalizeAgentName(readFileConfig(deps.home).agent?.name);
+          const page = WELCOME.split("{{AGENT}}").join(nm);
           res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
-          res.end(req.method === "HEAD" ? undefined : WELCOME);
+          res.end(req.method === "HEAD" ? undefined : page);
           return;
         }
       }
@@ -329,10 +332,14 @@ export function createWebServer(deps: WebDeps) {
         // 把 sources/ 的**绝对路径**注入页面：用户点了"摄入"却不知道文件该放哪，
         // 只说 "data/sources" 对 Windows 用户没有意义（那是相对仓库根说的）。
         const sourcesDir = joinDir(deps.home, "sources");
+        const cfgNow = deps.getConfig();
+        const agentName = normalizeAgentName(readFileConfig(deps.home).agent?.name);
         const html = PAGE.replace(
           "window.SOURCES_DIR = null;",
-          "window.SOURCES_DIR = " + JSON.stringify(sourcesDir) + ";",
+          "window.SOURCES_DIR = " + JSON.stringify(sourcesDir) + ";" +
+            String.fromCharCode(10) + "window.AGENT_NAME = " + JSON.stringify(agentName) + ";",
         );
+        void cfgNow;
         res.end(req.method === "HEAD" ? undefined : html);
         return;
       }
@@ -895,7 +902,15 @@ export function createWebServer(deps: WebDeps) {
         const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
         const body = JSON.parse(await readBody(req)) as {
           provider?: string; model?: string; baseUrl?: string; key?: string | null;
+          agent?: { name?: string };
         };
+        // 改她的名字：「鲸鲸」只是预置人格名，不是项目名（和接口配置无关，单独一次请求）
+        if (body.agent && typeof body.agent.name === "string") {
+          const name = normalizeAgentName(body.agent.name);
+          writeFileConfig(deps.home, { agent: { name } });
+          json(res, 200, { ok: true, agent: { name } });
+          return;
+        }
         // key: null = 清除（不能用 ""，那个语义已经被“没传”占用了）
         if (body.key === null) {
           const provider = (body.provider ?? deps.getConfig().roles["express"]!.provider) as Provider;

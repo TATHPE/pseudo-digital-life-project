@@ -16,7 +16,7 @@
 export const WELCOME = [
   "<!doctype html><html lang='zh-CN'><head><meta charset='utf-8'>",
   "<meta name='viewport' content='width=device-width,initial-scale=1'>",
-  "<title>鲸鲸 · 第一次见面</title><style>",
+  "<title>{{AGENT}} · 第一次见面</title><style>",
   ":root{--void:#0b0e0b;--ink:#e9f0f2;--dim:#9fb0b3;--line:rgba(233,240,242,.30);--line-dim:rgba(233,240,242,.13);",
   "--amber:#ffb454;--red:#ff5f56;--ok:#7fd18b;--mono:ui-monospace,'Cascadia Mono',Consolas,monospace}",
   "*{box-sizing:border-box}[hidden]{display:none!important}",
@@ -69,7 +69,7 @@ export const WELCOME = [
   "padding:10px;white-space:pre-wrap;margin:8px 0}",
   "#abortbox h2{color:#ff5f56}",
   "</style></head><body><div class='wrap'>",
-  "<div class='top'><b>鲸鲸</b><span>PSEUDO · DIGITAL · LIFE</span></div>",
+  "<div class='top'><b>{{AGENT}}</b><span>PSEUDO · DIGITAL · LIFE</span></div>",
   "<p class='lead' id='lead'>第一次见面。这台机器还缺几样东西，我一步一步来 —— 每一步都能暂停或停掉，停掉会按账清回去。</p>",
   "<div class='dots' id='dots'></div>",
   "<div id='stage'></div>",

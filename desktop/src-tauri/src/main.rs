@@ -24,7 +24,7 @@ use sidecar::Sidecar;
 fn show_boot_error(app: &tauri::AppHandle, err: &str, home: &std::path::Path) {
     let log = home.join("logs").join("serve.log");
     let text = format!(
-        "鲸鲸没能启动\n\n{}\n\n日志：{}\n\n可以试的：\n  1. 确认 node 在 PATH 上（node --version）\n  2. 手动跑一次看报错：node src/cli/jingjing.ts serve 7700\n  3. 数据目录：{}",
+        "Pseudo Digital Life 没能启动\n\n{}\n\n日志：{}\n\n可以试的：\n  1. 确认 node 在 PATH 上（node --version）\n  2. 手动跑一次看报错：node src/cli/jingjing.ts serve 7700\n  3. 数据目录：{}",
         err, log.display(), home.display()
     );
     let js = format!(

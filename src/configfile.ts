@@ -33,6 +33,25 @@ export interface FileConfig {
   persona?: { name?: string };
   /** 外观偏好（头像框）——与模型配置分开放，清理接口配置时不会被意外抹掉 */
   ui?: { avatar?: string };
+  /**
+   * 她叫什么（2026-11-01）：**"鲸鲸" 只是预置人格的名字，不是项目名**。
+   * 用户第一次就该能自己取；这里存下来，面板/引导页/窗口标题都读它。
+   */
+  agent?: { name?: string };
+}
+
+/**
+ * 预置人格的名字。**这不是项目名** —— 项目叫 Pseudo Digital Life（见 tauri.conf 的 productName）。
+ * 用户第一次进来就该能改：这里只是"没人取名时"的默认值。
+ */
+export const PRESET_AGENT_NAME = "鲸鲸";
+export const MAX_AGENT_NAME = 16;
+
+/** 名字只能是可打印字符、≤16 字、不含控制字符；空 = 用预置名 */
+export function normalizeAgentName(x: unknown): string {
+  const s = String(x ?? "").replace(/[\u0000-\u001f\u007f]/g, "").trim();
+  if (!s) return PRESET_AGENT_NAME;
+  return s.slice(0, MAX_AGENT_NAME);
 }
 
 let cache: { at: number; cfg: FileConfig } | null = null;
@@ -64,6 +83,7 @@ export function writeFileConfig(home: string, patch: FileConfig): FileConfig {
     budget: { ...(cur.budget ?? {}), ...(patch.budget ?? {}) },
     persona: { ...(cur.persona ?? {}), ...(patch.persona ?? {}) },
     ui: { ...(cur.ui ?? {}), ...(patch.ui ?? {}) },
+    agent: { ...(cur.agent ?? {}), ...(patch.agent ?? {}) },
   };
   atomicWriteFile(join(home, "config.json"), JSON.stringify(next, null, 2) + "\n");
   cache = null;

@@ -282,7 +282,8 @@ test("图标：鲸鱼 symbol 在页面里，品牌不再用「鲸鲸」文字，
   assert.ok(PAGE.includes('<symbol id="whale"'), "要有一个可复用的鲸鱼 symbol");
   assert.ok(!PAGE.includes("JJ-OS"), "JJ-OS 这个文字要删掉（标题/角标/品牌）");
   assert.ok(!PAGE.includes('<span class="brand">鲸鲸'), "品牌位应该是图标，不是文字");
-  assert.ok(PAGE.includes("aria-label=\"鲸鲸\""), "图标要有可读名字");
+  // 品牌位的可读名字用**她的名字**（默认预置人格「鲸鲸」，用户可改），所以断言钉的是标记
+  assert.ok(PAGE.includes("data-agent-aria"), "图标要有可读名字（读 her name，不是写死鲸鲸）");
   // 消息行头像：鲸鱼图标 + USER，不再出现「鲸」字头像
   assert.ok(!PAGE.includes("\"<div class='av'>鲸</div>"), "头像框里的「鲸」字要被图标替掉");
   assert.ok(PAGE.includes("href='#whale'"), "消息行头像用同一个 symbol");

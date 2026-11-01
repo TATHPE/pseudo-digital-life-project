@@ -651,7 +651,7 @@ export const PAGE = `<!doctype html>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><symbol id="whale" viewBox="0 0 512 512"><path fill="currentColor" d="M453.004 35.117c-65.314 46.61-189.755 41.018-213.559 125.426C184.41 101.41 98.625 83.031 21.771 63.209c6.532 139.103 71.38 147.437 192.44 194.547c23.71 25.786 29.786 49.93 19.254 82.705c46.403 5.1 71.504 15.468 106.754 27.742c-.708-71.67-25.14-108.928-75.518-175.035c11.058 4.233 44.979 37.02 56.578 58.607c109.419-42.421 147.64-112.074 131.725-216.658M180.178 353.9c-60.89-.24-114.034 19.49-158.426 74.221c167.075-48.84 292.003-13.21 471.893 7.895c-118.936-38.752-224.474-81.763-313.467-82.116m98.043 77.844c-99.28.255-206.34 18.738-256.866 63.139c168.002-26.61 356.801-28.408 470.8-4.967c1.102-35.337-101.418-58.46-213.934-58.172"/></symbol></svg>
 <div class="frame"><i></i><i></i><i></i><i></i><b class="bl">LOCAL · 127.0.0.1</b><b class="br">MEMORY CORE</b></div>
 <header>
-  <span class="brand" aria-label="鲸鲸"><svg class="ico" role="img" aria-hidden="false"><use href="#whale" /></svg></span>
+  <span class="brand" aria-label="她" data-agent-aria><svg class="ico" role="img" aria-hidden="false"><use href="#whale" /></svg></span>
   <span class="hud" title=""><i class="dot"></i><span id="state">…</span><span id="statetext"></span></span>
   <span id="pendbadge" class="badge" hidden>0</span>
   <span class="chip" id="modelchip">…</span>
@@ -671,9 +671,9 @@ export const PAGE = `<!doctype html>
 </header>
 
 <aside id="side">
-  <button id="wingHandle" type="button" title="展开左栏（Ctrl+B）" aria-label="展开左栏" hidden>鲸鲸</button>
+  <button id="wingHandle" type="button" title="展开左栏（Ctrl+B）" aria-label="展开左栏" hidden><span data-agent>鲸鲸</span></button>
   <div class="wingtop">
-    <div class="wmark"><b>鲸鲸</b><span id="wingstate">…</span>
+    <div class="wmark"><b><span data-agent>鲸鲸</span></b><span id="wingstate">…</span>
       <button id="wingTog" type="button" title="收起左栏（Ctrl+B）" aria-label="收起左栏">«</button></div>
 
     <div class="wsec">今 天</div>
@@ -688,7 +688,7 @@ export const PAGE = `<!doctype html>
     <button class="item" type="button" id="foldtools">工具<span class="m" id="toolcount">…</span></button>
     <div id="toollist" hidden>
       <input id="toolq" class="searchbox" placeholder="筛工具名 / 说明…" autocomplete="off">
-      <div id="toolrows"><button class="item on" data-view="chat">对话<span class="m">与鲸鲸说话</span></button></div>
+      <div id="toolrows"><button class="item on" data-view="chat">对话<span class="m">与<span data-agent>鲸鲸</span>说话</span></button></div>
       <button class="item dimmore" id="toolmore" hidden>显示全部</button>
     </div>
     <button class="item" type="button" data-view="cfg">设置<span class="m">接口 / 人格</span></button>
@@ -912,7 +912,7 @@ description: 周日晚上把这一周压成三句话。
     <div id="cfg" hidden>
       <div class="panelbox" id="superbox">
         <h2>SUPER · 超级权限</h2>
-        <p class="hint">开了它，鲸鲸就能<b>完全接管这台电脑</b>：改记忆库本体、改人格、删系统文件、关机、装软件、跑任意解释器。
+        <p class="hint">开了它，<span data-agent>鲸鲸</span>就能<b>完全接管这台电脑</b>：改记忆库本体、改人格、删系统文件、关机、装软件、跑任意解释器。
           <b>只有你在这里能开</b> —— 对话里没有这条路，模型也碰不到。</p>
         <p class="hint">两条<b>永远不放开</b>：格式化磁盘（那会把机器弄没）、删 <code>trash/</code> 与 <code>snapshots/</code>（那是回滚的底）。</p>
         <div id="superstate" class="hint">…</div>
@@ -925,6 +925,17 @@ description: 周日晚上把这一周压成三句话。
         </div>
         <div id="superoff" hidden>
           <div class="acts"><button id="superclose" class="primary">收回超级权限</button><span id="supermsg2" class="hint"></span></div>
+        </div>
+      </div>
+
+      <div class="panelbox">
+        <h2>AGENT · 她的名字</h2>
+        <p class="hint">「鲸鲸」只是<b>预置人格</b>的名字，不是这个项目的名字（项目叫 Pseudo Digital Life）。
+          你可以自己取一个 —— 面板、引导页、回执里都用它。</p>
+        <div class="filerow">
+          <input id="agentname" class="searchbox" maxlength="16" placeholder="给它取个名字（≤16 字）" autocomplete="off">
+          <button id="agentsave" type="button">保存</button>
+          <span id="agentmsg" class="hint"></span>
         </div>
       </div>
 
@@ -1009,7 +1020,7 @@ description: 周日晚上把这一周压成三句话。
         <h2>AVATAR · 头像</h2>
         <p class="hint">只收 png / jpeg / webp（会验文件头，不信声明的类型）；SVG 不收 —— 它能带脚本。</p>
         <div class="avav"><span class="av" id="pv-agent"><svg class="ico" aria-hidden="true"><use href="#whale" /></svg></span>
-          <div><div class="hint">鲸鲸</div>
+          <div><div class="hint"><span data-agent>鲸鲸</span></div>
             <div class="acts"><button type="button" id="up-agent">选图片</button><input type="file" id="f-agent" accept="image/png,image/jpeg,image/webp">
               <button type="button" id="rm-agent">恢复默认</button></div></div></div>
         <div class="avav"><span class="av" id="pv-user">U</span>
@@ -1100,6 +1111,14 @@ const $ = (s) => document.querySelector(s);
 const NL2 = String.fromCharCode(10, 10);
 // 标签页标题：待确认闪烁时也要闪回这个名字
 const TITLE = 'Pseudo Digital Life Project';
+// 她叫什么：默认是**预置人格**的名字（鲸鲸），用户可以在设置里改成自己的。
+// 项目名（Pseudo Digital Life）与她无关 —— exe 的 productName 用的是项目名。
+var AGENT = (typeof window !== 'undefined' && window.AGENT_NAME) ? window.AGENT_NAME : '鲸鲸';
+function applyAgentName() {
+  document.querySelectorAll('[data-agent]').forEach(function (el) { el.textContent = AGENT; });
+  document.querySelectorAll('[data-agent-aria]').forEach(function (el) { el.setAttribute('aria-label', AGENT); });
+  document.title = TITLE;
+}
 // 占位符按屏宽给：手机上长提示会换行顶出输入框（截图抓到的）
 var mEl = document.getElementById("m");
 if (mEl) mEl.placeholder = innerWidth > 560 ? "说点什么…（Enter 发送 · Shift+Enter 换行）" : "说点什么…";
@@ -2051,6 +2070,24 @@ async function loadGit(what, path) {
   pre.textContent = j.output || "（没有内容）";
   pre.scrollTop = 0;
 }
+
+// 她的名字：读 /api/config 的 agent.name，保存时写回去并立刻套用到页面
+(function () {
+  var inp = document.getElementById('agentname');
+  var btn = document.getElementById('agentsave');
+  if (!inp || !btn) return;
+  inp.value = AGENT;
+  btn.onclick = async function () {
+    var msg = document.getElementById('agentmsg');
+    var name = inp.value.trim();
+    if (!name) { msg.className = 'hint err'; msg.textContent = '不能是空的'; return; }
+    var j = await (await fetch('/api/config', { method: 'PUT', headers: H, body: JSON.stringify({ agent: { name: name } }) })).json();
+    if (!j || !j.ok) { msg.className = 'hint err'; msg.textContent = (j && (j.why || j.error)) || '保存失败'; return; }
+    AGENT = name;
+    applyAgentName();
+    msg.className = 'hint ok'; msg.textContent = '已改名叫 ' + name;
+  };
+})();
 
 // 引导页是首启自动弹的；这里给一个手动入口（排障 / 重来）
 (function () {
@@ -3028,7 +3065,7 @@ else { const n = Number($("#jumpn").textContent || 0) + 1; $("#jumpn").textConte
   }
   await timeline(); await state(); await memories(); await pending(); await audit();
 };
-loadAvatars(); applySections(); state(); timeline(); sessions(); tools(); memories(); docs(); audit(); readout(); loadConfig(); pending(); usage(); loadProposals(); loadSurfaceReview(); loadThreads(); loadReceipts(); loadStanding(); loadEgress();
+applyAgentName(); loadAvatars(); applySections(); state(); timeline(); sessions(); tools(); memories(); docs(); audit(); readout(); loadConfig(); pending(); usage(); loadProposals(); loadSurfaceReview(); loadThreads(); loadReceipts(); loadStanding(); loadEgress();
 setInterval(() => { state(); pending(); audit(); readout(); loadEgress(); }, 20000);
 </script>
 </body></html>`;
