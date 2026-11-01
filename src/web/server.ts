@@ -687,6 +687,49 @@ export function createWebServer(deps: WebDeps) {
       }
       // ── 本地模型（C-4）：一个端点、列已装、拿当前生效值，面板据此分两块 ──
       // B-0：能力自述（工具来自 verbs / provider 来自配置 / degraded 来自真探测）
+      // ── 超级权限（2026-11-01）：完全接管电脑，也能改记忆与人格 ──
+      // 模型**没有**任何路径能开它：只有这里，且要手输确认词（前端的 confirm 只是提示，
+      // 真正的关口是下面的 word 校验 + writeGuarded + 审计事件）。
+      if (req.method === "GET" && url.pathname === "/api/super") {
+        const sg = await import("../supergrant.ts");
+        json(res, 200, {
+          ...sg.readSuper(deps.home),
+          stillDeny: [...sg.SUPER_STILL_DENY],
+          keepDirs: [...sg.SUPER_KEEP_DIRS],
+        });
+        return;
+      }
+      if (req.method === "POST" && url.pathname === "/api/super") {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
+        const sg = await import("../supergrant.ts");
+        const body = JSON.parse(await readBody(req)) as { action?: string; word?: string; because?: string };
+        if (body.action === "off") {
+          const r = sg.disableSuper(deps.home) as Extract<Awaited<ReturnType<typeof sg.disableSuper>>, { ok: true }>;
+          try {
+            appendEvent(deps.inboxDir, {
+              v: 1, id: newEventId(), ts: now().toISOString(), kind: "super_grant_close", actor: "user", payload: {},
+            });
+          } catch { /* 事件写不下不影响 */ }
+          json(res, 200, { ok: true, state: r.state });
+          return;
+        }
+        // 开：必须手输「接管」两个字。这一条是代码校验，不是提示词。
+        if (String(body.word ?? "").trim() !== "接管") {
+          json(res, 400, { error: "E_NEED_WORD", why: "要开超级权限，得手输「接管」两个字" });
+          return;
+        }
+        const r = sg.enableSuper(deps.home, { because: body.because, now: now() });
+        if (!r.ok) { json(res, 400, r); return; }
+        try {
+          appendEvent(deps.inboxDir, {
+            v: 1, id: newEventId(), ts: now().toISOString(), kind: "super_grant_open", actor: "user",
+            payload: { because: body.because ?? "" },
+          });
+        } catch { /* 同上 */ }
+        json(res, 200, { ok: true, state: r.state });
+        return;
+      }
+
       // ── 插件（MCP）与技能：装/删（写操作，走 writeGuarded + 审计）──
       if (req.method === "GET" && url.pathname === "/api/plugins") {
         const pl = await import("../plugins.ts");

@@ -8,8 +8,8 @@
 
 | 项 | 数量 |
 |---|---|
-| 源文件（src/**/*.ts） | 93 |
-| 错误码 E_* | 186 |
+| 源文件（src/**/*.ts） | 94 |
+| 错误码 E_* | 189 |
 | verbs | 26 |
 | CLI 子命令 | 37 |
 
@@ -114,6 +114,7 @@
 | `E_MISSING` | `src/assert.ts` |
 | `E_MISSING_ARG` | `src/toolsmoke.ts` |
 | `E_MODEL` | `src/autobio.ts` `src/eval.ts` `src/provider.ts` `src/transport.ts` |
+| `E_NEED_WORD` | `src/web/server.ts` |
 | `E_NEEDS_CONFIRM` | `src/confirm.ts` `src/execute.ts` `src/posture.ts` |
 | `E_NEEDS_EGRESS` | `src/egress.ts` `src/posture.ts` `src/project.ts` `src/verbs.ts` |
 | `E_NO_ARGV` | `src/shell.ts` |
@@ -137,7 +138,7 @@
 | `E_NO_MEMORY` | `src/store.ts` `src/web/server.ts` |
 | `E_NO_MODEL` | `src/cli/night.ts` |
 | `E_NO_PATH` | `src/project.ts` `src/web/server.ts` |
-| `E_NO_REASON` | `src/decayparams.ts` |
+| `E_NO_REASON` | `src/decayparams.ts` `src/supergrant.ts` |
 | `E_NO_RELEASE` | `src/cli/deploy.ts` `src/deploy/slot.ts` `src/deploy/watchdog.ts` |
 | `E_NO_ROLE` | `src/cli/jingjing.ts` |
 | `E_NO_RULE` | `src/policy.ts` |
@@ -196,6 +197,8 @@
 | `E_STANDING_NOTIFY` | `src/standing.ts` |
 | `E_STANDING_TEMPLATE` | `src/cli/jingjing.ts` `src/standing.ts` |
 | `E_STANDING_WHEN` | `src/standing.ts` |
+| `E_SUPER_KEEP` | `src/grant.ts` `src/verbs.ts` |
+| `E_SUPER_STILL_DENY` | `src/grant.ts` |
 | `E_TAINT_CONTRACT` | `src/store.ts` |
 | `E_TARGET_NOT_EMPTY` | `src/handoff.ts` |
 | `E_THREAD_CLOSED` | `src/cli/jingjing.ts` `src/web/server.ts` |
@@ -333,6 +336,7 @@
 | `src/startupcheck.ts` | 启动前配置校验（D-5） |
 | `src/state.ts` | 自我状态（01 §8）：慢变量，不是每次对话随机生成的情绪标签。 |
 | `src/store.ts` | 记忆读写（M0 最小面）：remember / 载入候选 / 批量衰减 */ |
+| `src/supergrant.ts` | 超级权限（2026-11-01，用户要的）： |
 | `src/surface.ts` | 浮现时机（J-4） |
 | `src/territory.ts` | 领地（16 §3.5）：它自己的那块磁盘。 |
 | `src/text.ts` | 中文 FTS5 必须用 bigram（12 §9.1 实测：unicode61 对中文完全失效） */ |

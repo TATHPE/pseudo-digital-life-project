@@ -19,7 +19,7 @@
 import { basename, resolve } from "node:path";
 
 export type GrantDecision =
-  | { ok: true; id: string; commands: string[]; scope: string; expiresAt: string | null; full?: boolean }
+  | { ok: true; id: string; commands: string[]; scope: string; expiresAt: string | null; full?: boolean; super?: boolean }
   | { ok: false; code: string; why: string };
 
 interface Grant {
@@ -77,6 +77,10 @@ export const FULL_MAX_TTL_MS = 15 * 60 * 1000;
  *  · 下载器：把「它想跑什么」变成「网上让它跑什么」
  *  · 解释器/壳：一条 -e / -Command 就能绕过整套闸门，等于全权变无限全权
  */
+import { isDiskFormatting, isRescuePath, superEnabled } from "./supergrant.ts";
+
+/** 超级权限开启时，这些"仍然拒"（见 supergrant.ts 的第 3 条约束）
+ *  上面那条 import 已经把 SUPER_STILL_DENY / SUPER_KEEP_DIRS 的判断收在两个函数里 */
 export const FULL_DENY = new Set([
   "rm", "del", "erase", "rmdir", "rd", "format", "diskpart", "mkfs", "dd",
   "reg", "regedit", "sc", "net", "netsh", "schtasks", "shutdown", "reboot", "logoff",
@@ -281,12 +285,27 @@ export function checkGrant(
   }
 
   // 内联求值一律拒（两种窗口都拒）：命令必须落在能读的文件上，否则审计只剩一个 -e
+  // 超级权限：内联求值也放开（否则 node -e 都用不了，谈不上"接管"）
+  const SUPER = superEnabled(home);
   const inlineAt = argv.findIndex((a) => INLINE_EVAL.test(a));
-  if (inlineAt > 0) {
+  if (inlineAt > 0 && !SUPER) {
     return { ok: false, code: "E_GRANT_INLINE_EVAL", why: `不许内联求值（${argv[inlineAt]}）：把代码写进文件再跑，才留得下痕迹` };
   }
 
   const wantFull = req.verb === "shell.exec";
+  // ── 超级权限：绕过窗口，但**不绕过**兜底本身 ──
+  // 1) 格式化磁盘：那是把电脑弄没，不是接管电脑
+  if (SUPER && isDiskFormatting(bin)) {
+    return { ok: false, code: "E_SUPER_STILL_DENY", why: bin + " 会格式化磁盘 —— 超级权限也不做（那不是接管，是把机器弄没）" };
+  }
+  // 2) 删/改 trash 与 snapshots：那是回滚的底，删了就真没得救
+  if (SUPER) {
+    const rescue = argv.slice(1).find((a) => isRescuePath(home, a));
+    if (rescue) {
+      return { ok: false, code: "E_SUPER_KEEP", why: rescue + " 在回收站/快照里 —— 超级权限也不动它（那是回滚的底）" };
+    }
+    return { ok: true, id: "super", commands: [], scope: "*", expiresAt: null, full: true, super: true };
+  }
   let picked: Grant | null = null;
   let sawFullOnlyMismatch = false;
   let sawFullDeny = "";

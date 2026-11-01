@@ -952,6 +952,24 @@ description: 周日晚上把这一周压成三句话。
       </div>
     </div>
     <div id="cfg" hidden>
+      <div class="panelbox" id="superbox">
+        <h2>SUPER · 超级权限</h2>
+        <p class="hint">开了它，鲸鲸就能<b>完全接管这台电脑</b>：改记忆库本体、改人格、删系统文件、关机、装软件、跑任意解释器。
+          <b>只有你在这里能开</b> —— 对话里没有这条路，模型也碰不到。</p>
+        <p class="hint">两条<b>永远不放开</b>：格式化磁盘（那会把机器弄没）、删 <code>trash/</code> 与 <code>snapshots/</code>（那是回滚的底）。</p>
+        <div id="superstate" class="hint">…</div>
+        <div id="superon" hidden>
+          <label>为什么开（会进审计，≥4 字）</label>
+          <input id="superwhy" placeholder="例如：要让它自己装依赖并改记忆库做迁移" autocomplete="off">
+          <label>要开就手输两个字：<b>接管</b></label>
+          <input id="superword" placeholder="接管" autocomplete="off">
+          <div class="acts"><button id="supergo" class="no">开启超级权限</button><span id="supermsg" class="hint"></span></div>
+        </div>
+        <div id="superoff" hidden>
+          <div class="acts"><button id="superclose" class="primary">收回超级权限</button><span id="supermsg2" class="hint"></span></div>
+        </div>
+      </div>
+
       <div class="panelbox">
         <h2>ENDPOINT · 接口</h2>
         <div class="two">
@@ -2280,6 +2298,52 @@ async function loadGit(what, path) {
   pre.scrollTop = 0;
 }
 
+// ── 超级权限（设置里唯一的入口）──────────────────────────────
+async function loadSuper() {
+  var st;
+  try { st = await (await fetch('/api/super')).json(); } catch (e) { return; }
+  var s1 = document.getElementById('superstate');
+  var onBox = document.getElementById('superon'), offBox = document.getElementById('superoff');
+  if (!s1) return;
+  if (st.enabled) {
+    s1.innerHTML = '<b style="color:var(--red)">已开启</b> · ' + escapeHtml(String(st.since || '').slice(0, 16)) +
+      ' · 理由：' + escapeHtml(st.because || '（没写）');
+    onBox.hidden = true; offBox.hidden = false;
+  } else {
+    s1.innerHTML = '当前：<b>关闭</b>（记忆核心 / 硬禁名单都照常挡）';
+    onBox.hidden = false; offBox.hidden = true;
+  }
+}
+async function superPost(body) {
+  var j;
+  try { j = await (await fetch('/api/super', { method: 'POST', headers: H, body: JSON.stringify(body) })).json(); }
+  catch (e) { return { ok: false, why: '网络错误' }; }
+  await loadSuper();
+  return j;
+}
+(function () {
+  var go = document.getElementById('supergo');
+  if (go) go.onclick = async function () {
+    var msg = document.getElementById('supermsg');
+    var why = document.getElementById('superwhy').value.trim();
+    var word = document.getElementById('superword').value.trim();
+    if (word !== '接管') { msg.className = 'hint err'; msg.textContent = '要手输「接管」两个字'; return; }
+    if (why.length < 4) { msg.className = 'hint err'; msg.textContent = '写一句为什么（≥4 字），这条会进审计'; return; }
+    msg.className = 'hint'; msg.textContent = '开启中…';
+    var r = await superPost({ action: 'on', word: word, because: why });
+    msg.className = r.ok ? 'hint ok' : 'hint err';
+    msg.textContent = r.ok ? '已开启 —— 它会记进审计' : (r.why || r.error || '失败');
+    if (r.ok) { document.getElementById('superword').value = ''; document.getElementById('superwhy').value = ''; }
+  };
+  var close = document.getElementById('superclose');
+  if (close) close.onclick = async function () {
+    var msg = document.getElementById('supermsg2');
+    var r = await superPost({ action: 'off' });
+    msg.className = r.ok ? 'hint ok' : 'hint err';
+    msg.textContent = r.ok ? '已收回' : (r.why || '失败');
+  };
+})();
+
 // ── 能力屏：插件（MCP）/ 技能 / 原生工具 / 降级项 ────────────────
 // 三件事都只读：这里不装、不启、不改配置 —— 装是跑 jingjing mcp add，或往目录里放文件。
 function capline(k, v, bad) {
@@ -2776,7 +2840,7 @@ document.addEventListener("click", (e) => {
     for (const b of document.querySelectorAll("#side .item")) b.classList.toggle("on", b === t);
   }
   if (v === "setupview") { show("setupview"); loadSetup(false); return; }
-  if (v === "cfg") { show("cfg"); loadConfig().then(() => loadPersona($("#p-file").value)); return; }
+  if (v === "cfg") { show("cfg"); loadSuper(); loadConfig().then(() => loadPersona($("#p-file").value)); return; }
   if (v === "toolview") { openTool(Number(t.dataset.tool)); return; }
   if (v === "memview") { openMemory(Number(t.dataset.mem)); return; }
   if (v === "docview") { openDoc(t.dataset.doc); return; }

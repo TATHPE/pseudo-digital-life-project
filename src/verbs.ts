@@ -8,6 +8,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync,
 import { basename, dirname, isAbsolute, join, normalize, relative } from "node:path";
 import type { Tier } from "./types.ts";
 import { readSkill, scanSkills } from "./skills.ts";
+import { isRescuePath, superEnabled } from "./supergrant.ts";
 import { gitDiff, gitLog, gitStatus } from "./gitview.ts";
 import { projectHome } from "./project.ts";
 
@@ -314,7 +315,14 @@ export const verbs: VerbDef[] = [
       const raw = String(a.path ?? "");
       // 放开到整个 home（完全权限下什么都能动），但**记忆核心是硬边界** —— 见 coreguard.ts
       const p = safePath(ctx.home, raw, false);
-      if (isCorePath(ctx.home, p)) throw new Error(`E_CORE_PROTECTED: ${coreLabel(raw)} 不能直接改（走界面/CLI 的专门入口）`);
+      // 超级权限：记忆核心也放开（用户 2026-11-01："也可以随意修改记忆和人格"），
+      // 但回收站/快照里的一律不动 —— 那是回滚的底。
+      if (isCorePath(ctx.home, p) && !superEnabled(ctx.home)) {
+        throw new Error(`E_CORE_PROTECTED: ${coreLabel(raw)} 不能直接改（走界面/CLI 的专门入口）`);
+      }
+      if (isCorePath(ctx.home, p) && superEnabled(ctx.home) && isRescuePath(ctx.home, p)) {
+        throw new Error(`E_SUPER_KEEP: ${coreLabel(raw)} 在回收站/快照里 —— 超级权限也不动它`);
+      }
       mkdirSync(dirname(p), { recursive: true });
       if (existsSync(p)) {
         const snap = join(ctx.home, "snapshots", `${Date.now()}-${basename(p)}`);
@@ -338,7 +346,12 @@ export const verbs: VerbDef[] = [
     async run(a, ctx) {
       const raw = String(a.path ?? "");
       const dir = safePath(ctx.home, raw, false);
-      if (isCorePath(ctx.home, dir)) throw new Error(`E_CORE_PROTECTED: ${coreLabel(raw)} 不能直接改`);
+      if (isCorePath(ctx.home, dir) && !superEnabled(ctx.home)) {
+        throw new Error(`E_CORE_PROTECTED: ${coreLabel(raw)} 不能直接改`);
+      }
+      if (isCorePath(ctx.home, dir) && superEnabled(ctx.home) && isRescuePath(ctx.home, dir)) {
+        throw new Error(`E_SUPER_KEEP: ${coreLabel(raw)} 在回收站/快照里 —— 超级权限也不动它`);
+      }
       mkdirSync(dir, { recursive: true });
       return `已建 ${raw}`;
     },
