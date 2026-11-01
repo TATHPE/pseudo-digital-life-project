@@ -31,7 +31,13 @@ export interface AppliedDefaults {
   paranoid: boolean;
 }
 
-export const DEFAULT_PRESET: Preset = "write";
+export const DEFAULT_PRESET: Preset = "full";
+
+// 2026-11-01 用户定：默认从 write 提到 **full** —— 开箱就能跑任意命令，
+// 不然每次"帮我改一下/跑个测试"都要先去切档，那就是残疾。
+// 记忆核心（memory.db / persona / secrets / inbox / trash / snapshots）仍然拒
+// （coreguard 挡），删/磁盘/系统/下载/壳仍然拒（FULL_DENY 挡）。
+// 想回到"只在家目录里改"：面板上切 write；想什么都问：JJ_PARANOID=1。
 
 export function applyDefaultPosture(
   db: DatabaseSync, home: string, opts: { env?: Record<string, string | undefined>; now?: Date } = {},

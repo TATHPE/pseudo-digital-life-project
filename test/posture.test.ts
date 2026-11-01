@@ -11,13 +11,14 @@ import { isCorePath, coreLabel } from "../src/coreguard.ts";
 
 const H = () => mkdtempSync(join(tmpdir(), "jj-posture-"));
 
-test("默认姿态：开箱就是 write + 外发开放（不残疾）", () => {
+test("默认姿态：开箱就是 full + 外发开放（不残疾）", () => {
   const home = H();
   const d = openDb(join(home, "m.db"));
   const r = applyDefaultPosture(d.db, home, { env: {} });
-  assert.equal(r.preset, "write");
+  // 2026-11-01：write → full（开箱能跑任意命令；记忆核心与硬禁名单仍拒）
+  assert.equal(r.preset, "full");
   assert.equal(r.presetApplied, true);
-  assert.equal(currentPreset(home).preset, "write");
+  assert.equal(currentPreset(home).preset, "full");
   assert.equal(egressStatus(home, { env: {} }).until !== null, true, "外发默认开放");
 });
 

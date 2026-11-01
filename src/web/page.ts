@@ -339,6 +339,14 @@ export const PAGE = `<!doctype html>
   .dact button { background:#000; border:1px solid var(--line-dim); color:var(--ink);
                  font:10px/1 var(--mono); padding:5px 7px; cursor:pointer; }
   .dact button:hover { border-color:var(--ink); background:rgba(233,240,242,.08); }
+  /* 过程：思考、工具、结果。会话栏只留最终回答，过程都在这里 */
+  #tracebox .tr { border-left:2px solid var(--line-dim); padding:3px 0 3px 7px; margin:0 0 5px;
+                  font:10px/1.55 var(--mono); color:var(--ink-dim); white-space:pre-wrap; word-break:break-word; }
+  #tracebox .tr.think { border-left-color:var(--amber); color:#d8c79a; }
+  #tracebox .tr.tool { border-left-color:var(--ink); color:var(--ink); }
+  #tracebox .tr.res { border-left-color:rgba(127,209,139,.5); color:#a9c9a9; max-height:150px; overflow:auto; }
+  #tracebox .tr.err { border-left-color:var(--red); color:#e6a0a0; }
+  #tracebox .tr.who { font-size:9px; letter-spacing:.14em; color:var(--ink-dim); display:block; margin-bottom:2px; }
   .dchg { white-space:pre-wrap; word-break:break-all; font:10px/1.55 var(--mono);
           color:var(--ink-dim); max-height:200px; overflow:auto; margin:0; }
   .dbar { height:3px; background:rgba(233,240,242,.16); margin-top:5px; }
@@ -1046,6 +1054,14 @@ description: 周日晚上把这一周压成三句话。
 <aside id="folio" aria-label="卷宗">
   <div class="fcap"><b>卷 宗</b><span>DOSSIER</span><button id="folioX" type="button" title="收起卷宗（⌘/Ctrl+J）" aria-label="收起卷宗">»</button></div>
 
+  <div class="dcard" data-card="trace">
+    <button class="dtab" type="button"><i>·</i><b>过 程</b><span class="n" id="dc-trace-n"></span></button>
+    <div class="din" id="dc-trace">
+      <p class="dempty" id="dc-trace-empty">还没有动作。对话时它的思考和工具调用会出现在这里。</p>
+      <div id="tracebox"></div>
+    </div>
+  </div>
+
   <div class="dcard" data-card="inbox">
     <button class="dtab" type="button"><i>0</i><b>等 你 点 头</b><span class="n" id="dc-inbox-n"></span></button>
     <div class="din" id="dc-inbox">
@@ -1240,12 +1256,14 @@ async function state() {
 function rowHtml(b) {
   const isUser = b.role === "user";
   const body = isUser ? escapeHtml(b.text).replace(/&lt;br&gt;/g, "<br>") : (b.html || escapeHtml(b.text));
-  const tools = (b.tools || []).join("");
+  // 2026-11-01：工具卡不再进会话栏（历史里也不进）—— 会话栏只留回答；
+  // 想看历史调用去了，走左栏「动作」（exec_audit 是全量账）。
+  const tools = "";
   const recall = isUser ? "" : recallHtml(b.cites || [], b.omitted || 0, b.omittedDocs || 0);
   const resend = isUser ? " <span class='hintacts'><button class='resend'>重发</button></span>" : "";
   return "<div class='row " + b.role + "'><div class='av'>" + avHtml(isUser) + "</div><div>" +
     "<div class='meta'>" + (isUser ? "USER · " : "") + clock(b.ts) + resend + "</div>" +
-    recall +
+    recall + (isUser ? "" : toolsNote(b)) +
     "<div class='body md'>" + body + tools + "</div></div></div>";
 }
 function escapeHtml(s) {
@@ -2093,6 +2111,53 @@ async function loadGit(what, path) {
   if (b) b.onclick = function () { location.href = '/welcome'; };
 })();
 
+// ── 过程（右栏）：思考与工具调用都在这里，会话栏只留最终回答 ──────
+// 用户 2026-11-01：会话栏只有结果；思考和调用工具的行为移到侧边栏。
+// 历史消息不展开工具卡，但要说清楚「这一轮它动过手」——不然读者会以为它只是嘴说
+function toolsNote(b) {
+  const n = (b.tools || []).length;
+  return n ? '<div class="hint" data-note>' + n + ' 次工具调用（过程见右栏/动作）</div>' : '';
+}
+
+function traceStart() {
+  var box = document.getElementById('tracebox');
+  if (!box) return;
+  box.innerHTML = '';
+  var empty = document.getElementById('dc-trace-empty');
+  if (empty) empty.hidden = true;
+  var n = document.getElementById('dc-trace-n');
+  if (n) n.textContent = '';
+}
+function traceAdd(kind, who, text) {
+  var box = document.getElementById('tracebox');
+  if (!box) return;
+  var el = document.createElement('div');
+  el.className = 'tr ' + kind;
+  if (who) { var w = document.createElement('span'); w.className = 'who'; w.textContent = who; el.appendChild(w); }
+  el.appendChild(document.createTextNode(String(text == null ? '' : text)));
+  box.appendChild(el);
+  var panel = document.getElementById('dc-trace');
+  if (panel) panel.scrollTop = panel.scrollHeight;
+  var n = document.getElementById('dc-trace-n');
+  if (n) n.textContent = box.children.length + ' 条';
+}
+// 工具卡：一次调用两段（调用 + 结果），结果回来时补到同一行
+function traceTool(name, args, result, ms) {
+  var box = document.getElementById('tracebox');
+  if (!box) return null;
+  var el = document.createElement('div');
+  el.className = 'tr tool';
+  var w = document.createElement('span'); w.className = 'who';
+  w.textContent = '工具 · ' + name + (ms != null ? ' · ' + ms + 'ms' : '');
+  el.appendChild(w);
+  el.appendChild(document.createTextNode(String(args || '')));
+  box.appendChild(el);
+  var n = document.getElementById('dc-trace-n');
+  if (n) n.textContent = box.children.length + ' 条';
+  if (result != null) traceAdd('res', '结果', String(result).slice(0, 1200));
+  return el;
+}
+
 // ── 换模型（卷宗里那一行的入口）：只改 express 的 provider/model ──
 (function () {
   var box = document.getElementById('modelpicker');
@@ -2564,7 +2629,7 @@ async function loadConfig() {
   if (!c.hasKey) {
     b.hidden = false;
     // 以前这里写「仅本地推理」——那是假话：没有 key 时聊天直接 401，本地只有兜底模型回一句
-    b.innerHTML = "// 还没配云端 key —— 现在是你本地那个小模型在硬撑（质量差），点这里配 <button id='go-cfg'>去设置</button>";
+    b.innerHTML = "// 还没有能说话的模型 —— 本地模型只管整理记忆，不参与对话。点这里配 <button id='go-cfg'>去设置</button>";
     $("#go-cfg").onclick = () => show("cfg");
   } else { b.hidden = true; }
   paintEndpoint();
@@ -2977,6 +3042,7 @@ $("#composer").onsubmit = async (e) => {
   if (await handleSlash(text)) { $("#m").value = ""; fitComposer(); return; }
   if (inflight) return;                       // 上一轮还没完就别叠
   $("#m").value = ""; fitComposer();
+  traceStart();
   const el = $("#chat");
   el.insertAdjacentHTML("beforeend", rowHtml({ role: "user", ts: new Date().toISOString(), text }));
   const id = "live-" + Date.now();
@@ -3024,22 +3090,21 @@ $("#composer").onsubmit = async (e) => {
           continue;
         }
         if (d.type === "notice") {
-          recallBox.insertAdjacentHTML("beforeend", "<span class='notice'>" + escapeHtml(d.text) + "</span>");
+          // 2026-11-01：思考移到右栏「过程」，会话栏只留最终回答
+          traceAdd("think", "想", d.text);
         }
         if (d.type === "delta") { acc += d.text; box.innerHTML = escapeHtml(acc) + "<span class='cursor'></span>"; }
         if (d.type === "tool") {
           meta.textContent = "调用 " + d.name;
-          box.insertAdjacentHTML("beforeend",
-            "<details class='tool'><summary><span class='tn'>" + escapeHtml(d.name) + "</span>" +
-            "<span class='tms'>运行中…</span></summary><pre class='targs'>" + escapeHtml(d.args || "") + "</pre></details>");
+          traceTool(d.name, d.args, null, null);
         }
         if (d.type === "tool_result") {
-          const cards = box.querySelectorAll("details.tool");
-          const last = cards[cards.length - 1];
-          if (last) { last.querySelector(".tms").textContent = d.ms + "ms";
-            last.insertAdjacentHTML("beforeend", "<pre class='tres'>" + escapeHtml(d.result) + "</pre>"); }
+          // 结果补在过程里（不再往会话栏塞工具卡）
+          meta.textContent = "调用 " + d.name + " · " + d.ms + "ms";
+          traceAdd("res", "结果", String(d.result || "").slice(0, 1200));
         }
         if (d.type === "error") {
+          traceAdd("err", "错", d.message);
           box.insertAdjacentHTML("beforeend", "<div class='sys'>E: " + escapeHtml(d.message) + "</div>");
         }
         if (d.type === "done") { meta.textContent = clock(new Date().toISOString()); }

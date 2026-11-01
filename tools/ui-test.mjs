@@ -463,6 +463,23 @@ check("装/删不带 x-jj 头就 403（跨站不能改插件）", await js(`(asy
   return r.status === 403;
 })()`));
 
+// ── 过程在右栏：思考与工具调用不进会话栏 ──────────────
+check("过程在右栏，会话栏只有结果", await js(`(() => {
+  const trace = document.getElementById("tracebox");
+  if (!trace) return "NO_TRACE";
+  // 会话栏里不该有工具卡（历史也不该有）
+  const cards = document.querySelectorAll("#chat details.tool").length;
+  // 过程区要有自己的样式（不然只是换了个地方堆 raw text）
+  const st = document.createElement("div");
+  st.className = "tr tool";
+  trace.appendChild(st);
+  const styled = getComputedStyle(st).borderLeftWidth !== "0px";
+  st.remove();
+  return cards === 0 && styled ? true : "cards:" + cards + " styled:" + styled;
+})()`));
+
+// 默认档（write → full）由 test/posture.test.ts 钉着；这里不测，避免被上面的切档用例污染
+
 // ── 模型选择：卷宗里点一下就换（不用进设置）──
 check("卷宗里能直接换模型", await js(`(async () => {
   const btn = document.getElementById("modelpick");

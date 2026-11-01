@@ -99,8 +99,9 @@ test("GET / 分流：没配完给引导页，?skip=1 给主面板；/api/state �
     // 左栏现在的三段：她 / 今天 / 去处（改过两次，钉新结构别再钉旧文案）
     assert.ok(html.includes("今 天") && html.includes("去 处"), "左栏要有「今天 / 去处」两段");
     assert.ok(html.includes('data-view="memlistview"') && html.includes('data-view="cfg"'), "去处要有入口行");
-    // 可视化：markdown 渲染 + 工具卡
-    assert.ok(html.includes("details.tool"), "工具调用要能展开");
+    // 可视化：markdown 渲染；工具调用不再进会话栏（2026-11-01：过程在右栏）
+    assert.ok(html.includes("tracebox"), "右栏要有「过程」区");
+    assert.ok(!html.includes("details class='tool'"), "会话栏不该再插工具卡");
     assert.ok(html.includes("pre.code"), "代码块要有样式");
     const st = await (await fetch(`${base}/api/state`)).json() as any;
     assert.match(st.line, /醒着/);
@@ -753,9 +754,11 @@ test("面板摄入：候选列表只列未摄入的，编码不对不装成 E_NO
 });
 
 test("没 key 时说真话：本地兜底要有 notice，banner 不能写「仅本地推理」", () => {
-  assert.ok(PAGE.includes('class=\'notice\'') || PAGE.includes("class='notice'"), "要能显示「本地模型回答」");
+  // 2026-11-01：本地模型**不参与对话**（用户定），所以没有「本地兜底」这回事。
+  // 没 key 就该明说不可用 —— 不要标成"本地回答"，也不要假装能答。
+  assert.ok(PAGE.includes("对话不可用") || PAGE.includes("unavailable"), "没 key 要明说不可用");
   assert.ok(!PAGE.includes("仅本地推理，云端不会回答"), "那句是假的：没 key 时聊天直接 401");
-  assert.ok(PAGE.includes("本地那个小模型在硬撑"), "现在的说法：本地小模型兜底");
+  assert.ok(!PAGE.includes("本地那个小模型在硬撑"), "本地兜底已经删了（2026-10-31 用户定），这句也删");
   // 两个「路径」必须能区分：一个是云端地址，一个是本地文件
   assert.ok(PAGE.includes("接入地址 · 云端 API 的 baseUrl"), "设置里的 baseUrl 要说清是云端地址");
   assert.ok(PAGE.includes("加文档 · 只在本机读取，跟云端无关"), "加文档要说清是本地文件");
