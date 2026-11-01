@@ -335,7 +335,11 @@ check("折叠能用：左栏工具 + 卷宗分区", await js(`(() => {
 await js(`(() => { document.querySelector("#side .item[data-view=chat]").click(); return true; })()`);
 await sleep(400);
 const scrolled = await js(`(() => { const el=document.querySelector("#scroll");
-  el.scrollTop = Math.max(0, el.scrollHeight - el.clientHeight - 400);
+  // 内容不够长时这条测不了（夹具只有几条消息）—— 返回 -1 让下面跳过，
+  // 而不是拿"滚不动"当成"位置没保住"（那样会长期假红）。
+  const max = el.scrollHeight - el.clientHeight;
+  if (max < 400) return -1;
+  el.scrollTop = max - 400;
   el.dispatchEvent(new Event("scroll")); return Math.round(el.scrollTop); })()`);
 await js(`document.querySelector("#side .item[data-view=cfg]").click()`); await sleep(500);
 // 「回到最新」只能在对话里出现：把几个能滚的视图都切一遍，各自滚到中间看它冒不冒出来
@@ -352,7 +356,9 @@ for (const sel of ['#doclist .item[data-doc]', '#side .item[data-view=cfg]', '#a
 check("非对话界面都没有「回到最新」", jumpSeen.every((x) => x.endsWith('=none') || x.endsWith('=skip')), jumpSeen.join(' | '));
 await js(`document.querySelector("#side .item[data-view=chat]").click()`); await sleep(700);
 const back = await js(`Math.round(document.querySelector("#scroll").scrollTop)`);
-check("切回对话保住滚动位置", Math.abs(back - scrolled) <= 8, `${scrolled} → ${back}`);
+check("切回对话保住滚动位置",
+  scrolled < 0 ? null : Math.abs(back - scrolled) <= 8,
+  scrolled < 0 ? "内容不够长，跳过" : `${scrolled} → ${back}`);
 
 // 侧栏多选一：点第 2 篇文档时，第 1 篇不能还挂着框
 await js(`(() => { document.querySelector("#side .item[data-doc]").click(); return true; })()`); await sleep(600);
@@ -445,6 +451,35 @@ check("人格草稿的行有样式（不是塞进按钮里的白框）", await j
   const fits = inp.getBoundingClientRect().right <= box.getBoundingClientRect().right + 1;
   const insideButton = !!box.closest("button");
   return shown && flex && fits && !insideButton;
+})()`));
+
+// ── 时间线跳转：点哪天就该到哪天，不是每次都回到最新 ──────────
+// 真 bug：show("chat") 用 rAF 把 scrollTop 压到底，而 jumpToDay() 在它之前同步执行，
+// 于是跳转被覆盖 —— 表现就是"点哪天都是现在"。
+check("点某一天会跳到那一天（不是总回到最新）", await js(`(async () => {
+  const items = [...document.querySelectorAll("#sesslist [data-day]")];
+  if (items.length < 2) return null;   // 夹具不够跨天就跳过
+  const sc = document.getElementById("scroll");
+  sc.scrollTop = sc.scrollHeight;      // 先到底部，确保"跳"是可观测的
+  const target = items[items.length - 1];   // 最早那一天
+  target.click();
+  await new Promise((r) => setTimeout(r, 600));
+  const dayEl = [...document.querySelectorAll("#chat .day")]
+    .find((e) => e.textContent.startsWith(target.dataset.day));
+  if (!dayEl) return "NO_DAY";
+  const offset = dayEl.getBoundingClientRect().top - sc.getBoundingClientRect().top;
+  const onCount = document.querySelectorAll("#sesslist .item.on").length;
+  // 那一天要落在视口顶部附近；同时只能亮一个（别把「现在」也点亮）
+  return Math.abs(offset) < 80 && onCount === 1 ? true : "offset:" + Math.round(offset) + " on:" + onCount;
+})()`));
+
+check("点「现在」回到最新", await js(`(async () => {
+  const now = document.querySelector("#sesslist .item[data-view=chat]:not([data-day])");
+  if (!now) return "NO_NOW";
+  now.click();
+  await new Promise((r) => setTimeout(r, 600));
+  const sc = document.getElementById("scroll");
+  return sc.scrollHeight - sc.clientHeight - sc.scrollTop <= 8;
 })()`));
 
 // ── 技能与插件：harness 的两层"借来的手脚" ──────────────────

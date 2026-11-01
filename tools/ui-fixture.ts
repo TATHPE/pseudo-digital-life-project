@@ -67,6 +67,17 @@ createProposal(HOME, {
   touches: ["jingjing/src/web/page.ts"],
 }, now);
 
+// ③b 跨天夹具：两天前还有一段对话（时间线跳转的断言要用）
+for (const [i, ev] of [
+  { kind: "utterance", text: "三天前的晚饭吃了面" },
+  { kind: "agent_reply", text: "记下了，面。" },
+].entries()) {
+  appendEvent(join(HOME, "inbox"), {
+    v: 1, id: newEventId(), ts: new Date(Date.now() - 2 * 86400000 + i * 1000).toISOString(),
+    kind: ev.kind, actor: ev.kind === "utterance" ? "user" : "agent", payload: { text: ev.text },
+  });
+}
+
 // ④ 两条对话：UI 测试里「头像默认鲸尾」需要一条 agent 行，也让面板不是空白
 for (const [i, ev] of [
   { kind: "utterance", text: "在吗" },

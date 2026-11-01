@@ -1071,7 +1071,7 @@ const VIEWNAME = { chat: "对话 · CHAT", cfg: "设置 · CONFIG", toolview: "�
   memview: "记忆 · MEMORY", memlistview: "记忆 · MEMORY", docview: "文档 · DOC", capview: "能力 · CAPABILITIES",
   docsview: "文档 · DOCS", auditview: "动作 · ACTIONS",
   searchview: "搜索 · SEARCH", propview: "它想做的一件事", setupview: "首次配置 · SETUP" };
-function show(v) {
+function show(v, opts) {
   // 切走时把滚动位置存下来：隐藏 #chat 会让 #scroll 的 scrollHeight 塌成 0，浏览器会把 scrollTop 归零
   if (view === "chat" && v !== "chat") chatScroll = $("#scroll").scrollTop;
   view = v;
@@ -1083,6 +1083,16 @@ function show(v) {
   if (v === "chat") {
     requestAnimationFrame(function () {
       const el = $("#scroll");
+      // 指定了哪一天就滚到那一天（这是唯一决定滚动位置的地方）
+      if (opts && opts.day) {
+        const target = [...document.querySelectorAll("#chat .day")].find(function (e) {
+          return e.textContent.startsWith(opts.day);
+        });
+        if (target) {
+          el.scrollTop += target.getBoundingClientRect().top - el.getBoundingClientRect().top - 8;
+          return;
+        }
+      }
       // 只在"离开前不是贴底"时恢复；贴底的话重新滚到底更符合直觉
       if (chatScroll > 0 && chatScroll < el.scrollHeight - el.clientHeight - 4) el.scrollTop = chatScroll;
       else { el.scrollTop = el.scrollHeight; chatScroll = 0; }
@@ -1102,8 +1112,11 @@ function show(v) {
   // 侧栏里除了几个导航项，其余都是多选一（工具 / 文档 / 记忆 / 日期）。
   // 只按 data-view 匹配会变成「点了 A，B C D 一起被框」。
   const navOnly = (b) => !b.dataset.doc && !b.dataset.tool && !b.dataset.mem && !b.dataset.day;
+  // 点了某一天：只亮那一天，别再顺手把「现在」点亮（两个都亮等于没有高亮）
+  const dayItem = sideActive && sideActive.isConnected && sideActive.dataset.day ? sideActive : null;
   for (const b of document.querySelectorAll("#side .item")) {
-    b.classList.toggle("on", navOnly(b) && b.dataset.view === v);
+    const on = navOnly(b) && b.dataset.view === v && !(dayItem && b.dataset.view === "chat" && !b.dataset.day);
+    b.classList.toggle("on", on);
   }
   if (sideActive && sideActive.isConnected && !navOnly(sideActive) && sideActive.dataset.view === v) {
     sideActive.classList.add("on");
@@ -2646,8 +2659,7 @@ document.addEventListener("click", (e) => {
   if (v === "memlistview") { show("memlistview"); memories(); return; }
   if (v === "docsview") { show("docsview"); docs(); return; }
   if (v === "auditview") { openAudit(); return; }
-  show("chat");
-  if (t.dataset.day) jumpToDay(t.dataset.day);
+  show("chat", t.dataset.day ? { day: t.dataset.day } : undefined);
 });
 $("#p-file").onchange = (e) => loadPersona(e.target.value);
 // 头像框：改完立刻套上（不等服务端），再把选择存住
