@@ -463,6 +463,18 @@ check("能力屏能看见插件与技能", await js(`(async () => {
   return (/工具（verbs）/.test(nat) && skOk && mcpOk) ? true : "mcp:" + mcp.slice(0,40) + " sk:" + sk.slice(0,40);
 })()`));
 
+// 真踩过：卷宗「上下文」的模型名读的是 meta(model_express) —— 那个键没人写过，
+// 于是永远显示「未配置」，而它明明在回话。现在读 config.roles.express，必须对得上。
+check("卷宗里的模型名和配置一致（不是永远「未配置」）", await js(`(async () => {
+  const cfg = await (await fetch("/api/config")).json();
+  const d = await (await fetch("/api/dossier")).json();
+  const want = cfg.model ? ((cfg.provider ? cfg.provider + "/" : "") + cfg.model) : null;
+  const shown = document.getElementById("dc-ctx-stats").textContent;
+  const okValue = d.context.model === want;
+  const okUi = want ? shown.includes(String(cfg.model)) : /未配置/.test(shown);
+  return okValue && okUi ? true : "api:" + d.context.model + " cfg:" + want;
+})()`));
+
 check("卷宗上下文写着能借多少手脚（插件/工具/技能）", await js(`(async () => {
   const d = await (await fetch("/api/dossier")).json();
   const txt = document.getElementById("dc-ctx-stats").textContent;

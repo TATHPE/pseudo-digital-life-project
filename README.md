@@ -9,9 +9,9 @@
 > 找解释器的顺序：`JJ_PYTHON` → 项目 `.venv` → PATH 上的 `py -3` / `python3` / `python`。
 
 ```bash
-npm run check                         # 类型检查 + 386 条测试（CI 入口；GitHub Actions 就跑这条）
-npm test                              # 295 条断言
-npm run ui:test                       # headless Edge 真点真发，20 项交互断言（面板要在跑）
+npm run check                         # 类型检查 + 477 条测试 + 地图不漂移（CI 入口；GitHub Actions 就跑这条）
+npm test                              # 477 条断言（node --test）
+npm run ui:test                       # headless Edge 真点真发：48 项交互断言（+3 项空库跳过；面板要在跑）
 node src/cli/jingjing.ts migrate      # 建库 + 自检
 node src/cli/jingjing.ts remember "重要性应该影响衰减速率"
 node src/cli/jingjing.ts search "衰减速率"
@@ -43,7 +43,7 @@ node src/cli/jingjing.ts import <dir> --force  # 搬到新 home（旧目录自�
 docker compose -f docker/compose.yaml up -d  # 容器里跑（数据卷 ./data，只映射宿主回环）
 node src/cli/jingjing.ts usage        # 今日花费与按角色/模型拆分
 node src/cli/jingjing.ts serve 7700   # 本地面板 http://127.0.0.1:7700
-npm run ui:test                       # headless Edge 真点真发（CDP），12 项断言
+npm run ui:test                       # headless Edge 真点真发（CDP），48 项断言
 UI_VIEWPORT=390x844 node tools/ui-test.mjs http://127.0.0.1:7700/   # 手机尺寸同一套断言
 npm run ui:shot tmp/shot.png          # 截一张图肉眼验收
 npm run docs:sync                     # 把上层文档仓单向同步进 docs/（产物别手改）
@@ -139,19 +139,20 @@ node src/cli/brief-demo.ts --full     # M1.1：第 1 轮 vs 第 100 轮简报
    结果 transport 的隐私闸门在第一次 embed 测试就抛 `E_PRIVACY`——
    因为嵌入的输入**就是记忆原文**。已改：`MEMORY_ROLES = {embed, route, extract, salience, conflict}`。
 
-## 未做（M0 剩余 / M1 剩余）
+## 做完的与还欠着的
 
 - [x] embedding 走真 Ollama `bge-m3`（`fake` 仍保留给基准与单测）
 - [x] **摄入管道** markitdown → 分块（heading_path / 15% 重叠 / 代码与表格不切）→ FTS + 向量（`02 §5`）
 - [x] `provider.ts` 角色路由 + `assertLocalOnly`（记忆类角色全 local）
 - [x] `transport.ts` 接真 Ollama（`complete` / `embed` 批量）+ 出站 span
-- [ ] 云端 transport 的真实鉴权（现在 anthropic 分支用的是 Bearer，需换成 `x-api-key` + `anthropic-version`）
-- [ ] `auth.ts` / `budget.ts`
+- [x] 云端 transport 的真实鉴权（anthropic 走 `x-api-key` + `anthropic-version`，其余走 Bearer）
+- [x] `auth.ts`（DPAPI 存 key，只看指纹）/ `budget.ts`（预算闸 + 记账）
 - [x] Web 面板 P0（时间轴 / 无「新对话」/ 记忆面板 / SSE）
 - [x] 面板内配置 API（provider/model/key → DPAPI）与人格（六个 md + 版本留痕）
 - [x] 本地面板写操作守卫（`x-jj` 头 + 同源 Origin）
 - [x] 工具循环 + MCP 客户端（实测：markitdown 转 PDF 后回答）
-- [x] 三栏布局（会话/工具/记忆/设置）+ 服务端 Markdown + 工具卡
+- [x] 三栏骨架（左 wing：她·今天·去处 / 中 stage：对话 / 右卷宗：等你点头·计划·改动·上下文）+ 服务端 Markdown + 工具卡
+- [x] 「能力」屏：插件（MCP）/ 技能（SKILL.md）/ 原生工具与命令 / 降级项，一屏摊开
 - [x] **M2 完成**：断电检测/记忆/提示、self_state、补算衰减、三种时间措辞
 - [x] **M3 大部分**：夜间整备（游标/抽取/冲突/归并）、自传（反推引用+摘录兜底）、领地
 - [x] **M3 完成**：夜间整备 / 自传 / 领地 / eval harness（四门全绿）
@@ -160,6 +161,9 @@ node src/cli/brief-demo.ts --full     # M1.1：第 1 轮 vs 第 100 轮简报
 - [x] T3 的**面板确认按钮**（侧栏“待确认”卡 → 服务端现签现用令牌）
 - [x] **容器沙箱**（`JJ_SHELL_SANDBOX=docker`：`--network=none --read-only --cap-drop=ALL`，引擎不在就拒跑）
 - [ ] Job Object / bwrap / 降权 / 低完整性（Windows 上要原生模块）
+- [ ] 桌面壳的 release 构建与安装包（现在只有 `target/debug` 的 exe）
+- [ ] 卷宗还差三块：计划槽 P9 原文 / `git.status`·`git.diff` 校样 / 文件面板
+- [ ] hooks 层（`/health` 里唯一的降级项 `hooks-not-implemented`）
 
 ## 图标署名（CC BY 3.0，不可删）
 

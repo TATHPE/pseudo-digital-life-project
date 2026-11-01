@@ -18,7 +18,10 @@ const CALIB: Array<[string, number]> = [
   ["persona/core.md", 216],
   ["persona/voice.md+values.md", 427],
   ["persona/tools.md", 115],   // 英文/代码多，用来卡住「按词算」这条
-  ["README.md", 5109],       // 中英混排大文本：旧系数在这里也偏 15%
+  // 中英混排大文本：**用冻结样本，不用 README.md**。
+  // 踩过：把活的 README 当标定物，改一次文档数字这条就红 —— 那是伪约束。
+  // 真值由 tiktoken(cl100k_base) 实测：5742。
+  ["test/fixtures/calib-mixed.md", 5742],
 ];
 
 test("标定：估算与 cl100k 实测偏差 ≤15%", () => {

@@ -1406,8 +1406,13 @@ export function createWebServer(deps: WebDeps) {
         } catch { /* 没配 MCP */ }
         // 只数原生 verbs：MCP 那些已经在「插件」里算过一次了（否则同一个工具数两遍）
         const toolN = deps.tools ? deps.tools.list().filter((t) => !t.name.startsWith("mcp__")).length : 0;
+        // 当前在用的表达模型：读**真配置**（roles.express），不是某个从没写过的 meta 键。
+        // 之前读 meta("model_express")，于是永远显示"未配置"，而它明明在回话。
         let model: string | null = null;
-        try { model = meta(deps.db, "model_express") ?? null; } catch { /* 没记录 */ }
+        try {
+          const ex = deps.getConfig().roles["express"];
+          if (ex && ex.model) model = (ex.provider ? ex.provider + "/" : "") + ex.model;
+        } catch { /* 配置读不出来就留空 */ }
 
         json(res, 200, {
           plan: { agenda: plan, threads },
