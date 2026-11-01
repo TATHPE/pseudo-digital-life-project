@@ -83,10 +83,19 @@ async function expressComplete(deps: { home: string }): Promise<((system: string
     const chat = createChatTransport(routerFrom(cfg.roles as never), { apiKeys: keys });
     return async (system, user) => {
       let out = "";
+      let finish = "";
       for await (const ev of chat.chat("express", [{ role: "system", content: system }, { role: "user", content: user }], {
         // 发的是人格设定（用户刚写的答案），不是记忆原文；面板已在访谈前告知
-        containsMemory: false, purpose: "setup-interview", maxTokens: 900, temperature: 0.4,
-      })) if (ev.type === "delta") out += ev.text;
+        // 900 不够：实测 finish="length" 且 **delta 为空**（预算被推理吃掉），
+        // 上层只能看到空串，于是"模型写不出草稿"——其实是根本没给它写完的额度。
+        containsMemory: false, purpose: "setup-interview", maxTokens: 4096, temperature: 0.4,
+      })) {
+        if (ev.type === "delta") out += ev.text;
+        else if (ev.type === "done") finish = String((ev as { finish?: string }).finish ?? "");
+      }
+      // 空输出 + finish=length：不是"没内容"，是额度被吃完了（推理模型常见）。
+      // 必须区分开 —— 否则上层会把它当成"模型写不出来"然后静默退回模板，真因就被埋了。
+      if (!out.trim() && finish === "length") throw new Error("E_OUTPUT_TRUNCATED: 额度用尽但没产出内容");
       return out;
     };
   } catch { return null; }
@@ -194,6 +203,15 @@ export function toolCardHtml(t: ToolUse): string {
  * 同源不削弱防护：跳站页面无法把 Origin 伪造成我们的 Host（浏览器写真实来源），
  * 而自定义头 `x-jj` 仍让跨站请求过不去（预检不放行）。
  */
+/** 该不该进引导页：没开始过，或者上次没跑完（paused / aborted / running 都算没跑完） */
+export function needsWelcome(home: string): boolean {
+  try {
+    const s = readSession(home);
+    if (!s) return true;
+    return s.status !== "done";
+  } catch { return true; }
+}
+
 export function writeGuarded(req: IncomingMessage): { ok: boolean; reason?: string } {
   const origin = req.headers.origin;
   if (origin) {
@@ -334,6 +352,17 @@ export function createWebServer(deps: WebDeps) {
           json(res, 500, { error: "E_DESK: " + String((e as Error).message).slice(0, 120) });
         }
         return;
+      }
+      // 首次配置的引导页：分流放在**服务端**，所以桌面壳一行都不用改（窗口仍然加载 /）
+      if ((req.method === "GET" || req.method === "HEAD") && (url.pathname === "/" || url.pathname === "/welcome")) {
+        const forced = url.pathname === "/welcome";
+        const skip = url.searchParams.get("skip") === "1";
+        if (forced || (!skip && needsWelcome(deps.home))) {
+          const { WELCOME } = await import("./welcome.ts");
+          res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+          res.end(req.method === "HEAD" ? undefined : WELCOME);
+          return;
+        }
       }
       if ((req.method === "GET" || req.method === "HEAD") && url.pathname === "/") {
         // 面板会被频繁改样式：禁止缓存，避免"我改了但你还看旧页面"
@@ -1178,9 +1207,18 @@ export function createWebServer(deps: WebDeps) {
           // 一个字都没填就别让模型写：它会输出"未提供具体内容（仅出现字段名）"这种句子，
           // 而我们在面板上看到的是一屏看起来很像内容的垃圾（真踩过）。
           const filled = Object.values(answers).filter((v) => String(v ?? "").trim().length > 0);
+          // 一个字都没答：不叫模型（它只会说"未提供具体内容"），直接用中立模板拼 —— 并明说。
           if (!filled.length) {
-            json(res, 400, { error: "E_NO_ANSWERS", why: "先回答几个问题（哪怕一句），不然写出来的只会是模型的自言自语" });
+            const t = iv.templateDraft(answers, now());
+            iv.saveDraft(deps.home, t);
+            json(res, 200, { ok: true, draft: t, modelAdded: iv.countModelAdded(t), via: "template" });
             return;
+          }
+          // 答得少时，没答的那些用问题自带的 fallback 顶上（中立模板，不是编造）。
+          // 这样模型总有事可做，不会因为"信息太少"把整份草稿写成借口。
+          for (const q of iv.QUESTIONS) {
+            const v = String(answers[q.id] ?? "").trim();
+            if (!v) answers[q.id] = q.fallback;
           }
           // 有表达模型就用它写；没有就模板（**明说**，不假装是模型写的）
           let d = iv.templateDraft(answers, now());
@@ -1190,9 +1228,16 @@ export function createWebServer(deps: WebDeps) {
               const prompt = [
                 "下面是一个人对自己 AI 伴侣的 5 个回答。请把它整理成 6 块设定。",
                 "铁律：只能整理他说过的话，不能添加他没说过的具体事实、名称、数字。",
-                "输出格式：每块以 ## core / ## boundaries / ## values / ## voice / ## evidence / ## tools 开头，每条一行，行首用 - 开头。",
+                "输出格式：**块的标题必须恰好是这些英文小写**：## core / ## boundaries / ## values / ## voice / ## evidence / ## tools。",
+                "每条一行，行首用 - 开头。不要用中文标题，不要加别的段落。",
+                "例子（照这个形状写）：",
+                "## core",
+                "- 她叫我主人（你原话）",
+                "## boundaries",
+                "- 不替我确认（你原话）",
                 "你自己补充的理解，行尾必须写（模型补的，请确认）。",
-                ...Object.entries(answers).map(([k, v]) => `${k}: ${v}`),
+                "用户的原话（每条一问一答，问题只是标签）：",
+                ...Object.entries(answers).map(([k, v]) => `问（${k}）：${v}`),
               ].join(String.fromCharCode(10));
               const raw = await complete(prompt, "现在开始整理，只输出那 6 段。");
               d = iv.parseDraft(raw, answers, now());
@@ -1201,14 +1246,20 @@ export function createWebServer(deps: WebDeps) {
             }
           }
           if ((d as { emptyAll?: boolean }).emptyAll) {
-            json(res, 200, {
-              ok: false, emptyAll: true, draft: d, modelAdded: 0,
-              error: "E_EMPTY_DRAFT", why: "模型这次没给出可用的内容（可能没答到点上）。换个说法再试，或者一个字一个字自己写。",
-            });
+            // 模型没产出 → 退回模板（有兜底，但不能假装是模型写的）
+            const t = iv.templateDraft(answers, now());
+            t.note = "模型这次没写出可用的内容，下面是用你的原话 + 中立模板拼的";
+            iv.saveDraft(deps.home, t);
+            json(res, 200, { ok: true, draft: t, modelAdded: iv.countModelAdded(t), via: "template", fellBack: true });
             return;
           }
           iv.saveDraft(deps.home, d);
           json(res, 200, { ok: true, draft: d, modelAdded: iv.countModelAdded(d) });
+          return;
+        }
+        if (body.action === "discard") {
+          iv.discardDraft(deps.home);
+          json(res, 200, { ok: true, draft: null });
           return;
         }
         if (body.action === "save") {

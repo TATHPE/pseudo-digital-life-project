@@ -8,8 +8,8 @@
 
 | 项 | 数量 |
 |---|---|
-| 源文件（src/**/*.ts） | 94 |
-| 错误码 E_* | 190 |
+| 源文件（src/**/*.ts） | 95 |
+| 错误码 E_* | 189 |
 | verbs | 26 |
 | CLI 子命令 | 37 |
 
@@ -79,7 +79,6 @@
 | `E_EMBED_DOWN` | `src/retrieve.ts` |
 | `E_EMBED_EMPTY` | `src/retrieve.ts` |
 | `E_EMPTY` | `src/agentguard.ts` `src/ingest.ts` `src/plugins.ts` `src/store.ts` `src/web/server.ts` |
-| `E_EMPTY_DRAFT` | `src/web/server.ts` |
 | `E_EMPTY_EMBEDDING` | `src/embed.ts` |
 | `E_ENCODING` | `src/ingest.ts` `src/persona.ts` `src/web/server.ts` |
 | `E_EXISTS` | `src/plugins.ts` `src/verbs.ts` |
@@ -119,7 +118,6 @@
 | `E_MODEL` | `src/autobio.ts` `src/eval.ts` `src/provider.ts` `src/transport.ts` |
 | `E_NEEDS_CONFIRM` | `src/confirm.ts` `src/execute.ts` `src/posture.ts` |
 | `E_NEEDS_EGRESS` | `src/egress.ts` `src/posture.ts` `src/project.ts` `src/verbs.ts` |
-| `E_NO_ANSWERS` | `src/web/server.ts` |
 | `E_NO_ARGV` | `src/shell.ts` |
 | `E_NO_AVATAR` | `src/web/server.ts` |
 | `E_NO_CALL` | `src/toolsmoke.ts` |
@@ -160,6 +158,7 @@
 | `E_ORIGIN` | `src/web/server.ts` |
 | `E_OUT_OF_PROJECT` | `src/agentguard.ts` `src/project.ts` |
 | `E_OUT_OF_RANGE` | `src/decayparams.ts` |
+| `E_OUTPUT_TRUNCATED` | `src/web/server.ts` |
 | `E_OUTSIDE_HOME` | `src/web/server.ts` |
 | `E_PATH_DENIED` | `src/agentguard.ts` `src/project.ts` `src/shell.ts` `src/verbs.ts` |
 | `E_PENDING_` | `src/web/server.ts` |
@@ -354,3 +353,4 @@
 | `src/web/state.ts` | 状态行（17 §4.1）：一句话，不是数字仪表盘 */ |
 | `src/web/timeline.ts` | 时间轴渲染（17 §4）：**没有"会话"，只有时间；空白要可见** */ |
 | `src/web/trianon.ts` | Trianon（第三方，MIT，shuoshuo）—— 桌面工作台界面，**原样**搬来的单文件。 |
+| `src/web/welcome.ts` | 首次配置引导页（`/welcome`）。 |

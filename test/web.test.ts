@@ -48,11 +48,18 @@ test("页面里没有「新对话」——重置人格的入口不该存在", ()
   assert.ok(PAGE.includes("记忆"));
 });
 
-test("GET / 返回单页；/api/state 给出一句话状态", async () => {
+test("GET / 分流：没配完给引导页，?skip=1 给主面板；/api/state 给出一句话状态", async () => {
   const { srv, base } = await start();
   try {
-    const html = await (await fetch(`${base}/`)).text();
-    assert.ok(html.includes("<title>Pseudo Digital Life Project</title>"), "标签页标题");
+    // 首启引导：新 home 没有 setup-session，/ 必须给引导页（不是先看见一个空对话）
+    const welcome = await (await fetch(`${base}/`)).text();
+    assert.ok(welcome.includes("第一次见面"), "没配完时 / 应该是引导页");
+    assert.ok(welcome.includes("id='dots'"), "引导页要有步骤进度");
+    // 强制引导页（以后从设置里重新打开用）
+    assert.ok((await (await fetch(`${base}/welcome`)).text()).includes("第一次见面"), "/welcome 永远给引导页");
+
+    const html = await (await fetch(`${base}/?skip=1`)).text();
+    assert.ok(html.includes("<title>Pseudo Digital Life Project</title>"), "跳过引导时给主面板");
     // FUI 视觉：黑底 + 采样得到的青色 + 角标面板（不是站酷的亮橙站皮肤）
     assert.ok(html.includes("--void:#0b0e0b"), "底色应是参考图采样的 #0b0e0b");
     assert.ok(html.includes("--cyan:#0f97a4"), "主色应是采样得到的 #0f97a4");

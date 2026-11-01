@@ -1,5 +1,6 @@
 /** headless Edge + CDP：真点、真发、检查布局（输入框必须在视口内） */
-const URL_PAGE = process.argv[2] ?? "http://127.0.0.1:7700/";
+// ?skip=1：跳过首启引导（这段测试模拟的是"已经用起来的人"；引导页单独测）
+const URL_PAGE = process.argv[2] ?? "http://127.0.0.1:7700/?skip=1";
 const EDGE = "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe";
 const PORT = 9333;
 const [VW, VH] = (process.env.UI_VIEWPORT ?? '1440x900').split('x').map(Number);

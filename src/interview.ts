@@ -78,6 +78,8 @@ export function classifyLines(raw: string, answers: Record<string, string>): Dra
     if (!line) continue;
     // 去掉模型可能加的标记，按内容重判
     let text = line.replace(/^\[(你原话|模型补的（请确认）)\]\s*/, "").trim();
+    // 行尾的「（你原话）」「（模型补的，请确认）」是模型自己的声明，不算数 —— 剥掉再判
+    text = text.replace(/[（(]\s*(你原话|模型补的\s*[，,]?\s*请确认)\s*[)）]\s*$/g, "").trim();
     text = text.replace(FIELD_PREFIX, "").trim();
     if (!text) continue;
     // 太短或只是它在说"我不知道" → 不是内容，丢掉（否则会被封存进 persona）
@@ -118,17 +120,39 @@ export function templateDraft(answers: Record<string, string>, now = new Date())
 }
 
 /** 把模型输出解析成 6 块（模型必须按 `## 块名` 分段） */
+/** 块名别名：模型爱把标题本地化（实测会写「## 核心」），认不出就等于整块丢了 */
+export const BLOCK_ALIAS: Record<string, PersonaFile> = {
+  core: "core", boundaries: "boundaries", values: "values", voice: "voice", evidence: "evidence", tools: "tools",
+  核心: "core", 禁区: "boundaries", 边界: "boundaries", 立场: "values", 价值观: "values",
+  语气: "voice", 说话: "voice", 证据: "evidence", 工具: "tools",
+};
+
 export function parseDraft(raw: string, answers: Record<string, string>, now = new Date()): Draft {
   const blocks = {} as Record<PersonaFile, DraftLine[]>;
   for (const f of PERSONA_FILES) blocks[f] = [];
+  // 跨块去重：同一句话只留第一次出现的那一块（模型爱把一句塞进好几个块）
+  const seen = new Set<string>();
   let cur: PersonaFile | null = null;
   for (const line of String(raw ?? "").split(String.fromCharCode(10))) {
-    const head = line.match(/^#{1,3}\s*(core|boundaries|values|voice|evidence|tools)\b/i);
-    if (head) { cur = head[1]!.toLowerCase() as PersonaFile; continue; }
+    // 分段识别放宽：#/##/**bold**/【】 都认（deepseek 实测会写 **core**）。
+    // 故意**不**认纯裸的 core：两个字（不带 # / ** / 【）: 正文里提到这个词就会被当成分段。
+    const head = line.match(/^\s*(?:#{1,4}\s*|\*\*\s*|【\s*)([a-z\u4e00-\u9fa5]{2,10})\s*(?:\*\*|】)?\s*[:：]?\s*$/i);
+    if (head) {
+      const key = head[1]!.toLowerCase();
+      const mapped = (BLOCK_ALIAS as Record<string, PersonaFile | undefined>)[key];
+      // 认不出这块就**保留上一个 cur**，别把内容静默丢掉
+      if (mapped) cur = mapped;
+      continue;
+    }
     if (!cur) continue;
     const t = line.trim();
     if (!t) continue;
-    blocks[cur]!.push(...classifyLines(t, answers));
+    for (const line2 of classifyLines(t, answers)) {
+      const key = line2.text.replace(/\s+/g, "").toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      blocks[cur]!.push(line2);
+    }
   }
   // 一块都没解析出来时**不要**把原始输出硬塞进 core：
   // 那条路的实际后果是把模型的一句"未提供具体内容"封存成 core.md（踩过）。
@@ -146,7 +170,19 @@ export function saveDraft(home: string, d: Draft): void {
 export function readDraft(home: string): Draft | null {
   try {
     if (!existsSync(draftPath(home))) return null;
-    return JSON.parse(readFileSync(draftPath(home), "utf8")) as Draft;
+    const d = JSON.parse(readFileSync(draftPath(home), "utf8")) as Draft;
+    // 清洗：旧版本把「name: 未提供具体内容（仅出现字段名）」这种借口行写进了草稿文件。
+    // 光修闸门不够 —— 已经落盘的要在**读的时候**再过一遍，否则旧草稿会一直脏下去。
+    const blocks = {} as Record<PersonaFile, DraftLine[]>;
+    for (const f of PERSONA_FILES) {
+      blocks[f] = (d.blocks?.[f] ?? []).filter((l) => {
+        const t = String(l?.text ?? "").replace(FIELD_PREFIX, "").trim();
+        return t.length > 0 && !META_TALK.test(t);
+      }).map((l) => ({ ...l, text: String(l.text).replace(FIELD_PREFIX, "").trim() }));
+    }
+    const empty = PERSONA_FILES.every((f) => blocks[f].length === 0);
+    if (empty) return null;   // 全被滤掉 = 等于没有草稿，别让一屏垃圾挡住人
+    return { ...d, blocks };
   } catch { return null; }
 }
 
