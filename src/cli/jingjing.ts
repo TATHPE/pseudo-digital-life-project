@@ -326,7 +326,11 @@ async function main(): Promise<void> {
           }, 2000).unref?.();
         }
       }
+      // 桌面端令牌：壳会读 data/.desk.json 拿到端口与令牌（2026-11-01：软件只有桌面端）
+      const { newToken, writeDeskRuntime, clearDeskRuntime } = await import("../web/desk.ts");
+      const deskToken = process.env.JJ_NO_DESK_TOKEN === "1" ? undefined : newToken();
       const srv = createWebServer({
+        ...(deskToken ? { deskToken } : {}),
         db: d.db, inboxDir: inbox, home: HOME, getTransport, getEmbedder, getConfig,
         tools: registry, getChat, pendingOutage: boot1.outage,
         mcpInfo: { servers: Object.keys(mcpCfg.servers ?? {}), tools: mcp.tools, errors: mcp.errors },
@@ -336,8 +340,18 @@ async function main(): Promise<void> {
       // **宿主回环** 127.0.0.1:7700，所以对外仍然进不来。两步一起才是安全的。
       const bind = process.env.JJ_BIND ?? "127.0.0.1";
       srv.listen(port, bind, () => {
+        // 端口可能是 0（OS 分配）：从 server.address() 取真实端口，再写 .desk.json
+        try {
+          const addr = srv.address();
+          const real = typeof addr === "object" && addr ? addr.port : port;
+          if (deskToken) writeDeskRuntime(HOME, { port: real, token: deskToken, pid: process.pid });
+        } catch { /* 写不了就只在日志里说 */ }
         console.log(`鲸鲸面板: http://${bind === "0.0.0.0" ? "127.0.0.1" : bind}:${port}  (store=${store.kind}, express=${cfg.roles.express!.provider}/${cfg.roles.express!.model})`);
         if (release) { try { markHealthy(HOME, release); } catch { /* 单槽模式 */ } }
+        const cleanup = () => { if (deskToken) clearDeskRuntime(HOME); };
+        process.once("exit", cleanup);
+        process.once("SIGINT", () => { cleanup(); process.exit(0); });
+        process.once("SIGTERM", () => { cleanup(); process.exit(0); });
       });
 
       // 可选：心跳（01 §10）。默认不开——没有主动性的需求时，安静就是最好的行为。

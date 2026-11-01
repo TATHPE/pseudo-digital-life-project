@@ -5,6 +5,7 @@
 import { createServer as httpCreateServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { DatabaseSync } from "node:sqlite";
 import { PAGE } from "./page.ts";
+import * as deskT from "./desk.ts";
 import { groupTimeline, gapLabel, type Msg } from "./timeline.ts";
 import { appendEvent, newEventId, readEvents } from "../journal.ts";
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -104,6 +105,8 @@ const jobState: { running: boolean; step: string | null; note: string; done: boo
   { running: false, step: null, note: "", done: true, ok: true };
 
 export interface WebDeps {
+  /** 桌面端启动令牌；给了就要求页面请求带它（见 web/desk.ts）。测试不传 = 不校验 */
+  deskToken?: string;
   db: DatabaseSync;
   inboxDir: string;
   /** 面板可改配置，所以 transport/embedder 必须"每次现取"而不是构造时定死 */
@@ -225,17 +228,8 @@ export function writeGuarded(req: IncomingMessage): { ok: boolean; reason?: stri
   return { ok: true };
 }
 
-// ── PWA（19 §7.5）：manifest / 图标 / 离线壳 ───────────────
-
 const STATIC = join(dirname(fileURLToPath(import.meta.url)), "static");
-/** 图标是构建期生成的 PNG（见 tools/make-icons.mjs），不在运行时画 */
-export const ICON_FILES = ["icon-180.png", "icon-192.png", "icon-512.png"] as const;
 
-/**
- * 标签页图标：把页面里那一个鲸尾 symbol 的 path 抽出来，拼成独立 SVG。
- * 以前是前端运行时用 data URI 生成 —— 但 viewBox 写死成 24×24（symbol 是 512×512），
- * 图标等于画到框外，标签页上什么也没有。现在服务端给矢量图，尺寸天然正确。
- */
 /** 头像文件：按扩展名探测（一次只留一个） */
 export function avatarFile(home: string, role: "agent" | "user"): { path: string; mime: string; v: number } | null {
   const mimes: Array<[string, string]> = [["png", "image/png"], ["jpg", "image/jpeg"], ["webp", "image/webp"]];
@@ -245,7 +239,6 @@ export function avatarFile(home: string, role: "agent" | "user"): { path: string
   }
   return null;
 }
-
 /**
  * 解析 `data:image/png;base64,...`，并且**验文件头**：
  * 声明的 mime 是用户说了算的，只有魔数才是真的。SVG 一律拒（它能带脚本）。
@@ -274,53 +267,7 @@ export function faviconSvg(): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vb}" fill="#000" color="#000">${body}</svg>`;
 }
 
-export function manifestJson(): string {
-  return JSON.stringify({
-    name: "鲸鲸",
-    short_name: "鲸鲸",
-    description: "本地记忆 + 人格 + 断电感知",
-    start_url: "/",
-    scope: "/",
-    display: "standalone",
-    background_color: "#0b0e0b",
-    theme_color: "#0b0e0b",
-    lang: "zh-CN",
-    icons: [
-      { src: "/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
-      { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
-      { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
-    ],
-  }, null, 2);
-}
 
-/**
- * service worker：只缓存**外壳**（页面/图标/manifest）。
- * `/api/*` 一律不缓存——面板的价值在于“现在是什么状态”，缓存它等于擒谎。
- * 离线时它只能把一个空壳打开，所以页面自己必须说清楚“现在连不上”。
- */
-export function serviceWorkerJs(): string {
-  return [
-    "const CACHE = 'jj-shell-v1';",
-    "const SHELL = ['/', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png'];",
-    "self.addEventListener('install', (e) => {",
-    "  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));",
-    "});",
-    "self.addEventListener('activate', (e) => {",
-    "  e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim()));",
-    "});",
-    "self.addEventListener('fetch', (e) => {",
-    "  const u = new URL(e.request.url);",
-    "  if (e.request.method !== 'GET') return;",
-    "  if (u.pathname.startsWith('/api/')) return;",
-    "  if (u.pathname === '/health') return;",
-    "  if (e.request.mode === 'navigate') {",
-    "    e.respondWith(fetch(e.request).catch(() => caches.match('/')));",
-    "    return;",
-    "  }",
-    "  e.respondWith(caches.match(e.request).then((r) => r || fetch(e.request)));",
-    "});",
-  ].join(String.fromCharCode(10));
-}
 
 export function createWebServer(deps: WebDeps) {
   const now = deps.now ?? (() => new Date());
@@ -331,27 +278,32 @@ export function createWebServer(deps: WebDeps) {
 
   return httpCreateServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
-    try {
-      // 桌面工作台里的「真数据层」：独立页面，供 iframe 嵌入（Trianon 会吞掉所有按键与点击）
-      if ((req.method === "GET" || req.method === "HEAD") && url.pathname === "/desk/live") {
-        const { DESK_LIVE } = await import("./desklive.ts");
-        res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
-        res.end(DESK_LIVE);
+    // ── 桌面端令牌（2026-11-01）──
+    // 「软件只有桌面端」的机制：知道 127.0.0.1:7700 也没用，得先拿到壳手里的令牌。
+    // deps.deskToken 不传（测试 / CLI 直连）时不校验。
+    if (deps.deskToken && !deskT.tokenExempt(url.pathname)) {
+      const got = deskT.tokenFromRequest(url, req.headers.cookie);
+      if (!deskT.sameToken(got, deps.deskToken)) {
+        res.writeHead(403, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+        res.end(
+          "<!doctype html><html lang='zh-CN'><meta charset='utf-8'><title>从这里打不开</title>" +
+          "<body style='background:#0b0e0b;color:#e9f0f2;font:14px/1.8 ui-monospace,Consolas,monospace;padding:48px'>" +
+          "<p><b>鲸鲸是桌面应用。</b></p>" +
+          "<p>这一页不能从浏览器直接打开 —— 从桌面上的鲸鲸图标启动，它会带着自己的一次性令牌加载界面。</p>" +
+          "<p style='color:#9fb0b3'>（排障用：令牌在 data/.desk.json，每次启动重新生成。）</p>" +
+          "</body></html>",
+        );
         return;
       }
+      if (url.searchParams.get("k")) {
+        res.setHeader("set-cookie", deskT.DESK_COOKIE + "=" + deps.deskToken + "; HttpOnly; SameSite=Strict; Path=/");
+      }
+    }
+    try {
+      // 桌面工作台里的「真数据层」：独立页面，供 iframe 嵌入（Trianon 会吞掉所有按键与点击）
 
       // 桌面工作台（Trianon，MIT，整块搬来的单文件）：同源提供、不联网、离线自包含。
       // 壳的窗口指向这里；`/` 仍然是给用户/PWA 的内置面板。
-      if ((req.method === "GET" || req.method === "HEAD") && url.pathname === "/desk") {
-        try {
-          const { trianonPage } = await import("./trianon.ts");
-          res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
-          res.end(trianonPage());
-        } catch (e) {
-          json(res, 500, { error: "E_DESK: " + String((e as Error).message).slice(0, 120) });
-        }
-        return;
-      }
       // 首次配置的引导页：分流放在**服务端**，所以桌面壳一行都不用改（窗口仍然加载 /）
       if ((req.method === "GET" || req.method === "HEAD") && (url.pathname === "/" || url.pathname === "/welcome")) {
         const forced = url.pathname === "/welcome";
@@ -374,17 +326,6 @@ export function createWebServer(deps: WebDeps) {
           "window.SOURCES_DIR = " + JSON.stringify(sourcesDir) + ";",
         );
         res.end(req.method === "HEAD" ? undefined : html);
-        return;
-      }
-      if ((req.method === "GET" || req.method === "HEAD") && url.pathname === "/manifest.webmanifest") {
-        res.writeHead(200, { "content-type": "application/manifest+json; charset=utf-8", "cache-control": "no-store" });
-        res.end(req.method === "HEAD" ? undefined : manifestJson());
-        return;
-      }
-      if ((req.method === "GET" || req.method === "HEAD") && url.pathname === "/sw.js") {
-        // 注意：SW 必须能从站点根作用域拿到 → 路径就放根，别塞进 /static/
-        res.writeHead(200, { "content-type": "text/javascript; charset=utf-8", "cache-control": "no-store" });
-        res.end(req.method === "HEAD" ? undefined : serviceWorkerJs());
         return;
       }
       // ── 头像自定义（上传的是图片，不是 SVG：SVG 里能带脚本，直接当图片打开就执行了）──
@@ -442,20 +383,6 @@ export function createWebServer(deps: WebDeps) {
       if ((req.method === "GET" || req.method === "HEAD") && url.pathname === "/icon.svg") {
         res.writeHead(200, { "content-type": "image/svg+xml; charset=utf-8", "cache-control": "public, max-age=3600" });
         res.end(req.method === "HEAD" ? undefined : faviconSvg());
-        return;
-      }
-      const icon = url.pathname.match(/^\/icon-(\d+)\.png$/);
-      if ((req.method === "GET" || req.method === "HEAD") && icon) {
-        const name = `icon-${icon[1]}.png`;
-        if (!(ICON_FILES as readonly string[]).includes(name)) { json(res, 404, { error: "E_NO_ICON" }); return; }
-        const buf = readFileSync(join(STATIC, name));
-        res.writeHead(200, {
-          "content-type": "image/png",
-          "content-length": String(buf.byteLength),
-          // 图标内容由构建期生成、文件名带尺寸 → 可以长缓存
-          "cache-control": "public, max-age=86400",
-        });
-        res.end(req.method === "HEAD" ? undefined : buf);
         return;
       }
       // 健康检查（19 §7.3 / compose healthcheck）：只回答“能不能服务”，不做重活（不跑 quick_check）

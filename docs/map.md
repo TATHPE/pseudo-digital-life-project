@@ -8,8 +8,8 @@
 
 | 项 | 数量 |
 |---|---|
-| 源文件（src/**/*.ts） | 94 |
-| 错误码 E_* | 188 |
+| 源文件（src/**/*.ts） | 93 |
+| 错误码 E_* | 186 |
 | verbs | 26 |
 | CLI 子命令 | 37 |
 
@@ -71,7 +71,6 @@
 | `E_DEPLOY_FROZEN` | `src/deploy/watchdog.ts` |
 | `E_DEPLOY_NO_REASON` | `src/deploy/slot.ts` |
 | `E_DEPLOY_STATE` | `src/deploy/slot.ts` |
-| `E_DESK` | `src/web/server.ts` |
 | `E_DISABLED` | `src/shell.ts` |
 | `E_EMBED` | `src/embed.ts` `src/ingest.ts` `src/reembed.ts` |
 | `E_EMBED_COUNT` | `src/transport.ts` |
@@ -133,7 +132,6 @@
 | `E_NO_GIT` | `src/gitview.ts` |
 | `E_NO_GRANT` | `src/grant.ts` `src/web/server.ts` |
 | `E_NO_HOME` | `src/handoff.ts` |
-| `E_NO_ICON` | `src/web/server.ts` |
 | `E_NO_KEY` | `src/web/server.ts` |
 | `E_NO_LINK` | `src/cli/jingjing.ts` |
 | `E_NO_MEMORY` | `src/store.ts` `src/web/server.ts` |
@@ -345,10 +343,9 @@
 | `src/transport.ts` | 真正的模型调用层（13 §2 / 19 §0.1 W-A） |
 | `src/types.ts` | export type Tier = "T0" / "T1" / "T2" / "T3" / "T4"; |
 | `src/verbs.ts` | 能力目录（04 §3）：鲸鲸能碰到的东西**只有这张表里的**。 |
-| `src/web/desklive.ts` | 桌面工作台的「真数据层」页面（`/desk/live`）。 |
+| `src/web/desk.ts` | 桌面端的**启动令牌**（2026-11-01：软件只有桌面端，不提供浏览器入口）。 |
 | `src/web/page.ts` | 单页（零前端依赖、零构建）。 |
 | `src/web/server.ts` | 本地 Web 面板（17 §4）：127.0.0.1:7700，零前端依赖，SSE 流式。 |
 | `src/web/state.ts` | 状态行（17 §4.1）：一句话，不是数字仪表盘 */ |
 | `src/web/timeline.ts` | 时间轴渲染（17 §4）：**没有"会话"，只有时间；空白要可见** */ |
-| `src/web/trianon.ts` | Trianon（第三方，MIT，shuoshuo）—— 桌面工作台界面，**原样**搬来的单文件。 |
 | `src/web/welcome.ts` | 首次配置引导页（`/welcome`）。 |

@@ -26,13 +26,8 @@ export const PAGE = `<!doctype html>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Pseudo Digital Life Project</title>
 <!-- PWA（19 §7.5）：装到桌面后是独立窗口，不是浏览器标签页 -->
-<link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" type="image/svg+xml" href="/icon.svg">
-<link rel="apple-touch-icon" href="/icon-180.png">
 <meta name="theme-color" content="#0b0e0b">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="鲸鲸">
 <style>
   :root {
     --void:#0b0e0b; --panel:#0e1512; --panel2:rgba(16,24,21,.72);
@@ -3183,10 +3178,6 @@ else { const n = Number($("#jumpn").textContent || 0) + 1; $("#jumpn").textConte
   }
   await timeline(); await state(); await memories(); await pending(); await audit();
 };
-// PWA：注册离线壳。注册失败不能影响面板本身（手机上走 http 时浏览器会直接拒绝）
-if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost" || location.hostname === "127.0.0.1")) {
-  navigator.serviceWorker.register("/sw.js").catch(function () { /* 忽略：离线壳是增强，不是前提 */ });
-}
 // 手机上侧栏是抽屉：没有这个按钮，SESSIONS/DOCS/MEMORY/TOOLS/CONFIG 全都不可达
 $("#menu").onclick = (e) => { e.stopPropagation(); $("#side").classList.toggle("open"); };
 loadAvatars(); applySections(); state(); timeline(); sessions(); tools(); memories(); docs(); audit(); readout(); loadConfig(); pending(); usage(); loadProposals(); loadSurfaceReview(); loadThreads(); loadReceipts(); loadStanding(); loadEgress(); loadSetup(false);

@@ -34,7 +34,8 @@ test("H-6 壳只做四件事：拉起 / 探测与报错 / 托盘 / 退出杀进�
 
 test("H-6 窗口指向我们自己的面板 /（不是 /desk）", () => {
   const src = read("src/main.rs");
-  assert.ok(src.includes("sc.port())"), "窗口地址要用 sidecar 的端口");
+  assert.ok(src.includes("sc.port()"), "窗口地址要用 sidecar 的端口");
+  assert.ok(src.includes("?k="), "导航要带一次性令牌（否则服务端 403）");
   assert.ok(!src.includes("{}/desk"), "Trianon 那条线不再进壳（注释里提到它没关系）");
 });
 
@@ -68,26 +69,4 @@ test("H-6 探测预算够 Node 启动（≥8 秒），不误判「起不来」",
   assert.ok(attempts * 500 >= 8000, `探测预算只有 ${attempts * 500}ms —— Node 起 serve 要 3–4 秒`);
 });
 
-test("H-6 桌面工作台：/desk 提供 Trianon（同源、离线、MIT）", async () => {
-  const { readFileSync } = await import("node:fs");
-  // ① 单文件真的在仓库里（10 MB，自包含）
-  const file = join(process.cwd(), "desktop", "trianon", "trianon.html");
-  assert.ok(existsSync(file));
-  const html = readFileSync(file, "utf8");
-  assert.match(html, /<title>Trianon/, "要有 Trianon 的标题（证明整块搬的，不是我们重画的）");
-  // ② 许可与出处要跟着文件走（MIT 底线）
-  assert.ok(existsSync(join(process.cwd(), "desktop", "trianon", "LICENSE")), "MIT LICENSE 必须随附");
-  assert.ok(existsSync(join(process.cwd(), "desktop", "trianon", "README.md")), "出处与改动记账");
-  // ③ 服务端用 /desk 提供，壳的窗口指向它
-  const srv = readFileSync(join(process.cwd(), "src", "web", "server.ts"), "utf8");
-  assert.match(srv, /url\.pathname === "\/desk"/);
-  const conf = JSON.parse(read("tauri.conf.json")) as { app: { windows: Array<{ url: string }> } };
-  assert.match(conf.app.windows[0]!.url, /:7700\/desk$/);
-});
 
-test("H-6 内置面板仍然在 /（桌面工作台不是替代品）", async () => {
-  const { readFileSync } = await import("node:fs");
-  const srv = readFileSync(join(process.cwd(), "src", "web", "server.ts"), "utf8");
-  assert.match(srv, /url\.pathname === "\/desk"/);
-  assert.match(srv, /url\.pathname === "\/"\) \{/, "`/` 必须还在 —— 删掉桌面壳仍是网页");
-});

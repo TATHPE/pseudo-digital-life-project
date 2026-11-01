@@ -104,8 +104,9 @@ pauseSetup(HOME, now);
 
 // ── 起服务（独立端口，不与日常面板抢 7700）────────────
 const log = join(ROOT, "tmp", "ui-home-serve.log");
+// JJ_NO_DESK_TOKEN=1：测试直连要跳过桌面端令牌（正式运行时壳会带 ?k=）
 const srv = spawn(process.execPath, ["src/cli/jingjing.ts", "serve", String(PORT)], {
-  cwd: ROOT, stdio: ["ignore", "ignore", "pipe"], env: { ...process.env, JJ_HOME: HOME },
+  cwd: ROOT, stdio: ["ignore", "ignore", "pipe"], env: { ...process.env, JJ_HOME: HOME, JJ_NO_DESK_TOKEN: "1" },
 });
 let srvErr = "";
 srv.stderr.on("data", (x) => { srvErr += String(x); });

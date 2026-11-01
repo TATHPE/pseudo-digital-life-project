@@ -47,6 +47,34 @@ test("页面里没有「新对话」——重置人格的入口不该存在", ()
   assert.ok(PAGE.includes("记忆"));
 });
 
+test("桌面端令牌：没令牌 403、带 ?k= 放行并种 cookie、/health 不需要令牌", async () => {
+  const dir = tmp();
+  const d = openDb(join(dir, "m.db"));
+  const token = "a".repeat(32);
+  const srv = createWebServer({
+    deskToken: token,
+    db: d.db, inboxDir: join(dir, "inbox"), home: dir,
+    getTransport: () => { throw new Error("测试不该真调模型"); },
+    getEmbedder: () => null,
+    getConfig: () => ({ roles: { express: { provider: "deepseek", model: "x" } }, ollama: "" }) as never,
+  });
+  await new Promise<void>((r) => srv.listen(0, "127.0.0.1", () => r()));
+  const addr = srv.address() as { port: number };
+  const base = `http://127.0.0.1:${addr.port}`;
+  try {
+    assert.equal((await fetch(`${base}/`)).status, 403, "浏览器直接开就是 403");
+    assert.equal((await fetch(`${base}/?k=wrong`)).status, 403, "错的令牌也是 403");
+    const ok = await fetch(`${base}/?k=${token}`);
+    assert.equal(ok.status, 200, "带对令牌才能进");
+    assert.match(String(ok.headers.get("set-cookie")), /jjdesk=/, "第一次要种 cookie");
+    assert.match(String(ok.headers.get("set-cookie")), /HttpOnly/, "cookie 不能让脚本读");
+    // 之后靠 cookie 就够（壳里的后续导航不会再带 ?k=）
+    const viaCookie = await fetch(`${base}/`, { headers: { cookie: "jjdesk=" + token } });
+    assert.equal(viaCookie.status, 200);
+    assert.equal((await fetch(`${base}/api/state`)).status, 403, "API 也要令牌");
+    assert.equal((await fetch(`${base}/health`)).status, 200, "/health 放行（壳探测要用）");
+  } finally { srv.close(); }
+});
 test("GET / 分流：没配完给引导页，?skip=1 给主面板；/api/state 给出一句话状态", async () => {
   const { srv, base } = await start();
   try {
@@ -452,46 +480,17 @@ test("文档：/api/docs 列出摄入的文档，点开能看到块，忘掉后�
   } finally { srv.close(); }
 });
 
-test("PWA：manifest / 图标 / sw.js 都能取到，且 manifest 里的图标路径真的存在", async () => {
-  const { srv, base } = await start();
-  try {
-    const m = await fetch(`${base}/manifest.webmanifest`);
-    assert.equal(m.status, 200);
-    assert.match(String(m.headers.get("content-type")), /manifest\+json/);
-    const man = await m.json() as any;
-    assert.equal(man.name, "鲸鲸");
-    assert.equal(man.display, "standalone");
-    assert.equal(man.start_url, "/");
-    assert.equal(man.theme_color, "#0b0e0b");
-    assert.ok(Array.isArray(man.icons) && man.icons.length >= 2);
 
-    // manifest 里写的每个图标必须真能取到 PNG（否则装到桌面是个空白图）
-    for (const icon of man.icons) {
-      const r = await fetch(base + icon.src);
-      assert.equal(r.status, 200, icon.src);
-      assert.equal(r.headers.get("content-type"), "image/png");
-      const buf = new Uint8Array(await r.arrayBuffer());
-      assert.deepEqual([...buf.slice(0, 4)], [0x89, 0x50, 0x4e, 0x47], `${icon.src} 不是 PNG`);
-      assert.ok(buf.length > 500, `${icon.src} 太小`);
-    }
-
-    // 不存在的尺寸 → 404（别把任意文件名映射到同一张图）
-    assert.equal((await fetch(`${base}/icon-999.png`)).status, 404);
-
-    const sw = await (await fetch(`${base}/sw.js`)).text();
-    assert.match(sw, /jj-shell-v1/, "缓存名要对得上");
-    assert.ok(sw.includes("'/api/'"), "API 不该被缓存");
-    assert.ok(sw.includes("caches.match('/')"), "离线时至少要把壳打开");
-  } finally { srv.close(); }
-});
-
-test("页面 head：PWA 元信息齐（manifest / theme-color / apple-touch-icon / 安全区）", () => {
-  assert.ok(PAGE.includes('rel="manifest" href="/manifest.webmanifest"'));
-  assert.ok(PAGE.includes('name="theme-color"'));
-  assert.ok(PAGE.includes('rel="apple-touch-icon"'));
-  assert.ok(PAGE.includes("viewport-fit=cover"), "刘海屏要自己控制安全区");
+test("页面 head：不再有 PWA 元信息（2026-11-01：只有桌面端）", () => {
+  // 用户定：软件只有桌面端，不提供浏览器入口 —— 所以 manifest / sw / apple 图标一概不留。
+  assert.ok(!PAGE.includes("manifest.webmanifest"), "不该再有 manifest 链接");
+  assert.ok(!PAGE.includes("navigator.serviceWorker"), "不该再注册 service worker");
+  assert.ok(!PAGE.includes("apple-touch-icon"), "不该再有 apple 图标");
+  // 这四样跟 PWA 无关，是"桌面窗口也可能很窄"的基本盘，保留
+  assert.ok(PAGE.includes('name="viewport"'), "要有 viewport");
+  assert.ok(PAGE.includes('name="theme-color"'), "要有 theme-color（窗口标题栏底色）");
+  assert.ok(PAGE.includes("viewport-fit=cover"), "安全区还是要自己控");
   assert.ok(PAGE.includes("env(safe-area-inset-bottom)"), "手势条会压住输入框");
-  assert.ok(PAGE.includes('navigator.serviceWorker.register("/sw.js")'));
 });
 
 test("写操作守卫：同源放行（Tailscale/手机），跨站仍然 403", async () => {

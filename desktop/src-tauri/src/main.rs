@@ -70,8 +70,10 @@ pub fn run() {
                 Ok(()) => {
                     // 窗口加载时 sidecar 还没起来，会停在占位页；这里主动导航一次
                     if let Some(w) = app.get_webview_window("main") {
-                        // 指 /（不是 /desk）：服务端按 setup 状态自己分流到首启引导页或主面板
-                        let url = format!("http://127.0.0.1:{}/", sc.port());
+                        // 带令牌进来：服务端种 cookie 后一直有效；没令牌的页面请求一律 403
+                        // （这就是"只有桌面端"的机制 —— 知道端口也打不开）
+                        let token = sc.token();
+                        let url = format!("http://127.0.0.1:{}/?k={}", sc.port(), token);
                         let _ = w.navigate(url.parse().unwrap());
                     }
                 }
