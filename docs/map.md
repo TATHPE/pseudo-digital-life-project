@@ -8,8 +8,8 @@
 
 | 项 | 数量 |
 |---|---|
-| 源文件（src/**/*.ts） | 93 |
-| 错误码 E_* | 187 |
+| 源文件（src/**/*.ts） | 94 |
+| 错误码 E_* | 190 |
 | verbs | 26 |
 | CLI 子命令 | 37 |
 
@@ -36,16 +36,18 @@
 | `E_AGENDA_FULL` | `src/agenda.ts` |
 | `E_AGENDA_NO_SOURCE` | `src/agenda.ts` |
 | `E_BAD_ACTION` | `src/web/server.ts` |
+| `E_BAD_ARG` | `src/plugins.ts` |
 | `E_BAD_ARG_VALUE` | `src/toolsmoke.ts` |
 | `E_BAD_ARGS` | `src/toolsmoke.ts` |
 | `E_BAD_ARGV` | `src/agentguard.ts` `src/execute.ts` `src/shell.ts` `src/verbs.ts` |
+| `E_BAD_COMMAND` | `src/plugins.ts` |
 | `E_BAD_ENDPOINT` | `src/transport.ts` |
 | `E_BAD_FRAME` | `src/web/server.ts` |
 | `E_BAD_IMAGE` | `src/web/server.ts` |
 | `E_BAD_KEY` | `src/web/server.ts` |
 | `E_BAD_LINK` | `src/web/server.ts` |
 | `E_BAD_MODEL` | `src/web/server.ts` |
-| `E_BAD_NAME` | `src/web/server.ts` |
+| `E_BAD_NAME` | `src/plugins.ts` `src/web/server.ts` |
 | `E_BAD_PATH` | `src/gitview.ts` `src/web/server.ts` |
 | `E_BAD_PRESET` | `src/web/server.ts` |
 | `E_BAD_RANGE` | `src/decayparams.ts` |
@@ -76,11 +78,11 @@
 | `E_EMBED_COUNT` | `src/transport.ts` |
 | `E_EMBED_DOWN` | `src/retrieve.ts` |
 | `E_EMBED_EMPTY` | `src/retrieve.ts` |
-| `E_EMPTY` | `src/agentguard.ts` `src/ingest.ts` `src/store.ts` `src/web/server.ts` |
+| `E_EMPTY` | `src/agentguard.ts` `src/ingest.ts` `src/plugins.ts` `src/store.ts` `src/web/server.ts` |
 | `E_EMPTY_DRAFT` | `src/web/server.ts` |
 | `E_EMPTY_EMBEDDING` | `src/embed.ts` |
 | `E_ENCODING` | `src/ingest.ts` `src/persona.ts` `src/web/server.ts` |
-| `E_EXISTS` | `src/verbs.ts` |
+| `E_EXISTS` | `src/plugins.ts` `src/verbs.ts` |
 | `E_EXPORT_CORRUPT` | `src/handoff.ts` |
 | `E_EXPORT_DIR_NOT_EMPTY` | `src/handoff.ts` |
 | `E_EXPORT_INSIDE_HOME` | `src/handoff.ts` |
@@ -124,6 +126,7 @@
 | `E_NO_CANDIDATES` | `src/agentguard.ts` |
 | `E_NO_CAPABILITY` | `src/execute.ts` `src/tools.ts` |
 | `E_NO_CMD` | `src/cli/deploy.ts` |
+| `E_NO_COMMAND` | `src/plugins.ts` |
 | `E_NO_CONVERTER` | `src/ingest.ts` |
 | `E_NO_DB` | `src/cli/jingjing.ts` `src/verbs.ts` |
 | `E_NO_DOC` | `src/web/page.ts` `src/web/server.ts` |
@@ -151,7 +154,7 @@
 | `E_NOT_DELETED` | `src/web/server.ts` |
 | `E_NOT_DIR` | `src/project.ts` |
 | `E_NOT_FILE` | `src/project.ts` |
-| `E_NOT_FOUND` | `src/agentguard.ts` `src/verbs.ts` `src/web/server.ts` |
+| `E_NOT_FOUND` | `src/agentguard.ts` `src/plugins.ts` `src/verbs.ts` `src/web/server.ts` |
 | `E_NOTHING_TO_DO` | `src/web/server.ts` |
 | `E_OLLAMA_DOWN` | `src/cli/jingjing.ts` |
 | `E_ORIGIN` | `src/web/server.ts` |
@@ -205,7 +208,7 @@
 | `E_TOKEN_MISMATCH` | `src/cli/redteam.ts` `src/shell.ts` |
 | `E_TOKEN_UNKNOWN` | `src/shell.ts` |
 | `E_TOKEN_USED` | `src/cli/redteam.ts` `src/shell.ts` |
-| `E_TOO_BIG` | `src/ingest.ts` `src/project.ts` `src/verbs.ts` `src/web/server.ts` |
+| `E_TOO_BIG` | `src/ingest.ts` `src/plugins.ts` `src/project.ts` `src/verbs.ts` `src/web/server.ts` |
 | `E_TOOL` | `src/mcp.ts` `src/tools.ts` |
 | `E_UNKNOWN_FIELD` | `src/decayparams.ts` |
 | `E_UNKNOWN_KIND` | `src/decayparams.ts` |
@@ -313,6 +316,7 @@
 | `src/notify.ts` | 回执通道（D-3 的前置，`docs/25 §4`）。 |
 | `src/ollama.ts` | Ollama 探测（C-4）：一次 /api/tags + 两个最小调用探针。 |
 | `src/persona.ts` | import { readFileSync, mkdirSync, existsSync, readdirSync } from "node |
+| `src/plugins.ts` | 插件（MCP）与技能的**增删**（2026-11-01，用户："现在只能看，等于借来的手脚是死数据"）。 |
 | `src/policy.ts` | 策略层（04 §4 / 12 §9.2）：唯一有权说"不"的地方。 |
 | `src/posture.ts` | 默认姿态（用户 2026-10-31 的判断）： |
 | `src/preflight.ts` | 本地端点前置检查（C-3） |

@@ -453,6 +453,51 @@ check("人格草稿的行有样式（不是塞进按钮里的白框）", await j
   return shown && flex && fits && !insideButton;
 })()`));
 
+// ── 插件与技能的增删：借来的手脚不能是死数据 ────────────────
+// 走真接口（/api/plugins），装的是一份假插件（命令是本机 node），用完删掉。
+check("插件能加能删，且明说重启才生效", await js(`(async () => {
+  const entry = document.querySelector("#side .item[data-view=capview]");
+  if (!entry) return "NO_ENTRY";
+  entry.click();
+  await new Promise((r) => setTimeout(r, 800));
+  const H = { "x-jj": "1", "content-type": "application/json" };
+  const add = await (await fetch("/api/plugins", { method: "POST", headers: H, body: JSON.stringify({
+    kind: "mcp", action: "add", name: "uitest-fake", command: "node", args: ["--version"],
+  }) })).json();
+  if (!add.ok) return "ADD_FAILED:" + (add.why || add.error);
+  const listed = (await (await fetch("/api/plugins")).json()).servers.some((s) => s.name === "uitest-fake");
+  // 界面上也要能看到（loadCapPage 之后重新渲染）
+  document.querySelector("#side .item[data-view=capview]").click();
+  await new Promise((r) => setTimeout(r, 700));
+  const del = await (await fetch("/api/plugins", { method: "POST", headers: H, body: JSON.stringify({
+    kind: "mcp", action: "remove", name: "uitest-fake",
+  }) })).json();
+  const gone = !(await (await fetch("/api/plugins")).json()).servers.some((s) => s.name === "uitest-fake");
+  const restartHint = /重启/.test(document.getElementById("mcp-msg").textContent);
+  return listed && del.ok && gone && restartHint ? true : "listed:" + listed + " gone:" + gone;
+})()`));
+
+check("技能能写能读能删（写进 data/skills）", await js(`(async () => {
+  const H = { "x-jj": "1", "content-type": "application/json" };
+  const body = ["---", "name: 测试用", "description: 一条临时技能。", "---", "", "# 步骤", "1. 不要留痕"].join(String.fromCharCode(10));
+  const add = await (await fetch("/api/plugins", { method: "POST", headers: H, body: JSON.stringify({
+    kind: "skill", action: "add", name: "uitest-skill", content: body,
+  }) })).json();
+  if (!add.ok) return "ADD_FAILED:" + (add.why || add.error);
+  const seen = (await (await fetch("/api/skills")).json()).skills.some((x) => x.id === "uitest-skill");
+  const del = await (await fetch("/api/plugins", { method: "POST", headers: H, body: JSON.stringify({
+    kind: "skill", action: "remove", name: "uitest-skill",
+  }) })).json();
+  const gone = !(await (await fetch("/api/skills")).json()).skills.some((x) => x.id === "uitest-skill");
+  return seen && del.ok && gone;
+})()`));
+
+check("装/删不带 x-jj 头就 403（跨站不能改插件）", await js(`(async () => {
+  const r = await fetch("/api/plugins", { method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ kind: "mcp", action: "remove", name: "markitdown" }) });
+  return r.status === 403;
+})()`));
+
 // ── 文件面板 + git 校样：让「她改了什么」能被看见（都只读）──
 check("文件面板能进目录、能开文件", await js(`(async () => {
   const entry = document.querySelector("#side .item[data-view=filesview]");

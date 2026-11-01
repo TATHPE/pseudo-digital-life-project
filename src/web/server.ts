@@ -724,6 +724,44 @@ export function createWebServer(deps: WebDeps) {
       }
       // ── 本地模型（C-4）：一个端点、列已装、拿当前生效值，面板据此分两块 ──
       // B-0：能力自述（工具来自 verbs / provider 来自配置 / degraded 来自真探测）
+      // ── 插件（MCP）与技能：装/删（写操作，走 writeGuarded + 审计）──
+      if (req.method === "GET" && url.pathname === "/api/plugins") {
+        const pl = await import("../plugins.ts");
+        json(res, 200, { ok: true, ...pl.installedPlugins(deps.home) });
+        return;
+      }
+      if (req.method === "POST" && url.pathname === "/api/plugins") {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
+        const pl = await import("../plugins.ts");
+        const body = JSON.parse(await readBody(req)) as {
+          action?: string; kind?: string; name?: string; command?: string; args?: string[]; trust?: string; tools?: string[]; content?: string;
+        };
+        const kind = body.kind === "skill" ? "skill" : "mcp";
+        const action = body.action === "remove" ? "remove" : "add";
+        const name = String(body.name ?? "");
+        const r = kind === "skill"
+          ? (action === "remove" ? pl.removeSkill(deps.home, name) : pl.writeSkill(deps.home, { id: name, content: body.content }))
+          : (action === "remove" ? pl.removeMcpServer(deps.home, name)
+             : pl.addMcpServer(deps.home, { name, command: body.command, args: body.args, trust: body.trust, tools: body.tools }));
+        if (r.ok) {
+          try {
+            appendEvent(deps.inboxDir, {
+              v: 1, id: newEventId(), ts: now().toISOString(),
+              kind: (kind === "skill" ? "skill_" : "mcp_") + action, actor: "user",
+              payload: { name, command: body.command ?? null },
+            });
+          } catch { /* 事件写不下不影响结果 */ }
+          try {
+            deps.db.prepare(
+              "INSERT INTO exec_audit(id,ts,verb,tier,argv_json,cwd,exit_code,duration_ms,decision,deny_reason) VALUES(?,?,?,?,?,?,?,?,?,?)",
+            ).run(newEventId(), now().toISOString(), kind === "skill" ? "panel.skill" : "panel.mcp", "T1",
+              JSON.stringify({ action, name }).slice(0, 500), deps.home, 0, 0, "allowed", null);
+          } catch { /* 审计失败不该拖垮结果，但上面已经有 inbox 事件 */ }
+        }
+        json(res, r.ok ? 200 : 400, r.ok ? { ok: true, note: r.note ?? null, ...pl.installedPlugins(deps.home) } : r);
+        return;
+      }
+
       // ── git 校样（只读）：status / diff / log 都走 verbs → execute → policy → audit ──
       if (req.method === "GET" && url.pathname === "/api/git") {
         const what = String(url.searchParams.get("what") ?? "status");

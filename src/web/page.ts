@@ -379,6 +379,11 @@ export const PAGE = `<!doctype html>
   #dc-inbox .item, #dc-ctx .item { font:10px/1.45 var(--mono); padding:4px 6px; }
   #dc-inbox .item .m, #dc-ctx .item .m { font:9px/1.4 var(--mono); }
   #dc-inbox .dempty, #dc-ctx .dempty { margin:2px 0 0; }
+  .addbox { margin:10px 0 4px; padding:8px 0 0; border-top:1px dashed var(--line-dim); }
+  .addarea { width:100%; min-height:96px; resize:vertical; margin-top:6px;
+             font:11px/1.5 var(--mono); padding:8px; }
+  .hint.ok { color:var(--ok); }
+  .hint.err { color:var(--red); }
   /* 文件面板 / git 校样 */
   .filerow { display:flex; gap:8px; align-items:center; margin:8px 0; flex-wrap:wrap; }
   .filerow button { font:10px/1 var(--mono); padding:6px 9px; background:#000; color:var(--ink);
@@ -906,10 +911,34 @@ export const PAGE = `<!doctype html>
 
         <h3 class="cap-h">插件 · MCP</h3>
         <div id="cap-mcp"></div>
+        <div class="addbox">
+          <div class="filerow">
+            <input id="mcp-name" class="searchbox" placeholder="名字（小写，如 markitdown）" autocomplete="off">
+            <input id="mcp-cmd" class="searchbox" placeholder="命令（如 ollama / D:/tools/x.exe）" autocomplete="off">
+            <input id="mcp-args" class="searchbox" placeholder="参数（空格分隔，可空）" autocomplete="off">
+            <button id="mcp-add" type="button">加插件</button>
+          </div>
+          <p class="hint" id="mcp-msg">装完要<b>重启面板</b>才生效 —— MCP 是启动时读的，这里不假装已经加载。</p>
+        </div>
 
         <h3 class="cap-h">技能 · SKILL.md</h3>
         <p class="hint" id="cap-skills-dirs"></p>
         <div id="cap-skills"></div>
+        <div class="addbox">
+          <div class="filerow">
+            <input id="sk-id" class="searchbox" placeholder="目录名（小写，如 weekly-recap）" autocomplete="off">
+            <button id="sk-add" type="button">写一份</button>
+          </div>
+          <textarea id="sk-body" class="searchbox addarea" spellcheck="false"
+            placeholder="---
+name: 周末回顾
+description: 周日晚上把这一周压成三句话。
+---
+
+# 步骤
+1. …"></textarea>
+          <p class="hint" id="sk-msg">写进 data/skills/&lt;名字&gt;/SKILL.md；下一轮对话它的名字就会进简报索引（正文按需取）。</p>
+        </div>
 
         <h3 class="cap-h">原生工具 · VERBS</h3>
         <div id="cap-native"></div>
@@ -2306,6 +2335,7 @@ async function loadCapPage() {
   var html = '';
   Object.keys(byServer).filter(function (k) { return k !== '?'; }).forEach(function (name) {
     html += capline(name, byServer[name].length + ' 个工具 · ok');
+  html += '<div class="dact"><button type="button" data-del-mcp="' + escapeHtml(name) + '">删掉</button></div>';
     byServer[name].forEach(function (t) {
       html += '<div class="hint">· ' + escapeHtml(t.name.replace(/^mcp__[^_]+__/, '')) + '（' + escapeHtml(t.tier) + '）</div>';
     });
@@ -2329,7 +2359,9 @@ async function loadCapPage() {
   }
   if (mine.length) {
     skHtml += '<p class="hint">她自己的（会进简报索引：名字 + 一句描述）</p>';
-    skHtml += mine.map(skillRow).join('');
+    skHtml += mine.map(function (x) {
+      return skillRow(x) + '<div class="dact"><button type="button" data-del-skill="' + escapeHtml(x.id) + '">删掉</button></div>';
+    }).join('');
   }
   if (devs.length) {
     skHtml += '<p class="hint">使用者的开发技能（共 ' + devs.length + ' 个；默认不进简报，要看用 skill_list）' +
@@ -2980,6 +3012,65 @@ function toggleFolio(on) {
   applyLayout();
 }
 applyLayout();
+// 插件与技能：装 / 删（写 data/mcp.json 与 data/skills/<id>/SKILL.md）
+async function pluginPost(body) {
+  var j;
+  try {
+    j = await (await fetch('/api/plugins', { method: 'POST', headers: H, body: JSON.stringify(body) })).json();
+  } catch (e) { return { ok: false, why: '网络错误' }; }
+  if (j.ok) { await loadCapPage(); }
+  return j;
+}
+(function () {
+  var add = document.getElementById('mcp-add');
+  if (add) add.onclick = async function () {
+    var msg = document.getElementById('mcp-msg');
+    var name = document.getElementById('mcp-name').value.trim();
+    var cmd = document.getElementById('mcp-cmd').value.trim();
+    var args = document.getElementById('mcp-args').value.trim();
+    if (!name || !cmd) { msg.className = 'hint err'; msg.textContent = '名字和命令都要填'; return; }
+    msg.className = 'hint'; msg.textContent = '写入中…';
+    var r = await pluginPost({ kind: 'mcp', action: 'add', name: name, command: cmd,
+      args: args ? args.split(/\s+/) : [] });
+    msg.className = r.ok ? 'hint ok' : 'hint err';
+    msg.textContent = r.ok ? (r.note || '已写入') : (r.why || r.error || '失败');
+  };
+  var skAdd = document.getElementById('sk-add');
+  if (skAdd) skAdd.onclick = async function () {
+    var msg = document.getElementById('sk-msg');
+    var id = document.getElementById('sk-id').value.trim();
+    var body = document.getElementById('sk-body').value;
+    if (!id || !body.trim()) { msg.className = 'hint err'; msg.textContent = '目录名和内容都要填'; return; }
+    msg.className = 'hint'; msg.textContent = '写入中…';
+    var r = await pluginPost({ kind: 'skill', action: 'add', name: id, content: body });
+    msg.className = r.ok ? 'hint ok' : 'hint err';
+    msg.textContent = r.ok ? (r.note || '已写入') : (r.why || r.error || '失败');
+    if (r.ok) document.getElementById('sk-body').value = '';
+  };
+  var capbox = document.getElementById('capview');
+  if (capbox) capbox.addEventListener('click', async function (e) {
+    var dm = e.target.closest('[data-del-mcp]');
+    var ds = e.target.closest('[data-del-skill]');
+    if (dm) {
+      var name = dm.dataset.delMcp;
+      if (!confirm('删掉插件 ' + name + '？（写进 data/mcp.json 的 servers 里那一条）')) return;
+      var r1 = await pluginPost({ kind: 'mcp', action: 'remove', name: name });
+      var m1 = document.getElementById('mcp-msg');
+      m1.className = r1.ok ? 'hint ok' : 'hint err';
+      m1.textContent = r1.ok ? (r1.note || '已删') : (r1.why || '失败');
+      return;
+    }
+    if (ds) {
+      var sid = ds.dataset.delSkill;
+      if (!confirm('删掉技能 ' + sid + '？（整个目录，含 SKILL.md）')) return;
+      var r2 = await pluginPost({ kind: 'skill', action: 'remove', name: sid });
+      var m2 = document.getElementById('sk-msg');
+      m2.className = r2.ok ? 'hint ok' : 'hint err';
+      m2.textContent = r2.ok ? (r2.note || '已删') : (r2.why || '失败');
+    }
+  });
+})();
+
 // 文件面板 / git 校样的事件（只读）
 (function () {
   var fq = document.getElementById('fq');
