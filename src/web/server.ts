@@ -40,6 +40,7 @@ import { listDocs, forgetDoc, setDocSensitivity, ingestPath, collectFiles } from
 import { bigramText } from "../text.ts";
 import { atomicWriteFile } from "../fsx.ts";
 import { safePath } from "../verbs.ts";
+import { listProject } from "../project.ts";
 import { SUPPORTED_EXTS, MAX_INGEST_BYTES } from "../ingest.ts";
 import { createTransport, routerFrom } from "../transport.ts";
 import { spentToday } from "../budget.ts";
@@ -723,6 +724,38 @@ export function createWebServer(deps: WebDeps) {
       }
       // ── 本地模型（C-4）：一个端点、列已装、拿当前生效值，面板据此分两块 ──
       // B-0：能力自述（工具来自 verbs / provider 来自配置 / degraded 来自真探测）
+      // ── git 校样（只读）：status / diff / log 都走 verbs → execute → policy → audit ──
+      if (req.method === "GET" && url.pathname === "/api/git") {
+        const what = String(url.searchParams.get("what") ?? "status");
+        const verb = what === "diff" ? "git.diff" : what === "log" ? "git.log" : "git.status";
+        const path = url.searchParams.get("path");
+        const policy = deps.policy ?? await loadPolicy(deps.home);
+        const r = await execute({ db: deps.db, policy, ctx: { home: deps.home, now } },
+          verb, path ? { path } : {});
+        json(res, r.ok ? 200 : 400, { ok: r.ok, what, output: r.output.slice(0, 200_000), tier: r.tier, code: r.code ?? null });
+        return;
+      }
+
+      // ── 文件面板（只读）：项目两个根下的目录与文件，白名单与 project.* 同一套 ──
+      if (req.method === "GET" && url.pathname === "/api/project/tree") {
+        const dir = String(url.searchParams.get("dir") ?? "");
+        try {
+          const entries = listProject(dir);
+          json(res, 200, { ok: true, dir, roots: ["jingjing", "docs"], entries });
+        } catch (e) {
+          json(res, 400, { ok: false, error: String((e as Error).message ?? e).slice(0, 200) });
+        }
+        return;
+      }
+      if (req.method === "GET" && url.pathname === "/api/project/file") {
+        const path = String(url.searchParams.get("path") ?? "");
+        const policy = deps.policy ?? await loadPolicy(deps.home);
+        const r = await execute({ db: deps.db, policy, ctx: { home: deps.home, now } },
+          "project.read", { path });
+        json(res, r.ok ? 200 : 400, { ok: r.ok, path, text: r.output.slice(0, 200_000), code: r.code ?? null });
+        return;
+      }
+
       // ── 技能（docs/11 第二优先）：只读列表；正文走 skill.read（同一条闸门） ──
       if (req.method === "GET" && url.pathname === "/api/skills") {
         const sk = await import("../skills.ts");

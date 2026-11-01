@@ -49,6 +49,13 @@ p, allow, T2, net.fetch, *, enforce
 p, allow, T0, project.read, *, advise
 p, allow, T0, project.list, *, advise
 p, allow, T0, project.search, *, advise
+# git 校样：只读（status / diff / log），argv 写死，模型给不了参数
+p, allow, T1, git.status, *, advise
+p, allow, T1, git.diff, *, advise
+p, allow, T0, git.log, *, advise
+# 技能：只读
+p, allow, T0, skill.list, *, advise
+p, allow, T0, skill.read, *, advise
 p, allow, T0, shell.templates, *, advise
 # T3：只能走注册过的模板（target 是 shell:<template>），且每次要一次性令牌
 p, allow, T3, shell.run, shell:*, enforce
@@ -63,6 +70,11 @@ export function modelPath(home: string): string { return join(home, "policy.mode
 /** 老库升级时要补的行：只在「该 verb 一行都没有」时追加，不覆盖人写的 deny */
 const REQUIRED_RULES: Array<[string, string]> = [
   ["shell.exec", "p, allow, T3, shell.exec, shell:exec, enforce"],
+  ["git.status", "p, allow, T1, git.status, *, advise"],
+  ["git.diff", "p, allow, T1, git.diff, *, advise"],
+  ["git.log", "p, allow, T0, git.log, *, advise"],
+  ["skill.list", "p, allow, T0, skill.list, *, advise"],
+  ["skill.read", "p, allow, T0, skill.read, *, advise"],
 ];
 
 export function ensurePolicy(home: string): string {

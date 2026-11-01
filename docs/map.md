@@ -8,9 +8,9 @@
 
 | 项 | 数量 |
 |---|---|
-| 源文件（src/**/*.ts） | 92 |
-| 错误码 E_* | 183 |
-| verbs | 23 |
+| 源文件（src/**/*.ts） | 93 |
+| 错误码 E_* | 187 |
+| verbs | 26 |
 | CLI 子命令 | 37 |
 
 ## 六条纪律落点
@@ -46,7 +46,7 @@
 | `E_BAD_LINK` | `src/web/server.ts` |
 | `E_BAD_MODEL` | `src/web/server.ts` |
 | `E_BAD_NAME` | `src/web/server.ts` |
-| `E_BAD_PATH` | `src/web/server.ts` |
+| `E_BAD_PATH` | `src/gitview.ts` `src/web/server.ts` |
 | `E_BAD_PRESET` | `src/web/server.ts` |
 | `E_BAD_RANGE` | `src/decayparams.ts` |
 | `E_BAD_REGEX` | `src/project.ts` |
@@ -87,6 +87,8 @@
 | `E_EXTRACT` | `src/nightagent.ts` `src/nightly.ts` |
 | `E_GEN_NONE` | `src/generation.ts` |
 | `E_GEN_REASON` | `src/generation.ts` |
+| `E_GIT` | `src/gitview.ts` |
+| `E_GIT_TIMEOUT` | `src/gitview.ts` |
 | `E_GRANT_ARGV` | `src/grant.ts` |
 | `E_GRANT_BECAUSE` | `src/grant.ts` |
 | `E_GRANT_COMMAND` | `src/grant.ts` |
@@ -128,6 +130,7 @@
 | `E_NO_DRAFT` | `src/interview.ts` `src/web/server.ts` |
 | `E_NO_EMBED_MODEL` | `src/cli/jingjing.ts` |
 | `E_NO_EMBEDDER` | `src/verbs.ts` |
+| `E_NO_GIT` | `src/gitview.ts` |
 | `E_NO_GRANT` | `src/grant.ts` `src/web/server.ts` |
 | `E_NO_HOME` | `src/handoff.ts` |
 | `E_NO_ICON` | `src/web/server.ts` |
@@ -144,6 +147,7 @@
 | `E_NO_TARGET` | `src/cli/deploy.ts` |
 | `E_NO_TEMPLATE` | `src/shell.ts` |
 | `E_NO_TRASH` | `src/verbs.ts` |
+| `E_NOT_A_REPO` | `src/gitview.ts` |
 | `E_NOT_DELETED` | `src/web/server.ts` |
 | `E_NOT_DIR` | `src/project.ts` |
 | `E_NOT_FILE` | `src/project.ts` |
@@ -228,6 +232,9 @@
 | `fs.stat` | T0 |
 | `fs.trash` | T1 |
 | `fs.write` | T1 |
+| `git.diff` | T1 |
+| `git.log` | T0 |
+| `git.status` | T1 |
 | `memory.remember` | T1 |
 | `memory.search` | T0 |
 | `msg.notify` | T2 |
@@ -289,6 +296,7 @@
 | `src/firstrun.ts` | 试运行 + 第一句话（H-4 第 ⑦⑧ 步）。 |
 | `src/fsx.ts` | 原子写 + fsync（18 §1.2） |
 | `src/generation.ts` | 设定封存的**分代**（H-5）。 |
+| `src/gitview.ts` | git 校样（只读）：把"她改了什么"摊开给人看。 |
 | `src/grant.ts` | 会话式授权（K-3）：**窗口内**可以用模型给的 argv，窗口外回到 6 个模板。 |
 | `src/handoff.ts` | 搬家协议（19 §7.4 / 09 §5）：**quiesce → export → 校验 → import → 补跑** |
 | `src/heartbeat.ts` | 心跳与主动性（01 §10）。 |

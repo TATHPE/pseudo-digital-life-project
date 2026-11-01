@@ -8,6 +8,8 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync,
 import { basename, dirname, isAbsolute, join, normalize, relative } from "node:path";
 import type { Tier } from "./types.ts";
 import { readSkill, scanSkills } from "./skills.ts";
+import { gitDiff, gitLog, gitStatus } from "./gitview.ts";
+import { projectHome } from "./project.ts";
 
 export interface VerbCtx {
   home: string;
@@ -432,6 +434,43 @@ export const verbs: VerbDef[] = [
       const docs = listDocs(ctx.db, 50);
       if (!docs.length) return "（还没有摄入任何文档：jingjing ingest <路径>）";
       return docs.map((d) => d.id + " " + d.title + " ｜ " + d.chunks + " 块 ｜ " + (d.rel_path ?? "")).join(String.fromCharCode(10));
+    },
+  },
+  {
+    name: "git.status", tier: "T1", reversible: true,
+    description: "看代码仓当前改了什么（只读；git status --porcelain）",
+    params: S({}),
+    target: () => "project",
+    async run(_a, ctx) {
+      const r = await gitStatus(projectHome(ctx.env ?? process.env));
+      if (!r.ok) throw new Error(r.code + ": " + r.why);
+      if (r.data.clean) return "工作区干净（分支 " + (r.data.branch ?? "?") + "）";
+      return "分支 " + (r.data.branch ?? "?") + " · " + r.data.files.length + " 个改动" + String.fromCharCode(10) +
+        r.data.files.map((f) => f.x + f.y + " " + f.path).join(String.fromCharCode(10));
+    },
+  },
+  {
+    name: "git.diff", tier: "T1", reversible: true,
+    description: "看差异（只读；不给 path 就是 --stat 摘要，给了就是那个文件的完整 diff）",
+    params: S({ path: { type: "string" } }),
+    target: (a) => String(a.path ?? "project"),
+    async run(a, ctx) {
+      const r = await gitDiff(projectHome(ctx.env ?? process.env), a.path ? String(a.path) : undefined);
+      if (!r.ok) throw new Error(r.code + ": " + r.why);
+      const head = (r.data.stat ? "（--stat 摘要；要看完整差异给 path）" : "（完整 diff）") +
+        (r.data.truncated ? " 输出过长，已截断" : "") + String.fromCharCode(10);
+      return head + (r.data.text || "（没有差异）");
+    },
+  },
+  {
+    name: "git.log", tier: "T0", reversible: true,
+    description: "最近几条提交（只读，条数有上限 50）",
+    params: S({ n: { type: "number" } }),
+    target: () => "project",
+    async run(a, ctx) {
+      const r = await gitLog(projectHome(ctx.env ?? process.env), Number(a.n ?? 10));
+      if (!r.ok) throw new Error(r.code + ": " + r.why);
+      return r.data.text || "（还没有提交）";
     },
   },
   {

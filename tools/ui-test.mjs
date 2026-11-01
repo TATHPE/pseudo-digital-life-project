@@ -453,6 +453,47 @@ check("人格草稿的行有样式（不是塞进按钮里的白框）", await j
   return shown && flex && fits && !insideButton;
 })()`));
 
+// ── 文件面板 + git 校样：让「她改了什么」能被看见（都只读）──
+check("文件面板能进目录、能开文件", await js(`(async () => {
+  const entry = document.querySelector("#side .item[data-view=filesview]");
+  if (!entry) return "NO_ENTRY";
+  entry.click();
+  await new Promise((r) => setTimeout(r, 900));
+  const rootRows = document.querySelectorAll("#flist .item").length;
+  const dir = [...document.querySelectorAll("#flist [data-fpath]")].find((b) => b.dataset.ftype === "dir");
+  if (!dir) return "NO_DIR";
+  dir.click();
+  await new Promise((r) => setTimeout(r, 900));
+  const inside = document.querySelector("#fcrumbs").textContent.includes(dir.dataset.fpath);
+  const file = [...document.querySelectorAll("#flist [data-fpath]")].find((b) => b.dataset.ftype === "file");
+  if (!file) return "NO_FILE";
+  file.click();
+  await new Promise((r) => setTimeout(r, 900));
+  const box = document.getElementById("fview");
+  const shown = !box.hidden && document.getElementById("ftext").textContent.length > 0;
+  return rootRows > 0 && inside && shown;
+})()`));
+
+check("不是仓库外的路径：文件面板读不到 data/", await js(`(async () => {
+  const j = await (await fetch("/api/project/file?path=data/memory.db")).json();
+  return j.ok === false;
+})()`));
+
+check("git 校样能看改动（只读三条都在）", await js(`(async () => {
+  const btn = document.querySelector("#folio [data-view=gitview]");
+  if (!btn) return "NO_ENTRY";
+  btn.click();
+  await new Promise((r) => setTimeout(r, 1000));
+  const status = document.getElementById("gmsg").textContent;
+  document.getElementById("gl").click();
+  await new Promise((r) => setTimeout(r, 900));
+  const log = document.getElementById("gdiff").textContent;
+  // status 要么报"工作区干净"，要么报"N 个改动"；log 至少有提交行
+  const okStatus = /干净|个改动/.test(status);
+  const okLog = log.trim().length > 0;
+  return okStatus && okLog ? true : "status:" + status + " log:" + log.slice(0, 30);
+})()`));
+
 // ── 时间线跳转：点哪天就该到哪天，不是每次都回到最新 ──────────
 // 真 bug：show("chat") 用 rAF 把 scrollTop 压到底，而 jumpToDay() 在它之前同步执行，
 // 于是跳转被覆盖 —— 表现就是"点哪天都是现在"。

@@ -16,20 +16,31 @@ let sideActive = null;   // 侧栏里最后点的那一项（文档/工具/记�
 var chatScroll = 0;   // 切走前记下对话滚到哪了
 const VIEWNAME = { chat: "对话 · CHAT", cfg: "设置 · CONFIG", toolview: "工具 · TOOL",
   memview: "记忆 · MEMORY", memlistview: "记忆 · MEMORY", docview: "文档 · DOC", capview: "能力 · CAPABILITIES",
+  filesview: "文件 · PROJECT", gitview: "校样 · GIT",
   docsview: "文档 · DOCS", auditview: "动作 · ACTIONS",
   searchview: "搜索 · SEARCH", propview: "它想做的一件事", setupview: "首次配置 · SETUP" };
-function show(v) {
+function show(v, opts) {
   // 切走时把滚动位置存下来：隐藏 #chat 会让 #scroll 的 scrollHeight 塌成 0，浏览器会把 scrollTop 归零
   if (view === "chat" && v !== "chat") chatScroll = $("#scroll").scrollTop;
   view = v;
   document.body.dataset.view = v;   // CSS 用它把「回到最新」锁在对话里
-  for (const id of ["chat", "cfg", "toolview", "memview", "memlistview", "docview", "docsview", "auditview", "capview", "searchview", "propview", "setupview"]) $("#" + id).hidden = id !== v;
+  for (const id of ["chat", "cfg", "toolview", "memview", "memlistview", "docview", "docsview", "auditview", "capview", "filesview", "gitview", "searchview", "propview", "setupview"]) $("#" + id).hidden = id !== v;
   $("#composer").style.display = v === "chat" ? "" : "none";
   // "回到最新"是对话专用的，别的界面不该出现
   if (v !== "chat") $("#jump").classList.remove("on");
   if (v === "chat") {
     requestAnimationFrame(function () {
       const el = $("#scroll");
+      // 指定了哪一天就滚到那一天（这是唯一决定滚动位置的地方）
+      if (opts && opts.day) {
+        const target = [...document.querySelectorAll("#chat .day")].find(function (e) {
+          return e.textContent.startsWith(opts.day);
+        });
+        if (target) {
+          el.scrollTop += target.getBoundingClientRect().top - el.getBoundingClientRect().top - 8;
+          return;
+        }
+      }
       // 只在"离开前不是贴底"时恢复；贴底的话重新滚到底更符合直觉
       if (chatScroll > 0 && chatScroll < el.scrollHeight - el.clientHeight - 4) el.scrollTop = chatScroll;
       else { el.scrollTop = el.scrollHeight; chatScroll = 0; }
@@ -49,8 +60,11 @@ function show(v) {
   // 侧栏里除了几个导航项，其余都是多选一（工具 / 文档 / 记忆 / 日期）。
   // 只按 data-view 匹配会变成「点了 A，B C D 一起被框」。
   const navOnly = (b) => !b.dataset.doc && !b.dataset.tool && !b.dataset.mem && !b.dataset.day;
+  // 点了某一天：只亮那一天，别再顺手把「现在」点亮（两个都亮等于没有高亮）
+  const dayItem = sideActive && sideActive.isConnected && sideActive.dataset.day ? sideActive : null;
   for (const b of document.querySelectorAll("#side .item")) {
-    b.classList.toggle("on", navOnly(b) && b.dataset.view === v);
+    const on = navOnly(b) && b.dataset.view === v && !(dayItem && b.dataset.view === "chat" && !b.dataset.day);
+    b.classList.toggle("on", on);
   }
   if (sideActive && sideActive.isConnected && !navOnly(sideActive) && sideActive.dataset.view === v) {
     sideActive.classList.add("on");
@@ -985,13 +999,20 @@ async function paintSetupPanel() {
     $("#su-qs").innerHTML = (iv.questions || []).map(function (q) {
       return "<div class='q'><label>" + escapeHtml(q.q) + "</label>" +
         "<textarea id='su-a-" + escapeHtml(q.id) + "' placeholder='" + escapeHtml(q.fallback) + "'></textarea></div>";
-    }).join("") + "<div class='acts'><button id='su-draft' class='primary'>让模型写草稿</button><span id='su-iv-msg' class='hint'></span></div><div id='su-draft'></div>";
-    $("#su-draft").onclick = async function () {
+    }).join("") + "<div class='acts'><button id='su-iv-go' class='primary'>让模型写草稿</button><span id='su-iv-msg' class='hint'></span></div><div id='su-draft'></div>";
+    $("#su-iv-go").onclick = async function () {
       var msg = $("#su-iv-msg"); msg.textContent = "写草稿中…";
       var answers = {};
       (SU_IV.questions || []).forEach(function (q) { answers[q.id] = ($("#su-a-" + q.id).value || "").trim(); });
+      var filled = Object.keys(answers).filter(function (k) { return answers[k]; });
+      if (!filled.length) {
+        msg.className = "err";
+        msg.textContent = "先回答几个问题（哪怕一句）。一个字都不填，模型只会写出「未提供具体内容」这种废话。";
+        return;
+      }
       var r = await (await fetch("/api/setup/interview", { method: "POST", headers: H, body: JSON.stringify({ action: "draft", answers: answers }) })).json();
-      if (!r.ok) { msg.className = "err"; msg.textContent = r.error || "写不出来"; return; }
+      // why 是人话，error 是错误码：先显示 why
+      if (!r.ok) { msg.className = "err"; msg.textContent = r.why || r.error || "写不出来"; return; }
       msg.className = "hint"; msg.textContent = (r.draft.via === "template" ? "（没有可用模型，用你的原话 + 中立模板拼的）" : "模型写的") + " · 需要你确认的 " + r.modelAdded + " 条";
       renderDraft(r.draft);
     };
@@ -1049,7 +1070,7 @@ function renderDraft(d) {
     });
   });
   if (empty.length) {
-    html += '<p class="hint" style="margin-top:12px">这几块访谈里没说到，封存后会**保持出厂默认**：' +
+    html += '<p class="hint" style="margin-top:12px">这几块访谈里没说到，封存后会<b>保持出厂默认</b>：' +
       empty.map(function (k) { return '#' + k; }).join(' · ') + '（之后可在设置 → 人格里补）</p>';
   }
   html += '<div class="acts" style="margin-top:12px"><button id="su-seal" class="primary">封存（开第 1 代）</button><span id="su-seal-msg" class="hint"></span></div>';
@@ -1074,6 +1095,89 @@ function renderDraft(d) {
   };
 }
 // ── 分代（H-5）：显示当前第几代，并说清"改动只向前生效" ──
+// ── 文件面板：只读浏览项目两个根（白名单在服务端 project.read/list）──
+var TREE = [], FCUR = "", FSEEN = 40;
+async function loadTree(dir) {
+  var j;
+  try { j = await (await fetch("/api/project/tree?dir=" + encodeURIComponent(dir))).json(); } catch (e) { return; }
+  var box = document.getElementById("flist");
+  if (!j.ok) { box.innerHTML = '<p class="hint err">' + escapeHtml(j.error || '读不了这个目录') + '</p>'; return; }
+  TREE = j.entries || []; FCUR = dir || ""; FSEEN = 40;
+  var crumbs = document.getElementById("fcrumbs");
+  if (crumbs) {
+    crumbs.innerHTML = FCUR ? ("位置：<b>" + escapeHtml(FCUR) + "</b>") : "位置：项目根（jingjing/ 与 docs/）";
+  }
+  paintTree();
+}
+function paintTree() {
+  var q = (document.getElementById("fq") || {}).value || "";
+  q = q.trim().toLowerCase();
+  var rows = TREE.filter(function (e) { return !q || e.path.toLowerCase().indexOf(q) >= 0; });
+  var box = document.getElementById("flist");
+  if (!rows.length) { box.innerHTML = '<p class="hint">没有匹配的文件。</p>'; return; }
+  var shown = rows.slice(0, FSEEN);
+  var html = shown.map(function (e) {
+    var isDir = e.type === "dir";
+    return '<button class="item" data-fpath="' + escapeHtml(e.path) + '" data-ftype="' + (isDir ? 'dir' : 'file') + '">' +
+      escapeHtml(e.path.replace(FCUR ? FCUR + "/" : "", "")) +
+      '<span class="m">' + (isDir ? '目录' : Math.max(1, Math.round((e.bytes || 0) / 1024)) + 'KB') + '</span></button>';
+  }).join("");
+  if (rows.length > shown.length) {
+    html += '<button class="item dimmore" id="fmore">显示更多（' + shown.length + ' / ' + rows.length + '）</button>';
+  }
+  box.innerHTML = html;
+  var more = document.getElementById("fmore");
+  if (more) more.onclick = function () { FSEEN += 40; paintTree(); };
+}
+async function openFile(path) {
+  var j;
+  try { j = await (await fetch("/api/project/file?path=" + encodeURIComponent(path))).json(); } catch (e) { return; }
+  var box = document.getElementById("fview");
+  var head = document.getElementById("fpath");
+  var pre = document.getElementById("ftext");
+  if (!j.ok) {
+    box.hidden = false; head.textContent = path; pre.textContent = j.error || "读不了"; return;
+  }
+  box.hidden = false;
+  head.textContent = j.path;
+  pre.textContent = j.text || "（空文件）";
+  pre.scrollTop = 0;
+}
+// ── git 校样：只读（status / diff / log）────────────────────────
+async function loadGit(what, path) {
+  var msg = document.getElementById("gmsg");
+  if (msg) msg.textContent = "…";
+  var url = "/api/git?what=" + encodeURIComponent(what) + (path ? "&path=" + encodeURIComponent(path) : "");
+  var j;
+  try { j = await (await fetch(url)).json(); } catch (e) { if (msg) msg.textContent = "网络错误"; return; }
+  var pre = document.getElementById("gdiff");
+  var lines = document.getElementById("gfiles");
+  var head = "";
+  if (!j.ok) {
+    if (msg) msg.textContent = j.code || "失败";
+    pre.textContent = j.output || "";
+    lines.innerHTML = "";
+    return;
+  }
+  if (what === "status") {
+    // status 的输出第一行是摘要，剩下每行一个文件；把文件行做成可点的（点了看这个文件的 diff）
+    var all = String(j.output || "").split(String.fromCharCode(10));
+    head = all.shift() || "";
+    if (msg) msg.textContent = head;
+    lines.innerHTML = all.filter(Boolean).map(function (ln) {
+      var p = ln.slice(3).trim();
+      return '<button class="item" data-gpath="' + escapeHtml(p) + '"><span class="preview">' +
+        escapeHtml(ln.slice(0, 2).trim() || '??') + '  ' + escapeHtml(p) + '</span></button>';
+    }).join("");
+    pre.textContent = "";
+    return;
+  }
+  lines.innerHTML = "";
+  if (msg) msg.textContent = what === "log" ? "最近提交" : "差异";
+  pre.textContent = j.output || "（没有内容）";
+  pre.scrollTop = 0;
+}
+
 // ── 能力屏：插件（MCP）/ 技能 / 原生工具 / 降级项 ────────────────
 // 三件事都只读：这里不装、不启、不改配置 —— 装是跑 jingjing mcp add，或往目录里放文件。
 function capline(k, v, bad) {
@@ -1111,13 +1215,27 @@ async function loadCapPage() {
   if (dirsEl) {
     dirsEl.textContent = '放这里就会被认到：' + ((sk && sk.dirs) || []).join(' 或 ') + '（和 pi / Claude Code 同一套目录）';
   }
+  // 分两组：她自己的（会进简报索引）/ 使用者的开发技能（默认不进简报，折起来）
+  var mine = list.filter(function (x) { return x.source !== 'agents'; });
+  var devs = list.filter(function (x) { return x.source === 'agents'; });
   var skHtml = '';
-  list.forEach(function (x) {
-    skHtml += capline(x.id, x.source + ' · ' + Math.max(1, Math.round(x.bytes / 1024)) + 'KB');
-    skHtml += '<div class="hint">' + escapeHtml(x.description || '（没有描述）') + '</div>';
-  });
+  function skillRow(x) {
+    return capline(x.id, x.source + ' · ' + Math.max(1, Math.round(x.bytes / 1024)) + 'KB') +
+      '<div class="hint">' + escapeHtml(x.description || '（没有描述）') + '</div>';
+  }
+  if (mine.length) {
+    skHtml += '<p class="hint">她自己的（会进简报索引：名字 + 一句描述）</p>';
+    skHtml += mine.map(skillRow).join('');
+  }
+  if (devs.length) {
+    skHtml += '<p class="hint">使用者的开发技能（共 ' + devs.length + ' 个；默认不进简报，要看用 skill_list）' +
+      '<button type="button" id="cap-more" class="dimmore" style="margin-left:8px;padding:3px 6px">展开</button></p>';
+    skHtml += '<div id="cap-dev" hidden>' + devs.map(skillRow).join('') + '</div>';
+  }
   document.getElementById('cap-skills').innerHTML = skHtml ||
     '<p class="hint">还没有技能。一份 SKILL.md 就是一个技能：<b>一句话说明 + 做法</b>。对话时只把名字和那句说明放进简报，正文由它自己 skill_read 取 —— 不占每轮的上下文。</p>';
+  var more = document.getElementById('cap-more'), dev = document.getElementById('cap-dev');
+  if (more && dev) more.onclick = function () { dev.hidden = !dev.hidden; more.textContent = dev.hidden ? '展开' : '收起'; };
 
   var cnt = function (k) { return ((cls[k] || []).filter(function (t) { return t.source !== 'mcp'; })).length; };
   document.getElementById('cap-native').innerHTML =
@@ -1569,11 +1687,12 @@ document.addEventListener("click", (e) => {
   if (v === "memview") { openMemory(Number(t.dataset.mem)); return; }
   if (v === "docview") { openDoc(t.dataset.doc); return; }
   if (v === "capview") { show("capview"); loadCapPage(); return; }
+  if (v === "filesview") { show("filesview"); loadTree(""); return; }
+  if (v === "gitview") { show("gitview"); loadGit("status"); return; }
   if (v === "memlistview") { show("memlistview"); memories(); return; }
   if (v === "docsview") { show("docsview"); docs(); return; }
   if (v === "auditview") { openAudit(); return; }
-  show("chat");
-  if (t.dataset.day) jumpToDay(t.dataset.day);
+  show("chat", t.dataset.day ? { day: t.dataset.day } : undefined);
 });
 $("#p-file").onchange = (e) => loadPersona(e.target.value);
 // 头像框：改完立刻套上（不等服务端），再把选择存住
@@ -1749,6 +1868,31 @@ function toggleWing(on) {
   var off = (typeof on === 'boolean') ? !on : !document.body.classList.contains('wing-off');
   localStorage.setItem('jj.wing', off ? 'off' : 'on');
   applyLayout();
+// 文件面板 / git 校样的事件（只读）
+(function () {
+  var fq = document.getElementById('fq');
+  if (fq) fq.oninput = function () { paintTree(); };
+  var froot = document.getElementById('froot');
+  if (froot) froot.onclick = function () { loadTree(''); };
+  var flist = document.getElementById('flist');
+  if (flist) flist.onclick = function (e) {
+    var b = e.target.closest('[data-fpath]');
+    if (!b) return;
+    if (b.dataset.ftype === 'dir') loadTree(b.dataset.fpath);
+    else openFile(b.dataset.fpath);
+  };
+  var fclose = document.getElementById('fclose');
+  if (fclose) fclose.onclick = function () { document.getElementById('fview').hidden = true; };
+  var gs = document.getElementById('gs'), gst = document.getElementById('gst'), gl = document.getElementById('gl');
+  if (gs) gs.onclick = function () { loadGit('status'); };
+  if (gst) gst.onclick = function () { loadGit('diff'); };
+  if (gl) gl.onclick = function () { loadGit('log'); };
+  var gfiles = document.getElementById('gfiles');
+  if (gfiles) gfiles.onclick = function (e) {
+    var b = e.target.closest('[data-gpath]');
+    if (b) loadGit('diff', b.dataset.gpath);
+  };
+})();
 }
 function toggleFolio(on) {
   var off = (typeof on === 'boolean') ? !on : !document.body.classList.contains('folio-off');

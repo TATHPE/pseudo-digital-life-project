@@ -379,6 +379,19 @@ export const PAGE = `<!doctype html>
   #dc-inbox .item, #dc-ctx .item { font:10px/1.45 var(--mono); padding:4px 6px; }
   #dc-inbox .item .m, #dc-ctx .item .m { font:9px/1.4 var(--mono); }
   #dc-inbox .dempty, #dc-ctx .dempty { margin:2px 0 0; }
+  /* 文件面板 / git 校样 */
+  .filerow { display:flex; gap:8px; align-items:center; margin:8px 0; flex-wrap:wrap; }
+  .filerow button { font:10px/1 var(--mono); padding:6px 9px; background:#000; color:var(--ink);
+                    border:1px solid var(--line-dim); cursor:pointer; }
+  .filerow button:hover { border-color:var(--ink); }
+  .filerow .searchbox { flex:1 1 220px; min-width:0; }
+  .fhead { display:flex; gap:10px; align-items:center; margin:10px 0 6px;
+           font:10px/1.4 var(--mono); color:var(--ink); border-bottom:1px solid var(--line-dim); padding-bottom:5px; }
+  .fhead button { margin-left:auto; font:9px/1 var(--mono); padding:4px 7px; background:#000;
+                  color:var(--ink-dim); border:1px solid var(--line-dim); cursor:pointer; }
+  .fcode { max-height:52vh; overflow:auto; white-space:pre; font:11px/1.55 var(--mono); }
+  .glines { margin:6px 0; }
+
   /* 能力屏：一行一个（名字在左、数在右），和入口行同一套语气 */
   .cap-h { margin:18px 0 6px; padding:2px 0 2px 8px; border-left:3px solid var(--ink);
            font:10px/1.3 var(--mono); letter-spacing:.18em; color:var(--ink); font-weight:700; }
@@ -706,6 +719,7 @@ export const PAGE = `<!doctype html>
     <button class="item" type="button" data-view="docsview">文档<span class="m" id="doccount">…</span></button>
     <button class="item" type="button" data-view="auditview">动作<span class="m" id="actcount">…</span></button>
     <button class="item" type="button" data-view="capview">能力<span class="m" id="capcount">…</span></button>
+    <button class="item" type="button" data-view="filesview">文件<span class="m" id="filecount">项目</span></button>
     <button class="item" type="button" id="foldtools">工具<span class="m" id="toolcount">…</span></button>
     <div id="toollist" hidden>
       <input id="toolq" class="searchbox" placeholder="筛工具名 / 说明…" autocomplete="off">
@@ -847,6 +861,40 @@ export const PAGE = `<!doctype html>
         <p class="hint">按活跃度排；点一条看正文、出处与它的来历。</p>
         <input id="q" class="searchbox" placeholder="搜记忆 / 文档…（Ctrl+K 也能到这儿）" autocomplete="off">
         <div id="memlist"></div>
+      </div>
+    </div>
+
+    <div id="filesview" hidden>
+      <div class="panelbox">
+        <h2>文件 · PROJECT</h2>
+        <p class="hint">只读：两个根（<code>jingjing/</code> 代码 · <code>docs/</code> 设计文档）。
+          <code>data/</code>、密钥、<code>.git</code> 一律拒 —— 这是 <code>project.read</code> 的白名单，不是前端过滤。</p>
+        <div class="filerow">
+          <input id="fq" class="searchbox" placeholder="按文件名筛…（如 recall / 22-）" autocomplete="off">
+          <button id="froot" type="button">看项目根</button>
+        </div>
+        <div id="fcrumbs" class="hint"></div>
+        <div id="flist"></div>
+        <div id="fview" hidden>
+          <div class="fhead"><span id="fpath"></span><button id="fclose" type="button">关闭</button></div>
+          <pre class="code fcode" id="ftext"></pre>
+        </div>
+      </div>
+    </div>
+
+    <div id="gitview" hidden>
+      <div class="panelbox">
+        <h2>校样 · GIT</h2>
+        <p class="hint">只读：只跑 <code>git status</code> / <code>git diff</code> / <code>git log</code>，
+          参数写死在服务端（模型给不了 argv）。走的是同一条闸门，审计里能看到。</p>
+        <div class="filerow">
+          <button id="gs" class="primary" type="button">看改动</button>
+          <button id="gst" type="button">stat 摘要</button>
+          <button id="gl" type="button">最近提交</button>
+          <span class="hint" id="gmsg"></span>
+        </div>
+        <div id="gfiles" class="glines"></div>
+        <pre class="code fcode" id="gdiff"></pre>
       </div>
     </div>
 
@@ -1034,6 +1082,9 @@ export const PAGE = `<!doctype html>
   <div class="dcard" data-card="chg">
     <button class="dtab" type="button"><i>II</i><b>改 动</b><span class="n" id="dc-chg-n"></span></button>
     <div class="din" id="dc-chg"><p class="dempty">…</p></div>
+    <div class="din" style="padding-top:0"><div class="dact">
+      <button type="button" class="item" data-view="gitview" style="margin:0">看 git 校样</button>
+    </div></div>
   </div>
 
   <div class="dcard" data-card="ctx">
@@ -1069,6 +1120,7 @@ let sideActive = null;   // 侧栏里最后点的那一项（文档/工具/记�
 var chatScroll = 0;   // 切走前记下对话滚到哪了
 const VIEWNAME = { chat: "对话 · CHAT", cfg: "设置 · CONFIG", toolview: "工具 · TOOL",
   memview: "记忆 · MEMORY", memlistview: "记忆 · MEMORY", docview: "文档 · DOC", capview: "能力 · CAPABILITIES",
+  filesview: "文件 · PROJECT", gitview: "校样 · GIT",
   docsview: "文档 · DOCS", auditview: "动作 · ACTIONS",
   searchview: "搜索 · SEARCH", propview: "它想做的一件事", setupview: "首次配置 · SETUP" };
 function show(v, opts) {
@@ -1076,7 +1128,7 @@ function show(v, opts) {
   if (view === "chat" && v !== "chat") chatScroll = $("#scroll").scrollTop;
   view = v;
   document.body.dataset.view = v;   // CSS 用它把「回到最新」锁在对话里
-  for (const id of ["chat", "cfg", "toolview", "memview", "memlistview", "docview", "docsview", "auditview", "capview", "searchview", "propview", "setupview"]) $("#" + id).hidden = id !== v;
+  for (const id of ["chat", "cfg", "toolview", "memview", "memlistview", "docview", "docsview", "auditview", "capview", "filesview", "gitview", "searchview", "propview", "setupview"]) $("#" + id).hidden = id !== v;
   $("#composer").style.display = v === "chat" ? "" : "none";
   // "回到最新"是对话专用的，别的界面不该出现
   if (v !== "chat") $("#jump").classList.remove("on");
@@ -2147,6 +2199,89 @@ function renderDraft(d) {
   };
 }
 // ── 分代（H-5）：显示当前第几代，并说清"改动只向前生效" ──
+// ── 文件面板：只读浏览项目两个根（白名单在服务端 project.read/list）──
+var TREE = [], FCUR = "", FSEEN = 40;
+async function loadTree(dir) {
+  var j;
+  try { j = await (await fetch("/api/project/tree?dir=" + encodeURIComponent(dir))).json(); } catch (e) { return; }
+  var box = document.getElementById("flist");
+  if (!j.ok) { box.innerHTML = '<p class="hint err">' + escapeHtml(j.error || '读不了这个目录') + '</p>'; return; }
+  TREE = j.entries || []; FCUR = dir || ""; FSEEN = 40;
+  var crumbs = document.getElementById("fcrumbs");
+  if (crumbs) {
+    crumbs.innerHTML = FCUR ? ("位置：<b>" + escapeHtml(FCUR) + "</b>") : "位置：项目根（jingjing/ 与 docs/）";
+  }
+  paintTree();
+}
+function paintTree() {
+  var q = (document.getElementById("fq") || {}).value || "";
+  q = q.trim().toLowerCase();
+  var rows = TREE.filter(function (e) { return !q || e.path.toLowerCase().indexOf(q) >= 0; });
+  var box = document.getElementById("flist");
+  if (!rows.length) { box.innerHTML = '<p class="hint">没有匹配的文件。</p>'; return; }
+  var shown = rows.slice(0, FSEEN);
+  var html = shown.map(function (e) {
+    var isDir = e.type === "dir";
+    return '<button class="item" data-fpath="' + escapeHtml(e.path) + '" data-ftype="' + (isDir ? 'dir' : 'file') + '">' +
+      escapeHtml(e.path.replace(FCUR ? FCUR + "/" : "", "")) +
+      '<span class="m">' + (isDir ? '目录' : Math.max(1, Math.round((e.bytes || 0) / 1024)) + 'KB') + '</span></button>';
+  }).join("");
+  if (rows.length > shown.length) {
+    html += '<button class="item dimmore" id="fmore">显示更多（' + shown.length + ' / ' + rows.length + '）</button>';
+  }
+  box.innerHTML = html;
+  var more = document.getElementById("fmore");
+  if (more) more.onclick = function () { FSEEN += 40; paintTree(); };
+}
+async function openFile(path) {
+  var j;
+  try { j = await (await fetch("/api/project/file?path=" + encodeURIComponent(path))).json(); } catch (e) { return; }
+  var box = document.getElementById("fview");
+  var head = document.getElementById("fpath");
+  var pre = document.getElementById("ftext");
+  if (!j.ok) {
+    box.hidden = false; head.textContent = path; pre.textContent = j.error || "读不了"; return;
+  }
+  box.hidden = false;
+  head.textContent = j.path;
+  pre.textContent = j.text || "（空文件）";
+  pre.scrollTop = 0;
+}
+// ── git 校样：只读（status / diff / log）────────────────────────
+async function loadGit(what, path) {
+  var msg = document.getElementById("gmsg");
+  if (msg) msg.textContent = "…";
+  var url = "/api/git?what=" + encodeURIComponent(what) + (path ? "&path=" + encodeURIComponent(path) : "");
+  var j;
+  try { j = await (await fetch(url)).json(); } catch (e) { if (msg) msg.textContent = "网络错误"; return; }
+  var pre = document.getElementById("gdiff");
+  var lines = document.getElementById("gfiles");
+  var head = "";
+  if (!j.ok) {
+    if (msg) msg.textContent = j.code || "失败";
+    pre.textContent = j.output || "";
+    lines.innerHTML = "";
+    return;
+  }
+  if (what === "status") {
+    // status 的输出第一行是摘要，剩下每行一个文件；把文件行做成可点的（点了看这个文件的 diff）
+    var all = String(j.output || "").split(String.fromCharCode(10));
+    head = all.shift() || "";
+    if (msg) msg.textContent = head;
+    lines.innerHTML = all.filter(Boolean).map(function (ln) {
+      var p = ln.slice(3).trim();
+      return '<button class="item" data-gpath="' + escapeHtml(p) + '"><span class="preview">' +
+        escapeHtml(ln.slice(0, 2).trim() || '??') + '  ' + escapeHtml(p) + '</span></button>';
+    }).join("");
+    pre.textContent = "";
+    return;
+  }
+  lines.innerHTML = "";
+  if (msg) msg.textContent = what === "log" ? "最近提交" : "差异";
+  pre.textContent = j.output || "（没有内容）";
+  pre.scrollTop = 0;
+}
+
 // ── 能力屏：插件（MCP）/ 技能 / 原生工具 / 降级项 ────────────────
 // 三件事都只读：这里不装、不启、不改配置 —— 装是跑 jingjing mcp add，或往目录里放文件。
 function capline(k, v, bad) {
@@ -2656,6 +2791,8 @@ document.addEventListener("click", (e) => {
   if (v === "memview") { openMemory(Number(t.dataset.mem)); return; }
   if (v === "docview") { openDoc(t.dataset.doc); return; }
   if (v === "capview") { show("capview"); loadCapPage(); return; }
+  if (v === "filesview") { show("filesview"); loadTree(""); return; }
+  if (v === "gitview") { show("gitview"); loadGit("status"); return; }
   if (v === "memlistview") { show("memlistview"); memories(); return; }
   if (v === "docsview") { show("docsview"); docs(); return; }
   if (v === "auditview") { openAudit(); return; }
@@ -2835,6 +2972,7 @@ function toggleWing(on) {
   var off = (typeof on === 'boolean') ? !on : !document.body.classList.contains('wing-off');
   localStorage.setItem('jj.wing', off ? 'off' : 'on');
   applyLayout();
+
 }
 function toggleFolio(on) {
   var off = (typeof on === 'boolean') ? !on : !document.body.classList.contains('folio-off');
@@ -2842,6 +2980,31 @@ function toggleFolio(on) {
   applyLayout();
 }
 applyLayout();
+// 文件面板 / git 校样的事件（只读）
+(function () {
+  var fq = document.getElementById('fq');
+  if (fq) fq.oninput = function () { paintTree(); };
+  var froot = document.getElementById('froot');
+  if (froot) froot.onclick = function () { loadTree(''); };
+  var flist = document.getElementById('flist');
+  if (flist) flist.onclick = function (e) {
+    var b = e.target.closest('[data-fpath]');
+    if (!b) return;
+    if (b.dataset.ftype === 'dir') loadTree(b.dataset.fpath);
+    else openFile(b.dataset.fpath);
+  };
+  var fclose = document.getElementById('fclose');
+  if (fclose) fclose.onclick = function () { document.getElementById('fview').hidden = true; };
+  var gs = document.getElementById('gs'), gst = document.getElementById('gst'), gl = document.getElementById('gl');
+  if (gs) gs.onclick = function () { loadGit('status'); };
+  if (gst) gst.onclick = function () { loadGit('diff'); };
+  if (gl) gl.onclick = function () { loadGit('log'); };
+  var gfiles = document.getElementById('gfiles');
+  if (gfiles) gfiles.onclick = function (e) {
+    var b = e.target.closest('[data-gpath]');
+    if (b) loadGit('diff', b.dataset.gpath);
+  };
+})();
 var wingHandle = document.getElementById('wingHandle');
 if (wingHandle) wingHandle.onclick = function () { toggleWing(true); };
 // ── 卷宗的开/关（唯一入口）──────────────────────────────────────
@@ -2875,6 +3038,7 @@ addEventListener('resize', function () {
   if (NARROW()) document.body.classList.remove('wing-off', 'folio-off');
   else document.body.classList.remove('folio-open');
   applyLayout();
+
 });
 document.addEventListener('keydown', function (e) {
   if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
