@@ -30,7 +30,8 @@ test("B-0 不撒谎：没实现的类要明说（hook 空 + 降级项）", async
   const d = openDb(join(H(), "m.db"));
   const cap = await capabilities({ db: d.db, panel: true, commands: ["capabilities"] });
   assert.equal(cap.classes.hook.length, 0);
-  assert.ok(cap.degraded.includes("hooks-not-implemented"), "没有就说没有，不能留空当'有但不显示'");
+  // hooks 现在真做了（data/hooks.json）；没装钩子时这一类是空的，但**不再降级**
+  assert.ok(!cap.degraded.includes("hooks-not-implemented"), "hooks 已实现，不该再报降级");
   assert.equal(cap.classes.command.length, 1, "命令表只报调用方给的真实表");
 });
 

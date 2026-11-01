@@ -821,6 +821,7 @@ export function createWebServer(deps: WebDeps) {
           db: deps.db, home: deps.home, cfg: resolveConfig(deps.home),
           ollama: pf ? { base: pf.base, online: pf.online, names: pf.names, ...(pf.error ? { error: pf.error } : {}) } : null,
           ...(deps.mcpInfo ? { mcp: deps.mcpInfo } : {}),
+          hooks: (await import("../hooks.ts")).loadHooks(deps.home),
           commands: CLI_COMMANDS,
           panel: true,
         });
@@ -1752,6 +1753,16 @@ export function createWebServer(deps: WebDeps) {
             .filter((n) => Number.isFinite(n));
           if (ids.length) reinforce(deps.db, ids, now());
         } catch { /* 加固失败不影响回答 */ }
+
+        // 钩子：一轮结束（after_turn）。失败只记错误 —— 不许影响刚才那句回答。
+        try {
+          const hk = await import("../hooks.ts");
+          if (hk.loadHooks(deps.home).some((h) => h.event === "after_turn" && h.enabled !== false)) {
+            const pol2 = deps.policy ?? await loadPolicy(deps.home);
+            const fired = await hk.fireHooks(deps.home, "after_turn", { db: deps.db, policy: pol2, ctx: { home: deps.home, now } });
+            if (fired.errors.length) console.error("[hooks] " + fired.errors.join(" | "));
+          }
+        } catch (e) { console.error("[hooks] " + String(e).slice(0, 120)); }
 
         res.end();
         return;

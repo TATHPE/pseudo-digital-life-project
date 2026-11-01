@@ -57,6 +57,8 @@ export interface CapabilitiesDeps {
   db: DatabaseSync;
   /** 真实的 MCP 连接结果；没有就说明没挂 */
   mcp?: { servers: string[]; tools: string[]; errors: string[] };
+  /** 已装的钩子（data/hooks.json）。不给就当没装 —— 别假装有 */
+  hooks?: Array<{ id: string; event: string; template: string; enabled?: boolean }>;
   /** CLI 子命令（真实注册表由调用方给，避免这里硬编码） */
   commands?: string[];
   /** 面板是否在服务：true=在服务，false=该在但不在（记降级），**undefined=与本次体检无关** */
@@ -89,9 +91,12 @@ export async function capabilities(deps: CapabilitiesDeps): Promise<Capabilities
   // ── command：只报调用方给的真实命令表 ────────────────────────
   const commands: CapabilityItem[] = (deps.commands ?? []).map((c) => ({ name: c, class: "command", source: "cli" }));
 
-  // ── hook / cron：没有就空着 + 说明 ──────────────────────────
-  const hooks: CapabilityItem[] = [];
-  degraded.push("hooks-not-implemented");     // docs/11 的 6 类里这一类还没做
+  // ── hook：从 data/hooks.json 真读（2026-11-01 起不再是空类目）──
+  // 只认注册过的模板（shell.run），所以这里报的是"哪个事件点上挂了哪件事"。
+  const hooks: CapabilityItem[] = (deps.hooks ?? []).map((h) => ({
+    name: h.id, class: "hook", source: "native", tier: "T2",
+    note: h.event + " → " + h.template + (h.enabled === false ? "（已停用）" : ""),
+  }));
   const cron: CapabilityItem[] = [
     { name: "night", class: "cron", source: "cli", note: "夜间整备（可手动跑）" },
     { name: "beat", class: "cron", source: "cli", note: "心跳 tick" },

@@ -40,6 +40,30 @@ const draft = await js(`(async () => {
 })()`);
 check("一个字不答也有草稿（模板兜底，不卡死）", draft);
 
+// 终止是 H-4 的验收点：**先说再做** —— 不输入「终止」就什么都不动
+const abortFlow = await js(`(async () => {
+  const btn = document.getElementById("abort");
+  if (!btn) return "NO_BTN";
+  btn.click();
+  await new Promise((r) => setTimeout(r, 900));
+  const box = document.getElementById("abortbox");
+  const word = document.getElementById("abortword");
+  const previewShown = !box.hidden && !!word;
+  const cmd = box.textContent || "";
+  // 预览里要能看见"会删什么/会恢复什么"（至少有一句）
+  const hasLines = /删掉|恢复|停掉|删掉临时|还没改动/.test(cmd);
+  // 不输入确认词就点确定 —— 不该发生任何事（预览还在）
+  document.getElementById("abortgo").click();
+  await new Promise((r) => setTimeout(r, 600));
+  const stillThere = !document.getElementById("abortbox").hidden;
+  // 点"算了"关掉
+  document.getElementById("abortno").click();
+  await new Promise((r) => setTimeout(r, 300));
+  const closed = document.getElementById("abortbox").hidden;
+  return (previewShown && hasLines && stillThere && closed) ? true : "preview:" + previewShown + " lines:" + hasLines + " still:" + stillThere;
+})()`);
+check("终止先说再做：先给预览，不输入「终止」就什么都不动", abortFlow);
+
 check("没有 JS 运行时错误", errs.length === 0, errs.join(" | "));
 
 ws.close(); proc.kill(); try { rmSync(PROFILE, { recursive: true, force: true }); } catch {}

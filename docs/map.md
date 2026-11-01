@@ -8,7 +8,7 @@
 
 | 项 | 数量 |
 |---|---|
-| 源文件（src/**/*.ts） | 94 |
+| 源文件（src/**/*.ts） | 95 |
 | 错误码 E_* | 189 |
 | verbs | 26 |
 | CLI 子命令 | 37 |
@@ -302,6 +302,7 @@
 | `src/grant.ts` | 会话式授权（K-3）：**窗口内**可以用模型给的 argv，窗口外回到 6 个模板。 |
 | `src/handoff.ts` | 搬家协议（19 §7.4 / 09 §5）：**quiesce → export → 校验 → import → 补跑** |
 | `src/heartbeat.ts` | 心跳与主动性（01 §10）。 |
+| `src/hooks.ts` | 钩子（hooks）—— `docs/11` 六类能力里最后一块。 |
 | `src/ingest.ts` | 摄入管道（02 §5.1 转换 → §5.2 分块 → §5.3 幂等） |
 | `src/interpret.ts` | 记忆的「意义层」（H-b）—— 人性缺的第二块。 |
 | `src/interview.ts` | 人格访谈（H-4 第 ⑥ 步）。 |

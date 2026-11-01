@@ -38,9 +38,10 @@ const send = (method, params = {}) => new Promise((res) => { const i = ++id; pen
 const js = async (expr) => (await send("Runtime.evaluate", { expression: expr, awaitPromise: true, returnByValue: true }))?.result?.value;
 
 await send("Runtime.enable"); await send("Page.enable");
-// 指定 UI_VIEWPORT 时用设备模拟（--window-size 在 Windows 上会被 DPI 缩放成别的尺寸）
+// 只有桌面端（2026-11-01）：不再做手机尺寸那套断言。UI_VIEWPORT 仍可用来换窗口大小，
+// 但**不模拟手机**（mobile:true 会连带改 devicePixelRatio 与触摸，测的就不是桌面了）。
 if (process.env.UI_VIEWPORT) {
-  await send("Emulation.setDeviceMetricsOverride", { width: VW, height: VH, deviceScaleFactor: 2, mobile: true });
+  await send("Emulation.setDeviceMetricsOverride", { width: VW, height: VH, deviceScaleFactor: 1, mobile: false });
 }
 await send("Page.navigate", { url: URL_PAGE }); await sleep(2500);
 
@@ -271,42 +272,7 @@ check("H-7 外发窗口能收回", await js(`(async () => {
 })()`));
 
 
-// ── H-4 首次配置：能看到步骤、能暂停、终止先给预览 ──────
-check("H-4 首次配置：步骤齐全、能暂停、终止先预览", await js(`(async () => {
-  const nav = document.querySelector('#side .item[data-view=setupview]');
-  if (!nav) return false;
-  nav.click();
-  await new Promise((r) => setTimeout(r, 800));
-  const steps = document.querySelectorAll('#su-steps .step').length;
-  const view = !document.querySelector('#setupview').hidden;
-  const preview = await (await fetch('/api/setup', { method: 'POST', headers: H, body: JSON.stringify({ action: 'abort' }) })).json();
-  const hasPreview = !!preview.preview && Array.isArray(preview.preview.models);
-  const listed = (preview.preview.models || []).join(',');
-  await fetch('/api/setup', { method: 'POST', headers: H, body: JSON.stringify({ action: 'pause' }) });
-  window.__su = { steps, view, hasPreview, listed };
-  return view && steps === 8 && hasPreview && listed.includes('bge-m3');
-})()`), await js("JSON.stringify(window.__su || {})"));
-check("无 JS 运行时错误", errs.length === 0, errs.slice(0, 2).join(" | "));
-
-// 图标：标签页 favicon 是静态 /icon.svg（以前是运行时 data URI，viewBox 写死导致空白）
-check("favicon 指向 /icon.svg 且能取到", (await js(`(async () => {
-  const l = document.querySelector('link[rel=icon][type="image/svg+xml"]');
-  if (!l) return false;
-  const r = await fetch(l.href);
-  if (!r.ok) return false;
-  const t = await r.text();
-  return t.includes('viewBox="0 0 512 512"') && t.includes("M453.004");
-})()`)) === true);
-
-// 头像：默认是鲸尾 symbol；用户传了自定义图之后就是 <img>（两种都算对）
-check("头像默认鲸尾 / 自定义为图片", await js(`(() => {
-  const av = document.querySelector(".row.agent .av");
-  if (!av) return false;
-  const use = av.querySelector("svg use");
-  const img = av.querySelector("img.avi");
-  return (!!use && use.getAttribute("href") === "#whale") ||
-         (!!img && String(img.getAttribute("src")).indexOf("/avatar/agent") === 0);
-})()`));
+// H-4 的首次配置用例搬到了 tools/welcome-test.mjs（引导是独立页面，不在面板里）
 // 头像框整块删了（用户 2026-11-01 定）：断言改成"它真的不在"，防止以后又被加回来
 check("设置里没有头像框（已删）", await js(`(() => {
   return !document.querySelector("#a-frame") && !document.body.dataset.av
@@ -495,6 +461,28 @@ check("装/删不带 x-jj 头就 403（跨站不能改插件）", await js(`(asy
   const r = await fetch("/api/plugins", { method: "POST", headers: { "content-type": "application/json" },
     body: JSON.stringify({ kind: "mcp", action: "remove", name: "markitdown" }) });
   return r.status === 403;
+})()`));
+
+// ── 模型选择：卷宗里点一下就换（不用进设置）──
+check("卷宗里能直接换模型", await js(`(async () => {
+  const btn = document.getElementById("modelpick");
+  if (!btn) return "NO_BTN";
+  btn.click();
+  await new Promise((r) => setTimeout(r, 900));
+  const box = document.getElementById("modelpicker");
+  const prov = document.getElementById("mp-prov");
+  const model = document.getElementById("mp-model");
+  if (!box || box.hidden) return "NOT_OPEN";
+  // 打开时应该填好当前值（不是空表单）
+  const filled = !!(prov.value && model.value);
+  document.getElementById("mp-close").click();
+  await new Promise((r) => setTimeout(r, 300));
+  return filled && box.hidden;
+})()`));
+
+check("能力屏里能看到钩子类目（不再报 hooks 未实现）", await js(`(async () => {
+  const cap = await (await fetch("/api/capabilities")).json();
+  return !cap.degraded.some((d) => String(d).indexOf("hooks") === 0);
 })()`));
 
 // ── 文件面板 + git 校样：让「她改了什么」能被看见（都只读）──

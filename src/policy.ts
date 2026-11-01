@@ -57,6 +57,10 @@ p, allow, T0, git.log, *, advise
 p, allow, T0, skill.list, *, advise
 p, allow, T0, skill.read, *, advise
 p, allow, T0, shell.templates, *, advise
+# 只读模板（git.status / node --version 这类 T0/T1）直接跑：argv 写死在 shell.ts 里，没有参数槽，
+# 本来就是"看"。只写 T3 一行的时候，这类模板全被 E_NO_RULE 挡住（钩子与 jingjing shell 都踩到）。
+p, allow, T0, shell.run, shell:*, advise
+p, allow, T1, shell.run, shell:*, advise
 # T3：只能走注册过的模板（target 是 shell:<template>），且每次要一次性令牌
 p, allow, T3, shell.run, shell:*, enforce
 # 任意 argv：只有「完全权限」窗口能把它跑起来（见 src/grant.ts）
@@ -70,6 +74,8 @@ export function modelPath(home: string): string { return join(home, "policy.mode
 /** 老库升级时要补的行：只在「该 verb 一行都没有」时追加，不覆盖人写的 deny */
 const REQUIRED_RULES: Array<[string, string]> = [
   ["shell.exec", "p, allow, T3, shell.exec, shell:exec, enforce"],
+  ["shell.run-T0", "p, allow, T0, shell.run, shell:*, advise"],
+  ["shell.run-T1", "p, allow, T1, shell.run, shell:*, advise"],
   ["git.status", "p, allow, T1, git.status, *, advise"],
   ["git.diff", "p, allow, T1, git.diff, *, advise"],
   ["git.log", "p, allow, T0, git.log, *, advise"],

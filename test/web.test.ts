@@ -95,7 +95,10 @@ test("GET / 分流：没配完给引导页，?skip=1 给主面板；/api/state �
     assert.ok(!html.includes("--accent:#ff5a2c"), "不要站酷的橙色主色");
     // 布局：侧栏 + 主列（对齐 pi-web 的排列）
     assert.ok(html.includes("grid-template-areas"), "应有侧栏布局");
-    assert.ok(html.includes('id="side"') && html.includes("SESSIONS") && html.includes("TOOLS"), "侧栏要有会话/工具");
+    assert.ok(html.includes('id="side"'), "要有左栏");
+    // 左栏现在的三段：她 / 今天 / 去处（改过两次，钉新结构别再钉旧文案）
+    assert.ok(html.includes("今 天") && html.includes("去 处"), "左栏要有「今天 / 去处」两段");
+    assert.ok(html.includes('data-view="memlistview"') && html.includes('data-view="cfg"'), "去处要有入口行");
     // 可视化：markdown 渲染 + 工具卡
     assert.ok(html.includes("details.tool"), "工具调用要能展开");
     assert.ok(html.includes("pre.code"), "代码块要有样式");
@@ -654,7 +657,8 @@ test("面板：头像可换 / 三个分区可折叠 / 气泡两侧不同", () =>
 test("写着“点开看全部”的东西必须真的是按钮（不是 hint 文案）", () => {
   // 这条是踩过的坑：文案让用户去点，但它是个 <div class=hint>，根本点不动。
   // 左栏现在只留入口行，列表本体在中栏；入口行必须是 button + data-view。
-  for (const v of ["memlistview", "docsview", "auditview", "setupview", "cfg"]) {
+  // 首次配置不再是侧栏入口：引导是首启自动弹的（/welcome）
+  for (const v of ["memlistview", "docsview", "auditview", "cfg"]) {
     const re = new RegExp('<button class="item"[^>]*data-view="' + v + '"');
     assert.ok(re.test(PAGE), "左栏入口 " + v + " 必须是 button + data-view");
   }
@@ -682,8 +686,9 @@ test("仪表带与 ticker：8 个读数格 + 分段条 + 底部状态带（数�
     const h = await (await fetch(`${base}/health`)).json() as any;
     assert.ok("release" in h && "uptimeS" in h, "RELEASE/UPTIME 来自 /health");
 
-    // 手机上仪表带与 ticker 必须收起（窄屏会挤成一行糊）
-    assert.ok(PAGE.includes("#readoutbar, .ticker { display:none; }"), "手机上收起");
+    // 只有桌面端（2026-11-01）：不再有窄屏媒体查询，仪表带与 ticker 恒定显示
+    assert.ok(!PAGE.includes("max-width: 860px"), "手机端那套媒体查询已删");
+    assert.ok(!PAGE.includes('id="menu"'), "手机抽屉的 ≡ 按钮已删");
   } finally { srv.close(); }
 });
 

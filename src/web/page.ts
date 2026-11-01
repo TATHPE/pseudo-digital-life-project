@@ -138,10 +138,6 @@ export const PAGE = `<!doctype html>
          animation:breathe 3.4s ease-in-out infinite; }
   @keyframes breathe { 0%,100%{opacity:1} 50%{opacity:.35} }
   .tname { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  #menu { display:none; align-items:center; justify-content:center; width:34px; height:34px; flex:none;
-          background:#000; border:1px solid var(--line); color:var(--ink); font-weight:700; cursor:pointer;
-          font:16px/1 var(--mono); padding:0; }
-  #menu:hover { border-color:var(--ink); background:rgba(233,240,242,.10); }
   .chip { margin-left:auto; font:10px/1 var(--mono); letter-spacing:.1em; color:var(--ink); font-weight:700;
           border:1px solid var(--line); background:#000; padding:6px 10px; }
   /* ── 侧栏：纯黑 + 白细线 + 格子状条目（照参照图的“框装读数”）── */
@@ -434,32 +430,6 @@ export const PAGE = `<!doctype html>
     body.folio-open #folio { transform:none; }
   }
 
-  @media (max-width: 860px) {
-    body { grid-template-columns:1fr; grid-template-rows:var(--head) 1fr; grid-template-areas:"head" "main"; }
-    #readoutbar, .ticker { display:none; }
-    /* 手机上 chip 占位后，长 placeholder 会换行顶出输入框（截图抓到的） */
-    #composer .wrap { align-items:center; }
-    #m { overflow:hidden; }
-    /* 抽屉：手机上不能是半透明的——聊天内容会透出来，看不出哪层在上 */
-    aside#side { position:fixed; z-index:12; top:var(--head); bottom:0; left:0; width:82vw; max-width:320px;
-            transform:translateX(-102%); transition:.22s; border-right:1px solid var(--line);
-            background:var(--void); }
-    aside#side.open { transform:none; }
-    /* 遮罩用 box-shadow 而不是伪元素：伪元素 z-index:-1 会被 aside 自己的背景盖住，等于没有 */
-    aside#side.open { box-shadow:0 0 0 100vmax rgba(0,0,0,.5); }
-    /* 卷宗在手机上就是一张从右边推出来的抽屉，默认完全藏起来 */
-    #folioTog { display:inline-block; }
-    #folio { left:auto; right:0; width:min(88vw,380px); max-width:none; transform:translateX(103%); }
-    body.folio-open #folio { transform:none; box-shadow:0 0 0 100vmax rgba(0,0,0,.5); }
-    .chip { display:none; }
-    /* 窄屏状态行分级：保留时间与计数，收起那句描述（它最长、最容易被截成半句） */
-    #statetext { display:none; }
-    #menu { display:inline-flex; }
-    #stagebar { padding:0 14px; height:40px; }
-    .wsearch kbd { display:none; }
-    /* 底部装饰标签会和输入框叠在一起，手机上直接不要 */
-    .frame b { display:none; }
-  }
   /* ── 自定义头像 ────────────────────────────────── */
   .av .avi { width:100%; height:100%; object-fit:cover; display:block; }
   .avav { display:flex; align-items:center; gap:10px; margin:6px 0 10px; }
@@ -587,6 +557,11 @@ export const PAGE = `<!doctype html>
   .permchip { max-width:42%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .permchip:focus-visible { outline:1px solid var(--fg); outline-offset:2px; }
   .permchip.full { color:var(--fg); border-color:var(--fg); }
+  #modelpicker { position:fixed; left:0; right:0; top:0; bottom:0; z-index:60; background:rgba(0,0,0,.72);
+    display:flex; align-items:flex-end; justify-content:center; padding:0 16px 88px; }
+  #modelpicker .permbox { width:100%; max-width:520px; border:1px solid var(--line); background:#000; padding:14px 16px; }
+  #modelpicker label { display:block; font:9px/1 var(--mono); letter-spacing:.16em; color:var(--dim); margin:10px 0 4px; }
+  #modelpicker input, #modelpicker select { width:100%; background:#000; color:var(--fg); border:1px solid var(--line-dim); padding:8px 10px; font:12px/1.5 var(--mono); }
   #permpop { position:fixed; left:0; right:0; top:0; bottom:0; z-index:60; background:rgba(0,0,0,.72);
     display:flex; align-items:flex-end; justify-content:center; padding:0 16px 88px; }
   #permpop .permbox { width:100%; max-width:520px; border:1px solid var(--line); background:#000; padding:14px 16px; }
@@ -676,7 +651,6 @@ export const PAGE = `<!doctype html>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><symbol id="whale" viewBox="0 0 512 512"><path fill="currentColor" d="M453.004 35.117c-65.314 46.61-189.755 41.018-213.559 125.426C184.41 101.41 98.625 83.031 21.771 63.209c6.532 139.103 71.38 147.437 192.44 194.547c23.71 25.786 29.786 49.93 19.254 82.705c46.403 5.1 71.504 15.468 106.754 27.742c-.708-71.67-25.14-108.928-75.518-175.035c11.058 4.233 44.979 37.02 56.578 58.607c109.419-42.421 147.64-112.074 131.725-216.658M180.178 353.9c-60.89-.24-114.034 19.49-158.426 74.221c167.075-48.84 292.003-13.21 471.893 7.895c-118.936-38.752-224.474-81.763-313.467-82.116m98.043 77.844c-99.28.255-206.34 18.738-256.866 63.139c168.002-26.61 356.801-28.408 470.8-4.967c1.102-35.337-101.418-58.46-213.934-58.172"/></symbol></svg>
 <div class="frame"><i></i><i></i><i></i><i></i><b class="bl">LOCAL · 127.0.0.1</b><b class="br">MEMORY CORE</b></div>
 <header>
-  <button id="menu" aria-label="菜单" title="菜单">≡</button>
   <span class="brand" aria-label="鲸鲸"><svg class="ico" role="img" aria-hidden="false"><use href="#whale" /></svg></span>
   <span class="hud" title=""><i class="dot"></i><span id="state">…</span><span id="statetext"></span></span>
   <span id="pendbadge" class="badge" hidden>0</span>
@@ -717,7 +691,6 @@ export const PAGE = `<!doctype html>
       <div id="toolrows"><button class="item on" data-view="chat">对话<span class="m">与鲸鲸说话</span></button></div>
       <button class="item dimmore" id="toolmore" hidden>显示全部</button>
     </div>
-    <button class="item" type="button" data-view="setupview">首次配置<span class="m">装模型 / 配 API / 人格</span></button>
     <button class="item" type="button" data-view="cfg">设置<span class="m">接口 / 人格</span></button>
   </div>
 </aside>
@@ -771,21 +744,6 @@ export const PAGE = `<!doctype html>
       </div>
     </div>
 
-    <div id="setupview" hidden>
-      <div class="panelbox">
-        <h2>S E T U P · 首次配置</h2>
-        <p class="hint" id="su-lead">这台机器还缺几样东西。每一步都可以<b>暂停</b>或<b>终止</b>；终止会把这一步动过的东西<b>按账清回去</b>。</p>
-        <div id="su-steps"></div>
-        <div class="acts">
-          <button id="su-start" class="primary">开始</button>
-          <button id="su-pause">暂停</button>
-          <button id="su-abort" class="no">终止…</button>
-          <span id="su-msg" class="hint"></span>
-        </div>
-        <p class="hint" id="su-job"></p>
-        <div id="su-panel" class="panelbox" hidden></div>
-      </div>
-    </div>
     <div id="memview" hidden>
       <div class="panelbox">
         <h2>记忆 · MEMORY</h2>
@@ -971,6 +929,13 @@ description: 周日晚上把这一周压成三句话。
       </div>
 
       <div class="panelbox">
+        <h2>SETUP · 重新过一遍引导</h2>
+        <p class="hint">引导是<b>第一次打开软件时自动弹</b>的（/welcome）。要再看一遍装了什么、或者从头配一次，从这里进。</p>
+        <div class="acts"><button type="button" id="gotoWelcome">打开引导页</button>
+          <span class="hint" id="welcome-msg"></span></div>
+      </div>
+
+      <div class="panelbox">
         <h2>ENDPOINT · 接口</h2>
         <div class="two">
           <div><label>provider</label>
@@ -1113,6 +1078,17 @@ description: 周日晚上把这一周压成三句话。
   </div>
 </aside>
 
+<div id="modelpicker" hidden role="dialog" aria-modal="true" aria-label="换模型">
+  <div class="permbox">
+    <p class="hint">换的是<b>表达模型</b>（回答你用的那个）。本地模型只管记忆整理，不参与对话。</p>
+    <label>provider</label>
+    <select id="mp-prov"><option value="deepseek">deepseek</option><option value="anthropic">anthropic</option><option value="openai">openai</option></select>
+    <label>model</label>
+    <input id="mp-model" placeholder="deepseek-flash" autocomplete="off">
+    <div class="acts"><button id="mp-save" class="primary">保存</button><button id="mp-close">关闭</button><span id="mp-msg" class="hint"></span></div>
+  </div>
+</div>
+
 <div id="permpop" hidden role="dialog" aria-modal="true" aria-label="权限档"><div class="permbox">
   <p class="hint">这是<b>当前会话</b>的权限档。改完立刻生效，关掉面板就回到逐次确认。</p>
   <div id="permopts"></div>
@@ -1138,13 +1114,13 @@ const VIEWNAME = { chat: "对话 · CHAT", cfg: "设置 · CONFIG", toolview: "�
   memview: "记忆 · MEMORY", memlistview: "记忆 · MEMORY", docview: "文档 · DOC", capview: "能力 · CAPABILITIES",
   filesview: "文件 · PROJECT", gitview: "校样 · GIT",
   docsview: "文档 · DOCS", auditview: "动作 · ACTIONS",
-  searchview: "搜索 · SEARCH", propview: "它想做的一件事", setupview: "首次配置 · SETUP" };
+  searchview: "搜索 · SEARCH", propview: "它想做的一件事" };
 function show(v, opts) {
   // 切走时把滚动位置存下来：隐藏 #chat 会让 #scroll 的 scrollHeight 塌成 0，浏览器会把 scrollTop 归零
   if (view === "chat" && v !== "chat") chatScroll = $("#scroll").scrollTop;
   view = v;
   document.body.dataset.view = v;   // CSS 用它把「回到最新」锁在对话里
-  for (const id of ["chat", "cfg", "toolview", "memview", "memlistview", "docview", "docsview", "auditview", "capview", "filesview", "gitview", "searchview", "propview", "setupview"]) $("#" + id).hidden = id !== v;
+  for (const id of ["chat", "cfg", "toolview", "memview", "memlistview", "docview", "docsview", "auditview", "capview", "filesview", "gitview", "searchview", "propview"]) $("#" + id).hidden = id !== v;
   $("#composer").style.display = v === "chat" ? "" : "none";
   // "回到最新"是对话专用的，别的界面不该出现
   if (v !== "chat") $("#jump").classList.remove("on");
@@ -1189,7 +1165,6 @@ function show(v, opts) {
   if (sideActive && sideActive.isConnected && !navOnly(sideActive) && sideActive.dataset.view === v) {
     sideActive.classList.add("on");
   }
-  $("#side").classList.remove("open");
   // 标题条（照 Trianon 的 stage 顶部）：当前在哪一屏，别让人靠猜
   const st = $("#stTitle"); if (st) st.textContent = VIEWNAME[v] || v;
   const sub = $("#stSub"); if (sub) sub.textContent = v === "chat" ? "本地 · 记忆库" : "";
@@ -1289,7 +1264,7 @@ async function pending() {
   const sec = $("#pendsec"), box = $("#pendlist");
   const open = (list || []).filter((p) => p.status === "pending" && !p.expired);
   paintPendBadge(open.length);
-  loadProposals(); loadSurfaceReview(); loadThreads(); loadReceipts(); loadStanding(); loadPermission(); loadEgress(); loadSetup(false); loadCapPage();
+  loadProposals(); loadSurfaceReview(); loadThreads(); loadReceipts(); loadStanding(); loadPermission(); loadEgress(); loadCapPage();
   sec.hidden = open.length === 0;
   if (!open.length) { box.innerHTML = ""; return; }
   box.innerHTML = open.map((p) =>
@@ -1993,227 +1968,6 @@ function pushTicker(msg) {
 }
 
 // ── 首次配置（H-4）：可暂停、可终止，终止先给预览 ────────
-var SETUP_STEPS = ["detect", "ollama", "embed", "chat", "api", "persona", "smoke", "first"];
-var SU_LABEL = {
-  detect: "① 看看这台机器", ollama: "② 装 Ollama", embed: "③ 装 embedding（不能跳）",
-  chat: "④ 本地对话模型（可选）", api: "⑤ 配云端 API", persona: "⑥ 人格访谈",
-  smoke: "⑦ 试运行", first: "⑧ 让它说第一句话",
-};
-var SU_DESC = {
-  detect: "只读：内存、显卡、ollama、已有模型、有没有云端 key",
-  ollama: "没有就装。装不上会给两条退路（手动装 / 跳过本地只配云端）",
-  embed: "bge-m3。chat 可以云端兜底，embedding 没有语义检索就退化成词法",
-  chat: "按内存推荐。有云端 key 也能跳过 —— 只是夜间抽取会停",
-  api: "云端表达模型。没有它也能记，只是不能聊",
-  persona: "5 个问题 → 6 块草稿 → 逐块确认 → 封存（开第 1 代）",
-  smoke: "用假数据跑一轮抽取 + 自传，先听 voice，不满意免费改",
-  first: "不弹「配置成功」，让它直接说第一句话",
-};
-var SU = null;
-async function loadSetup(detect) {
-  try { SU = await (await fetch("/api/setup" + (detect ? "?detect=1" : ""))).json(); } catch (e) { return; }
-  paintSetup();
-}
-function paintSetup() {
-  var box = $("#su-steps");
-  if (!box) return;
-  var cur = SU && SU.session ? SU.session.step : "detect";
-  var done = SU && SU.session ? SU.session.log.map(function (x) { return x.step; }) : [];
-  box.innerHTML = SETUP_STEPS.map(function (k) {
-    var isDone = done.indexOf(k) >= 0;
-    var isNow = k === cur;
-    return "<div class='step" + (isNow ? " now" : isDone ? " done" : "") + "'>" +
-      "<span class='k'>" + escapeHtml(SU_LABEL[k] || k) + "</span>" +
-      "<span class='v'>" + escapeHtml(SU_DESC[k] || "") + (isDone ? " · 已完成" : "") + "</span></div>";
-  }).join("");
-  var st = SU && SU.session ? SU.session.status : "idle";
-  $("#su-start").textContent = st === "idle" ? "开始" : st === "paused" ? "继续" : "跑这一步";
-  $("#su-msg").textContent = st === "aborted" ? "上一轮已终止并清理" : "";
-  var job = SU && SU.job;
-  $("#su-job").textContent = job && job.running ? "进行中：" + (SU_LABEL[job.step] || job.step) + " …" : (job && job.note ? job.note : "");
-  paintSetupPanel();
-  // 第一次进来：探测一次（只读）
-  if (SU && !SU.detected && !SU._detectedOnce) { SU._detectedOnce = true; loadSetup(true); }
-}
-$("#su-start").addEventListener("click", async function () {
-  var st = SU && SU.session ? SU.session.status : "idle";
-  if (st === "idle" || !SU || !SU.session) {
-    await fetch("/api/setup", { method: "POST", headers: H, body: JSON.stringify({ action: "start" }) });
-    await loadSetup(true);
-    return;
-  }
-  if (st === "paused") {
-    await fetch("/api/setup", { method: "POST", headers: H, body: JSON.stringify({ action: "resume" }) });
-    await loadSetup();
-    return;
-  }
-  var step = SU.session.step;
-  var r = await (await fetch("/api/setup", { method: "POST", headers: H, body: JSON.stringify({ action: "run", step: step }) })).json();
-  $("#su-job").textContent = "进行中：" + (SU_LABEL[step] || step) + " …";
-  if (!r.ok) $("#su-msg").textContent = r.error || "启动失败";
-  pollSetup();
-});
-function pollSetup() {
-  var t = setInterval(async function () {
-    await loadSetup(false);
-    var job = SU && SU.job;
-    if (!job || !job.running) { clearInterval(t); await loadSetup(true); }
-  }, 1500);
-}
-$("#su-pause").addEventListener("click", async function () {
-  await fetch("/api/setup", { method: "POST", headers: H, body: JSON.stringify({ action: "pause" }) });
-  await loadSetup();
-  $("#su-msg").textContent = "已暂停：账本还在，接着跑不会重装";
-});
-$("#su-abort").addEventListener("click", async function () {
-  // **先说再做**：先把会删/会恢复的东西列出来，人确认了才动手
-  var p = await (await fetch("/api/setup", { method: "POST", headers: H, body: JSON.stringify({ action: "abort" }) })).json();
-  if (!p.ok) return;
-  var pv = p.preview || {};
-  var lines = [];
-  if ((pv.models || []).length) lines.push("删掉我们下载的模型：" + pv.models.join("、"));
-  if ((pv.files || []).length) lines.push("把改过的配置恢复原样：" + pv.files.join("、"));
-  if ((pv.processes || []).length) lines.push("停掉我们起的进程：" + pv.processes.join("、"));
-  if ((pv.dirs || []).length) lines.push("删掉临时目录：" + pv.dirs.join("、"));
-  if (!lines.length) lines.push("这一轮还没改动任何东西（只是探测），终止不会删任何文件。");
-  var NL = String.fromCharCode(10);
-  var typed = prompt("终止会做这些：" + NL + NL + lines.join(NL) + NL + NL + "要终止就输入：终止");
-  if (typed !== "终止") { $("#su-msg").textContent = "没有确认，什么都没动"; return; }
-  var done = await (await fetch("/api/setup", { method: "POST", headers: H, body: JSON.stringify({ action: "abort", confirm: true }) })).json();
-  var rep = done.report || {};
-  $("#su-msg").textContent = "已清理：" + ((rep.removedModels || []).length) + " 个模型 / " + ((rep.restoredFiles || []).length) + " 个文件" +
-    ((rep.failed || []).length ? "；没清掉的：" + rep.failed.join("；") : "");
-  await loadSetup();
-});
-// ── 首次配置：当前步骤的实际界面（⑤ API ⑥ 人格 ⑦ 试运行 ⑧ 第一句话）──
-var SU_IV = null;
-async function paintSetupPanel() {
-  var box = $("#su-panel");
-  if (!box) return;
-  var step = SU && SU.session ? SU.session.step : null;
-  if (!step || !["api", "persona", "smoke", "first"].includes(step)) { box.hidden = true; return; }
-  box.hidden = false;
-  if (step === "api") {
-    box.innerHTML = "<p class='hint'>云端表达模型：没有它也能记，只是不能聊。key 存在本机（DPAPI 加密）。</p>" +
-      "<div class='two'><div><label>provider</label><select id='su-prov'><option value='deepseek'>deepseek</option><option value='openai'>openai</option><option value='anthropic'>anthropic</option></select></div>" +
-      "<div><label>model</label><input id='su-model' placeholder='deepseek-chat'></div></div>" +
-      "<label>api key</label><input id='su-key' type='password' placeholder='sk-…' autocomplete='off'>" +
-      "<div class='acts'><button id='su-api-save' class='primary'>保存并继续</button><span id='su-api-msg' class='hint'></span></div>";
-    $("#su-api-save").onclick = async function () {
-      var msg = $("#su-api-msg"); msg.textContent = "保存中…";
-      var body = { provider: $("#su-prov").value, model: $("#su-model").value || undefined, key: $("#su-key").value || undefined };
-      var r = await (await fetch("/api/config", { method: "PUT", headers: H, body: JSON.stringify(body) })).json();
-      if (!r.ok) { msg.className = "err"; msg.textContent = r.error || "保存失败"; return; }
-      await fetch("/api/setup", { method: "POST", headers: H, body: JSON.stringify({ action: "run", step: "api" }) });
-      msg.className = "ok"; msg.textContent = "已保存";
-      await loadSetup();
-    };
-    return;
-  }
-  if (step === "persona") {
-    box.innerHTML = "<p class='hint'><b>先说一句：这 5 个回答会发给云端模型做整理</b>（只这一次；不写进记忆，也不发你的记忆原文）。</p>" +
-      "<p class='hint'>5 个问题 → 模型写成 6 块草稿 → 你逐块确认 → 封存。<b>只有你自己说过的话才会被标成「你原话」</b>（这一条是代码校验的，不是提示词）。</p>" +
-      "<div id='su-qs'><p class='hint'>正在取问题…</p></div>";
-    var iv = SU_IV || await (await fetch("/api/setup/interview")).json();
-    SU_IV = iv;
-    $("#su-qs").innerHTML = (iv.questions || []).map(function (q) {
-      return "<div class='q'><label>" + escapeHtml(q.q) + "</label>" +
-        "<textarea id='su-a-" + escapeHtml(q.id) + "' placeholder='" + escapeHtml(q.fallback) + "'></textarea></div>";
-    }).join("") + "<div class='acts'><button id='su-iv-go' class='primary'>让模型写草稿</button><span id='su-iv-msg' class='hint'></span></div><div id='su-draft'></div>";
-    $("#su-iv-go").onclick = async function () {
-      var msg = $("#su-iv-msg"); msg.textContent = "写草稿中…";
-      var answers = {};
-      (SU_IV.questions || []).forEach(function (q) { answers[q.id] = ($("#su-a-" + q.id).value || "").trim(); });
-      var filled = Object.keys(answers).filter(function (k) { return answers[k]; });
-      if (!filled.length) {
-        msg.className = "err";
-        msg.textContent = "先回答几个问题（哪怕一句）。一个字都不填，模型只会写出「未提供具体内容」这种废话。";
-        return;
-      }
-      var r = await (await fetch("/api/setup/interview", { method: "POST", headers: H, body: JSON.stringify({ action: "draft", answers: answers }) })).json();
-      // why 是人话，error 是错误码：先显示 why
-      if (!r.ok) { msg.className = "err"; msg.textContent = r.why || r.error || "写不出来"; return; }
-      msg.className = "hint"; msg.textContent = (r.draft.via === "template" ? "（没有可用模型，用你的原话 + 中立模板拼的）" : "模型写的") + " · 需要你确认的 " + r.modelAdded + " 条";
-      renderDraft(r.draft);
-    };
-    if (iv.draft) renderDraft(iv.draft);
-    return;
-  }
-  if (step === "smoke") {
-    box.innerHTML = "<p class='hint'>用假数据跑一轮，先听 voice。不满意就回上一步改（<b>封存前的修改是免费的</b>）。</p>" +
-      "<div class='acts'><button id='su-smoke' class='primary'>跑一次</button><span id='su-smoke-msg' class='hint'></span></div><div id='su-smoke-out'></div>";
-    $("#su-smoke").onclick = async function () {
-      $("#su-smoke-msg").textContent = "跑…";
-      var r = await (await fetch("/api/setup/smoke", { method: "POST", headers: H, body: JSON.stringify({}) })).json();
-      $("#su-smoke-msg").textContent = r.via === "template" ? "没有表达模型，下面是模板" : ("用时 " + r.ms + "ms");
-      $("#su-smoke-out").innerHTML = "<div class='reply'>" + escapeHtml(r.reply) + "</div>" +
-        ((r.note) ? "<p class='hint'>" + escapeHtml(r.note) + "</p>" : "") +
-        "<p class='hint'>它会这样看待这段假对话：</p>" + (r.extracted || []).map(function (x) { return "<div class='hint'>· " + escapeHtml(x) + "</div>"; }).join("");
-      await fetch("/api/setup", { method: "POST", headers: H, body: JSON.stringify({ action: "run", step: "smoke" }) });
-      await loadSetup();
-    };
-    return;
-  }
-  if (step === "first") {
-    box.innerHTML = "<p class='hint'>不弹「配置成功」。让它直接说第一句话 —— 同时验证整条链路通了。</p>" +
-      "<div class='acts'><button id='su-first' class='primary'>让它开口</button><span id='su-first-msg' class='hint'></span></div><div id='su-first-out'></div>";
-    $("#su-first").onclick = async function () {
-      $("#su-first-msg").textContent = "…";
-      var r = await (await fetch("/api/setup/first", { method: "POST", headers: H, body: JSON.stringify({}) })).json();
-      $("#su-first-msg").textContent = r.written ? "（已写进 journal，之后它就是这条时间线的第一句）" : "（没写进 journal）";
-      $("#su-first-out").innerHTML = "<div class='reply' style='color:var(--cyan-hi)'>" + escapeHtml(r.text) + "</div>";
-      await fetch("/api/setup", { method: "POST", headers: H, body: JSON.stringify({ action: "run", step: "first" }) });
-      await loadSetup();
-    };
-    return;
-  }
-}
-// 草稿：**六块全列**（空的也列，写「还是出厂默认」），每行带着它的出处。
-// 出处不能被面板改掉：interview.ts 的铁律是「模型写的每一行要么能在你回答里逐字找到，
-// 要么标成『模型补的，请确认』」。之前这里保存时不看 source、一律写成「你原话」，
-// 等于把那条校验绕过去了 —— 封存出来的 persona 会把模型编的话挂上你的名字。
-var DRAFT_BLOCKS = ['core', 'boundaries', 'values', 'voice', 'evidence', 'tools'];
-function renderDraft(d) {
-  var box = document.getElementById('su-draft');
-  if (!box) return;
-  var html = '';
-  var empty = [];
-  DRAFT_BLOCKS.forEach(function (k) {
-    var lines = (d.blocks || {})[k] || [];
-    if (!lines.length) { empty.push(k); return; }
-    html += '<p class="hint" style="margin-top:12px">#' + k + '</p>';
-    lines.forEach(function (l, i) {
-      var mine = l.source === '你原话';
-      html += '<div class="draftline' + (mine ? ' mine' : '') + '">' +
-        '<span class="src">' + (mine ? '你原话' : '请确认') + '</span>' +
-        '<input data-blk="' + k + '" data-i="' + i + '" data-src="' + (mine ? '你原话' : '模型补的') + '" value="' + escapeHtml(l.text) + '"></div>';
-    });
-  });
-  if (empty.length) {
-    html += '<p class="hint" style="margin-top:12px">这几块访谈里没说到，封存后会<b>保持出厂默认</b>：' +
-      empty.map(function (k) { return '#' + k; }).join(' · ') + '（之后可在设置 → 人格里补）</p>';
-  }
-  html += '<div class="acts" style="margin-top:12px"><button id="su-seal" class="primary">封存（开第 1 代）</button><span id="su-seal-msg" class="hint"></span></div>';
-  box.innerHTML = html;
-  document.getElementById('su-seal').onclick = async function () {
-    var msg = document.getElementById('su-seal-msg'); msg.className = 'hint'; msg.textContent = '封存中…';
-    var blocks = {};
-    document.querySelectorAll('#su-draft input[data-blk]').forEach(function (inp) {
-      var k = inp.dataset.blk;
-      var src = inp.dataset.src === '你原话' ? '你原话' : '模型补的（请确认）';
-      (blocks[k] = blocks[k] || []).push({ text: inp.value, source: src });
-    });
-    await fetch('/api/setup/interview', { method: 'POST', headers: H, body: JSON.stringify({ action: 'save', blocks: blocks }) });
-    var r = await (await fetch('/api/setup/interview', { method: 'POST', headers: H, body: JSON.stringify({ action: 'seal', because: '首次封存（面板）' }) })).json();
-    if (!r.ok) { msg.className = 'err'; msg.textContent = r.error || '封存失败'; return; }
-    msg.className = 'ok'; msg.textContent = r.note;
-    await fetch('/api/setup', { method: 'POST', headers: H, body: JSON.stringify({ action: 'run', step: 'persona' }) });
-    // 封存后立刻把世代/人格读回来：不然设置里看到的还是旧的（要刷新才变）
-    await loadGeneration();
-    if (document.getElementById('p-file')) await loadPersona(document.getElementById('p-file').value);
-    await loadSetup();
-  };
-}
 // ── 分代（H-5）：显示当前第几代，并说清"改动只向前生效" ──
 // ── 文件面板：只读浏览项目两个根（白名单在服务端 project.read/list）──
 var TREE = [], FCUR = "", FSEEN = 40;
@@ -2297,6 +2051,45 @@ async function loadGit(what, path) {
   pre.textContent = j.output || "（没有内容）";
   pre.scrollTop = 0;
 }
+
+// 引导页是首启自动弹的；这里给一个手动入口（排障 / 重来）
+(function () {
+  var b = document.getElementById('gotoWelcome');
+  if (b) b.onclick = function () { location.href = '/welcome'; };
+})();
+
+// ── 换模型（卷宗里那一行的入口）：只改 express 的 provider/model ──
+(function () {
+  var box = document.getElementById('modelpicker');
+  if (!box) return;
+  function openPicker() {
+    var cfg = { provider: 'deepseek', model: '' };
+    fetch('/api/config').then(function (r) { return r.json(); }).then(function (j) {
+      var p = document.getElementById('mp-prov'), m = document.getElementById('mp-model');
+      if (j && j.provider) p.value = j.provider;
+      if (j && j.model) m.value = j.model;
+      box.hidden = false;
+      m.focus();
+    }).catch(function () { box.hidden = false; });
+  }
+  // 用事件委托：卷宗每 20 秒会重画，按钮会被换掉
+  document.addEventListener('click', function (e) {
+    if (e.target && e.target.id === 'modelpick') openPicker();
+  });
+  document.getElementById('mp-close').onclick = function () { box.hidden = true; };
+  document.getElementById('mp-save').onclick = async function () {
+    var msg = document.getElementById('mp-msg');
+    var provider = document.getElementById('mp-prov').value;
+    var model = document.getElementById('mp-model').value.trim();
+    if (!model) { msg.className = 'hint err'; msg.textContent = '要填模型名'; return; }
+    msg.className = 'hint'; msg.textContent = '保存中…';
+    var j = await (await fetch('/api/config', { method: 'PUT', headers: H, body: JSON.stringify({ provider: provider, model: model }) })).json();
+    if (!j || !j.ok) { msg.className = 'hint err'; msg.textContent = (j && (j.why || j.error)) || '保存失败'; return; }
+    msg.className = 'hint ok'; msg.textContent = '已换成 ' + provider + '/' + model;
+    await loadDossier();
+    setTimeout(function () { box.hidden = true; }, 600);
+  };
+})();
 
 // ── 超级权限（设置里唯一的入口）──────────────────────────────
 async function loadSuper() {
@@ -2839,7 +2632,6 @@ document.addEventListener("click", (e) => {
     sideActive = t;
     for (const b of document.querySelectorAll("#side .item")) b.classList.toggle("on", b === t);
   }
-  if (v === "setupview") { show("setupview"); loadSetup(false); return; }
   if (v === "cfg") { show("cfg"); loadSuper(); loadConfig().then(() => loadPersona($("#p-file").value)); return; }
   if (v === "toolview") { openTool(Number(t.dataset.tool)); return; }
   if (v === "memview") { openMemory(Number(t.dataset.mem)); return; }
@@ -2854,13 +2646,6 @@ document.addEventListener("click", (e) => {
 });
 $("#p-file").onchange = (e) => loadPersona(e.target.value);
 // 头像框：改完立刻套上（不等服务端），再把选择存住
-// 移动端：点主区域收起抽屉
-document.addEventListener("click", (e) => {
-  const side = $("#side");
-  if (!side.classList.contains("open")) return;
-  if (e.target.closest("#side")) return;
-  side.classList.remove("open");
-});
 // 清除密钥：两步确认（第一次只是"你确定？"，4 秒后自动复位）
 let clearArmed = 0;
 $("#c-clear").onclick = async () => {
@@ -2980,6 +2765,7 @@ function renderDossier() {
   if (stages) ctxh += dline('分层', stages, '');
   ctxh += dline('文档', (c.docs || 0) + ' 篇 / ' + (c.chunks || 0) + ' 块', '');
   ctxh += dline('模型', c.model || '未配置', '');
+  ctxh += '<div class="dact"><button type="button" id="modelpick">换模型</button></div>';
   ctxh += dline('今天用量', (c.todayTokens || 0) + ' tok · $' + Number(c.todayUsd || 0).toFixed(4), '');
   var pl = c.plugins || {};
   ctxh += dline('能借的手脚', '插件 ' + (pl.servers || 0) + ' · 工具 ' + (c.tools || 0) + ' · 技能 ' + (c.skills || 0), 'MCP / verbs / SKILL.md');
@@ -3242,9 +3028,7 @@ else { const n = Number($("#jumpn").textContent || 0) + 1; $("#jumpn").textConte
   }
   await timeline(); await state(); await memories(); await pending(); await audit();
 };
-// 手机上侧栏是抽屉：没有这个按钮，SESSIONS/DOCS/MEMORY/TOOLS/CONFIG 全都不可达
-$("#menu").onclick = (e) => { e.stopPropagation(); $("#side").classList.toggle("open"); };
-loadAvatars(); applySections(); state(); timeline(); sessions(); tools(); memories(); docs(); audit(); readout(); loadConfig(); pending(); usage(); loadProposals(); loadSurfaceReview(); loadThreads(); loadReceipts(); loadStanding(); loadEgress(); loadSetup(false);
+loadAvatars(); applySections(); state(); timeline(); sessions(); tools(); memories(); docs(); audit(); readout(); loadConfig(); pending(); usage(); loadProposals(); loadSurfaceReview(); loadThreads(); loadReceipts(); loadStanding(); loadEgress();
 setInterval(() => { state(); pending(); audit(); readout(); loadEgress(); }, 20000);
 </script>
 </body></html>`;
