@@ -19,21 +19,20 @@ test("默认是关的；文件坏了也当没开（不给自己开后门）", ()
   assert.equal(superEnabled(home), false);
 });
 
-test("开要理由（≥4 字）；关随时可以", () => {
+test("点一下就能开（确认步骤已取消，2026-11-01）；关随时可以", () => {
   const home = H();
-  const bad = enableSuper(home, { because: "开" });
-  assert.equal(bad.ok, false);
-  if (!bad.ok) assert.equal(bad.code, "E_NO_REASON");
-
-  const ok = enableSuper(home, { because: "要它自己迁移记忆库" });
+  // 不写理由也能开 —— 只管留痕，不拦人
+  const ok = enableSuper(home, {});
   assert.equal(ok.ok, true);
   if (ok.ok) {
     assert.equal(ok.state.enabled, true);
-    assert.ok(ok.state.since);
-    assert.equal(ok.state.because, "要它自己迁移记忆库");
+    assert.equal(ok.state.because, "（没写理由）", "没写就说没写，不假装有理由");
   }
   assert.equal(superEnabled(home), true);
-  assert.equal(existsSync(join(home, "super.json")), true);
+  // 写了理由就记下来
+  const withWhy = enableSuper(home, { because: "要它自己迁移记忆库" });
+  assert.equal(withWhy.ok, true);
+  if (withWhy.ok) assert.equal(withWhy.state.because, "要它自己迁移记忆库");
 
   const off = disableSuper(home);
   assert.equal(off.ok, true);

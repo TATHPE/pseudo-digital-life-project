@@ -9,7 +9,7 @@
 | 项 | 数量 |
 |---|---|
 | 源文件（src/**/*.ts） | 95 |
-| 错误码 E_* | 189 |
+| 错误码 E_* | 188 |
 | verbs | 26 |
 | CLI 子命令 | 37 |
 
@@ -114,9 +114,8 @@
 | `E_MISSING` | `src/assert.ts` |
 | `E_MISSING_ARG` | `src/toolsmoke.ts` |
 | `E_MODEL` | `src/autobio.ts` `src/eval.ts` `src/provider.ts` `src/transport.ts` |
-| `E_NEED_WORD` | `src/web/server.ts` |
 | `E_NEEDS_CONFIRM` | `src/confirm.ts` `src/execute.ts` `src/posture.ts` |
-| `E_NEEDS_EGRESS` | `src/egress.ts` `src/posture.ts` `src/project.ts` `src/verbs.ts` |
+| `E_NEEDS_EGRESS` | `src/egress.ts` `src/posture.ts` `src/project.ts` `src/supergrant.ts` `src/verbs.ts` |
 | `E_NO_ARGV` | `src/shell.ts` |
 | `E_NO_AVATAR` | `src/web/server.ts` |
 | `E_NO_CALL` | `src/toolsmoke.ts` |
@@ -138,7 +137,7 @@
 | `E_NO_MEMORY` | `src/store.ts` `src/web/server.ts` |
 | `E_NO_MODEL` | `src/cli/night.ts` |
 | `E_NO_PATH` | `src/project.ts` `src/web/server.ts` |
-| `E_NO_REASON` | `src/decayparams.ts` `src/supergrant.ts` |
+| `E_NO_REASON` | `src/decayparams.ts` |
 | `E_NO_RELEASE` | `src/cli/deploy.ts` `src/deploy/slot.ts` `src/deploy/watchdog.ts` |
 | `E_NO_ROLE` | `src/cli/jingjing.ts` |
 | `E_NO_RULE` | `src/policy.ts` |

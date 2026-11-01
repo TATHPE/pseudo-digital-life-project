@@ -148,6 +148,11 @@ export function buildBrief(input: BriefInput): BriefOutput {
   // 放在易变区：装了/删了技能不该让稳定前缀（prefixHash）变。
   const p14 = input.skills ? input.skills : "";
   slots.push({ id: "P14", label: "可用技能", tokens: estimateTokens(p14), stable: false });
+
+  // P15 我现在的权限：让她知道自己此刻能做什么。
+  // 没有这一槽的时候，她明明能跑命令也会说"我不能直接操作你的电脑"（实测）。
+  const p15 = input.powers ? input.powers : "";
+  slots.push({ id: "P15", label: "我现在的权限", tokens: estimateTokens(p15), stable: false });
   // ── 本轮输入 ────────────────────────────────────────
   const p11 = input.user;
   slots.push({ id: "P11", label: "用户输入", tokens: estimateTokens(p11), stable: false });
@@ -156,7 +161,7 @@ export function buildBrief(input: BriefInput): BriefOutput {
   const confidence: BriefOutput["confidence"] =
     input.recalled.length === 0 ? "abstain" : input.recalled.length < 2 ? "need_evidence" : "answer";
 
-  const body = [p5, p6, p7, p8, p9, p10, p12, p13, p14].filter(Boolean).join("\n\n");
+  const body = [p5, p6, p7, p8, p9, p10, p12, p13, p14, p15].filter(Boolean).join("\n\n");
   const text = [prefixText, body, p11].filter(Boolean).join("\n\n");
   const tokens = estimateTokens(text);
 

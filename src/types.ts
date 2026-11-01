@@ -58,6 +58,11 @@ export interface BriefInput {
   agenda?: string[];
   /** H-b：她对人的理解（每句带依据 id，≤2 条） */
   interpretations?: string[];
+  /**
+   * 我现在的权限（P15）：preset + super + 一句话"能做什么"。
+   * 不加这个，她不知道自己能不能跑命令 —— 于是遇到能做的事也会说"我不能"。
+   */
+  powers?: string | null;
   /** 技能索引（P14）：只有名字 + 一句描述，正文要模型自己 skill.read 取 */
   skills?: string | null;
   user: string;              // P11

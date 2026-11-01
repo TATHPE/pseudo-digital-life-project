@@ -67,9 +67,13 @@ export function writeSuper(home: string, st: SuperState): SuperState {
 export type SuperResult = { ok: true; state: SuperState } | { ok: false; code: string; why: string };
 
 /** 开：必须给一句理由（≥4 字），并手输确认词由调用方校验 */
-export function enableSuper(home: string, input: { because?: string; now?: Date }): SuperResult {
-  const because = String(input.because ?? "").trim();
-  if (because.length < 4) return { ok: false, code: "E_NO_REASON", why: "写一句为什么（≥4 个字）—— 这条会进审计" };
+/**
+ * 开。2026-11-01 用户定：**确认步骤取消**（不手输确认词、不强制写理由）——
+ * 一句"太麻烦"就够了，安全感应该来自"能一眼看见状态 + 一键收回 + 全程留痕"，
+ * 不是多敲两个字。理由有就记，没有就记成（没写理由）。
+ */
+export function enableSuper(home: string, input: { because?: string; now?: Date } = {}): SuperResult {
+  const because = String(input.because ?? "").trim().slice(0, 120) || "（没写理由）";
   const now = input.now ?? new Date();
   return { ok: true, state: writeSuper(home, { enabled: true, since: now.toISOString(), because }) };
 }
@@ -77,6 +81,31 @@ export function enableSuper(home: string, input: { because?: string; now?: Date 
 /** 关：一句话都不用说，随时能收回 */
 export function disableSuper(home: string): SuperResult {
   return { ok: true, state: writeSuper(home, { enabled: false }) };
+}
+
+/**
+ * 她现在的手脚，写成**她看得懂的一句话**（进简报 P15）。
+ * 关键是要说"能做什么"，而不是"你有 write 权限"—— 后者模型看不懂。
+ */
+export function powersLine(home: string, preset: string, egressOpen: boolean): string {
+  const parts: string[] = [];
+  const sup = superEnabled(home);
+  if (sup) {
+    parts.push("超级权限开着：可以跑任意命令（含 node -e）、读写整个磁盘、直接改记忆库与人格。");
+    parts.push("只有两件事仍然不行：格式化磁盘、删 trash/ 与 snapshots/（那是回滚的底）。");
+  } else if (preset === "full") {
+    parts.push("完全权限：可以跑任意命令、在整个 home 里操作；记忆核心与删/系统/下载/壳仍然拒。");
+  } else if (preset === "write") {
+    parts.push("工作区权限：注册过的模板能跑（`shell.templates` 看有哪些），文件能在家目录里读写；记忆核心、任意命令仍然拒。");
+    parts.push("要跑没注册过的命令，请在设置里开「完全权限」或「超级权限」 —— 别对用户说「我做不到」，说「需要你开一下权限」。");
+  } else if (preset === "read") {
+    parts.push("只读：能查能看，不能写、不能跑会改东西的命令。");
+  } else {
+    parts.push("逐次确认：每个动作都要人点一次；要连续干活，请在输入框旁换成「完全权限」。");
+  }
+  parts.push(egressOpen ? "代码外发：会话内开放（读源码不会卡在授权上）。" : "代码外发：关着（读项目文件会被 E_NEEDS_EGRESS 挡，得让人批一次）。");
+  parts.push("做之前先说一句要做什么；做完报结果与证据（哪条命令、什么输出）。");
+  return "【我现在的权限】" + parts.join(" ");
 }
 
 /** 路径是不是"改了也没得回滚"的那两样（trash / snapshots） */

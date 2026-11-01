@@ -917,10 +917,8 @@ description: 周日晚上把这一周压成三句话。
         <p class="hint">两条<b>永远不放开</b>：格式化磁盘（那会把机器弄没）、删 <code>trash/</code> 与 <code>snapshots/</code>（那是回滚的底）。</p>
         <div id="superstate" class="hint">…</div>
         <div id="superon" hidden>
-          <label>为什么开（会进审计，≥4 字）</label>
-          <input id="superwhy" placeholder="例如：要让它自己装依赖并改记忆库做迁移" autocomplete="off">
-          <label>要开就手输两个字：<b>接管</b></label>
-          <input id="superword" placeholder="接管" autocomplete="off">
+          <label>为什么开（可选，会进审计）</label>
+          <input id="superwhy" placeholder="想写就写一句，不写也行" autocomplete="off">
           <div class="acts"><button id="supergo" class="no">开启超级权限</button><span id="supermsg" class="hint"></span></div>
         </div>
         <div id="superoff" hidden>
@@ -2156,14 +2154,11 @@ async function superPost(body) {
   if (go) go.onclick = async function () {
     var msg = document.getElementById('supermsg');
     var why = document.getElementById('superwhy').value.trim();
-    var word = document.getElementById('superword').value.trim();
-    if (word !== '接管') { msg.className = 'hint err'; msg.textContent = '要手输「接管」两个字'; return; }
-    if (why.length < 4) { msg.className = 'hint err'; msg.textContent = '写一句为什么（≥4 字），这条会进审计'; return; }
     msg.className = 'hint'; msg.textContent = '开启中…';
-    var r = await superPost({ action: 'on', word: word, because: why });
+    var r = await superPost({ action: 'on', because: why });
     msg.className = r.ok ? 'hint ok' : 'hint err';
     msg.textContent = r.ok ? '已开启 —— 它会记进审计' : (r.why || r.error || '失败');
-    if (r.ok) { document.getElementById('superword').value = ''; document.getElementById('superwhy').value = ''; }
+    if (r.ok) { document.getElementById('superwhy').value = ''; }
   };
   var close = document.getElementById('superclose');
   if (close) close.onclick = async function () {

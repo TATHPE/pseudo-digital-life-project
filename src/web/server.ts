@@ -720,11 +720,9 @@ export function createWebServer(deps: WebDeps) {
           json(res, 200, { ok: true, state: r.state });
           return;
         }
-        // 开：必须手输「接管」两个字。这一条是代码校验，不是提示词。
-        if (String(body.word ?? "").trim() !== "接管") {
-          json(res, 400, { error: "E_NEED_WORD", why: "要开超级权限，得手输「接管」两个字" });
-          return;
-        }
+        // 2026-11-01 用户定：**确认步骤取消** —— 点一下就能开。
+        // 边界改由这几条扛：只有人在设置里能点（writeGuarded + 同源）、必须留一句理由、
+        // 开关写进 super.json 与 inbox、随时一键收回。
         const r = sg.enableSuper(deps.home, { because: body.because, now: now() });
         if (!r.ok) { json(res, 400, r); return; }
         try {
@@ -1670,6 +1668,13 @@ export function createWebServer(deps: WebDeps) {
           const sk = await import("../skills.ts");
           skillIdx = sk.skillsIndexText(sk.indexableSkills(sk.scanSkills(deps.home))) || null;
         } catch { /* 没有技能不影响对话 */ }
+        // 我现在的权限（P15）：不说这一句，她明明能跑命令也会说「我不能操作你的电脑」
+        let powers: string | null = null;
+        try {
+          const sg = await import("../supergrant.ts");
+          const perm = currentPreset(deps.home, now());
+          powers = sg.powersLine(deps.home, perm.preset, egressStatus(deps.home, { now: now() }).until !== null);
+        } catch { /* 读不到就不加这一槽 */ }
         const selfState = advance(deps.db, { turns: 1, silenceDays: last ? (now().getTime() - new Date(last.ts).getTime()) / 86400000 : 0 }, now());
         const brief = buildBrief({
           now: now(), persona: loadPersona(deps.home), contracts, recalled,
@@ -1679,6 +1684,7 @@ export function createWebServer(deps: WebDeps) {
           agenda: agendaLines,
           interpretations: interpLines,
           skills: skillIdx,
+          powers,
           user: (() => { const note = omissionNote(omitted, rc.omittedDocs); return note ? note + String.fromCharCode(10) : ""; })() + text,
         });
 
@@ -1718,7 +1724,10 @@ export function createWebServer(deps: WebDeps) {
           // 于是 json(500) 抛 ERR_HTTP_HEADERS_SENT，整个面板进程被打死。
           const chat = deps.getChat && deps.tools ? deps.getChat() : null;
           if (chat) {
-            const agent = runAgent({ chat, tools: deps.tools! }, brief.text, text);
+            // 6 步做不完「读文件→改→跑测试→看结果」；super 开着时再宽一点
+            let supOn = false;
+            try { supOn = (await import("../supergrant.ts")).superEnabled(deps.home); } catch { /* 当作没开 */ }
+            const agent = runAgent({ chat, tools: deps.tools!, maxSteps: supOn ? 16 : 12 }, brief.text, text);
             for await (const ev of agent) {
               if (aborted) break;
               if (ev.type === "delta") { full += ev.text; send({ type: "delta", text: ev.text }); }
