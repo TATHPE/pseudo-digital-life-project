@@ -198,15 +198,6 @@ export const PAGE = `<!doctype html>
         font-family:"Microsoft YaHei","PingFang SC",var(--mono); color:var(--ink); font-weight:700; }
   .av .ico { width:20px; height:20px; }
   .row.user .av { color:var(--amber); border-color:rgba(255,180,84,.3); }
-  /* ── 头像框（可更换，存在 data/config.json 的 ui.avatar）── */
-  body[data-av="plain"] .av { border-radius:0; }
-  body[data-av="bare"] .av { border-color:transparent; }
-  body[data-av="ring"] .av { border-radius:50%; }
-  body[data-av="cut"] .av { clip-path:polygon(7px 0,100% 0,100% calc(100% - 7px),calc(100% - 7px) 100%,0 100%,0 7px); }
-  body[data-av="glow"] .av { box-shadow:0 0 0 1px rgba(233,240,242,.18), 0 0 10px rgba(233,240,242,.3);
-                             animation:avglow 3.2s ease-in-out infinite; }
-  @keyframes avglow { 0%,100%{box-shadow:0 0 0 1px rgba(233,240,242,.18), 0 0 10px rgba(233,240,242,.28)}
-                      50%{box-shadow:0 0 0 1px rgba(127,230,242,.5), 0 0 16px rgba(127,230,242,.45)} }
   .avprev { display:flex; align-items:center; gap:10px; padding:4px 0; }
   /* 待确认卡（T3）：不是普通过知——它后面跟着一条会真的执行的命令 */
   .pend { border:1px solid rgba(255,180,84,.34); background:rgba(255,180,84,.06); padding:7px 8px; margin-bottom:6px; }
@@ -686,7 +677,7 @@ export const PAGE = `<!doctype html>
   /* 对比度（P2 #22）：--dim 提亮到 AA；9px 抬到 10px */
   .pend .dir, .pend .fp, .item .m, .frame b { font-size:10px; }
 </style></head>
-<body data-av="plain">
+<body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><symbol id="whale" viewBox="0 0 512 512"><path fill="currentColor" d="M453.004 35.117c-65.314 46.61-189.755 41.018-213.559 125.426C184.41 101.41 98.625 83.031 21.771 63.209c6.532 139.103 71.38 147.437 192.44 194.547c23.71 25.786 29.786 49.93 19.254 82.705c46.403 5.1 71.504 15.468 106.754 27.742c-.708-71.67-25.14-108.928-75.518-175.035c11.058 4.233 44.979 37.02 56.578 58.607c109.419-42.421 147.64-112.074 131.725-216.658M180.178 353.9c-60.89-.24-114.034 19.49-158.426 74.221c167.075-48.84 292.003-13.21 471.893 7.895c-118.936-38.752-224.474-81.763-313.467-82.116m98.043 77.844c-99.28.255-206.34 18.738-256.866 63.139c168.002-26.61 356.801-28.408 470.8-4.967c1.102-35.337-101.418-58.46-213.934-58.172"/></symbol></svg>
 <div class="frame"><i></i><i></i><i></i><i></i><b class="bl">LOCAL · 127.0.0.1</b><b class="br">MEMORY CORE</b></div>
 <header>
@@ -1050,23 +1041,6 @@ description: 周日晚上把这一周压成三句话。
         <span id="av-msg" class="hint"></span>
       </div>
 
-      <div class="panelbox">
-        <h2>APPEARANCE · 外观</h2>
-        <div class="two">
-          <div><label>头像框</label>
-            <select id="a-frame">
-              <option value="plain">plain · 直角细框</option>
-              <option value="bare">bare · 无框</option>
-              <option value="ring">ring · 圆</option>
-              <option value="cut">cut · 切角</option>
-              <option value="glow">glow · 呼吸光</option>
-            </select></div>
-          <div><label>预览</label>
-            <div class="avprev"><span class="av"><svg class="ico" aria-hidden="true"><use href="#whale" /></svg></span>
-            <span class="hint">选完立即生效并保存</span></div></div>
-        </div>
-        <p class="hint">存到 data/config.json（ui.avatar），换浏览器/换机器也跟着走<span id="a-msg"></span></p>
-      </div>
     </div>
   </div></div>
 
@@ -2666,17 +2640,6 @@ async function openMemory(id) {
 function scrollBottom() {
   const s = $("#scroll"); s.scrollTop = s.scrollHeight;
 }
-async function loadUi() {
-  try {
-    const u = await (await fetch("/api/ui")).json();
-    const av = u && u.avatar ? u.avatar : "plain";
-    document.body.dataset.av = av;
-    const s = $("#a-frame");
-    if (s) s.value = av;
-  } catch (e) {
-    // 面板照常能用：外观是装饰，读不到就不改
-  }
-}
 
 // 官方默认：baseUrl 留空时服务端就用这些（与 src/transport.ts 的 endpointOf 一致）
 var PROVIDER_DEFAULTS = {
@@ -2832,14 +2795,6 @@ document.addEventListener("click", (e) => {
 });
 $("#p-file").onchange = (e) => loadPersona(e.target.value);
 // 头像框：改完立刻套上（不等服务端），再把选择存住
-$("#a-frame").onchange = async (e) => {
-  const v = e.target.value;
-  document.body.dataset.av = v;
-  const j = await (await fetch("/api/ui", { method: "PUT", headers: H, body: JSON.stringify({ avatar: v }) })).json();
-  const m = $("#a-msg");
-  if (j.ok) { m.className = "ok"; m.textContent = "  · SAVED"; }
-  else { m.className = "err"; m.textContent = "  · " + (j.error || "FAILED"); }
-};
 // 移动端：点主区域收起抽屉
 document.addEventListener("click", (e) => {
   const side = $("#side");
@@ -3234,7 +3189,7 @@ if ("serviceWorker" in navigator && (location.protocol === "https:" || location.
 }
 // 手机上侧栏是抽屉：没有这个按钮，SESSIONS/DOCS/MEMORY/TOOLS/CONFIG 全都不可达
 $("#menu").onclick = (e) => { e.stopPropagation(); $("#side").classList.toggle("open"); };
-loadAvatars(); applySections(); state(); timeline(); sessions(); tools(); memories(); docs(); audit(); readout(); loadConfig(); loadUi(); pending(); usage(); loadProposals(); loadSurfaceReview(); loadThreads(); loadReceipts(); loadStanding(); loadEgress(); loadSetup(false);
+loadAvatars(); applySections(); state(); timeline(); sessions(); tools(); memories(); docs(); audit(); readout(); loadConfig(); pending(); usage(); loadProposals(); loadSurfaceReview(); loadThreads(); loadReceipts(); loadStanding(); loadEgress(); loadSetup(false);
 setInterval(() => { state(); pending(); audit(); readout(); loadEgress(); }, 20000);
 </script>
 </body></html>`;

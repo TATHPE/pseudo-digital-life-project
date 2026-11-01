@@ -22,7 +22,6 @@ import { CLI_COMMANDS } from "../commands.ts";
 import { gate as coolGate, reset as coolReset } from "../cooldown.ts";
 import { preflight, lastPreflight } from "../preflight.ts";
 import { indexState } from "../embedindex.ts";
-import { AVATAR_FRAMES, DEFAULT_AVATAR, isAvatarFrame } from "./avatar.ts";
 import { listPending, getPending, updatePending } from "../confirm.ts";
 import { bumpGenerationIfChanged, currentGeneration } from "../generation.ts";
 import { listProposals, getProposal, setProposalStatus } from "../proposals.ts";
@@ -948,20 +947,6 @@ export function createWebServer(deps: WebDeps) {
           model: cfg.roles["express"]!.model,
           hasKey: Boolean(secrets().get(cfg.roles["express"]!.provider as Provider)),
         });
-        return;
-      }
-      if (req.method === "GET" && url.pathname === "/api/ui") {
-        const av = readFileConfig(deps.home).ui?.avatar;
-        json(res, 200, { avatar: isAvatarFrame(av) ? av : DEFAULT_AVATAR, frames: AVATAR_FRAMES });
-        return;
-      }
-      if (req.method === "PUT" && url.pathname === "/api/ui") {
-        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
-        const body = JSON.parse(await readBody(req)) as { avatar?: string };
-        // 白名单：外观偏好也是写操作，不能让面板把任意字符串塞进 config.json
-        if (!isAvatarFrame(body.avatar)) { json(res, 400, { error: "E_BAD_FRAME" }); return; }
-        writeFileConfig(deps.home, { ui: { avatar: body.avatar } });
-        json(res, 200, { ok: true, avatar: body.avatar });
         return;
       }
       if (req.method === "GET" && url.pathname === "/api/persona") {

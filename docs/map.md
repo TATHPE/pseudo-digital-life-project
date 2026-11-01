@@ -8,8 +8,8 @@
 
 | 项 | 数量 |
 |---|---|
-| 源文件（src/**/*.ts） | 95 |
-| 错误码 E_* | 189 |
+| 源文件（src/**/*.ts） | 94 |
+| 错误码 E_* | 188 |
 | verbs | 26 |
 | CLI 子命令 | 37 |
 
@@ -42,7 +42,6 @@
 | `E_BAD_ARGV` | `src/agentguard.ts` `src/execute.ts` `src/shell.ts` `src/verbs.ts` |
 | `E_BAD_COMMAND` | `src/plugins.ts` |
 | `E_BAD_ENDPOINT` | `src/transport.ts` |
-| `E_BAD_FRAME` | `src/web/server.ts` |
 | `E_BAD_IMAGE` | `src/web/server.ts` |
 | `E_BAD_KEY` | `src/web/server.ts` |
 | `E_BAD_LINK` | `src/web/server.ts` |
@@ -346,7 +345,6 @@
 | `src/transport.ts` | 真正的模型调用层（13 §2 / 19 §0.1 W-A） |
 | `src/types.ts` | export type Tier = "T0" / "T1" / "T2" / "T3" / "T4"; |
 | `src/verbs.ts` | 能力目录（04 §3）：鲸鲸能碰到的东西**只有这张表里的**。 |
-| `src/web/avatar.ts` | 头像框（外观偏好，不是模型配置） |
 | `src/web/desklive.ts` | 桌面工作台的「真数据层」页面（`/desk/live`）。 |
 | `src/web/page.ts` | 单页（零前端依赖、零构建）。 |
 | `src/web/server.ts` | 本地 Web 面板（17 §4）：127.0.0.1:7700，零前端依赖，SSE 流式。 |

@@ -307,12 +307,10 @@ check("头像默认鲸尾 / 自定义为图片", await js(`(() => {
   return (!!use && use.getAttribute("href") === "#whale") ||
          (!!img && String(img.getAttribute("src")).indexOf("/avatar/agent") === 0);
 })()`));
-check("换头像框立即生效", await js(`(() => {
-  const s = document.querySelector("#a-frame");
-  if (!s) return false;
-  s.value = "ring";
-  s.dispatchEvent(new Event("change"));
-  return document.body.dataset.av === "ring";
+// 头像框整块删了（用户 2026-11-01 定）：断言改成"它真的不在"，防止以后又被加回来
+check("设置里没有头像框（已删）", await js(`(() => {
+  return !document.querySelector("#a-frame") && !document.body.dataset.av
+    && !/APPEARANCE/.test(document.getElementById("cfg").textContent);
 })()`));
 // 折叠现在有两处：左栏「工具」，卷宗里的几块（等你点头 / 上下文）
 check("折叠能用：左栏工具 + 卷宗分区", await js(`(() => {

@@ -1,9 +1,12 @@
 // 壳的全部逻辑（H-6）。**一行业务逻辑都不许在这里** —— 见 desktop/README.md。
 //
-// 四件事：拉起 sidecar · 健康探测（三次失败→打开浏览器）· 托盘四项 · 退出时杀掉进程树。
+// 四件事：拉起 sidecar · 健康探测（起不来就**只弹报错**）· 托盘四项 · 退出时杀掉进程树。
+//
+// 2026-11-01 用户定：① 只有桌面端，不做浏览器入口；② 崩了只弹报错；
+// ③ 「接 API 让 agent 修程序」那条路**不做**。所以这里没有回落浏览器，也没有自修。
 //
 // 基座来自 dieharders/example-tauri-v2-python-server-sidecar（Apache-2.0），
-// 改动：Python → Node；窗口直接指内置面板；加托盘与浏览器回落。
+// 改动：Python → Node；窗口直接指内置面板（/，服务端会自己分流到首启引导）。
 
 mod sidecar;
 
@@ -15,6 +18,28 @@ use tauri::{
 };
 
 use sidecar::Sidecar;
+
+/// 起不来时的错误页：把窗口内容换掉，而不是开浏览器。
+/// 不用 dialog 插件（为一个错误框加一个依赖不值得）。
+fn show_boot_error(app: &tauri::AppHandle, err: &str, home: &std::path::Path) {
+    let log = home.join("logs").join("serve.log");
+    let text = format!(
+        "鲸鲸没能启动\n\n{}\n\n日志：{}\n\n可以试的：\n  1. 确认 node 在 PATH 上（node --version）\n  2. 手动跑一次看报错：node src/cli/jingjing.ts serve 7700\n  3. 数据目录：{}",
+        err, log.display(), home.display()
+    );
+    let js = format!(
+        "document.body.style.cssText='background:#0b0e0b;color:#e9f0f2;font:13px ui-monospace,Consolas,monospace;padding:36px;white-space:pre-wrap;line-height:1.7';document.body.textContent=\"{}\"",
+        js_escape(&text)
+    );
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.eval(&js);
+    }
+}
+
+/// 把要注入 JS 字符串的文本转义（不做 HTML，只用 textContent）
+fn js_escape(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n").replace('\r', "")
+}
 
 /// 全局只持有一个 sidecar 句柄：退出/托盘都要能杀掉它。
 struct AppState {
@@ -45,13 +70,16 @@ pub fn run() {
                 Ok(()) => {
                     // 窗口加载时 sidecar 还没起来，会停在占位页；这里主动导航一次
                     if let Some(w) = app.get_webview_window("main") {
-                        let url = format!("http://127.0.0.1:{}/desk", sc.port());
+                        // 指 /（不是 /desk）：服务端按 setup 状态自己分流到首启引导页或主面板
+                        let url = format!("http://127.0.0.1:{}/", sc.port());
                         let _ = w.navigate(url.parse().unwrap());
                     }
                 }
                 Err(e) => {
-                    eprintln!("[shell] sidecar 起不来：{e}；回落到浏览器");
-                    sc.fallback_to_browser();
+                    // 只弹报错：不做浏览器回落，也不做接 API 自修。
+                    // 说清两件事就够了 —— 哪一步失败、日志在哪。
+                    eprintln!("[shell] sidecar 起不来：{e}");
+                    show_boot_error(app.handle(), &e, &home);
                 }
             }
             *app.state::<AppState>().sidecar.lock().unwrap() = Some(sc);

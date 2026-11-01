@@ -65,23 +65,6 @@ impl Sidecar {
     /// 端口号（main 导航窗口时要用）
     pub fn port(&self) -> u16 { self.port }
 
-    /// 三次失败之后：打开系统浏览器。**记忆不丢**，只是回到网页。
-    pub fn fallback_to_browser(&self) {
-        let url = format!("http://127.0.0.1:{}/", self.port);
-        #[cfg(windows)]
-        {
-            let _ = Command::new("cmd").args(["/C", "start", "", &url]).spawn();
-        }
-        #[cfg(target_os = "macos")]
-        {
-            let _ = Command::new("open").arg(&url).spawn();
-        }
-        #[cfg(all(unix, not(target_os = "macos")))]
-        {
-            let _ = Command::new("xdg-open").arg(&url).spawn();
-        }
-    }
-
     /// 杀进程树。Windows 用 taskkill /T /F；其他平台 kill 子进程。
     pub fn stop(&mut self) {
         if let Some(mut c) = self.child.take() {

@@ -11,7 +11,6 @@ import { execute } from "../src/execute.ts";
 import { ingestFile } from "../src/ingest.ts";
 import { loadPolicy } from "../src/policy.ts";
 import { PAGE } from "../src/web/page.ts";
-import { AVATAR_FRAMES } from "../src/web/avatar.ts";
 import { groupTimeline, gapLabel } from "../src/web/timeline.ts";
 import { expenseLine } from "../src/web/state.ts";
 import type { AddressInfo } from "node:net";
@@ -258,50 +257,7 @@ test("图标：鲸鱼 symbol 在页面里，品牌不再用「鲸鲸」文字，
   assert.ok(PAGE.includes("href='#whale'"), "消息行头像用同一个 symbol");
 });
 
-test("头像框：可换的五种帧与共用的白名单一致（防两处生成代码漂移）", () => {
-  for (const f of AVATAR_FRAMES) {
-    assert.ok(PAGE.includes(`body[data-av="${f}"]`), `缺 ${f} 的 CSS`);
-    assert.ok(PAGE.includes(`<option value="${f}">`), `缺 ${f} 的选项`);
-  }
-  // 选项数量必须等于白名单（多一个没 CSS、少一个选不到）
-  const opts = PAGE.match(/<option value="(plain|bare|ring|cut|glow)">/g) ?? [];
-  assert.equal(opts.length, AVATAR_FRAMES.length);
-});
 
-test("GET/PUT /api/ui：默认 plain，存得住，白名单外拒绝，无 CSRF 头 403", async () => {
-  const { srv, base, dir } = await start();
-  try {
-    const a = await (await fetch(`${base}/api/ui`)).json() as any;
-    assert.equal(a.avatar, "plain");
-    assert.deepEqual(a.frames, [...AVATAR_FRAMES]);
-
-    const ok = await fetch(`${base}/api/ui`, {
-      method: "PUT",
-      headers: { "x-jj": "1", "content-type": "application/json" },
-      body: JSON.stringify({ avatar: "ring" }),
-    });
-    assert.equal(ok.status, 200);
-    assert.equal((await (await fetch(`${base}/api/ui`)).json() as any).avatar, "ring");
-    // 落盘在 config.json 的 ui.avatar（换浏览器也跟着走）
-    assert.equal(JSON.parse(readFileSync(join(dir, "config.json"), "utf8")).ui.avatar, "ring");
-
-    const bad = await fetch(`${base}/api/ui`, {
-      method: "PUT",
-      headers: { "x-jj": "1", "content-type": "application/json" },
-      body: JSON.stringify({ avatar: "<script>" }),
-    });
-    assert.equal(bad.status, 400);
-    assert.equal((await bad.json() as any).error, "E_BAD_FRAME");
-
-    const noCsrf = await fetch(`${base}/api/ui`, {
-      method: "PUT",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ avatar: "cut" }),
-    });
-    assert.equal(noCsrf.status, 403);
-    assert.equal((await (await fetch(`${base}/api/ui`)).json() as any).avatar, "ring", "被拒的写不能生效");
-  } finally { srv.close(); }
-});
 
 test("待确认：面板能看到 T3 提案，确认按钮真的执行（令牌在服务端签发）", async () => {
   const { srv, base } = await start();
