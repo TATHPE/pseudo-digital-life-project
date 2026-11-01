@@ -61,6 +61,15 @@ const decrypted = new Map<string, { at: number; key: string }>();
 export function createStore(dir: string): SecretStore {
   mkdirSync(dir, { recursive: true });
   const file = (p: Provider) => `${dir}/${p}.secret`;
+  /**
+   * 桌面壳已经把密钥解好放在环境变量里（`JJ_SECRET_DEEPSEEK` 这样的）。
+   * 为什么要有这条路：DPAPI 以前靠起 PowerShell 解，父进程是 GUI 时 windowsHide 挡不住那一闪，
+   * 每读一次配置就闪一个黑框（用户实测抱怨）。壳里用 Rust 解完直接给 env，Node 一次 PS 都不用起。
+   */
+  const envKey = (p: Provider): string | undefined => {
+    const v = process.env["JJ_SECRET_" + String(p).toUpperCase()];
+    return v && v.trim() ? v.trim() : undefined;
+  };
 
   if (process.platform === "win32") {
     const hasDpapi = (() => {
@@ -78,6 +87,9 @@ export function createStore(dir: string): SecretStore {
           decrypted.delete(file(p));
         },
         get(p) {
+          // 壳已经把 key 解好了（Rust 侧 DPAPI）—— 直接拿，不起来 PowerShell
+          const fromEnv = envKey(p);
+          if (fromEnv) return fromEnv;
           const f = file(p);
           if (!existsSync(f)) return undefined;
           const at = statSync(f).mtimeMs;
@@ -113,6 +125,8 @@ export function createStore(dir: string): SecretStore {
             { input: key + "\n" });
         },
         get(p) {
+          const fromEnv = envKey(p);
+          if (fromEnv) return fromEnv;
           try {
             return execFileSync("secret-tool", ["lookup", "service", "jingjing", "provider", p], { encoding: "utf8" }).trim() || undefined;
           } catch { return undefined; }
@@ -138,6 +152,8 @@ export function createStore(dir: string): SecretStore {
       try { chmodSync(f, 0o600); } catch { /* windows */ }
     },
     get(p) {
+      const fromEnv = envKey(p);
+      if (fromEnv) return fromEnv;
       const f = file(p);
       return existsSync(f) ? readFileSync(f, "utf8").trim() : undefined;
     },

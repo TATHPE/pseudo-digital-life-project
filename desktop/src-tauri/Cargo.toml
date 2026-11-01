@@ -13,6 +13,12 @@ tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-single-instance = "2"
 tauri-plugin-opener = "2"
 
+# DPAPI 解密（2026-11-01）：以前靠 PowerShell 调 ProtectedData，
+# 父进程是 GUI（无控制台）时 windowsHide 挡不住闪窗 —— 每次读配置都闪一个黑框。
+# 挪到 Rust 这边，Node 完全不用起 PowerShell。
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = ["Win32_Security_Cryptography", "Win32_Foundation"] }
+
 [profile.release]
 strip = true
 lto = true

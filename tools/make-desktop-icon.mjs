@@ -46,6 +46,7 @@ const png1024 = join(TMP, "icon-1024.png");
 const profile = join(TMP, "edge-profile");
 const r = spawnSync(EDGE, [
   "--headless=new", "--disable-gpu", "--no-sandbox", "--hide-scrollbars",
+  "--default-background-color=00000000",
   `--user-data-dir=${profile}`, "--window-size=1024,1024",
   `--screenshot=${png1024}`, `file:///${svgPath.replace(/\\/g, "/")}`,
 ], { stdio: "ignore", timeout: 60_000 });

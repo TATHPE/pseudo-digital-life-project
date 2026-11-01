@@ -8,6 +8,7 @@
 // 基座来自 dieharders/example-tauri-v2-python-server-sidecar（Apache-2.0），
 // 改动：Python → Node；窗口直接指内置面板（/，服务端会自己分流到首启引导）。
 
+mod dpapi;
 mod sidecar;
 
 use std::sync::Mutex;
@@ -21,6 +22,17 @@ use sidecar::Sidecar;
 
 /// 起不来时的错误页：把窗口内容换掉，而不是开浏览器。
 /// 不用 dialog 插件（为一个错误框加一个依赖不值得）。
+/// 壳的日志：GUI 没有控制台，出问题只能靠这个文件
+fn shell_note(home: &std::path::Path, msg: &str) {
+    use std::io::Write;
+    let dir = home.join("logs");
+    let _ = std::fs::create_dir_all(&dir);
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(dir.join("shell.log")) {
+        let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+        let _ = writeln!(f, "[{}] {}", ts, msg);
+    }
+}
+
 /// 项目根的判据：从 exe 向上找 `src/cli/jingjing.ts`。
 /// 找不到（真安装之后）就返回 None —— 那时用 app_data_dir。
 fn project_root_hint() -> Option<std::path::PathBuf> {
@@ -84,7 +96,12 @@ pub fn run() {
                 app.path().app_data_dir().map(|d| d.join("data")).unwrap_or_else(|_| std::env::current_dir().unwrap())
             });
             // 1) 拉起 sidecar：开发时 `node src/cli/jingjing.ts serve 7700`
-            let mut sc = Sidecar::start(&home);
+            // 先把密钥解出来（DPAPI 在壳里做，Node 不用起 PowerShell → 不会再闪黑框）
+            let secrets = dpapi::read_all(&home);
+            if !secrets.is_empty() {
+                shell_note(&home, &format!("解密了 {} 个 provider 的 key", secrets.len()));
+            }
+            let mut sc = Sidecar::start(&home, &secrets);
             // 2) 健康探测：不通就重启，三次失败 → 落回浏览器（记忆不丢，只是回到网页）
             match sc.wait_healthy() {
                 Ok(()) => {

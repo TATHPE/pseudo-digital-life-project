@@ -72,7 +72,7 @@ pub struct Sidecar {
 
 impl Sidecar {
     /// 启动：起 node `serve 0`（端口由 OS 分配），然后把 .desk.json 里的端口/令牌读回来。
-    pub fn start(home: &std::path::Path) -> Self {
+    pub fn start(home: &std::path::Path, secrets: &[(String, String)]) -> Self {
         // 上一次没退干净的，把残留的 .desk.json 删掉，免得读到旧端口
         let _ = std::fs::remove_file(home.join(DESK_FILE));
         let port = 0;
@@ -90,6 +90,8 @@ impl Sidecar {
             .env("JJ_HOME", home)
             // 看门狗：壳被硬杀（任务管理器/崩溃）时，node 也要跟着退，不能变孤儿占着 7700
             .env("JJ_PARENT_PID", std::process::id().to_string())
+            // 密钥从壳传进来（DPAPI 已在 Rust 侧解开）—— Node 侧优先读这些环境变量
+            .envs(secrets.iter().map(|(p, k)| (format!("JJ_SECRET_{}", p.to_uppercase()), k.clone())))
             .stdout(Stdio::null())
             .stderr(Stdio::null());
         // 不弹黑框：Windows 上加 CREATE_NO_WINDOW
