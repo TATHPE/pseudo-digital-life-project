@@ -21,6 +21,20 @@ use sidecar::Sidecar;
 
 /// 起不来时的错误页：把窗口内容换掉，而不是开浏览器。
 /// 不用 dialog 插件（为一个错误框加一个依赖不值得）。
+/// 项目根的判据：从 exe 向上找 `src/cli/jingjing.ts`。
+/// 找不到（真安装之后）就返回 None —— 那时用 app_data_dir。
+fn project_root_hint() -> Option<std::path::PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let mut dir = exe.parent()?;
+    for _ in 0..8 {
+        if dir.join("src").join("cli").join("jingjing.ts").exists() {
+            return Some(dir.to_path_buf());
+        }
+        dir = dir.parent()?;
+    }
+    None
+}
+
 fn show_boot_error(app: &tauri::AppHandle, err: &str, home: &std::path::Path) {
     let log = home.join("logs").join("serve.log");
     let text = format!(
@@ -61,6 +75,12 @@ pub fn run() {
         .setup(|app| {
             // 数据目录：JJ_HOME 优先（开发/自测用现有库），否则用 AppData 下的独立目录
             let home = std::env::var("JJ_HOME").map(std::path::PathBuf::from).unwrap_or_else(|_| {
+                // 开发/测试期：项目根下的 data/（就是你聊过的那份）
+                if let Some(root) = project_root_hint() {
+                    let d = root.join("data");
+                    if d.exists() { return d; }
+                }
+                // 安装之后：系统给的应用数据目录
                 app.path().app_data_dir().map(|d| d.join("data")).unwrap_or_else(|_| std::env::current_dir().unwrap())
             });
             // 1) 拉起 sidecar：开发时 `node src/cli/jingjing.ts serve 7700`

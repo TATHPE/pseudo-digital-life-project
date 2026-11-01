@@ -63,7 +63,10 @@ test("H-6 壳把 pid 传给 sidecar，serve 挂了看门狗（硬杀也不留孤
 test("H-6 探测预算够 Node 启动（≥8 秒），不误判「起不来」", async () => {
   const { readFileSync } = await import("node:fs");
   const rs = readFileSync(join(T, "src/sidecar.rs"), "utf8");
-  const m = rs.match(/for _ in 0\.\.(\d+)/);
+  // 只在 wait_healthy 里找探测循环：sidecar.rs 里还有别的 `for _ in 0..N`
+  // （比如向上找项目根的那个 0..8），钉第一个匹配会误伤
+  const fn = rs.slice(rs.indexOf("pub fn wait_healthy"));
+  const m = fn.match(/for _ in 0\.\.(\d+)/);
   assert.ok(m, "要有探测循环");
   const attempts = Number(m![1]);
   assert.ok(attempts * 500 >= 8000, `探测预算只有 ${attempts * 500}ms —— Node 起 serve 要 3–4 秒`);
