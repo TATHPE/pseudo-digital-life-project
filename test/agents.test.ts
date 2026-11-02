@@ -36,3 +36,11 @@ test("A-3 写的命令都真的存在（不许写在文档里但跑不了）", (
 test("A-3 不缓存环境能答的东西：不许写死测试条数", () => {
   assert.ok(!/\d+\s*条测试/.test(MD), "条数会过期；让 `npm run check` 自己报");
 });
+
+test("第 11 条要能区分「我的面板」与「壳的 sidecar」——同一个坑踩过两次", () => {
+  const agents = readFileSync(join(process.cwd(), "AGENTS.md"), "utf8");
+  assert.ok(agents.includes("serve 7700") && agents.includes("serve 0"), "两条命令都要点名");
+  assert.ok(agents.includes(".desk.json"), "给出判断依据");
+  assert.ok(agents.includes("Failed to fetch"), "写清后果（用户看到的就是这句）");
+  assert.ok(agents.includes("不许碰"), "壳的 sidecar 是禁区");
+});

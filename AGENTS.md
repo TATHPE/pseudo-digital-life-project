@@ -50,6 +50,13 @@ node src/cli/jingjing.ts serve 0      # 端口 0 = OS 分配；要固定端口�
 11. **只动自己的进程。** 杀进程必须按**完整命令行精确匹配**（`node ... src/cli/jingjing.ts serve`），
    不许用模糊词（`*serve*` / `node` / `*pi*`）—— 那会连带杀掉用户自己开的服务。
    反例（2026-11-01）：`-like '*serve*' -or -like '*pi-web*'` 把用户的 pi-web 一起杀了。
+   **反例二（2026-11-03，同一个坑第二次）**：`-like '*jingjing.ts serve*'` 把**桌面壳自己拉起的
+   sidecar** 也杀了（它是 `serve 0`，端口随机）。壳的窗口还在、但连接断了，用户看到的就是
+   「网络错误：Failed to fetch」。
+   现在分得清的两条命令：
+   - `node src/cli/jingjing.ts serve 7700` —— 开发用的面板，**这个才是能重启的**
+   - `node --experimental-strip-types src/cli/jingjing.ts serve 0` —— 桌面壳的 sidecar，**不许碰**
+   判断依据：`data/.desk.json` 里的 `pid` / `port` 就是壳当前那一只。要重启壳就重启壳，别杀它的 sidecar。
    同理：不要动 `data/` 以外、不是自己创建的文件与目录。
 
 12. **先看清根，再走路径。** 在拼任何路径之前，先看清它相对谁：`git status` 里的
