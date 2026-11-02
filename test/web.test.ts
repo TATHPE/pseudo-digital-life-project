@@ -952,8 +952,10 @@ test("没有动作时右栏要说话，不能是一片空白（用户：「现�
   assert.ok(PAGE.includes("真有动作了，才把提示收起"), "traceStep 里才藏");
 });
 
-test("「先一段后又一段」：think 撤回要按长度兜底（模型常在中间补换行/空格）", () => {
-  assert.ok(PAGE.includes("var exact = acc.slice(-tx.length) === tx;"), "先试完全一致");
-  assert.ok(PAGE.includes("acc.slice(0, Math.max(0, acc.length - tx.length))"), "不一致就按长度裁");
-  assert.ok(PAGE.includes(".replace(/\s+$/, \"\")"), "裁完去掉尾部空白");
+test("对话界面只呈现最终回答（不再靠文本匹配撤回）", () => {
+  // 旧做法：先把过程流式显示在正文里，再按「末尾匹配」撤回 —— 模型多一个空格就撤不掉。
+  // 新做法：按 step 归类，被判为过程的那一步整段不进正文（见 think-step.test.ts）。
+  assert.ok(PAGE.includes("turns[st2].process = true"), "think 标记那一步");
+  assert.ok(PAGE.includes("filter((k) => !turns[k].process)"), "正文只拼非过程的步");
+  assert.ok(!PAGE.includes("acc.slice(-tx.length)"), "旧的文本匹配撤回要清掉");
 });

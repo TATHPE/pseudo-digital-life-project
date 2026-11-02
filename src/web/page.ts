@@ -2216,6 +2216,8 @@ async function loadGit(what, path) {
 })();
 
 // ── 过程（右栏）：思考与工具调用都在这里，会话栏只留最终回答 ──────
+// 对话正文只留最终回答：按步收集，被判为「过程」的那几步整段剔除。
+
 // 用户 2026-11-01：会话栏只有结果；思考和调用工具的行为移到侧边栏。
 //
 // 2026-11-03 修：右栏 tracebox 每轮开始时清空，于是历史里那句「过程见右栏」指向一片空白 ——
@@ -3358,6 +3360,15 @@ $("#composer").onsubmit = async (e) => {
   const meta = document.querySelector("#" + id + " .meta");
   const recallBox = document.querySelector("#" + id + " .recall");
   let acc = "", cites = [], omitted = 0, omittedDocs = 0;
+  // 按步收集：被判为「过程」的那几步整段不进正文（用户：对话界面只呈现最终回答）。
+  // 放在这个闭包里，才能直接用 box / acc。
+  const turns = {};
+  function paintAnswer() {
+    const keys = Object.keys(turns).map(Number).sort((a, b) => a - b);
+    const out = keys.filter((k) => !turns[k].process).map((k) => turns[k].text).join("");
+    acc = out;
+    box.innerHTML = escapeHtml(out) + "<span class='cursor'></span>";
+  }
   inflight = new AbortController();
   setStreaming(true);
   try {
@@ -3398,22 +3409,22 @@ $("#composer").onsubmit = async (e) => {
           // 2026-11-01：思考移到右栏「过程」，会话栏只留最终回答
           traceAdd("think", "想", d.text);
         }
-        if (d.type === "delta") { acc += d.text; box.innerHTML = escapeHtml(acc) + "<span class='cursor'></span>"; }
+        if (d.type === "delta") {
+          // 按步累积：这一轮如果最后被判定为「过程」，整段一起从正文拿掉。
+          // 不再靠「文本末尾匹配」撤回 —— 模型多一个空格就撤不掉，正文留半句话。
+          var st = d.step == null ? 0 : Number(d.step);
+          if (!turns[st]) turns[st] = { text: "", process: false };
+          turns[st].text += String(d.text || "");
+          acc += d.text;
+          box.innerHTML = escapeHtml(acc) + "<span class='cursor'></span>";
+        }
         if (d.type === "think") {
-          // 「边想边说」那段刚才已经流式显示在正文里了 —— 撤回它，移进右栏。
-          //
-          // 先试完全一致；不一致就**按长度**裁（模型常在中间补换行/空格，
-          // 只认完全匹配的话正文里会剩半句话 —— 用户看到的就是「先一段、后又一段」）。
-          var tx = String(d.text || "");
-          if (tx) {
-            var exact = acc.slice(-tx.length) === tx;
-            // 按长度裁时，把紧挨着的空白一起去掉，别留一行空行
-            acc = exact
-              ? acc.slice(0, -tx.length)
-              : acc.slice(0, Math.max(0, acc.length - tx.length)).replace(/\s+$/, "");
-            box.innerHTML = escapeHtml(acc) + "<span class='cursor'></span>";
-          }
-          traceAdd("think", "想", tx);
+          // 这一步是「过程」：它的所有 delta 都不该出现在对话里。
+          // 用户 2026-11-03：「这个 think 也放进程里，对话界面只呈现最终回答」。
+          var st2 = d.step == null ? 0 : Number(d.step);
+          if (turns[st2]) turns[st2].process = true;
+          paintAnswer();
+          traceAdd("think", "想", String(d.text || ""));
         }
         if (d.type === "tool") {
           meta.textContent = "调用 " + d.name;

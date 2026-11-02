@@ -1936,7 +1936,7 @@ export function createWebServer(deps: WebDeps) {
             const agent = runAgent({ chat, tools: deps.tools!, maxSteps: supOn ? 16 : 12 }, brief.text, text);
             for await (const ev of agent) {
               if (aborted) break;
-              if (ev.type === "delta") { full += ev.text; send({ type: "delta", text: ev.text }); }
+              if (ev.type === "delta") { full += ev.text; send({ type: "delta", text: ev.text, step: ev.step }); }
               else if (ev.type === "notice") { trace.push({ k: "think", t: ev.text }); send({ type: "notice", text: ev.text }); }
               else if (ev.type === "think") { trace.push({ k: "think", t: ev.text }); send({ type: "think", text: ev.text }); }
               else if (ev.type === "tool") {

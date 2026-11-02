@@ -10,8 +10,8 @@ import {
 } from "./agentguard.ts";
 
 export type AgentEvent =
-  | { type: "think"; text: string }
-  | { type: "delta"; text: string }
+  | { type: "think"; text: string; step?: number }
+  | { type: "delta"; text: string; step?: number }
   | { type: "tool"; id: string; name: string; args: string }
   | { type: "tool_result"; id: string; name: string; result: string; ms: number }
   | { type: "phase"; step: number; note: string }
@@ -85,7 +85,7 @@ export async function* runAgent(deps: AgentDeps, system: string, user: string): 
     let finish = "stop";
     try {
       for await (const ev of deps.chat(messages, schema)) {
-        if (ev.type === "delta") { text += ev.text; yield { type: "delta", text: ev.text }; }
+        if (ev.type === "delta") { text += ev.text; yield { type: "delta", text: ev.text, step }; }
         // notice 必须传出去：它是“云端不行了，这条用本地模型答”的唯一标记。
         // 以前这里把它吞了 —— 面板上永远看不到降级，等于“静默降级”。
         else if (ev.type === "notice") yield { type: "notice", text: ev.text };
@@ -128,7 +128,9 @@ export async function* runAgent(deps: AgentDeps, system: string, user: string): 
     //
     // 判据是结构性的，不看措辞：**带 tool_calls 的那一步说的话 = 过程**；
     // 最后一步没有 tool_calls 的 = 回答。前端据此把刚才流式显示的那段撤回、移进右栏。
-    if (text.trim()) yield { type: "think", text };
+    // 带 step：前端按「第几步」整段归类 —— 这一段的 delta 全部不进正文。
+    // 之前靠「文本末尾匹配」撤回，模型多一个空格就撤不掉，正文里留半句话。
+    if (text.trim()) yield { type: "think", text, step };
 
     messages.push({
       role: "assistant", content: text,
