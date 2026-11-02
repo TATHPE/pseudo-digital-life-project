@@ -187,6 +187,20 @@ export function buildBrief(input: BriefInput): BriefOutput {
       ].join("")
     : "";
   slots.push({ id: "P16", label: "我能看到多少", tokens: estimateTokens(p16), stable: false });
+
+  // P17 我的工具现状：别让她以为自己有一件已经不在手边的工具。
+  // 学自 Coopanion 的 onWorldLifecycle（"failed to start and is not running this time"）。
+  const pl = input.plugins;
+  let p17 = "";
+  if (pl) {
+    const bits: string[] = [];
+    if (pl.running.length) bits.push("插件在跑：" + pl.running.join("、"));
+    else bits.push("没有插件在跑");
+    if (pl.errors.length) bits.push("**连不上**：" + pl.errors.slice(0, 3).join("；") + "（这些工具现在用不了，别假装有）");
+    if (pl.pending) bits.push("mcp.json 有改动，还没生效 —— 重启后才会多出/少掉那些工具");
+    p17 = "【我的工具现状】" + bits.join("。") + "。";
+  }
+  slots.push({ id: "P17", label: "工具现状", tokens: estimateTokens(p17), stable: false });
   // ── 本轮输入 ────────────────────────────────────────
   const p11 = input.user;
   slots.push({ id: "P11", label: "用户输入", tokens: estimateTokens(p11), stable: false });
@@ -195,7 +209,7 @@ export function buildBrief(input: BriefInput): BriefOutput {
   const confidence: BriefOutput["confidence"] =
     narrativeHits === 0 ? "abstain" : narrativeHits < 2 ? "need_evidence" : "answer";
 
-  const body = [p5, p6, p7, p8, p9, p10, p12, p13, p14, p15, NO_FAKE_ACK, p16].filter(Boolean).join("\n\n");
+  const body = [p5, p6, p7, p8, p9, p10, p12, p13, p14, p15, NO_FAKE_ACK, p16, p17].filter(Boolean).join("\n\n");
   const text = [prefixText, body, p11].filter(Boolean).join("\n\n");
   const tokens = estimateTokens(text);
 

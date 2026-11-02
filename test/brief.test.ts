@@ -66,7 +66,7 @@ test("不变量 3：槽位固定且有序（P1–P11 + 她自己的 P12/P13）�
   // 都在召回之后、用户输入之前；全都是易变槽（装了技能不该让 prefixHash 变）
   // P16「我能看到多少」：她自己的容量，同样放易变区
   assert.deepEqual(r.slots.map((s) => s.id),
-    ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10", "P12", "P13", "P14", "P15", "P16", "P11"]);
+    ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10", "P12", "P13", "P14", "P15", "P16", "P17", "P11"]);
   assert.deepEqual(r.slots.filter((s) => s.stable).map((s) => s.id), ["P1", "P2", "P3", "P4"]);
 });
 
@@ -143,4 +143,22 @@ test("不许编「你说过 / 你确认过」这条规矩要一直在", () => {
   const b = buildBrief(base({ recalled: mkRecall(3) }));
   assert.ok(b.text.includes("已按你的确认执行"), "要点名那句最容易脱口而出的话");
   assert.ok(b.text.includes("先在对话里找到那句确认"), "给判据，不只是禁止");
+});
+
+test("P17 工具现状：插件挂了/待生效，她自己必须知道（别假装有那件工具）", () => {
+  // 学自 Coopanion 的 onWorldLifecycle：「failed to start and is not running this time」
+  const dead = buildBrief(base({
+    plugins: { running: ["markitdown"], errors: ["firecrawl: connect ECONNREFUSED"], pending: false },
+  }));
+  assert.ok(dead.text.includes("【我的工具现状】"), "要有一块说工具现状");
+  assert.ok(dead.text.includes("插件在跑：markitdown"), "在跑的要说");
+  assert.ok(dead.text.includes("连不上"), "连不上的要说");
+  assert.ok(dead.text.includes("别假装有"), "而且要明说这层后果");
+
+  const pending = buildBrief(base({ plugins: { running: [], errors: [], pending: true } }));
+  assert.ok(pending.text.includes("还没生效"), "改了没重启也要说");
+  assert.ok(pending.text.includes("没有插件在跑"));
+
+  // 没传就不写这一槽（不编）
+  assert.ok(!buildBrief(base({})).text.includes("【我的工具现状】"));
 });

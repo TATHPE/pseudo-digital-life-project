@@ -17,6 +17,22 @@ import { MAX_SKILL_BYTES, scanSkills } from "./skills.ts";
 export const ID_RE = /^[a-z0-9][a-z0-9_-]{0,39}$/;
 
 export const mcpConfigPath = (home: string): string => join(home, "mcp.json");
+
+/**
+ * mcp.json 的指纹（2026-11-03）：用来判断「磁盘上改了，但进程里还是旧的」。
+ *
+ * 学自 Coopanion 的「待生效」：它装完扩展先进【待生效】，重启进程才生效。
+ * 我们之前只写了一句「不假装已生效」，但**怎么知道有没有生效**没人算过 ——
+ * 于是用户改了 mcp.json、面板还显示旧工具，看起来像「插件坏了」。
+ */
+export function mcpFingerprint(home: string): string | null {
+  try {
+    const raw = readFileSync(mcpConfigPath(home), "utf8");
+    let h = 2166136261;                                   // FNV-1a：够用且不用引 crypto
+    for (let i = 0; i < raw.length; i++) { h ^= raw.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return (h >>> 0).toString(16);
+  } catch { return null; }
+}
 export const skillsDir = (home: string): string => join(home, "skills");
 
 export type WriteResult = { ok: true; note?: string } | { ok: false; code: string; why: string };

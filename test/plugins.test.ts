@@ -95,3 +95,30 @@ test("删技能只删这个目录，不碰别的", () => {
   removeSkill(home, "drop");
   assert.deepEqual(readdirSync(join(home, "skills")), ["keep"]);
 });
+
+test("待生效：磁盘上的 mcp.json 改了、进程里还是旧的 —— 要看得出来", async () => {
+  // 学自 Coopanion：装完扩展先进【待生效】，重启进程才生效。
+  // 我们之前只写了一句"不假装已生效"，但**没人算过到底生没生效**。
+  const { mkdtempSync, writeFileSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { mcpFingerprint } = await import("../src/plugins.ts");
+
+  const home = mkdtempSync(join(tmpdir(), "jj-mcp-"));
+  try {
+    writeFileSync(join(home, "mcp.json"), JSON.stringify({ servers: { a: { command: "x" } } }));
+    const before = mcpFingerprint(home);
+    assert.ok(before, "算得出指纹");
+
+    // 进程里加载的是 before；磁盘被改成两份配置
+    writeFileSync(join(home, "mcp.json"), JSON.stringify({ servers: { a: { command: "x" }, b: { command: "y" } } }));
+    const after = mcpFingerprint(home);
+    assert.notEqual(after, before, "改了就要对不上（→ mcp-restart-needed）");
+
+    // 内容一样但重写一次：指纹应当稳定（不然每次保存都报待生效）
+    writeFileSync(join(home, "mcp.json"), JSON.stringify({ servers: { a: { command: "x" }, b: { command: "y" } } }));
+    assert.equal(mcpFingerprint(home), after, "同样的内容指纹要稳定");
+  } finally {
+    try { rmSync(home, { recursive: true, force: true }); } catch { /* ignore */ }
+  }
+});

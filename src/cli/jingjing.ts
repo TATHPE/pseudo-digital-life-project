@@ -335,7 +335,9 @@ async function main(): Promise<void> {
         ...(deskToken ? { deskToken } : {}),
         db: d.db, inboxDir: inbox, home: HOME, getTransport, getEmbedder, getConfig,
         tools: registry, getChat, pendingOutage: boot1.outage,
-        mcpInfo: { servers: Object.keys(mcpCfg.servers ?? {}), tools: mcp.tools, errors: mcp.errors },
+        // running = 我这次启动实际加载的那份配置的指纹；磁盘后来改了就对不上
+        mcpInfo: { servers: Object.keys(mcpCfg.servers ?? {}), tools: mcp.tools, errors: mcp.errors,
+          running: (await import("../plugins.ts")).mcpFingerprint(HOME) },
       });
       // 绑哪里：默认只绑回环。容器里必须绑 0.0.0.0（否则宿主通过端口映射也访问不到，
       // 因为容器的 127.0.0.1 不是宿主的 127.0.0.1）；而 compose 只把 0.0.0.0 映射到

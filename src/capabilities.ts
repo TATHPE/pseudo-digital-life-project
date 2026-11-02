@@ -56,7 +56,7 @@ export interface Capabilities {
 export interface CapabilitiesDeps {
   db: DatabaseSync;
   /** 真实的 MCP 连接结果；没有就说明没挂 */
-  mcp?: { servers: string[]; tools: string[]; errors: string[] };
+  mcp?: { servers: string[]; tools: string[]; errors: string[]; /** 进程启动时那份配置的指纹 */ running?: string | null };
   /** 已装的钩子（data/hooks.json）。不给就当没装 —— 别假装有 */
   hooks?: Array<{ id: string; event: string; template: string; enabled?: boolean }>;
   /** CLI 子命令（真实注册表由调用方给，避免这里硬编码） */
@@ -87,6 +87,13 @@ export async function capabilities(deps: CapabilitiesDeps): Promise<Capabilities
     name, class: "tool", source: "mcp", tier: "T2",
   }));
   for (const e of deps.mcp?.errors ?? []) degraded.push(`mcp-unavailable:${e.split(":")[0]}`);
+  // 待生效：磁盘上的 mcp.json 和进程里加载的那份不一样 → 改了还没重启
+  try {
+    const { mcpFingerprint } = await import("./plugins.ts");
+    const disk = deps.home ? mcpFingerprint(deps.home) : null;
+    const running = String(deps.mcp?.running ?? "");
+    if (disk && running && disk !== running) degraded.push("mcp-restart-needed");
+  } catch { /* 算不出来就不断言 */ }
 
   // ── command：只报调用方给的真实命令表 ────────────────────────
   const commands: CapabilityItem[] = (deps.commands ?? []).map((c) => ({ name: c, class: "command", source: "cli" }));

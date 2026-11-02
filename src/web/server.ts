@@ -46,6 +46,7 @@ import { createTransport, routerFrom } from "../transport.ts";
 import { spentToday } from "../budget.ts";
 import { recallForBrief, omissionNote } from "../recall.ts";
 import { toolHuman } from "../toolhint.ts";
+import { mcpFingerprint } from "../plugins.ts";
 import { decideSurface, pickSurface, noteSurfaced, usedToday } from "../surface.ts";
 import { reinforce, updateMemoryText, patchMemoryMeta } from "../store.ts";
 import { meta } from "../db.ts";
@@ -120,7 +121,7 @@ export interface WebDeps {
   /** 启动时检测到的缺口（只报告一次，首轮后清空） */
   pendingOutage?: Outage | null;
   /** B-0：真实 MCP 连接结果（面板要能说清"哪个 server 没挂上"） */
-  mcpInfo?: { servers: string[]; tools: string[]; errors: string[] };
+  mcpInfo?: { servers: string[]; tools: string[]; errors: string[]; /** 启动时加载的那份 mcp.json 指纹（判「待生效」） */ running?: string | null };
   getEmbedder: () => Embedder | null;
   now?: () => Date;
   /** 测试可注入：把"模型回复"换成生成器 */
@@ -1790,6 +1791,19 @@ export function createWebServer(deps: WebDeps) {
         } catch { /* 查不到就不写这一槽 */ }
         const capacity = { memories: capMem, ...(capDocs === undefined ? {} : { docs: capDocs }), ...(capChunks === undefined ? {} : { chunks: capChunks }), recallMax: 8, searchMax: 20 };
 
+        // 插件现状：在跑的 / 连不上的 / 改了还没重启的。
+        // 学自 Coopanion：它把 World 的生死直接告诉模型；我们之前一句话都没有。
+        const pluginState = (() => {
+          const mi = deps.mcpInfo;
+          if (!mi) return undefined;
+          let pending = false;
+          try {
+            const disk = mcpFingerprint(deps.home);
+            pending = Boolean(disk && mi.running && disk !== mi.running);
+          } catch { /* 算不出就不报 */ }
+          return { running: mi.servers ?? [], errors: mi.errors ?? [], pending };
+        })();
+
         // 只取**还没过期**的契约：已了结的承诺不该每轮继续喂给模型（否则它会反复提）
         const contracts = openContracts(deps.db, now()).map((r) => r.text);
         const last = messages(deps.db, deps.inboxDir).slice(0, -1).pop();
@@ -1855,6 +1869,7 @@ export function createWebServer(deps: WebDeps) {
           skills: skillIdx,
           powers,
           capacity,
+          plugins: pluginState,
           user: (() => { const note = omissionNote(omitted, rc.omittedDocs); return note ? note + String.fromCharCode(10) : ""; })() + text,
         });
 

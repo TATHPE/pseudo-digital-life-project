@@ -70,6 +70,22 @@ export interface BriefInput {
    * node -e 查库 —— 因为**她的简报里从来没写过自己的容量**。第二次还编出「已按你的确认执行」。
    * 这是「答不出自己的事，只能去查」，不是态度问题：数字就在配置里，就该让她看见。
    */
+  /**
+   * 插件现状（2026-11-03）。
+   *
+   * 学自 Coopanion 的 onWorldLifecycle：它把「某个 World 起不来 / 挂了 / 被藏起来」
+   * 直接注入给模型（"failed to start and is not running this time"）。
+   * 我们之前：MCP 连不上 → 面板标红 → **她完全不知道**，照样以为自己有那个工具。
+   */
+  plugins?: {
+    /** 在跑的 server 名 */
+    running: string[];
+    /** 连不上的（带原因） */
+    errors: string[];
+    /** 磁盘上的 mcp.json 改了但还没重启 */
+    pending: boolean;
+  };
+
   capacity?: {
     memories: number;
     docs?: number;
