@@ -965,11 +965,11 @@ description: 周日晚上把这一周压成三句话。
 
       <div class="panelbox">
         <h2>SPLASH · 开机片头</h2>
-        <p class="hint">每次打开软件先播的一段。任何时候<b>点一下画面或按 Esc</b> 都能跳过。</p>
+        <p class="hint">每次打开软件先播的一段：黑底白线，先写出项目名，再把本机的真实读数一行行写进去。<b>点一下画面或按 Esc</b> 随时跳过。</p>
         <div class="filerow">
           <select id="splashmode" class="searchbox">
-            <option value="full">完整 · 约 9 秒（网格 + 逐条真实读数 + READY）</option>
-            <option value="simple">简易 · 约 3.4 秒（只写 logo）</option>
+            <option value="full">完整 · 约 11 秒（遥测 / 终端 / 节点矩阵 + READY，数字都是真机实时值）</option>
+            <option value="simple">简易 · 约 3.6 秒（只写项目名）</option>
             <option value="off">不播</option>
           </select>
           <span id="splashmsg" class="hint"></span>

@@ -324,7 +324,7 @@ export function createWebServer(deps: WebDeps) {
           const bootMod2 = await import("./boot.ts");
           const splash2 = bootMod2.splashMode(readFileConfig(deps.home).ui);
           const bootHtml = splash2 === "off" ? "" : bootMod2.bootOverlay(splash2 === "simple" ? "simple" : "full");
-          const page = WELCOME.split("{{AGENT}}").join(nm).replace("<!--BOOT-->", bootHtml);
+          const page = WELCOME.split("{{AGENT}}").join(nm).split("<!--BOOT-->").join(bootHtml);
           res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
           res.end(req.method === "HEAD" ? undefined : page);
           return;
@@ -343,7 +343,7 @@ export function createWebServer(deps: WebDeps) {
         const bootMod = await import("./boot.ts");
         const splash = bootMod.splashMode(readFileConfig(deps.home).ui);
         const bootHtml = splash === "off" ? "" : bootMod.bootOverlay(splash);
-        const html = PAGE.replace("<!--BOOT-->", bootHtml).replace(
+        const html = PAGE.split("<!--BOOT-->").join(bootHtml).replace(
           "window.SOURCES_DIR = null;",
           "window.SOURCES_DIR = " + JSON.stringify(sourcesDir) + ";" +
             String.fromCharCode(10) + "window.AGENT_NAME = " + JSON.stringify(agentName) + ";",

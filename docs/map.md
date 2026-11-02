@@ -356,7 +356,7 @@
 | `src/transport.ts` | 真正的模型调用层（13 §2 / 19 §0.1 W-A） |
 | `src/types.ts` | export type Tier = "T0" / "T1" / "T2" / "T3" / "T4"; |
 | `src/verbs.ts` | 能力目录（04 §3）：鲸鲸能碰到的东西**只有这张表里的**。 |
-| `src/web/boot.ts` | 开机片头（2026-11-01）。 |
+| `src/web/boot.ts` | 开机片头（2026-11-02）。 |
 | `src/web/desk.ts` | 桌面端的**启动令牌**（2026-11-01：软件只有桌面端，不提供浏览器入口）。 |
 | `src/web/page.ts` | 单页（零前端依赖、零构建）。 |
 | `src/web/server.ts` | 本地 Web 面板（17 §4）：127.0.0.1:7700，零前端依赖，SSE 流式。 |
