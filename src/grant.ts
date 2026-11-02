@@ -16,7 +16,8 @@
  * 为什么不做跨进程共享：那需要常驻守护进程，而我们已经有一个（面板服务）。
  * 所以授权由**谁执行谁持有** —— 面板里开的窗口给面板用，CLI 里开的给当次 CLI 用。
  */
-import { basename, resolve } from "node:path";
+import { basename, resolve, join } from "node:path";
+import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 
 export type GrantDecision =
   | { ok: true; id: string; commands: string[]; scope: string; expiresAt: string | null; full?: boolean; super?: boolean }
@@ -88,6 +89,31 @@ export const FULL_DENY = new Set([
   "curl", "wget", "certutil", "bitsadmin",
   "powershell", "pwsh", "cmd", "bash", "sh", "zsh", "wsl",
 ]);
+/** 解释器：能用「解释器 + 脚本文件」形状跑代码的那些。 */
+const INTERPRETERS = new Set([
+  "powershell", "pwsh", "cmd", "bash", "sh", "zsh", "wsl", "node", "python", "python3", "py",
+]);
+
+/**
+ * 认「解释器 + home 内的脚本文件」这一种形状，返回脚本路径；认不出来就是 null。
+ *
+ * 认出来的形状很少：-File x / /c x / 直接 x。**绝不认** -Command / -e / -c
+ * （那是内联求值，等于把闸门当成装饰）。
+ */
+function scriptFileArg(home: string, argv: readonly string[]): string | null {
+  // 扫过开关，找**绝对路径**的那个参数（script.run 传的就是 join(ctx.home, …)）。
+  // 遇到内联求值开关就立刻否 —— 那是「不落文件也能跑代码」，闸门不能被它绕。
+  const SWITCH = /^(-[a-z0-9-]+|\/[ck])$/i;
+  for (let i = 1; i < Math.min(argv.length, 8); i++) {
+    const a = String(argv[i] ?? "");
+    if (/^-(command|e|eval|c|p|print|encodedcommand)$/i.test(a)) return null;
+    if (SWITCH.test(a)) continue;
+    if (/^([a-z]:|\/)/i.test(a)) return insideHome(home, a) ? a : null;
+    // 第一个既不是开关也不是绝对路径的参数 = 子命令（dir、whoami…）→ 不是脚本
+    return null;
+  }
+  return null;
+}
 /** 内联求值：node -e / python -c / sh -c …。命令必须落在**能读的文件**上。 */
 export const INLINE_EVAL = /^(-e|--eval|-c|-p|--print|-Command|-EncodedCommand)$/i;
 
@@ -208,6 +234,29 @@ export function revokeGrant(home: string, id: string): boolean {
   return perHome.delete(id);
 }
 
+/**
+ * 用户**显式选过**的档位（落盘）。
+ *
+ * 为什么需要它：窗口只在进程内存里 —— 用户切到「什么都问」(ask) 之后，
+ * 内存清空、变成「没有窗口」，而 applyDefaultPosture 看到「没有窗口」就判定
+ * 「用户没切过」，于是每次启动硬拉回 full。**用户的选择被自己的默认值覆盖了。**
+ * 把选择落盘，重启后能区分「用户选了 ask」与「从没选过」。
+ */
+export function chosenPreset(home: string): Preset | null {
+  try {
+    const raw = readFileSync(join(home, "posture.json"), "utf8");
+    const v = JSON.parse(raw) as { preset?: string };
+    return v.preset === "ask" || v.preset === "read" || v.preset === "write" || v.preset === "full" ? v.preset : null;
+  } catch { return null; }
+}
+
+function rememberChosen(home: string, preset: Preset): void {
+  try {
+    mkdirSync(home, { recursive: true });
+    writeFileSync(join(home, "posture.json"), JSON.stringify({ preset, at: new Date().toISOString() }, null, 2), "utf8");
+  } catch { /* 写不了就算了，不阻断权限操作 */ }
+}
+
 /** 当前会话的档位：有窗口就是那一档，没有就是逐次确认 */
 export function currentPreset(home: string, now = new Date()): { preset: Preset; remainingS: number; grantId: string | null } {
   const rows = listGrants(home, now);
@@ -228,6 +277,7 @@ export function setPreset(
   now = new Date(),
 ): { ok: true; preset: Preset; grant: { id: string; expiresAt: string | null; full?: boolean } | null } | { ok: false; code: string; why: string } {
   revokeAll(home);
+  rememberChosen(home, preset);
   if (preset === "ask") return { ok: true, preset, grant: null };
 
   const because = String(input.because ?? "").trim() || `档位切到 ${preset}（输入框旁的选择器）`;
@@ -264,7 +314,7 @@ export function revokeAll(home: string): number {
  * 严格：命令、目录、路径参数、shell 元字符、密钥字样，任何一条不过就是不过。
  */
 export function checkGrant(
-  home: string, req: { argv: readonly string[]; cwd: string; verb?: string }, now = new Date(),
+  home: string, req: { argv: readonly string[]; cwd: string; verb?: string; asInterpreter?: boolean }, now = new Date(),
 ): GrantDecision {
   const perHome = store.get(home);
   if (!perHome || !perHome.size) return { ok: false, code: "E_NO_GRANT", why: "没有打开任何授权窗口" };
@@ -323,7 +373,12 @@ export function checkGrant(
 
     // 完全权限窗口：任意命令（除硬禁名单）+ 整个 home；但**普通窗口不因此变宽**
     if (g.full) {
-      if (FULL_DENY.has(bin)) { sawFullDeny = bin; continue; }
+      // 解释器跑**脚本文件**（script.run）是另一回事：
+      // 默认解释器就是 PowerShell，而它在 FULL_DENY 里 —— 不解开这一条，
+      // "默认 PowerShell" 与 "能跑脚本" 就永远矛盾（实测 E_GRANT_FULL_DENY）。
+      // 只放行「解释器 + home 内的脚本文件」这一种形状；powershell -Command 仍然拒。
+      const interpreterRun = Boolean(req.asInterpreter) && INTERPRETERS.has(bin) && scriptFileArg(home, argv) !== null;
+      if (FULL_DENY.has(bin) && !interpreterRun) { sawFullDeny = bin; continue; }
       if (!insideHome(home, req.cwd)) continue;
       const badPath = argv.slice(1).filter((a) => {
         if (!looksLikePath(a)) return false;

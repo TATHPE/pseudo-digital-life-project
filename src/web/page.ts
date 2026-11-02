@@ -1012,6 +1012,8 @@ description: 周日晚上把这一周压成三句话。
       <div class="panelbox">
         <h2>LOCAL · 本地模型</h2>
         <p class="hint" id="m-state">…</p>
+        <!-- 它现在在干什么：这一行之前完全不存在，用户原话「我根本就不知道它在干什么」 -->
+        <p class="hint" id="m-live">…</p>
         <div class="two">
           <div><label>共享默认 · route / extract / salience / conflict</label><select id="m-default"></select></div>
           <div><label>夜间整理 · 自传与反思</label><select id="m-night"></select></div>
@@ -2781,6 +2783,22 @@ async function loadModels(force) {
   MODELS = m;
   paintModels(m);
 }
+async function paintLocalLive() {
+  var el = document.getElementById('m-live');
+  if (!el) return;
+  var h = null;
+  try { h = await (await fetch('/health')).json(); } catch (e) { el.textContent = '取不到本地模型状态'; return; }
+  var L = h && h.local;
+  if (!L) { el.textContent = ''; return; }
+  var parts = [];
+  parts.push(L.online ? '在线' : '离线');
+  parts.push(L.running && L.running.length ? '正在跑：' + L.running.join(', ') : '当前没有模型在跑（只在需要时加载）');
+  var e = L.embed || {};
+  parts.push('本轮进程里 embedding 调了 ' + (e.calls || 0) + ' 次' + (e.texts ? '（' + e.texts + ' 条文本，共 ' + Math.round((e.ms || 0) / 100) / 10 + 's）' : '') + (e.failed ? ' · 失败 ' + e.failed + ' 次' : ''));
+  parts.push('白天不参与对话；只在夜里整理记忆与建索引时干活');
+  el.textContent = parts.join(' ｜ ');
+}
+
 function paintModels(m) {
   const byRole = {};
   (m.roles || []).forEach(function (r) { byRole[r.role] = r; });
@@ -2791,6 +2809,7 @@ function paintModels(m) {
   fillModels($("#m-default"), (byRole["route"] || {}).model || "", m.installed, true);
   fillModels($("#m-night"), (byRole["night"] || {}).model || "", m.installed, true);
   fillModels($("#m-embed"), (byRole["embed"] || {}).model || "", m.installed, true);
+  paintLocalLive();
 }
 $("#m-save").addEventListener("click", async function () {
   const btn = this;

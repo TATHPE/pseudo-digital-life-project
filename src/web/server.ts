@@ -492,6 +492,30 @@ export function createWebServer(deps: WebDeps) {
           // 覆盖率：模型没换也可能"有记忆没向量"（实测 157 条里只有 29 条有）——
           // 那时检索会静默漏掉一多半记忆，而 /health 一直说一切正常。
           if (ix.missing > 0) degraded.push("embed-index-incomplete:" + ix.missing);
+        } catch { /* ignore */ }
+        // 本地模型到底在干什么：这一块之前完全没有出口（用户原话：完全未知）。
+        let localInfo: Record<string, unknown> = {};
+        try {
+          const cfgL = deps.getConfig();
+          const { probeOllama } = await import("../ollama.ts");
+          const { embedStats } = await import("../embed.ts");
+          const pf = await probeOllama(cfgL.ollama ?? "http://127.0.0.1:11434", 700).catch(() => null);
+          const anyCfg = cfgL as unknown as { local?: { default?: string; night?: string } };
+          const loc = anyCfg.local ?? {};
+          let running: string[] = [];
+          try {
+            const ps = await fetch((cfgL.ollama ?? "http://127.0.0.1:11434") + "/api/ps", { signal: AbortSignal.timeout(700) });
+            const j = (await ps.json()) as { models?: Array<{ name?: string }> };
+            running = (j.models ?? []).map((m) => String(m.name ?? "")).filter(Boolean);
+          } catch { /* 没在跑就是空的 */ }
+          localInfo = {
+            endpoint: cfgL.ollama ?? "http://127.0.0.1:11434",
+            online: Boolean(pf && pf.online),
+            installed: pf?.names ?? [],
+            running,
+            roles: { embed: cfgL.roles["embed"]?.model ?? null, night: loc.night ?? loc.default ?? null, shared: loc.default ?? null },
+            embed: { calls: embedStats.calls, texts: embedStats.texts, ms: embedStats.ms, failed: embedStats.failed, lastAt: embedStats.lastAt || null },
+          };
           if (meta(deps.db, "reembed_error")) degraded.push("reembed-failed");
         } catch { /* ignore */ }
         json(res, 200, {
@@ -502,6 +526,8 @@ export function createWebServer(deps: WebDeps) {
           memories,
           uptimeS: Math.round(process.uptime()),
           degraded,
+          // 本地模型的状态（用户：「我根本就不知道它在干什么，它的工作状态完全未知」）
+          local: localInfo,
         });
         return;
       }

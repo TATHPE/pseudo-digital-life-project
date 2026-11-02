@@ -85,3 +85,44 @@ test("super 开启后：回收站里的一律不动", async () => {
   assert.equal(r.ok, false);
   assert.match(r.output, /E_SUPER_KEEP/);
 });
+
+test("权限的两个硬矛盾（2026-11-03）：默认解释器能跑脚本、用户切 ask 不被重启覆盖", async () => {
+  const { mkdtempSync, rmSync, writeFileSync, mkdirSync, readFileSync, existsSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { setPreset, currentPreset, checkGrant, revokeAll, chosenPreset } = await import("../src/grant.ts");
+  const { applyDefaultPosture } = await import("../src/posture.ts");
+  const { disableSuper } = await import("../src/supergrant.ts");
+
+  const home = mkdtempSync(join(tmpdir(), "jj-perm-"));
+  try {
+    mkdirSync(join(home, "workspace"), { recursive: true });
+    const script = join(home, "workspace", "x.ps1");
+    writeFileSync(script, "Write-Output ok\n");
+
+    disableSuper(home);
+    setPreset(home, "full", { because: "测试用：验证默认解释器能跑脚本" });
+
+    // ① 矛盾一：默认解释器是 PowerShell，而它在 FULL_DENY 里 → script.run 之前永远被拒
+    const ok = checkGrant(home, { argv: ["powershell", "-NoProfile", "-File", script], cwd: home, verb: "script.run", asInterpreter: true });
+    assert.equal(ok.ok, true, "script.run 用默认解释器跑 home 内的脚本，必须放行");
+
+    // 但 shell.exec 直接传 -Command 仍然拒（那是绕过闸门）
+    const bad = checkGrant(home, { argv: ["powershell", "-NoProfile", "-Command", "whoami"], cwd: home, verb: "shell.exec" });
+    assert.equal(bad.ok, false, "powershell -Command 必须仍然拒");
+
+    // 脚本在 home 外也拒
+    const out = checkGrant(home, { argv: ["powershell", "-File", "C:/Windows/System32/evil.ps1"], cwd: home, verb: "script.run", asInterpreter: true });
+    assert.equal(out.ok, false, "脚本必须在 home 内");
+
+    // ② 矛盾二：切到 ask 后重启会被强制拉回 full
+    setPreset(home, "ask", { because: "用户不想每次都放行" });
+    assert.equal(chosenPreset(home), "ask", "用户的显式选择要落盘");
+    revokeAll(home);                                  // 模拟进程重启（窗口只在内存）
+    const r = applyDefaultPosture({} as never, home, { env: {} });
+    assert.equal(r.preset, "ask", "重启后必须尊重用户的 ask，不能被默认值覆盖");
+    assert.equal(currentPreset(home).preset, "ask");
+  } finally {
+    try { rmSync(home, { recursive: true, force: true }); } catch { /* ignore */ }
+  }
+});

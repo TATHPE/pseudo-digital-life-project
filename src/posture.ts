@@ -21,7 +21,7 @@
  * 想回到"什么都问"：JJ_PARANOID=1（或面板上切「逐次确认」）。
  */
 import type { DatabaseSync } from "node:sqlite";
-import { setPreset, currentPreset, type Preset } from "./grant.ts";
+import { setPreset, currentPreset, chosenPreset, type Preset } from "./grant.ts";
 import { allowFor, egressStatus } from "./egress.ts";
 
 export interface AppliedDefaults {
@@ -49,11 +49,16 @@ export function applyDefaultPosture(
 
   const wanted = (env.JJ_DEFAULT_PRESET as Preset | undefined) ?? DEFAULT_PRESET;
   const valid: Preset[] = ["ask", "read", "write", "full"];
-  const preset = valid.includes(wanted) ? wanted : DEFAULT_PRESET;
-  const cur = currentPreset(home, now);
-  // 已经手动切过的（有窗口）就别覆盖：用户的选择优先于默认
-  const presetApplied = cur.preset === "ask" && preset !== "ask";
-  if (presetApplied) setPreset(home, preset, { because: `启动默认姿态（${preset}）` }, now);
+  const def = valid.includes(wanted) ? wanted : DEFAULT_PRESET;
+  // 用户**显式选过**的档位优先（落盘的 posture.json）。
+  // 之前只看内存里的窗口：切到 ask 后内存空了，就被当成「从没切过」，
+  // 每次启动硬拉回 full —— 用户的选择被默认值覆盖。
+  const chosen = chosenPreset(home);
+  const effective = chosen ?? def;
+  const want = effective === "ask" ? "ask" : effective;
+  const presetApplied = currentPreset(home, now).preset !== want;
+  if (presetApplied) setPreset(home, want, { because: chosen ? `沿用你上次选的档位（${chosen}）` : `启动默认姿态（${def}）` }, now);
+  const preset = want;
 
   // 代码外发：默认在会话内开放，但每次仍写 audit；面板上可一键关
   let egressOpened = false;

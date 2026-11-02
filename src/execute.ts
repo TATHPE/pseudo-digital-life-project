@@ -133,7 +133,7 @@ export async function execute(
         return { ok: false, output: `${c.code}: 令牌签发后立刻失效（系统时钟？）`, tier: tier, strength: auth.strength, verb, ms: 0, code: c.code };
       }
       tokenId = t.token;
-    } else if ((grantHit = checkGrant(home, { argv: proposal.argv, cwd: proposal.cwd, verb: def.name }, new Date(ts))).ok) {
+    } else if ((grantHit = checkGrant(home, { argv: proposal.argv, cwd: proposal.cwd, verb: def.name, asInterpreter: def.name === "script.run" }, new Date(ts))).ok) {
       // K-3：落在会话授权窗口里 → 不再逐次要令牌，但仍然逐条审计（capability = grant:<id>）
       const g = grantHit as { ok: true; id: string; commands: string[]; scope: string; expiresAt: string; full?: boolean };
       tokenId = `grant:${g.id}`;
