@@ -71,3 +71,20 @@ test("接上了：full 档是 iframe 加载 /splash，播完/跳过会撤掉", (
   assert.ok(tpl.includes("jjboot-done"), "片头那份自己也要发这条消息");
   assert.ok(tpl.includes("Escape"), "要能跳过");
 });
+
+test("字标不是画出来的字形：原版那三个 path（就是「550C」）必须彻底消失", () => {
+  // 这一条是被用户"启动动画里还有 550C"逼出来的：
+  // 它的字标是 SVG path 画的字形，grep 字符串永远搜不到 —— 只有看画面才发现。
+  assert.ok(!tpl.includes('viewBox="0 0 800 230"'), "原版字标 SVG 要整段删掉");
+  for (const id of ["five1", "five2", "red0", 'id="cee"']) {
+    assert.ok(!tpl.includes(id), "字形分组不许残留：" + id);
+  }
+  assert.ok(tpl.includes('id="logo" class="jj-logo"'), "换成文本字标");
+  for (const w of ["PSEUDO", "DIGITAL", "LIFE", "PROJECT"]) {
+    assert.ok(tpl.includes('<span class="ln">' + w + "</span>"), "四段都在：" + w);
+  }
+  // 节律保留：每 300ms 擦出一段（原版是每个 path 300ms）
+  assert.ok(tpl.includes("el.classList.add('on')"), "逐行擦出");
+  assert.ok(tpl.includes("250 + i * 300"), "节拍与原版一致");
+  assert.ok(tpl.includes("setTimeout(() => bootText.classList.add('show'), 2400)"), "小字仍在 2.4s");
+});

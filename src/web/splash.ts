@@ -22,9 +22,12 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 /** 模板只读一次（80KB，别每次请求都读盘） */
+// 开发模式每次读盘：改完 splash.body.html 刷新就能看到，不用重启 serve。
+// （踩过：模板缓存着，改了文案还以为没生效 —— 用户看到的就是旧的那份。）
+const DEV = process.env.JJ_NO_DESK_TOKEN === "1" || process.env.JJ_DEV === "1";
 let cached: string | null = null;
 function template(): string {
-  if (cached === null) cached = readFileSync(join(import.meta.dirname, "splash.body.html"), "utf8");
+  if (DEV || cached === null) cached = readFileSync(join(import.meta.dirname, "splash.body.html"), "utf8");
   return cached;
 }
 
