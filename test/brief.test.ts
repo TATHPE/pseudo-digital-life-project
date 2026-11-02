@@ -98,3 +98,26 @@ test("P14 技能索引：进了正文，但不改稳定前缀（装了技能不�
   assert.equal(withSk.prefixHash, without.prefixHash, "prefixHash 只能由 P1–P4 决定");
   assert.ok(withSk.tokens > without.tokens, "多一句话，token 应该多一点");
 });
+
+test("没召回时把话说死：P10 里紧跟硬提示 + 把契约第一条再念一遍（她的第 3 条自检）", () => {
+  // 为什么是机制不是叮嘱：她自己说「靠自律挡不住，因为它不像越权那样会立刻报错」。
+  // 所以提示要出现在**她犯错的那个位置**（P10），不能只靠最前面那条契约。
+  const none = buildBrief(base({ recalled: [] }));
+  assert.ok(none.text.includes("这一轮没有与你问的这件事相关的记忆"), "空召回要有硬提示");
+  assert.ok(none.text.includes("不要说「上次"), "要说清哪些话是高危");
+  assert.ok(none.text.includes("上次你说过"), "点名那句最容易脱口而出的");
+  assert.ok(none.text.includes("我觉得应该记得"), "把契约第一条再念一遍（用她自己的说法）");
+  assert.equal(none.confidence, "abstain");
+
+  // 只召回到契约条目 = 没有"关于这件事"的证据（她说搜「需要完善」回来只有契约条目）
+  const onlyContract = buildBrief(base({
+    recalled: [{ id: 1, text: "不确定就说不知道", score: 1, stage: "active", weight: 1, cite: "mem:1", relevance: 1, via: "active", layer: "contract" }],
+  } as never));
+  assert.ok(onlyContract.text.includes("这一轮没有与你问的这件事相关的记忆"), "只有契约条目也算没召回");
+  assert.equal(onlyContract.confidence, "abstain");
+
+  // 有真的叙事召回 → 一个字都不许念（否则每轮都在念经，她很快就学会无视）
+  const yes = buildBrief(base({ recalled: mkRecall(3) }));
+  assert.ok(!yes.text.includes("这一轮没有与你问的这件事相关的记忆"), "有召回就不该念");
+  assert.equal(yes.confidence, "answer");
+});

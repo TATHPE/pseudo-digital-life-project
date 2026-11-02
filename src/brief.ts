@@ -131,7 +131,23 @@ export function buildBrief(input: BriefInput): BriefOutput {
   slots.push({ id: "P9", label: "增量", tokens: estimateTokens(p9), stable: false });
 
   const r = fit(input.recalled, MAX_RECALLED, b.recalled, recallLine);
-  const p10 = r.lines.length ? `【召回】\n${r.lines.join("\n")}` : "【召回】无";
+  // ── 没有真召回时，把话说死（2026-11-02，来自她自己的第 3 条自检）──
+  //
+  // 她的原话：「我分不清『我记着』和『我觉得应该记得』……契约第一条写在最前面，
+  // 但它是这七条里我最容易踩的，因为它不像越权那样会立刻报错，错了也没人当场抓住。」
+  //
+  // 靠自律没用（她自己也这么说）。这里改的是**上下文结构**：没召回 / 只召回到契约条目时，
+  // 就在 P10 里紧跟一段硬提示，并把契约第一条**再念一遍** —— 放在她犯错的位置，
+  // 而不是指望她记得最前面那一条。放易变区，稳定前缀的 prefixHash 不受影响。
+  const narrativeHits = (input.recalled ?? []).filter((m) => (m.layer ?? "narrative") !== "contract").length;
+  const noNarrative = narrativeHits === 0;
+  const ABSTAIN_NOTE = [
+    "（这一轮没有与你问的这件事相关的记忆。",
+    "不要说「上次你说过」「我们之前提过」这类话 —— 那是编。不知道就说不知道，问她。）",
+    "（契约第一条：不确定是不是真的记得，就说不记得。别把「我觉得应该记得」说成「我记得」。）",
+  ].join("\n");
+  const p10body = r.lines.length ? `【召回】\n${r.lines.join("\n")}` : "【召回】无";
+  const p10 = noNarrative ? `${p10body}\n${ABSTAIN_NOTE}` : p10body;
   slots.push({ id: "P10", label: "召回", tokens: estimateTokens(p10), stable: false });
 
   // ── 她自己那一层（H-a / H-b）────────────────────────
@@ -159,7 +175,7 @@ export function buildBrief(input: BriefInput): BriefOutput {
 
   // confidence 四态（01 §6.2）：召回为空时必须能说"不知道"
   const confidence: BriefOutput["confidence"] =
-    input.recalled.length === 0 ? "abstain" : input.recalled.length < 2 ? "need_evidence" : "answer";
+    narrativeHits === 0 ? "abstain" : narrativeHits < 2 ? "need_evidence" : "answer";
 
   const body = [p5, p6, p7, p8, p9, p10, p12, p13, p14, p15].filter(Boolean).join("\n\n");
   const text = [prefixText, body, p11].filter(Boolean).join("\n\n");
