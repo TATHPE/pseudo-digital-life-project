@@ -107,6 +107,8 @@ export const PAGE = `<!doctype html>
   }
   button:disabled { opacity:.45; cursor:not-allowed; }
   select option { background:#0e1512; color:var(--fg); }
+  /* html 自己也要给底色：只给 body 的话，导航过来/重绘时会先闪一帧白 */
+  html { background:var(--void); }
   html, body { height:100%; }
   /* 刘海屏/圆角屏：内容不能钻到状态栏或手势条底下（viewport-fit=cover 之后必须自己补） */
   header { padding-top:env(safe-area-inset-top); }
@@ -968,7 +970,7 @@ description: 周日晚上把这一周压成三句话。
         <p class="hint">每次打开软件先播的一段：黑底白线，先写出项目名，再把本机的真实读数一行行写进去。<b>点一下画面或按 Esc</b> 随时跳过。</p>
         <div class="filerow">
           <select id="splashmode" class="searchbox">
-            <option value="full">完整 · 约 11 秒（遥测 / 终端 / 节点矩阵 + READY，数字都是真机实时值）</option>
+            <option value="full">完整 · 约 7 秒（遥测 / 终端 / 节点矩阵 + READY，数字都是真机实时值）</option>
             <option value="simple">简易 · 约 3.6 秒（只写项目名）</option>
             <option value="off">不播</option>
           </select>

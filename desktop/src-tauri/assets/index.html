@@ -1,7 +1,48 @@
 <!doctype html>
 <meta charset="utf-8">
-<title>鲸鲸</title>
-<!-- 这个页面只在 sidecar 还没起来时闪现一秒；壳随后把窗口导航到 127.0.0.1:7700 -->
-<body style="margin:0;background:#000;color:#e9f0f2;font:14px ui-monospace,monospace;display:grid;place-items:center;height:100vh">
-  <div>正在唤醒…（如果停在这一页，说明本地服务没起来；看桌面/终端里的提示）</div>
-</body>
+<meta name="color-scheme" content="dark">
+<title>Pseudo Digital Life Project</title>
+<!--
+  预热页：sidecar 起来之前（实测约 4 秒）窗口就停在这里。
+  它必须是**黑的**、并且**立刻**出现 —— 黑屏等 4 秒可以接受，白屏 4 秒像崩了。
+  （之前 tauri.conf 里 url 写的是 about:blank，等于把这一页白写了：WebView2 的默认底色是白的。）
+  壳随后把窗口导航到 http://127.0.0.1:<随机端口>/?k=<一次性令牌>，那里才是正式的开机片头。
+-->
+<style>
+  html, body { margin: 0; height: 100%; background: #050706; color: #e9f0f2;
+    font: 11px/1 var(--mono, ui-monospace, Consolas, monospace); overflow: hidden; }
+  .wrap { display: flex; flex-direction: column; align-items: center; justify-content: center;
+    height: 100%; gap: 20px; }
+  .name { font-size: clamp(16px, 2.5vw, 26px); letter-spacing: .2em; padding-left: .2em;
+    font-weight: 700; text-align: center; line-height: 1.2;
+    text-shadow: 0 0 22px rgba(233, 240, 242, .25); }
+  .line { display: block; }
+  .sub { letter-spacing: .42em; padding-left: .42em; color: rgba(233, 240, 242, .36); }
+  .dots { display: flex; gap: 7px; margin-top: 6px; }
+  .dots i { width: 4px; height: 4px; background: rgba(233, 240, 242, .22); display: block;
+    animation: pulse 1.25s ease-in-out infinite; }
+  .dots i:nth-child(2) { animation-delay: .16s; }
+  .dots i:nth-child(3) { animation-delay: .32s; }
+  .dots i:nth-child(4) { animation-delay: .48s; }
+  @keyframes pulse { 0%, 100% { background: rgba(233, 240, 242, .22); }
+                     40% { background: rgba(233, 240, 242, .95); box-shadow: 0 0 8px rgba(233, 240, 242, .6); } }
+  .scan { position: fixed; left: 0; right: 0; height: 1px; top: -2%;
+    background: linear-gradient(90deg, transparent, rgba(233, 240, 242, .5), transparent);
+    animation: scan 2.6s linear infinite; }
+  @keyframes scan { 0% { top: -2%; opacity: 0; } 10% { opacity: 1; }
+                    90% { opacity: 1; } 100% { top: 102%; opacity: 0; } }
+  .grid { position: fixed; inset: 0; pointer-events: none; opacity: .5;
+    background: repeating-linear-gradient(90deg, rgba(233, 240, 242, .05) 0 1px, transparent 1px 64px),
+                repeating-linear-gradient(0deg, rgba(233, 240, 242, .04) 0 1px, transparent 1px 64px); }
+  @media (prefers-reduced-motion: reduce) { .dots i, .scan { animation: none; } .scan { display: none; } }
+</style>
+<div class="grid"></div>
+<div class="scan"></div>
+<div class="wrap">
+  <div class="name">
+    <span class="line">PSEUDO DIGITAL</span>
+    <span class="line">LIFE PROJECT</span>
+  </div>
+  <div class="sub">正在唤醒本地记忆</div>
+  <div class="dots"><i></i><i></i><i></i><i></i></div>
+</div>

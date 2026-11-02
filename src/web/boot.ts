@@ -155,7 +155,7 @@ const CSS_FULL = [
   "  #jjboot .jjb-bot .grow{flex:1;}",
   "  #jjboot .jjb-bar{position:relative;flex:0 0 210px;height:2px;background:rgba(233,240,242,.10);}",
   "  #jjboot .jjb-bar i{display:block;height:100%;width:0;background:#e9f0f2;",
-  "    box-shadow:0 0 8px rgba(233,240,242,.5);animation:jjbProg 8.6s linear .4s forwards;}",
+  "    box-shadow:0 0 8px rgba(233,240,242,.5);animation:jjbProg 5.6s linear .4s forwards;}",
   "  @keyframes jjbProg{to{width:100%;}}",
   "  #jjboot .jjb-pct{color:rgba(233,240,242,.72);font-weight:700;letter-spacing:.1em;min-width:34px;",
   "    text-align:right;}",
@@ -281,7 +281,7 @@ const JS_FULL = [
   "  var pct=document.getElementById('jjbPct'),sess=document.getElementById('jjbSess');",
   "  var clock=document.getElementById('jjbClock'),toolN=document.getElementById('jjbToolN');",
   "  var clockT=setInterval(function(){clock.textContent=((performance.now()-T0)/1000).toFixed(1)+'s';},100);",
-  "  var pctT=setInterval(function(){var v=Math.min(96,((performance.now()-T0)/9400)*100);pct.textContent=Math.round(v)+'%';},120);",
+  "  var pctT=setInterval(function(){var v=Math.min(96,((performance.now()-T0)/5600)*100);pct.textContent=Math.round(v)+'%';},120);",
   "  function pad(n){return ('0'+n).slice(-2);}",
   "  sess.textContent=(function(){var d=new Date();return pad(d.getHours())+pad(d.getMinutes())+'.'+(d.getSeconds()%16).toString(16).toUpperCase()+'A';})();",
   "  function kfmt(n){return n>=1000?(Math.round(n/100)/10)+'k':String(n);}",
@@ -298,7 +298,7 @@ const JS_FULL = [
   "    el.querySelector('.k').textContent=r[0];",
   "    var v=el.querySelector('.v');v.textContent=r[1];if(r[2])v.className='v dim';",
   "    tel.appendChild(el);",
-  "    setTimeout(function(){paintTel(i+1);},90);",
+  "    setTimeout(function(){paintTel(i+1);},130);",
   "  }",
   "",
   "  /* 中栏：终端逐行（每行 190ms），每行说的是上面那批真实量 */",
@@ -319,7 +319,7 @@ const JS_FULL = [
   "    var el=document.createElement('div');el.className='tl';",
   "    el.innerHTML='<span class=\"t\">[+'+ms()+']</span> '+termRows[i];",
   "    term.appendChild(el);",
-  "    setTimeout(function(){paintTerm(i+1);},190);",
+  "    setTimeout(function(){paintTerm(i+1);},300);",
   "  }",
   "",
   "  function hx(s){var h=0;for(var i=0;i<s.length;i++){h=(h*31+s.charCodeAt(i))>>>0;}",
@@ -377,7 +377,7 @@ const JS_FULL = [
   "          toolsBox.appendChild(row);",
   "          while(toolsBox.children.length>7)toolsBox.removeChild(toolsBox.firstChild);",
   "          var cell=document.createElement('i');cell.style.animationDelay='0s,0s';mx.appendChild(cell);",
-  "        },600+i*70);",
+  "        },800+i*110);",
   "      })(i);",
   "    }",
   "",
@@ -387,7 +387,7 @@ const JS_FULL = [
 ].join(NL);
 
 function bootJs(mode: BootMode): string {
-  const ms = mode === "full" ? 11000 : 3600;
+  const ms = mode === "full" ? 7200 : 3600;
   const slowMs = mode === "full" ? 2400 : 1600;
   return [
     "<script>(function(){",

@@ -11,13 +11,15 @@
       {
         "label": "main",
         "title": "Pseudo Digital Life Project",
-        "url": "about:blank",
+        "url": "index.html",
         "width": 1200,
         "height": 760,
         "minWidth": 900,
         "minHeight": 600,
         "visible": true,
-        "resizable": true
+        "resizable": true,
+        "backgroundColor": "#050706",
+        "theme": "dark"
       }
     ],
     "security": {

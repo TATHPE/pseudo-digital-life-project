@@ -20,6 +20,7 @@ export const WELCOME = [
   ":root{--void:#0b0e0b;--ink:#e9f0f2;--dim:#9fb0b3;--line:rgba(233,240,242,.30);--line-dim:rgba(233,240,242,.13);",
   "--amber:#ffb454;--red:#ff5f56;--ok:#7fd18b;--mono:ui-monospace,'Cascadia Mono',Consolas,monospace}",
   "*{box-sizing:border-box}[hidden]{display:none!important}",
+  "html{background:#050706;}",
   "html,body{height:100%;margin:0;background:var(--void);color:var(--ink);",
   "font:14px/1.7 -apple-system,'Segoe UI','Microsoft YaHei',sans-serif}",
   "body{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;",

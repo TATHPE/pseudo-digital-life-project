@@ -60,7 +60,7 @@ test("两档：完整档是三栏 HUD（遥测 / 终端 / 节点矩阵），简�
     "三栏的数据都必须来自真实接口");
   assert.ok(full.includes("jjb-ready"), "完整档结尾要有 READY");
   // 自动收尾：完整 10.2s / 简易 3.6s（都能点一下跳过）
-  assert.ok(full.includes("setTimeout(off,slow?2400:11000)"), "完整档 11s 自动收尾");
+  assert.ok(full.includes("setTimeout(off,slow?2400:7200)"), "完整档 7.2s 自动收尾");
   assert.ok(simple.includes("setTimeout(off,slow?1600:3600)"), "简易档 3.6s 自动收尾");
 });
 

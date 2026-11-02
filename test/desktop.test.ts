@@ -2,6 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { PAGE } from "../src/web/page.ts";
+import { WELCOME } from "../src/web/welcome.ts";
 
 /**
  * H-6 桌面壳：不验"窗口能开"（那要 msvc 工具链），只验**壳的形状**。
@@ -73,3 +75,26 @@ test("H-6 探测预算够 Node 启动（≥8 秒），不误判「起不来」",
 });
 
 
+
+test("启动不许白屏：窗口第一帧必须是黑的（tauri.conf + 预热页 + html 底色）", async () => {
+  const conf = JSON.parse(readFileSync(join(T, "tauri.conf.json"), "utf8"));
+  const win = conf.app.windows[0];
+  // 这条是"写了没接上"的原始事故：assets/index.html 黑底页早就存在，但 url 一直是 about:blank
+  assert.notEqual(win.url, "about:blank", "不许用 about:blank（WebView2 默认底色是白的）");
+  assert.equal(win.url, "index.html", "第一帧加载 assets/index.html（黑底预热页）");
+  assert.ok(
+    existsSync(join(T, "assets/index.html")),
+    "这个文件必须真的存在"
+  );
+  assert.equal(String(win.backgroundColor).toLowerCase(), "#050706", "窗口/WebView 底色设成黑的");
+
+  // 预热页自己也要是黑的，且不依赖任何外部资源
+  const warm = readFileSync(join(T, "assets/index.html"), "utf8");
+  assert.ok(/background:\s*#050706/.test(warm), "预热页黑底");
+  assert.ok(!/https?:\/\//.test(warm.replace(/<!--[\s\S]*?-->/g, "")), "预热页不许拉外部资源");
+  assert.ok(warm.includes("PSEUDO DIGITAL"), "预热页显示项目名");
+
+  // 面板自己也给 html 底色（只给 body 的话导航首帧会闪白）
+  assert.ok(PAGE.includes("html { background:var(--void); }"), "主面板 html 要有底色");
+  assert.ok(String(WELCOME).includes("html{background:#050706;}"), "引导页 html 要有底色");
+});
