@@ -8,7 +8,7 @@
 
 | 项 | 数量 |
 |---|---|
-| 源文件（src/**/*.ts） | 99 |
+| 源文件（src/**/*.ts） | 100 |
 | 错误码 E_* | 195 |
 | verbs | 27 |
 | CLI 子命令 | 37 |
@@ -354,6 +354,7 @@
 | `src/text.ts` | 中文 FTS5 必须用 bigram（12 §9.1 实测：unicode61 对中文完全失效） */ |
 | `src/threads.ts` | 线索层（借自衔枝 Twig 的 thread 概念，但**不新建表**）。 |
 | `src/tokens.ts` | Token 估算（零依赖）。 |
+| `src/toolhint.ts` | 工具调用 → 一句人话（2026-11-03）。 |
 | `src/tools.ts` | 工具面（给模型看）——现在只有**一条**执行路径： |
 | `src/toolsmoke.ts` | 工具调用冒烟（P0-1） |
 | `src/transport.ts` | 真正的模型调用层（13 §2 / 19 §0.1 W-A） |

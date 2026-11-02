@@ -45,6 +45,7 @@ import { SUPPORTED_EXTS, MAX_INGEST_BYTES } from "../ingest.ts";
 import { createTransport, routerFrom } from "../transport.ts";
 import { spentToday } from "../budget.ts";
 import { recallForBrief, omissionNote } from "../recall.ts";
+import { toolHuman } from "../toolhint.ts";
 import { decideSurface, pickSurface, noteSurfaced, usedToday } from "../surface.ts";
 import { reinforce, updateMemoryText, patchMemoryMeta } from "../store.ts";
 import { meta } from "../db.ts";
@@ -1905,7 +1906,13 @@ export function createWebServer(deps: WebDeps) {
               if (ev.type === "delta") { full += ev.text; send({ type: "delta", text: ev.text }); }
               else if (ev.type === "notice") { trace.push({ k: "think", t: ev.text }); send({ type: "notice", text: ev.text }); }
               else if (ev.type === "think") { trace.push({ k: "think", t: ev.text }); send({ type: "think", text: ev.text }); }
-              else if (ev.type === "tool") { trace.push({ k: "tool", t: ev.name + " " + String(ev.args ?? "").slice(0, 300) }); send({ type: "tool", id: ev.id, name: ev.name, args: ev.args }); }
+              else if (ev.type === "tool") {
+                // 参数不原文上屏：翻译成一句人话（学自 Coopanion 的 pet-status）。
+                // 路径只留文件名、正文/密钥/笔记一个字都不显示。
+                const h = toolHuman(ev.name, ev.args);
+                trace.push({ k: "tool", t: h });
+                send({ type: "tool", id: ev.id, name: ev.name, args: h });
+              }
               else if (ev.type === "tool_result") {
                 used.push({ name: ev.name, args: "", result: ev.result, ms: ev.ms });
                 trace.push({ k: "res", t: ev.result.slice(0, 1200), ms: ev.ms });

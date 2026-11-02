@@ -644,6 +644,14 @@ export const PAGE = `<!doctype html>
           background:#000; border:1px solid var(--line); color:var(--ink); font-weight:700;
           font:10px/1 var(--mono); letter-spacing:.1em; padding:8px 11px; cursor:pointer; z-index:8; }
   #jump:hover { background:rgba(233,240,242,.14); }
+  /* 状态灯（学自 Coopanion 的 rail lamps）：入口上直接亮一个点，不用点进去才知道哪里有事 */
+  #side .item { position:relative; }
+  #side .item .lamp { position:absolute; right:7px; top:50%; width:6px; height:6px; margin-top:-3px;
+    border-radius:50%; display:none; }
+  #side .item .lamp.on { display:block; }
+  #side .item .lamp.warn { background:var(--amber); box-shadow:0 0 6px rgba(232,160,32,.55); }
+  #side .item .lamp.wait { background:#8fd0ff; box-shadow:0 0 6px rgba(143,208,255,.55); }
+  #side .item .lamp.bad  { background:var(--red); box-shadow:0 0 6px rgba(255,95,86,.6); }
   body[data-view="chat"] #jump.on { display:inline-flex; }
   body:not([data-view="chat"]) #jump { display:none !important; }
   main { position:relative; }
@@ -706,10 +714,10 @@ export const PAGE = `<!doctype html>
     <div id="sesslist"></div>
 
     <div class="wsec">去 处</div>
-    <button class="item" type="button" data-view="memlistview">记忆<span class="m" id="memcount">…</span></button>
+    <button class="item" type="button" data-view="memlistview">记忆<span class="m" id="memcount">…</span><i class="lamp" id="lamp-mem"></i></button>
     <button class="item" type="button" data-view="docsview">文档<span class="m" id="doccount">…</span></button>
-    <button class="item" type="button" data-view="auditview">动作<span class="m" id="actcount">…</span></button>
-    <button class="item" type="button" data-view="capview">能力<span class="m" id="capcount">…</span></button>
+    <button class="item" type="button" data-view="auditview">动作<span class="m" id="actcount">…</span><i class="lamp" id="lamp-act"></i></button>
+    <button class="item" type="button" data-view="capview">能力<span class="m" id="capcount">…</span><i class="lamp" id="lamp-cap"></i></button>
     <button class="item" type="button" data-view="filesview">文件<span class="m" id="filecount">项目</span></button>
     <button class="item" type="button" id="foldtools">工具<span class="m" id="toolcount">…</span></button>
     <div id="toollist" hidden>
@@ -717,7 +725,7 @@ export const PAGE = `<!doctype html>
       <div id="toolrows"><button class="item on" data-view="chat">对话<span class="m">与<span data-agent>鲸鲸</span>说话</span></button></div>
       <button class="item dimmore" id="toolmore" hidden>显示全部</button>
     </div>
-    <button class="item" type="button" data-view="cfg">设置<span class="m">接口 / 人格</span></button>
+    <button class="item" type="button" data-view="cfg">设置<span class="m">接口 / 人格</span><i class="lamp" id="lamp-cfg"></i></button>
   </div>
 </aside>
 
@@ -1351,6 +1359,7 @@ async function pending() {
   const open = (list || []).filter((p) => p.status === "pending" && !p.expired);
   paintPendBadge(open.length);
   loadProposals(); loadSurfaceReview(); loadThreads(); loadReceipts(); loadStanding(); loadPermission(); loadEgress(); loadCapPage();
+  paintLamps();
   sec.hidden = open.length === 0;
   if (!open.length) { box.innerHTML = ""; return; }
   box.innerHTML = open.map((p) =>
@@ -1992,6 +2001,44 @@ async function openTool(i) {
   show("toolview");
 }
 // ── 它想做的事（K-2）：一张卡说清 做什么 / 为什么 / 会动哪些文件 ──
+// ── 状态灯：每个入口上一个小点，说清「这页有没有事」──
+// 学自 Coopanion 的 rail lamps。之前这些信息只存在于各自页面里，不点进去就看不见。
+function setLamp(id, kind) {
+  var el = document.getElementById(id);
+  if (!el) return;
+  el.className = 'lamp' + (kind ? ' on ' + kind : '');
+}
+async function paintLamps() {
+  // 动作：有提议等你点头 / 有工具被拒
+  try {
+    var pr = await (await fetch('/api/proposals?status=open')).json();
+    var n = Array.isArray(pr) ? pr.length : 0;
+    setLamp('lamp-act', n ? 'wait' : '');
+  } catch (e) { setLamp('lamp-act', ''); }
+  // 能力：有降级项（插件连不上 / 索引不全 / 厂商冷却）
+  try {
+    var cap = await (await fetch('/api/capabilities')).json();
+    var deg = (cap && cap.degraded) || [];
+    setLamp('lamp-cap', deg.length ? 'bad' : '');
+  } catch (e) { setLamp('lamp-cap', 'warn'); }
+  // 记忆：有跨层冲突等你判
+  try {
+    var cf = await (await fetch('/api/surface/review')).json();
+    var open = Array.isArray(cf) ? cf.length : 0;
+    setLamp('lamp-mem', open ? 'warn' : '');
+  } catch (e) { setLamp('lamp-mem', ''); }
+  // 设置：本地模型离线 / 没有可用 key
+  try {
+    var h = await (await fetch('/health')).json();
+    var bad = [];
+    if (h && h.local && h.local.online === false) bad.push('local');
+    if (h && (h.degraded || []).some(function (d) { return d.indexOf('embed-index') === 0; })) bad.push('vec');
+    setLamp('lamp-cfg', bad.length ? 'warn' : '');
+  } catch (e) { setLamp('lamp-cfg', 'warn'); }
+}
+document.addEventListener('visibilitychange', function () { if (!document.hidden) paintLamps(); });
+setInterval(function () { if (!document.hidden) paintLamps(); }, 20000);
+
 var PROPS = [];
 async function loadProposals() {
   var rows;
