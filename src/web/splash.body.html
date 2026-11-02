@@ -26,14 +26,20 @@
   @keyframes glowR{0%,100%{filter:drop-shadow(0 0 8px rgba(255,45,45,.6));}50%{filter:drop-shadow(0 0 18px rgba(255,45,45,1));}}
   /* 字标：原来是三个 SVG path 画的字形（原项目的字标）。换成项目名，
      但保留原版的节律：每 300ms 从左侧擦出一段 → 2.4s 出小字 → 再开始发光。 */
-  #logo.jj-logo{display:flex;flex-direction:column;align-items:center;gap:2px;
+  /* 一行横排：像原版那种「一条线上的大字标」，而不是四行竖排。
+     字号按容器宽度收，保证 26 个字符（含空格）永远放得下 —— 不换行、不溢出。 */
+  #logo.jj-logo{display:flex;flex-direction:row;align-items:baseline;justify-content:center;
+    flex-wrap:nowrap;gap:0 0.34em;width:92vw;max-width:1320px;
     font-family:"SF Mono",Menlo,Monaco,Consolas,monospace;font-weight:700;
-    font-size:clamp(26px,6vw,64px);line-height:1.1;letter-spacing:.18em;padding-left:.18em;
-    color:#e9f0f2;text-align:center;}
-  #logo.jj-logo .ln{display:block;opacity:.06;
-    clip-path:inset(0 100% 0 0);-webkit-clip-path:inset(0 100% 0 0);
-    transition:clip-path .6s cubic-bezier(.4,0,.2,1),opacity .35s ease;}
-  #logo.jj-logo .ln.on{opacity:1;clip-path:inset(0 0 0 0);-webkit-clip-path:inset(0 0 0 0);}
+    font-size:clamp(13px,4.6vw,66px);line-height:1.05;letter-spacing:.1em;
+    color:#e9f0f2;text-align:center;white-space:nowrap;
+    /* 整行从左扫出（不是每个词各擦一段）：一行字被「写」出来的手感 */
+    opacity:.05;clip-path:inset(0 100% 0 0);-webkit-clip-path:inset(0 100% 0 0);
+    transition:clip-path 1.2s cubic-bezier(.35,0,.2,1),opacity .4s ease;}
+  #logo.jj-logo.on{opacity:1;clip-path:inset(0 0 0 0);-webkit-clip-path:inset(0 0 0 0);}
+  #logo.jj-logo .ln{display:inline-block;}
+  @media (max-width:760px){#logo.jj-logo{letter-spacing:.04em;gap:0 .2em;}}
+  #logo.jj-logo.on{opacity:1;clip-path:inset(0 0 0 0);-webkit-clip-path:inset(0 0 0 0);}
   #logo.jj-logo.finished{animation:glowW 2.6s ease-in-out infinite;
     text-shadow:0 0 26px rgba(233,240,242,.5);}
   .boot-text{position:absolute;left:0;right:0;bottom:12%;text-align:center;color:rgba(255,255,255,.35);font-family:"Courier New",Consolas,monospace;font-size:12px;letter-spacing:.4em;padding-left:.4em;opacity:0;}
@@ -285,10 +291,8 @@ function playBoot(){
   const lines = Array.from(logo.querySelectorAll('.ln'));
 
   // 原版是每个 SVG path 从左侧 clip 出来（逐个覆写的手感）。
-  // 现在按行做同一件事：每 300ms 擦出一段，节奏跟原来一样。
-  lines.forEach((el, i) => {
-    setTimeout(() => el.classList.add('on'), 250 + i * 300);
-  });
+  // 我们是一行字：**整行从左扫出**，节律不变（250ms 起，总长仍按 4 段算）。
+  setTimeout(() => logo.classList.add('on'), 250);
 
   setTimeout(() => bootText.classList.add('show'), 2400);
   const totalMs = 250 + lines.length * 300 + 400;

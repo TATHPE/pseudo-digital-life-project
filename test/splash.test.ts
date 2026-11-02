@@ -81,10 +81,14 @@ test("字标不是画出来的字形：原版那三个 path（就是「550C」�
   }
   assert.ok(tpl.includes('id="logo" class="jj-logo"'), "换成文本字标");
   for (const w of ["PSEUDO", "DIGITAL", "LIFE", "PROJECT"]) {
-    assert.ok(tpl.includes('<span class="ln">' + w + "</span>"), "四段都在：" + w);
+    assert.ok(tpl.includes('<span class="ln">' + w + "</span>"), "四个词都在：" + w);
   }
-  // 节律保留：每 300ms 擦出一段（原版是每个 path 300ms）
-  assert.ok(tpl.includes("el.classList.add('on')"), "逐行擦出");
-  assert.ok(tpl.includes("250 + i * 300"), "节拍与原版一致");
+  // 一行横排（用户 2026-11-03：「开头文字为什么不横向显示在一条线上」）
+  assert.ok(tpl.includes("flex-direction:row") && tpl.includes("white-space:nowrap"), "必须是一行横排，不换行");
+  assert.ok(tpl.includes("width:92vw") && tpl.includes("max-width:1320px"), "按容器收宽度，保证一行放得下");
+  assert.ok(tpl.includes("clip-path 1.2s"), "整行从左扫出");
+  // 节律保留：250ms 起；总长仍按 4 段算（与原版一致）
+  assert.ok(tpl.includes("logo.classList.add('on')"), "整行扫出");
+  assert.ok(tpl.includes("250 + lines.length * 300"), "节拍与原版一致");
   assert.ok(tpl.includes("setTimeout(() => bootText.classList.add('show'), 2400)"), "小字仍在 2.4s");
 });
