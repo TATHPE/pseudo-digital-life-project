@@ -169,6 +169,24 @@ export function buildBrief(input: BriefInput): BriefOutput {
   // 没有这一槽的时候，她明明能跑命令也会说"我不能直接操作你的电脑"（实测）。
   const p15 = input.powers ? input.powers : "";
   slots.push({ id: "P15", label: "我现在的权限", tokens: estimateTokens(p15), stable: false });
+
+  // P15 之后的硬规矩：不许编「你说过 / 你确认过」。
+  // 起因是实测：用户只问了「你能读多少记忆」，她开口就是「已按你的确认执行：…」。
+  const NO_FAKE_ACK = "（规矩：说「已按你的确认执行」「你说过可以」之前，先在对话里找到那句确认。找不到就别说 —— 直接问她。）";
+
+  // P16 我这一轮能看到多少：数字全是真的，写在这里，
+  // 别让她为了回答「你能读多少记忆」去查磁盘或跑命令。
+  const cap = input.capacity;
+  const p16 = cap
+    ? [
+        "【我这一轮能看到多少】库里 " + cap.memories + " 条记忆" +
+          (cap.docs !== undefined ? "、" + cap.docs + " 篇文档（" + (cap.chunks ?? 0) + " 块）" : "") + "。",
+        "每轮自动带进来的最多 " + (cap.recallMax ?? MAX_RECALLED) + " 条（预算 " + (cap.recallBudget ?? b.recalled) + " token）；",
+        "要我主动搜一次最多 " + (cap.searchMax ?? 20) + " 条。",
+        "（这些是关于我自己的事实，问起来直接答，不用去查磁盘或跑命令。）",
+      ].join("")
+    : "";
+  slots.push({ id: "P16", label: "我能看到多少", tokens: estimateTokens(p16), stable: false });
   // ── 本轮输入 ────────────────────────────────────────
   const p11 = input.user;
   slots.push({ id: "P11", label: "用户输入", tokens: estimateTokens(p11), stable: false });
@@ -177,7 +195,7 @@ export function buildBrief(input: BriefInput): BriefOutput {
   const confidence: BriefOutput["confidence"] =
     narrativeHits === 0 ? "abstain" : narrativeHits < 2 ? "need_evidence" : "answer";
 
-  const body = [p5, p6, p7, p8, p9, p10, p12, p13, p14, p15].filter(Boolean).join("\n\n");
+  const body = [p5, p6, p7, p8, p9, p10, p12, p13, p14, p15, NO_FAKE_ACK, p16].filter(Boolean).join("\n\n");
   const text = [prefixText, body, p11].filter(Boolean).join("\n\n");
   const tokens = estimateTokens(text);
 

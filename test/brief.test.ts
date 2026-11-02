@@ -64,8 +64,9 @@ test("不变量 3：槽位固定且有序（P1–P11 + 她自己的 P12/P13）�
   const r = buildBrief(base());
   // P12「我惦记的」/ P13「我怎么理解你」是 H-a/H-b 加的两层；P14「可用技能」是 docs/11 的第二优先
   // 都在召回之后、用户输入之前；全都是易变槽（装了技能不该让 prefixHash 变）
+  // P16「我能看到多少」：她自己的容量，同样放易变区
   assert.deepEqual(r.slots.map((s) => s.id),
-    ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10", "P12", "P13", "P14", "P15", "P11"]);
+    ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10", "P12", "P13", "P14", "P15", "P16", "P11"]);
   assert.deepEqual(r.slots.filter((s) => s.stable).map((s) => s.id), ["P1", "P2", "P3", "P4"]);
 });
 
@@ -120,4 +121,26 @@ test("没召回时把话说死：P10 里紧跟硬提示 + 把契约第一条再�
   const yes = buildBrief(base({ recalled: mkRecall(3) }));
   assert.ok(!yes.text.includes("这一轮没有与你问的这件事相关的记忆"), "有召回就不该念");
   assert.equal(yes.confidence, "answer");
+});
+
+test("P16 我能看到多少：问「你能读多少记忆」时她应该直接答，而不是去查磁盘（实测踩过两次）", () => {
+  const b = buildBrief(base({
+    capacity: { memories: 162, docs: 1, chunks: 7, recallMax: 8, searchMax: 20 },
+  }));
+  assert.ok(b.text.includes("库里 162 条记忆"), "条数要在简报里");
+  assert.ok(b.text.includes("1 篇文档（7 块）"), "文档/分块也要有");
+  assert.ok(b.text.includes("每轮自动带进来的最多 8 条"), "召回上限");
+  assert.ok(b.text.includes("主动搜一次最多 20 条"), "搜索上限");
+  assert.ok(b.text.includes("不用去查磁盘或跑命令"), "要明说可以直接答");
+
+  // 没传就不写这一槽（不编数字）
+  const noCap = buildBrief(base({}));
+  assert.ok(!noCap.text.includes("我这一轮能看到多少"), "没有数据就不要硬写");
+});
+
+test("不许编「你说过 / 你确认过」这条规矩要一直在", () => {
+  // 实测：用户只问「你能读多少记忆」，她开口就是「已按你的确认执行：…」
+  const b = buildBrief(base({ recalled: mkRecall(3) }));
+  assert.ok(b.text.includes("已按你的确认执行"), "要点名那句最容易脱口而出的话");
+  assert.ok(b.text.includes("先在对话里找到那句确认"), "给判据，不只是禁止");
 });

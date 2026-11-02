@@ -1736,6 +1736,14 @@ export function createWebServer(deps: WebDeps) {
         const rc = await recallForBrief(deps.db, emb, text, { memK: 6, docK: 4 });
         let omitted = rc.omittedMem;
         const recalled: MemoryLine[] = rc.recalled;
+        // P16：她自己的容量（问「你能读多少记忆」时要能直接答，不用去查库）
+        let capMem = 0, capDocs: number | undefined, capChunks: number | undefined;
+        try {
+          capMem = Number((deps.db.prepare("SELECT count(*) c FROM memories WHERE status='active'").get() as { c?: number })?.c ?? 0);
+          capDocs = Number((deps.db.prepare("SELECT count(*) c FROM documents WHERE deleted_at IS NULL").get() as { c?: number })?.c ?? 0);
+          capChunks = Number((deps.db.prepare("SELECT count(*) c FROM chunks").get() as { c?: number })?.c ?? 0);
+        } catch { /* 查不到就不写这一槽 */ }
+        const capacity = { memories: capMem, ...(capDocs === undefined ? {} : { docs: capDocs }), ...(capChunks === undefined ? {} : { chunks: capChunks }), recallMax: 8, searchMax: 20 };
 
         // 只取**还没过期**的契约：已了结的承诺不该每轮继续喂给模型（否则它会反复提）
         const contracts = openContracts(deps.db, now()).map((r) => r.text);
@@ -1801,6 +1809,7 @@ export function createWebServer(deps: WebDeps) {
           interpretations: interpLines,
           skills: skillIdx,
           powers,
+          capacity,
           user: (() => { const note = omissionNote(omitted, rc.omittedDocs); return note ? note + String.fromCharCode(10) : ""; })() + text,
         });
 

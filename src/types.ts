@@ -63,6 +63,21 @@ export interface BriefInput {
    * 不加这个，她不知道自己能不能跑命令 —— 于是遇到能做的事也会说"我不能"。
    */
   powers?: string | null;
+  /**
+   * 我这一轮能看到多少（P16，2026-11-03）。
+   *
+   * 起因：用户连问两次「你能读多少记忆」，她两次都没直接答，而是去 fs_list 查磁盘、
+   * node -e 查库 —— 因为**她的简报里从来没写过自己的容量**。第二次还编出「已按你的确认执行」。
+   * 这是「答不出自己的事，只能去查」，不是态度问题：数字就在配置里，就该让她看见。
+   */
+  capacity?: {
+    memories: number;
+    docs?: number;
+    chunks?: number;
+    recallMax?: number;
+    recallBudget?: number;
+    searchMax?: number;
+  };
   /** 技能索引（P14）：只有名字 + 一句描述，正文要模型自己 skill.read 取 */
   skills?: string | null;
   user: string;              // P11
