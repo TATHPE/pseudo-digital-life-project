@@ -436,6 +436,9 @@ export function createWebServer(deps: WebDeps) {
           if (cg.blocked) degraded.push("cloud-cooldown");
           const ix = indexState(deps.db, cur);
           if (ix.stale) degraded.push("embed-index-stale");
+          // 覆盖率：模型没换也可能"有记忆没向量"（实测 157 条里只有 29 条有）——
+          // 那时检索会静默漏掉一多半记忆，而 /health 一直说一切正常。
+          if (ix.missing > 0) degraded.push("embed-index-incomplete:" + ix.missing);
           if (meta(deps.db, "reembed_error")) degraded.push("reembed-failed");
         } catch { /* ignore */ }
         json(res, 200, {

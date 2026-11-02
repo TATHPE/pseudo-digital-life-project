@@ -10,7 +10,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { Embedder } from "./embed.ts";
 import { ftsQuery } from "./text.ts";
-import { queryVariants } from "./queryrewrite.ts";
+import { queryVariants, onlyStopwordHits } from "./queryrewrite.ts";
 import { at } from "./assert.ts";
 import { bigrams } from "./text.ts";
 import type { Stage } from "./decay.ts";
@@ -154,17 +154,17 @@ export async function search(
   // 用 json_each(?) 而不是 IN (?,?,…)——后者要为每个 chunk 重新 prepare 一个
   // 500 参数的语句，实测占掉 20 ms；json_each 只要一个参数、一条语句。
   // 只留**还活着**的记忆：status=active、且没被 valid_to 截断。
-  const metaById = new Map<number, { text: string; stage: Stage; weight: number; sensitivity?: string }>();
+  const metaById = new Map<number, { text: string; stage: Stage; weight: number; sensitivity?: string; textBigram?: string }>();
   const fetchMeta = () => {
     const ids = [...new Set([...ranked.map((r) => r.id), ...vecIds.keys()])];
     metaById.clear();
     if (!ids.length) return;
     const got = db.prepare(
-      `SELECT id,text,stage,weight,sensitivity FROM memories
+      `SELECT id,text,stage,weight,sensitivity,text_bigram FROM memories
        WHERE status='active' AND (valid_to IS NULL OR julianday(valid_to) > julianday(?))
          AND id IN (SELECT value FROM json_each(?))`,
-    ).all(new Date().toISOString(), JSON.stringify(ids)) as Array<{ id: number; text: string; stage: Stage; weight: number; sensitivity?: string }>;
-    for (const g of got) metaById.set(g.id, { text: g.text, stage: g.stage, weight: g.weight, ...(g.sensitivity ? { sensitivity: g.sensitivity } : {}) });
+    ).all(new Date().toISOString(), JSON.stringify(ids)) as Array<{ id: number; text: string; stage: Stage; weight: number; sensitivity?: string; text_bigram?: string }>;
+    for (const g of got) metaById.set(g.id, { text: g.text, stage: g.stage, weight: g.weight, ...(g.sensitivity ? { sensitivity: g.sensitivity } : {}), ...(g.text_bigram ? { textBigram: g.text_bigram } : {}) });
   };
   fetchMeta();
 
@@ -193,6 +193,30 @@ export async function search(
       fetchMeta();
     }
   }
+  // ── E-11：只被虚词命中的候选不算证据（2026-11-02）──
+  // FTS 是 OR：任一 bigram 命中就算候选，于是「我**上次**说的那个股票代码」会召回
+  // 「**上次**程序挂掉…」。她拿到这条就往「上次你说过」上靠 —— 她自己复盘的第 3 条。
+  // 只处理**仅靠 FTS 进来**的行：向量召回的归向量管，别在这里误伤。
+  if (ranked.length) {
+    const kept: Array<{ id: number; score: number }> = [];
+    let dropped = 0;
+    // 判定要看**所有变体**：候选可能是「妈妈生日」这条改写变体带进来的，
+    // 而原句里只有「我妈」—— 用原句判会把它误杀（测试抓到过）。
+    const judge = rewriteOn ? queryVariants(query) : [query];
+    for (const r of ranked) {
+      if (vecIds.has(r.id)) { kept.push(r); continue; }
+      const m = metaById.get(r.id);
+      if (!m) { kept.push(r); continue; }
+      const docBi = new Set(String(m.textBigram ?? "").split(" ").filter(Boolean));
+      if (judge.every((v) => onlyStopwordHits(v, docBi))) { dropped++; metaById.delete(r.id); continue; }
+      kept.push(r);
+    }
+    if (dropped) {
+      ranked = kept;
+      degraded.push("stopword_filtered");
+    }
+  }
+
   // 顺序：先向量分数（越高越前），同分再按 bm25 名次
   const bmScoreById = new Map(ranked.map((r) => [r.id, r.score]));
   const rows = [...metaById.entries()]

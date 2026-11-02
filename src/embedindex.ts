@@ -23,6 +23,15 @@ export interface IndexState {
   built: string | null;
   /** 带向量的行数（memories + chunks） */
   vectors: number;
+  /**
+   * 该有向量但**没有**的行数（active 记忆 + 未删除的块）。
+   *
+   * 为什么单独算这个（2026-11-03）：原来只比模型名，"模型没换"就报"索引已是最新"。
+   * 实测活库 157 条 active 记忆里只有 29 条有向量（18%）—— 索引一直是"最新"的，
+   * 而检索有一多半的记忆根本没机会出场（含「下周三生日」那几条）。
+   * 于是所有"搜不到"都被误诊成改写/阈值问题。覆盖率必须自己报出来。
+   */
+  missing: number;
   /** 是否过期：有向量、且两边的模型名不同 */
   stale: boolean;
 }
@@ -30,6 +39,12 @@ export interface IndexState {
 export function readMeta(db: DatabaseSync, key: string): string | null {
   const r = db.prepare("SELECT value FROM meta WHERE key=?").get(key) as { value?: string } | undefined;
   return r?.value ?? null;
+}
+
+function countMissing(db: DatabaseSync): number {
+  const a = (db.prepare("SELECT count(*) c FROM memories WHERE status='active' AND embedding IS NULL").get() as { c?: number })?.c ?? 0;
+  const b = (db.prepare("SELECT count(*) c FROM chunks WHERE deleted_at IS NULL AND embedding IS NULL").get() as { c?: number })?.c ?? 0;
+  return Number(a) + Number(b);
 }
 
 function countVectors(db: DatabaseSync): number {
@@ -44,10 +59,11 @@ export function indexState(db: DatabaseSync, currentOverride?: string | null): I
   const current = currentOverride ?? readMeta(db, CUR_KEY);
   const built = readMeta(db, BUILT_KEY);
   let vectors = 0;
-  try { vectors = countVectors(db); } catch { /* 表还没建好 */ }
+  let missing = 0;
+  try { vectors = countVectors(db); missing = countMissing(db); } catch { /* 表还没建好 */ }
   // 没有向量就谈不上"不一致"（新库/清空后）；有向量但没记录过模型 → 算过期（保守）
   const stale = vectors > 0 && built !== current;
-  return { current, built, vectors, stale };
+  return { current, built, vectors, missing, stale };
 }
 
 /**

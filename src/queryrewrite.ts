@@ -106,3 +106,52 @@ export function queryVariants(q: string): string[] {
   }
   return out;
 }
+
+/**
+ * 虚词 bigram（E-11）：中文里"命中了但等于没命中"的那些两字组合。
+ *
+ * 为什么需要一张表：FTS 是 OR —— 任一 bigram 命中就算一条候选。
+ * 于是「我**上次**说的那个股票代码」会召回「**上次**程序挂掉…」，
+ * 而她拿到这条就会往「上次你说过……」上靠（她自己复盘的第 3 条）。
+ *
+ * IDF 分不开它们：小语料里"上次"的 df 也很低，idf 反而不小。
+ * 真正分得开的是**这个词是不是内容词** —— 这就是这张表的全部作用。
+ * 它只用于一个判断：一条候选如果**只被虚词命中**，就不算证据。
+ */
+export const STOP_BIGRAMS: ReadonlySet<string> = new Set([
+  "我上", "上次", "次说", "说的", "的那", "那个", "这个", "这些", "那些",
+  "是什", "什么", "么是", "是多", "多少", "么样", "怎样", "怎么", "为何",
+  "我记", "记得", "你还", "还记", "记不", "不知", "知道", "有没", "没有",
+  "可以", "能不", "不能", "我们", "你们", "他们", "她们", "它们",
+  "之前", "前提", "提过", "过说", "说这", "这件", "件事", "事情",
+  "那时", "时候", "一下", "了吗", "的呢", "的吧", "的话", "一样",
+  "就是", "不是", "还是", "然后", "因为", "所以", "如果", "但是",
+  "而且", "或者", "一个", "一次", "几次", "那几", "这次", "现在",
+  "刚才", "刚刚", "真的", "确实", "到底", "究竟", "其实", "根本",
+]);
+
+/**
+ * 这条候选是不是**只被虚词命中**了。
+ * 返回 true = 不算证据（应当丢掉）；查询本身没有内容词时也返回 true。
+ */
+export function onlyStopwordHits(query: string, docBigrams: ReadonlySet<string>): boolean {
+  const qs = [...new Set(bigramsOf(query))];
+  if (!qs.length) return true;
+  const hit = qs.filter((b) => docBigrams.has(b));
+  if (!hit.length) return true;
+  return hit.every((b) => STOP_BIGRAMS.has(b));
+}
+
+/** 抽 bigram（不引 text.ts，避免循环依赖；规则与 bigramText 一致：汉字相邻两字 + 英数连续段） */
+function bigramsOf(text: string): string[] {
+  const out: string[] = [];
+  const han: string[] = [];
+  const flushHan = () => { for (let i = 0; i + 1 < han.length; i++) out.push(han[i]! + han[i + 1]!); han.length = 0; };
+  for (const ch of text) {
+    if (/[一-鿿]/.test(ch)) { han.push(ch); continue; }
+    flushHan();
+    if (/[A-Za-z0-9]/.test(ch)) out.push(ch.toLowerCase());
+  }
+  flushHan();
+  return out;
+}

@@ -85,3 +85,36 @@ test("E-8 词法 + 向量都命中时，两条路的名次都能查到（meta/�
   assert.ok(h.bm25Rank !== undefined, "FTS 名次要留着（可解释）");
   assert.ok(h.cosine !== undefined && h.cosine > 0.9, "向量分数也要留着");
 });
+
+test("索引覆盖率要自己报出来：模型没换，也可能有记忆没向量（E-11 的真根因）", async () => {
+  // 实测事故（2026-11-03）：活库 157 条 active 记忆里只有 29 条有向量（18%），
+  // 但 indexState 只比模型名 → 一直报"索引已是最新"。
+  // 于是"我妈生日那件事搜不到"被误诊成改写/阈值问题，真正的病是那些记忆没向量。
+  const { openDb } = await import("../src/db.ts");
+  const { remember } = await import("../src/store.ts");
+  const { indexState } = await import("../src/embedindex.ts");
+  const { mkdtempSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+
+  const home = mkdtempSync(join(tmpdir(), "jj-cov-"));
+  try {
+    const { db } = openDb(join(home, "memory.db"));
+    // 三条记忆，只有一条有向量
+    const vec = new Float32Array(8).fill(0.1);
+    remember(db, { text: "有向量的一条", kind: "episode", layer: "narrative", importance: 3, embedding: vec });
+    remember(db, { text: "没向量的第一条", kind: "episode", layer: "narrative", importance: 3 });
+    remember(db, { text: "没向量的第二条", kind: "episode", layer: "narrative", importance: 3 });
+
+    const st = indexState(db);
+    assert.equal(st.vectors, 1, "只数到一条有向量");
+    assert.equal(st.missing, 2, "缺的两条必须报出来");
+    assert.equal(st.stale, false, "模型没换 → 不是 stale（这正是被误诊的原因）");
+
+    // 建好之后 missing 归零
+    db.prepare("UPDATE memories SET embedding=? WHERE embedding IS NULL").run(new Uint8Array(vec.buffer));
+    assert.equal(indexState(db).missing, 0, "补齐后不再报缺");
+  } finally {
+    try { rmSync(home, { recursive: true, force: true }); } catch { /* ignore */ }
+  }
+});

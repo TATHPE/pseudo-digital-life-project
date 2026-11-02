@@ -173,7 +173,12 @@ function staleNote(ctx: VerbCtx): string {
     const e = resolveConfig(ctx.home).roles["embed"];
     const cur = modelKeyOf(e);
     const ix = indexState(ctx.db, cur);
-    if (!ix.stale) return "";
+    if (!ix.stale && !ix.missing) return "";
+    // 「缺」比「过期」更常见：模型没换，但新记忆没建向量（reembed 没人手动跑）。
+    // 这两种都要在结果前面说一句，否则"搜不到"永远会被误诊成算法问题。
+    if (!ix.stale) {
+      return `（注意：有 ${ix.missing} 条记忆还没有向量索引，向量召回只能看到其余部分；跑 jingjing reembed 补齐）` + String.fromCharCode(10);
+    }
     return `（注意：向量索引是用 ${ix.built ?? "未知模型"} 建的，当前配置是 ${ix.current ?? "未配置"}，召回可能不准；跑 jingjing reembed 重建）` + String.fromCharCode(10);
   } catch { return ""; }
 }
