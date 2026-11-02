@@ -53,6 +53,9 @@ export interface SearchMeta {
   vecHits?: number;
 }
 
+/** 已过 valid_to 的记忆还在，但不该和现行的事抢位置（0.75 是保守值，先不调） */
+const EXPIRED_DAMP = 0.75;
+
 const dot = (a: Float32Array, b: Float32Array) => {
   let s = 0; const n = Math.min(a.length, b.length);
   for (let i = 0; i < n; i++) s += (a[i] ?? 0) * (b[i] ?? 0);
@@ -98,8 +101,8 @@ function vecRecall(
     try {
       const rows = db.prepare(
         "SELECT id, embedding FROM memories WHERE status='active' AND embedding IS NOT NULL" +
-        " AND (valid_to IS NULL OR julianday(valid_to) > julianday(?)) ORDER BY id DESC LIMIT ?",
-      ).all(nowIso, scanCap) as Array<{ id: number; embedding: Uint8Array }>;
+        " ORDER BY id DESC LIMIT ?",
+      ).all(scanCap) as Array<{ id: number; embedding: Uint8Array }>;
       for (const r of rows) {
         if (seen.has(r.id)) continue;
         seen.add(r.id);
@@ -159,12 +162,23 @@ export async function search(
     const ids = [...new Set([...ranked.map((r) => r.id), ...vecIds.keys()])];
     metaById.clear();
     if (!ids.length) return;
+    // ── valid_to 的语义修正（2026-11-03）──
+    //
+    // valid_to 的本意是「这条**承诺**什么时候该停止提醒」（openContracts 用它排除已了结的承诺）。
+    // 但检索层拿它把**整条记忆**抹掉了 —— 于是「记住下周三为你妈妈买蛋糕」在生日一过，
+    // 她就再也想不起这件事（eval 的 h-recall-1 反复红，根因在这里，不是用例腐化）。
+    //
+    // 现在：到期只是**降权**（0.75），不是消失。她可以记得"我给你妈买过蛋糕，那是 10 月的事"，
+    // 只是不再把它当待办反复提（那是 P6/openContracts 的活，那边仍然严格按时间排除）。
     const got = db.prepare(
-      `SELECT id,text,stage,weight,sensitivity,text_bigram FROM memories
-       WHERE status='active' AND (valid_to IS NULL OR julianday(valid_to) > julianday(?))
-         AND id IN (SELECT value FROM json_each(?))`,
-    ).all(new Date().toISOString(), JSON.stringify(ids)) as Array<{ id: number; text: string; stage: Stage; weight: number; sensitivity?: string; text_bigram?: string }>;
-    for (const g of got) metaById.set(g.id, { text: g.text, stage: g.stage, weight: g.weight, ...(g.sensitivity ? { sensitivity: g.sensitivity } : {}), ...(g.text_bigram ? { textBigram: g.text_bigram } : {}) });
+      `SELECT id,text,stage,weight,sensitivity,text_bigram,
+         (valid_to IS NOT NULL AND julianday(valid_to) <= julianday(?)) AS expired
+       FROM memories WHERE status='active' AND id IN (SELECT value FROM json_each(?))`,
+    ).all(new Date().toISOString(), JSON.stringify(ids)) as Array<{ id: number; text: string; stage: Stage; weight: number; sensitivity?: string; text_bigram?: string; expired: number }>;
+    for (const g of got) {
+      const w = g.expired ? Number(g.weight) * EXPIRED_DAMP : Number(g.weight);
+      metaById.set(g.id, { text: g.text, stage: g.stage, weight: w, ...(g.sensitivity ? { sensitivity: g.sensitivity } : {}), ...(g.text_bigram ? { textBigram: g.text_bigram } : {}) });
+    }
   };
   fetchMeta();
 
