@@ -600,8 +600,9 @@ export const verbs: VerbDef[] = [
   },
   {
     name: "shell.exec", tier: "T3", reversible: false,
-    description: "跑**任意 argv**（不是模板）。只有在「完全权限」会话窗口打开时才会被执行；" +
-      "删/磁盘/系统配置/下载器/壳/内联求值一律拒绝，密钥类环境变量不会传给它。",
+    description: "跑**任意 argv**（不是模板）。「完全权限」窗口可跑；**超级权限**下还能跑 shell / 管道 /" +
+      "内联求值（所以可以直接 powershell -Command 或 bash -lc 一条命令，不用先写脚本）。" +
+      "普通窗口里删/磁盘/系统配置/下载器/壳一律拒绝，密钥类环境变量不会传给它。",
     params: S({
       argv: { type: "array", items: { type: "string" }, description: "完整命令，如 [\"node\",\"tools/x.mjs\"]" },
       cwd: { type: "string", description: "相对 home 的工作目录（默认 workspace）" },

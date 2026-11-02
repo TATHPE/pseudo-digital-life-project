@@ -276,17 +276,21 @@ export function checkGrant(
   const cwd = norm(req.cwd);
   const scopeInCwd = cwd.includes("/" + norm("")) ;
 
-  // 元字符：即便这里不经过 shell，也不允许"看起来能串联"的命令进窗口
+  // 超级权限：**先判定** —— 下面几条检查在 super 下要放开，顺序错了等于没放开。
+  const SUPER = superEnabled(home);
+
+  // 元字符：普通窗口不许「看起来能串联」的命令。**super 下跳过** ——
+  // argv 是数组直传（不经 shell，不会真的串联），而 super 本来就允许任意命令；
+  // 不跳过的话 Get-ChildItem | Select-Object 这种 PowerShell 管道会被挡在门外。
   for (const a of argv) {
-    if (/[;&|`$\n\r]/.test(a)) return { ok: false, code: "E_GRANT_META", why: `命令里含 shell 元字符：${a.slice(0, 40)}` };
+    if (!SUPER && /[;&|`$\n\r]/.test(a)) return { ok: false, code: "E_GRANT_META", why: `命令里含 shell 元字符：${a.slice(0, 40)}` };
+    // 密钥字样两种窗口都拒：审计会把 argv 存进 exec_audit，明文 key 不能进审计
     if (/key|token|secret|password|passwd/i.test(a) && a.length > 8) {
       return { ok: false, code: "E_GRANT_SECRET", why: "命令里疑似带密钥/令牌，授权窗口不接这种" };
     }
   }
 
-  // 内联求值一律拒（两种窗口都拒）：命令必须落在能读的文件上，否则审计只剩一个 -e
-  // 超级权限：内联求值也放开（否则 node -e 都用不了，谈不上"接管"）
-  const SUPER = superEnabled(home);
+  // 内联求值：普通窗口拒（命令必须落在能读的文件上），super 放开（否则 node -e 都用不了）
   const inlineAt = argv.findIndex((a) => INLINE_EVAL.test(a));
   if (inlineAt > 0 && !SUPER) {
     return { ok: false, code: "E_GRANT_INLINE_EVAL", why: `不许内联求值（${argv[inlineAt]}）：把代码写进文件再跑，才留得下痕迹` };

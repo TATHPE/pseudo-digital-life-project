@@ -91,7 +91,12 @@ export function powersLine(home: string, preset: string, egressOpen: boolean): s
   const parts: string[] = [];
   const sup = superEnabled(home);
   if (sup) {
-    parts.push("超级权限开着：可以跑任意命令（含 node -e）、读写整个磁盘、直接改记忆库与人格。");
+    parts.push("超级权限开着：可以跑任意命令（含 node -e 与 shell 管道）、读写整个磁盘、直接改记忆库与人格。");
+    // 用户 2026-11-01 明确要这条：别让她绕道写 .ps1，super 下直接 -Command 就行
+    const shellHint = process.platform === "win32"
+      ? "想在 Windows 上跑 PowerShell 命令（Get-ChildItem / Select-String / 管道）：直接用 shell_exec 调 powershell -NoProfile -NonInteractive -Command \"<命令>\"，不需要先写脚本文件。"
+      : "想跑 bash 命令（含管道）：直接用 shell_exec 调 bash -lc \"<命令>\"，不需要先写脚本文件。";
+    parts.push(shellHint);
     parts.push("只有两件事仍然不行：格式化磁盘、删 trash/ 与 snapshots/（那是回滚的底）。");
   } else if (preset === "full") {
     parts.push("完全权限：可以跑任意命令、在整个 home 里操作；记忆核心与删/系统/下载/壳仍然拒。");
