@@ -10,6 +10,7 @@ import {
 } from "./agentguard.ts";
 
 export type AgentEvent =
+  | { type: "think"; text: string }
   | { type: "delta"; text: string }
   | { type: "tool"; id: string; name: string; args: string }
   | { type: "tool_result"; id: string; name: string; result: string; ms: number }
@@ -119,6 +120,15 @@ export async function* runAgent(deps: AgentDeps, system: string, user: string): 
       yield { type: "done", steps: step, finish };
       return;
     }
+
+    // 「边想边说」分离（2026-11-03）。
+    //
+    // 模型在同一条消息里既说话又调工具时，那段话是**过程**（"我先看一眼…""错误读懂了…"），
+    // 不是给用户看的回答。实测用户看到的就是这些过程混在答复里，还以为回答不完整。
+    //
+    // 判据是结构性的，不看措辞：**带 tool_calls 的那一步说的话 = 过程**；
+    // 最后一步没有 tool_calls 的 = 回答。前端据此把刚才流式显示的那段撤回、移进右栏。
+    if (text.trim()) yield { type: "think", text };
 
     messages.push({
       role: "assistant", content: text,

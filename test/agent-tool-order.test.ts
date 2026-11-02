@@ -84,3 +84,45 @@ test("失败后的 user 提醒放在所有 tool 消息之后", async () => {
   }
   assert.ok(events.includes("tool_result"), "要吐出 tool_result");
 });
+
+test("「边想边说」不能混进回答：带工具调用那一步说的话标成 think", async () => {
+  // 用户看到的：「我先看一眼磁盘上记忆库的实际大小…」「错误读懂了…」混在答复里，
+  // 看着像回答不完整。判据是结构性的，不看措辞：
+  //   带 tool_calls 的那一步说的话 = 过程（think）
+  //   最后一步没有 tool_calls 的     = 回答（delta）
+  const tools = {
+    schema: () => [{ type: "function", function: { name: "fs_list", description: "list", parameters: { type: "object", properties: {} } } }],
+    call: async () => "E_NOT_FOUND",
+    list: () => [{ name: "fs_list" }],
+  };
+  let turn = 0;
+  const chat = async function* () {
+    turn++;
+    if (turn === 1) {
+      yield { type: "delta", text: "我先看一眼磁盘上记忆库的实际大小，" };
+      yield { type: "tool_calls", calls: [{ id: "c1", name: "fs_list", args: "{}" }] };
+      yield { type: "done", finish: "tool_calls" };
+    } else {
+      yield { type: "delta", text: "库里 162 条记忆。" };
+      yield { type: "done", finish: "stop" };
+    }
+  };
+
+  const evs: Array<{ type: string; text?: string }> = [];
+  for await (const ev of runAgent({ chat, tools, guards: false, maxSteps: 3 } as never, "sys", "你能读多少记忆")) {
+    evs.push(ev as never);
+  }
+  const thinks = evs.filter((e) => e.type === "think").map((e) => e.text ?? "").join("");
+  assert.ok(thinks.includes("我先看一眼"), "过程要在 think 里");
+
+  // 回答（最后一步的 delta）不该含过程叙述
+  const lastDeltas: string[] = [];
+  let afterLastTool = false;
+  for (const e of evs) {
+    if (e.type === "tool_result") afterLastTool = true;
+    if (e.type === "delta" && afterLastTool) lastDeltas.push(e.text ?? "");
+  }
+  const answer = lastDeltas.join("");
+  assert.ok(!answer.includes("我先看一眼"), "回答里不许有过程：" + answer);
+  assert.ok(answer.includes("162"), "回答本身要在：" + answer);
+});

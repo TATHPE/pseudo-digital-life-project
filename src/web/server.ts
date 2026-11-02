@@ -1887,6 +1887,7 @@ export function createWebServer(deps: WebDeps) {
               if (aborted) break;
               if (ev.type === "delta") { full += ev.text; send({ type: "delta", text: ev.text }); }
               else if (ev.type === "notice") { trace.push({ k: "think", t: ev.text }); send({ type: "notice", text: ev.text }); }
+              else if (ev.type === "think") { trace.push({ k: "think", t: ev.text }); send({ type: "think", text: ev.text }); }
               else if (ev.type === "tool") { trace.push({ k: "tool", t: ev.name + " " + String(ev.args ?? "").slice(0, 300) }); send({ type: "tool", id: ev.id, name: ev.name, args: ev.args }); }
               else if (ev.type === "tool_result") {
                 used.push({ name: ev.name, args: "", result: ev.result, ms: ev.ms });

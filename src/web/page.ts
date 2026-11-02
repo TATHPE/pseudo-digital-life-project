@@ -3223,6 +3223,16 @@ $("#composer").onsubmit = async (e) => {
           traceAdd("think", "想", d.text);
         }
         if (d.type === "delta") { acc += d.text; box.innerHTML = escapeHtml(acc) + "<span class='cursor'></span>"; }
+        if (d.type === "think") {
+          // 「边想边说」那段刚才已经流式显示在正文里了 —— 撤回它，移进右栏。
+          // 只撤末尾完全一致的那一段（模型可能中途换行/加空格，不匹配就不硬砍）。
+          var tx = String(d.text || "");
+          if (tx && acc.slice(-tx.length) === tx) {
+            acc = acc.slice(0, -tx.length);
+            box.innerHTML = escapeHtml(acc) + "<span class='cursor'></span>";
+          }
+          traceAdd("think", "想", tx);
+        }
         if (d.type === "tool") {
           meta.textContent = "调用 " + d.name;
           traceTool(d.name, d.args, null, null);
