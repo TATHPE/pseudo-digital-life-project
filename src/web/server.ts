@@ -1854,7 +1854,11 @@ export function createWebServer(deps: WebDeps) {
                 send({ type: "tool_result", id: ev.id, name: ev.name, result: ev.result.slice(0, 1500), ms: ev.ms });
               }
               else if (ev.type === "error") send({ type: "error", message: ev.message });
-              else if (ev.type === "done") send({ type: "done", steps: ev.steps });
+              else if (ev.type === "done") {
+                // finish=length 说明不是「说完了」，是「到上限了」。不说出来，看着就像回答不完整。
+                if (ev.finish === "length") send({ type: "notice", text: "这次回答到长度上限被截断了 —— 说「继续」我接着往下说。" });
+                send({ type: "done", steps: ev.steps });
+              }
             }
           } else if (deps.reply) {
             for await (const d of deps.reply(brief.text, text)) { if (aborted) break; full += d; send({ type: "delta", text: d }); }
@@ -1862,7 +1866,7 @@ export function createWebServer(deps: WebDeps) {
           } else {
             const gen = deps.getTransport().completeStream("express",
               [{ role: "system", content: brief.text }, { role: "user", content: text }],
-              { containsMemory: false, purpose: "express", maxTokens: 512 });
+              { containsMemory: false, purpose: "express", maxTokens: 3000 });
             for await (const d of gen) { if (aborted) break; full += d; send({ type: "delta", text: d }); }
             send({ type: "done", steps: 1 });
           }

@@ -303,7 +303,9 @@ async function main(): Promise<void> {
         // 所以这里不再挂本地兜底 —— 云端不可用就该**明说不可用**，而不是换一个 7B 装作是她。
         // （旧行为：withFallback 到本地 night/route 角色，用户根本分不清刚才是谁在答。）
         return (messages: unknown[], tools: any) => t.chat("express", messages, {
-          containsMemory: false, purpose: "agent", maxTokens: 1200, tools,
+          // 1200 对中文长回答不够（≈800-1800 字），她经常在编号列表中间被切断。
+          // 3000 是「一整轮说清楚」的量；再长的回答本来也该分轮。
+          containsMemory: false, purpose: "agent", maxTokens: 3000, tools,
         });
       };
       const toolCtx = () => ({ db: d.db, embedder: getEmbedder(), home: HOME, now: () => new Date() });

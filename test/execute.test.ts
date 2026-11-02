@@ -181,3 +181,11 @@ test("路径不存在时错误自带下一步：同级清单 / 最接近的 / �
     try { rmSync(home, { recursive: true, force: true }); } catch { /* ignore */ }
   }
 });
+
+test("memory.search 的 k 有上界：模型传 k=10000 不能把整个库拉进上下文", () => {
+  // 之前是 Number(a.k ?? 5) 直接透传 —— 参数没上界。她一次 k=10000 就能把
+  // 全库 160 条都塞进上下文（既费钱，又让"召回"失去筛选意义）。
+  const src = readFileSync(join(process.cwd(), "src/verbs.ts"), "utf8");
+  assert.ok(src.includes("Math.min(20, Math.round(Number(a.k ?? 5))"), "k 要封顶 20");
+  assert.ok(!src.includes('{ k: Number(a.k ?? 5) }'), "不许再直接透传");
+});

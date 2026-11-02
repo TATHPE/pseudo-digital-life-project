@@ -246,7 +246,9 @@ export const verbs: VerbDef[] = [
       if (!ctx.embedder) throw new Error("E_NO_EMBEDDER");
       // 索引过期时召回不可信 —— 与其悄悄给错结果，不如在结果前面说一句（C-2）
       const stale = staleNote(ctx);
-      const r = await search(ctx.db, ctx.embedder, String(a.q ?? ""), { k: Number(a.k ?? 5) });
+      // 参数有界：k 不封顶的话，模型一句 k=10000 就能把整个库拉进上下文
+      const kk = Math.max(1, Math.min(20, Math.round(Number(a.k ?? 5)) || 5));
+      const r = await search(ctx.db, ctx.embedder, String(a.q ?? ""), { k: kk });
       // 云端表达：只回 shareable 的原文；local_only 只报个数
       if (expressIsRemote(ctx)) {
         const ok = r.hits.filter((h) => h.sensitivity === "shareable");
@@ -483,7 +485,9 @@ export const verbs: VerbDef[] = [
     async run(a, ctx) {
       if (!ctx.db) throw new Error("E_NO_DB");
       const stale = staleNote(ctx);   // 文档块用的是同一套向量，过期一样会不准
-      const r = await searchDocs(ctx.db, ctx.embedder ?? null, String(a.q ?? ""), { k: Number(a.k ?? 5) });
+      // 同 memory.search：参数有界（文档块也一样，k 封顶 20）
+      const dk = Math.max(1, Math.min(20, Math.round(Number(a.k ?? 5)) || 5));
+      const r = await searchDocs(ctx.db, ctx.embedder ?? null, String(a.q ?? ""), { k: dk });
       if (expressIsRemote(ctx)) {
         const ok = r.hits.filter((h) => h.sensitivity === "shareable");
         if (!ok.length) return stale + (r.hits.length ? redacted("本地文档里", r.hits.length) : "（没有相关文档块）");
