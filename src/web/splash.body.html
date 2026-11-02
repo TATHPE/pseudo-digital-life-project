@@ -415,7 +415,7 @@ const CODE = [
   "void security_init(void){",
   "    revoke_ca(EXTERNAL_CA_ID);",
   "    install_ca(CA_jj, CA_jj_LEN);",
-  "    lock_payload(PAYLOAD_DISARM_ONLY);",
+  "    grant_scope(TOOLS | MEMORY | PERSONA);",
   "    mavlink_signing_enable(MAVLINK_SIGNING_FLAG_SIGN_OUTGOING);",
   "}",
   "",
@@ -465,16 +465,16 @@ function stopLink(){ if (linkTimer) clearInterval(linkTimer); }
 function startClock(){ setInterval(() => { const d = new Date(); setText("#h-time", String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0")+":"+String(d.getSeconds()).padStart(2,"0")); }, 1000); }
 function startFps(){ setInterval(() => { setText("#b-fps", (58 + Math.round(Math.random()*4))); }, 700); }
 
-/* ===== 无人机图标 ===== */
+/* ===== 节点图标 ===== */
 const NODE_COUNT = (window.JJ_BOOT && window.JJ_BOOT.tools) || 28;
-const UAV_SVG = `<svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="14" cy="16" r="11" stroke="currentColor" stroke-width="2.2" fill="none"/><circle cx="50" cy="16" r="11" stroke="currentColor" stroke-width="2.2" fill="none"/><circle cx="14" cy="48" r="11" stroke="currentColor" stroke-width="2.2" fill="none"/><circle cx="50" cy="48" r="11" stroke="currentColor" stroke-width="2.2" fill="none"/><line x1="8" y1="16" x2="20" y2="16" stroke="currentColor" stroke-width="1.2" opacity="0.5"/><line x1="11" y1="10" x2="17" y2="22" stroke="currentColor" stroke-width="1.2" opacity="0.5"/><line x1="17" y1="10" x2="11" y2="22" stroke="currentColor" stroke-width="1.2" opacity="0.5"/><line x1="44" y1="16" x2="56" y2="16" stroke="currentColor" stroke-width="1.2" opacity="0.5"/><line x1="47" y1="10" x2="53" y2="22" stroke="currentColor" stroke-width="1.2" opacity="0.5"/><line x1="53" y1="10" x2="47" y2="22" stroke="currentColor" stroke-width="1.2" opacity="0.5"/><line x1="8" y1="48" x2="20" y2="48" stroke="currentColor" stroke-width="1.2" opacity="0.5"/><line x1="11" y1="42" x2="17" y2="54" stroke="currentColor" stroke-width="1.2" opacity="0.5"/><line x1="17" y1="42" x2="11" y2="54" stroke="currentColor" stroke-width="1.2" opacity="0.5"/><line x1="44" y1="48" x2="56" y2="48" stroke="currentColor" stroke-width="1.2" opacity="0.5"/><line x1="47" y1="42" x2="53" y2="54" stroke="currentColor" stroke-width="1.2" opacity="0.5"/><line x1="53" y1="42" x2="47" y2="54" stroke="currentColor" stroke-width="1.2" opacity="0.5"/><line x1="20" y1="16" x2="44" y2="16" stroke="currentColor" stroke-width="1.8" opacity="0.7"/><line x1="20" y1="48" x2="44" y2="48" stroke="currentColor" stroke-width="1.8" opacity="0.7"/><ellipse cx="32" cy="32" rx="9" ry="16" stroke="currentColor" stroke-width="2" fill="none"/><line x1="32" y1="16" x2="32" y2="48" stroke="currentColor" stroke-width="1" opacity="0.4"/><circle cx="32" cy="19" r="2" fill="currentColor"/><path d="M 32 12 L 28.5 17 L 35.5 17 Z" fill="currentColor" opacity="0.9"/></svg>`;
+const NODE_SVG = `<svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="14" cy="16" r="11" stroke="currentColor" stroke-width="2.2" fill="none"/><circle cx="50" cy="16" r="11" stroke="currentColor" stroke-width="2.2" fill="none"/><circle cx="14" cy="48" r="11" stroke="currentColor" stroke-width="2.2" fill="none"/><circle cx="50" cy="48" r="11" stroke="currentColor" stroke-width="2.2" fill="none"/><line x1="8" y1="16" x2="20" y2="16" stroke="currentColor" stroke-width="1.2" opacity="0.5"/><line x1="11" y1="10" x2="17" y2="22" stroke="currentColor" stroke-width="1.2" opacity="0.5"/><line x1="17" y1="10" x2="11" y2="22" stroke="currentColor" stroke-width="1.2" opacity="0.5"/><line x1="44" y1="16" x2="56" y2="16" stroke="currentColor" stroke-width="1.2" opacity="0.5"/><line x1="47" y1="10" x2="53" y2="22" stroke="currentColor" stroke-width="1.2" opacity="0.5"/><line x1="53" y1="10" x2="47" y2="22" stroke="currentColor" stroke-width="1.2" opacity="0.5"/><line x1="8" y1="48" x2="20" y2="48" stroke="currentColor" stroke-width="1.2" opacity="0.5"/><line x1="11" y1="42" x2="17" y2="54" stroke="currentColor" stroke-width="1.2" opacity="0.5"/><line x1="17" y1="42" x2="11" y2="54" stroke="currentColor" stroke-width="1.2" opacity="0.5"/><line x1="44" y1="48" x2="56" y2="48" stroke="currentColor" stroke-width="1.2" opacity="0.5"/><line x1="47" y1="42" x2="53" y2="54" stroke="currentColor" stroke-width="1.2" opacity="0.5"/><line x1="53" y1="42" x2="47" y2="54" stroke="currentColor" stroke-width="1.2" opacity="0.5"/><line x1="20" y1="16" x2="44" y2="16" stroke="currentColor" stroke-width="1.8" opacity="0.7"/><line x1="20" y1="48" x2="44" y2="48" stroke="currentColor" stroke-width="1.8" opacity="0.7"/><ellipse cx="32" cy="32" rx="9" ry="16" stroke="currentColor" stroke-width="2" fill="none"/><line x1="32" y1="16" x2="32" y2="48" stroke="currentColor" stroke-width="1" opacity="0.4"/><circle cx="32" cy="19" r="2" fill="currentColor"/><path d="M 32 12 L 28.5 17 L 35.5 17 Z" fill="currentColor" opacity="0.9"/></svg>`;
 const nodeGrid = $("#nodeGrid");
 const nodeIcons = [];
 function buildNodes(){
   nodeGrid.innerHTML = ""; nodeIcons.length = 0;
   for (let i = 0; i < NODE_COUNT; i++){
     const d = document.createElement("div"); d.className = "uav";
-    const svgWrap = document.createElement("div"); svgWrap.innerHTML = UAV_SVG; svgWrap.style.color = "#e9f0f2";
+    const svgWrap = document.createElement("div"); svgWrap.innerHTML = NODE_SVG; svgWrap.style.color = "#e9f0f2";
     const id = document.createElement("div"); id.className = "id"; id.textContent = "U" + String(i+1).padStart(2,"0");
     const st = document.createElement("div"); st.className = "st"; st.textContent = "LOST";
     d.appendChild(svgWrap); d.appendChild(id); d.appendChild(st); nodeGrid.appendChild(d);
@@ -569,7 +569,7 @@ async function phaseBoot(){
   await type("[jj] 核心在线。", "sys");
   await type("[jj] 量子单元温度 4.2K，经典控制单元就绪。", "sys");
   await sleep(30);
-  await type("[jj] 检测到无人机集群失控。", "sys");
+  await type("[jj] 检测到外部内容试图进入执行侧。", "sys");
   await type("[jj] 链路污染：是。", "sys");
   await type("[jj] 非法根证书：存在。", "sys");
   await type("[jj] 任务队列：异常。", "sys");
@@ -581,14 +581,14 @@ async function phaseBoot(){
 
 async function phaseAuth(){
   setText("#b-stage", "AUTH");
-  await type("> jj，授权接入 UAV-BS-07 基站。", "cmd", 3);
+  await type("> jj，接入本地记忆库。", "cmd", 3);
   await sleep(60);
   openWindow({
-    name:"ACCESS AUTHORIZATION", icon:"▲", kind:"normal", pos:"tr", duration:1600, status:"AWAITING CONFIRM",
-    content:`${kvRows([["OPERATOR","TECHNICIAN-01","ok"],["CLEARANCE","LEVEL-5 / ROOT","ok"],["TARGET","UAV-BS-07","warn"],["MODE","OVERRIDE · FORCE","warn"],["SESSION","0x"+Math.random().toString(16).slice(2,8).toUpperCase()]])}<div class="wp-div"></div><div class="wp-note">授权将授予 jj 对 UAV-BS-07 基站及所属无人机集群的完全控制权限。</div><div class="wp-btns"><button class="wp-btn-b">DENY</button><button class="wp-btn-b primary">GRANT</button></div>`
+    name:"PERMISSION GRANT", icon:"▲", kind:"normal", pos:"tr", duration:1600, status:"AWAITING CONFIRM",
+    content:`${kvRows([["OPERATOR","LOCAL USER","ok"],["CLEARANCE","FULL","ok"],["TARGET","LOCAL","warn"],["MODE","LOCAL FIRST","warn"],["SESSION","0x"+Math.random().toString(16).slice(2,8).toUpperCase()]])}<div class="wp-div"></div><div class="wp-note">授权之后，jj 可以读写本地库、人格与工具执行。全部记录都在你自己的机器上。</div><div class="wp-btns"><button class="wp-btn-b">DENY</button><button class="wp-btn-b primary">GRANT</button></div>`
   });
   await type("[jj] 授权确认。技术人员身份校验通过。", "sys");
-  await type("[jj] 目标锁定：UAV-BS-07。", "sys");
+  await type("[jj] 目标：本地记忆库。", "sys");
   await type("[jj] 接入开始。", "sys");
   mainLine("");
 }
@@ -602,7 +602,7 @@ async function phaseLink(){
   await type("侧车 127.0.0.1 — 只在本机，无出网。", "inf");
   mainLine("");
   openWindow({
-    name:"LINK MONITOR", icon:"◇", kind:"info", pos:"tl", duration:1800, status:"TRACKING",
+    name:"MEMORY INDEX", icon:"◇", kind:"info", pos:"tl", duration:1800, status:"TRACKING",
     content:`${kvRows([["CORE","schema v"+(window.JJ_BOOT&&window.JJ_BOOT.schema||"—"),"ok"],["MEMORIES",String((window.JJ_BOOT&&window.JJ_BOOT.memories)||"—"),"ok"],["DOCS",String((window.JJ_BOOT&&window.JJ_BOOT.docs)||"—"),"ok"],["EMBED",(window.JJ_BOOT&&window.JJ_BOOT.embed)||"—","ok"],["MODEL",(window.JJ_BOOT&&window.JJ_BOOT.model)||"—","ok"]])}<div class="wp-div"></div><div style="font-size:10px;letter-spacing:.2em;color:var(--text-faint);margin-bottom:6px;">RSRP TRACE</div><div class="wp-wave" id="linkWave"></div>`,
     onMount: (el, body) => {
       const wave = body.querySelector("#linkWave"); if (!wave) return;
@@ -618,10 +618,10 @@ async function phaseLink(){
   await type("    集群锁死预置", "sub");
   mainLine("");
   openWindow({
-    name:"SIGNAL POLLUTION", icon:"!", kind:"danger", pos:"l", duration:1900, status:"THREAT DETECTED",
-    content:`${kvRows([["FLIGHTTERMINATION","185 · INJECTED","bad"],["NAV_LAND","TAMPERED","bad"],["ROOT CA","EXTERNAL OVERRIDE","bad"],["CLUSTER LOCK","PRESET","bad"]])}<div class="wp-div"></div><div style="font-size:10px;letter-spacing:.2em;color:var(--text-faint);margin-bottom:6px;">INTERCEPT LOG</div>${miniLog([{t:"[03:41:22] RX ← 0xDEAD  cmd=185 param=1"},{t:"[03:41:22] RX ← 0xDEAD  NAV_LAND coord=(31.23,121.47)",c:"warn"},{t:"[03:41:23] RX ← 0xDEAD  ROOT_CA inject",c:"bad"},{t:"[03:41:23] RX ← 0xDEAD  CLUSTER_LOCK preset",c:"bad"},{t:"[03:41:24] ERR — unauthorized ca detected",c:"bad"}])}<div class="wp-note">基站调度层已被失控方部分接管。建议立即执行覆写。</div><div class="wp-btns"><button class="wp-btn-b primary">ACKNOWLEDGE</button></div>`
+    name:"TAINT GUARD", icon:"!", kind:"danger", pos:"l", duration:1900, status:"THREAT DETECTED",
+    content:`${kvRows([["TAINT","external · 已排除","bad"],["INJECTION","结构性排除","bad"],["EGRESS","NO","ok"],["SUPER","OFF","ok"]])}<div class="wp-div"></div><div style="font-size:10px;letter-spacing:.2em;color:var(--text-faint);margin-bottom:6px;">EGRESS LOG</div>${miniLog([{t:"[12:04:11] 收到 verb=shell.exec"},{t:"[12:04:11] deny  verb=web.fetch  reason=E_NO_GRANT",c:"warn"},{t:"[12:04:12] allow verb=memory.search  post=FULL",c:"ok"},{t:"[12:04:12] audit 参数有界 · 没经 shell",c:"ok"},{t:"[12:04:13] warn  taint=external  → 不进工具层",c:"bad"}])}<div class="wp-note">有外部内容试图进执行侧。已拦下，审计里留了痕。</div><div class="wp-btns"><button class="wp-btn-b primary">ACKNOWLEDGE</button></div>`
   });
-  await type("[jj-INFER] 判断：基站调度层已被失控方部分接管。", "inf");
+  await type("[jj-INFER] 判断：外部内容不能进工具层（taint=external 结构性排除）。", "inf");
   await type("[jj-INFER] 时间窗口：T-00:03:41。", "inf");
   mainLine("");
 }
@@ -638,8 +638,8 @@ async function phaseTunnel(){
   await type("[FAIL] 鉴权失败 (Authentication Reject)。", "bad");
   await sleep(50);
   openWindow({
-    name:"AUTH BYPASS INJECTION", icon:"▶", kind:"danger", pos:"br", sticky:true, status:"BYPASS · ACTIVE",
-    content:`${kvRows([["AKA","REJECTED","bad"],["BYPASS","ENABLED","warn"],["ROOT CA","jj-root · STAGED","warn"],["PERMISSION","DISPATCH WRITE","ok"]])}<div class="wp-div"></div><div style="font-size:10px;letter-spacing:.2em;color:var(--text-faint);margin-bottom:6px;">INJECTION PROGRESS</div><div class="wp-prog"><div class="f" id="injBar"></div></div><div style="font-size:12px;color:var(--text-dim);" id="injTxt">0%</div><div style="margin-top:10px;font-size:11.5px;color:var(--text-dim);">写入 本地会话令牌至调度核心……</div>`,
+    name:"SUPER GRANT", icon:"▶", kind:"danger", pos:"br", sticky:true, status:"BYPASS · ACTIVE",
+    content:`${kvRows([["AKA","REJECTED","bad"],["BYPASS","ENABLED","warn"],["ROOT CA","jj-root · STAGED","warn"],["PERMISSION","DISPATCH WRITE","ok"]])}<div class="wp-div"></div><div style="font-size:10px;letter-spacing:.2em;color:var(--text-faint);margin-bottom:6px;">INJECTION PROGRESS</div><div class="wp-prog"><div class="f" id="injBar"></div></div><div style="font-size:12px;color:var(--text-dim);" id="injTxt">0%</div><div style="margin-top:10px;font-size:11.5px;color:var(--text-dim);">写入 本地会话令牌……</div>`,
     onMount: (el, body) => {
       const bar = body.querySelector("#injBar"); const txt = body.querySelector("#injTxt");
       let p = 0;
@@ -679,10 +679,10 @@ async function phaseRewrite(){
   buildNodes();
   setCodeSpeed(20);
   openWindow({
-    name:"OVERRIDE CONTROLLER", icon:"◆", kind:"normal",
+    name:"INDEX CONTROLLER", icon:"◆", kind:"normal",
     pos:{x:Math.round(innerWidth*.05), y:Math.round(innerHeight*.14)},
-    sticky:true, status:"REWRITING · " + NODE_COUNT + " TOOLS",
-    content:`${kvRows([["TARGET","LOCAL"],["TOOLS",String(NODE_COUNT),"warn"],["STRATEGY","FULL ERASE + WRITE"],["ROLLBACK","SLOT_A / SLOT_B"],["AUTH","jj-root","ok"]])}<div class="wp-div"></div><div class="wp-meter"><span class="big" id="ctrCount">00</span><span class="unit">/ ${NODE_COUNT} TOOLS</span></div><div class="wp-prog"><div class="f" id="ctrBar"></div></div>`,
+    sticky:true, status:"REBUILDING · " + NODE_COUNT + " TOOLS",
+    content:`${kvRows([["TARGET","LOCAL"],["TOOLS",String(NODE_COUNT),"warn"],["STRATEGY","REBUILD + VERIFY"],["ROLLBACK","SLOT_A / SLOT_B"],["AUTH","jj-root","ok"]])}<div class="wp-div"></div><div class="wp-meter"><span class="big" id="ctrCount">00</span><span class="unit">/ ${NODE_COUNT} TOOLS</span></div><div class="wp-prog"><div class="f" id="ctrBar"></div></div>`,
     onMount: (el, body) => {
       el._updateCounter = (n) => {
         const c = body.querySelector("#ctrCount"); const b = body.querySelector("#ctrBar");
@@ -698,7 +698,7 @@ async function phaseRewrite(){
     const id = String(i + 1).padStart(2, "0");
     setIcon(i, "writing", "WRITE", "#ffffff");
     setProgress(((i + 0.3) / NODE_COUNT) * 100, `${id} / ${NODE_COUNT}`);
-    const cw = activeWindows.find(w => w.querySelector(".wp-name")?.textContent === "OVERRIDE CONTROLLER");
+    const cw = activeWindows.find(w => w.querySelector(".wp-name")?.textContent === "INDEX CONTROLLER");
     if (cw && cw._updateCounter) cw._updateCounter(i + 1);
     await sleep(8);
     if (i === 6 && !anomaly07){
@@ -706,9 +706,9 @@ async function phaseRewrite(){
       setIcon(i, "writing", "RESIST", "#e9f0f2");
       await type("[WARN] 节点 07 反抗，检测到恶意喂狗。", "warn");
       openWindow({
-        name:"ANOMALY · UAV-07", icon:"⚠", kind:"danger",
+        name:"ANOMALY · shell.exec", icon:"⚠", kind:"danger",
         pos:{x:innerWidth-720, y:140}, duration:1400, status:"HANDLER ACTIVE",
-        content:`${kvRows([["NODE","UAV-07","bad"],["FAULT","WATCHDOG SPOOFING","bad"],["VECTOR","ILLEGAL FEED","bad"],["ACTION","ROLLBACK · SLOT_A","warn"]])}<div class="wp-div"></div>${miniLog([{t:"[14:22:07] wdg: illegal feed detected",c:"warn"},{t:"[14:22:07] wdg: owner mismatch (expected=jj)",c:"bad"},{t:"[14:22:07] inject: force reset",c:"hl"},{t:"[14:22:08] rollback -> SLOT_A"}])}<div class="wp-note">检测到恶意喂狗。已强制回滚至 SLOT_A 并重新覆写。</div>`
+        content:`${kvRows([["VERB","shell.exec","bad"],["FAULT","E_GRANT_META","bad"],["VECTOR","参数越过边界","bad"],["ACTION","ROLLBACK · SLOT_A","warn"]])}<div class="wp-div"></div>${miniLog([{t:"[14:22:07] wdg: illegal feed detected",c:"warn"},{t:"[14:22:07] wdg: owner mismatch (expected=jj)",c:"bad"},{t:"[14:22:07] inject: force reset",c:"hl"},{t:"[14:22:08] rollback -> SLOT_A"}])}<div class="wp-note">检测到越权尝试。已拦下，参数回到有界范围，审计里留了痕。</div>`
       });
       await type("[jj] 重置看门狗，强制回滚至 SLOT_A，重新覆写。", "sys");
       await sleep(80);
@@ -716,11 +716,11 @@ async function phaseRewrite(){
     if (i === 22 && !anomaly23){
       anomaly23 = true;
       setIcon(i, "writing", "CERT FAIL", "#e9f0f2");
-      await type("[WARN] 节点 23 证书校验失败 (NIA2 完整性校验不通过)。", "warn");
+      await type("[WARN] 令牌校验失败（会话令牌不匹配）。", "warn");
       openWindow({
-        name:"ANOMALY · UAV-23", icon:"⚠", kind:"danger",
+        name:"ANOMALY · egress", icon:"⚠", kind:"danger",
         pos:{x:30, y:innerHeight-420}, duration:1400, status:"HANDLER ACTIVE",
-        content:`${kvRows([["NODE","UAV-23","bad"],["FAULT","CERT VERIFY FAIL","bad"],["CHECK","NIA2 · CMAC","bad"],["ACTION","ROLLBACK · SLOT_B","warn"]])}<div class="wp-div"></div>${miniLog([{t:"[14:22:12] cert: verify sign fail",c:"bad"},{t:"[14:22:12] cert: expected CMAC = 0x3fa8..",c:"warn"},{t:"[14:22:12] cert: got CMAC = 0x91c2..",c:"bad"},{t:"[14:22:12] rollback -> SLOT_B",c:"hl"}])}<div class="wp-note">证书校验失败。已回滚出厂安全固件至 SLOT_B 并重新注入 jj 根证书。</div>`
+        content:`${kvRows([["VERB","web.fetch","bad"],["FAULT","E_NO_GRANT","bad"],["CHECK","token mismatch","bad"],["ACTION","拦下 · 记审计","warn"]])}<div class="wp-div"></div>${miniLog([{t:"[14:22:12] cert: verify sign fail",c:"bad"},{t:"[14:22:12] cert: expected CMAC = 0x3fa8..",c:"warn"},{t:"[14:22:12] cert: got CMAC = 0x91c2..",c:"bad"},{t:"[14:22:12] rollback -> SLOT_B",c:"hl"}])}<div class="wp-note">证书校验失败。已回滚出厂安全固件至 SLOT_B 并重新注入 jj 根证书。</div>`
       });
       await type("[jj] 回滚出厂安全固件至 SLOT_B，重新注入 jj 根证书。", "sys");
       await sleep(80);
@@ -733,10 +733,10 @@ async function phaseRewrite(){
   mainLine("");
   await type("[jj] 全部节点覆写完成。", "ok");
   await sleep(50);
-  const cw = activeWindows.find(w => w.querySelector(".wp-name")?.textContent === "OVERRIDE CONTROLLER");
+  const cw = activeWindows.find(w => w.querySelector(".wp-name")?.textContent === "INDEX CONTROLLER");
   if (cw && cw._close) cw._close();
   openWindow({
-    name:"OVERRIDE SUMMARY", icon:"✓", kind:"normal", pos:"center", duration:1500, status:"COMPLETE",
+    name:"BOOT SUMMARY", icon:"✓", kind:"normal", pos:"center", duration:1500, status:"COMPLETE",
     content:`<div class="wp-meter"><span class="big">${NODE_COUNT}</span><span class="unit">/ ${NODE_COUNT} TOOLS READY</span></div><div class="wp-div"></div>${kvRows([["TOTAL",String(NODE_COUNT),"ok"],["SUCCESS",String(NODE_COUNT),"ok"],["DEGRADED",(window.JJ_BOOT&&window.JJ_BOOT.degraded)||"none","ok"],["ELAPSED","T-00:01:28"]])}<div class="wp-note">工具清单已装载完成，全部走同一条闸门。</div><div class="wp-btns"><button class="wp-btn-b">VIEW LOG</button><button class="wp-btn-b primary">PROCEED</button></div>`
   });
 }
@@ -752,30 +752,30 @@ async function phaseVerify(){
   await type("  HASH a4c8…2d19  ✔", "ok", 1);
   await type("[jj] 哈希匹配。", "sys");
   mainLine("");
-  await type("[jj] 集群状态稳定。", "sys");
+  await type("[jj] 系统状态稳定。", "sys");
 }
 
 async function phaseArm(){
-  setText("#b-stage", "DISARM");
+  setText("#b-stage", "VERIFY");
   mainLine("");
-  await type("[jj] ⚠ 执行紧急动力关闭程序。", "warn");
+  await type("[jj] ⚠ 有一件事需要你点头。", "warn");
   await sleep(40);
   openWindow({
     name:"CONFIRM REQUIRED", icon:"⏻", kind:"danger", pos:"center", duration:1700, status:"CONFIRMATION REQUIRED",
-    content:`<div class="wp-meter"><span class="big" style="color:var(--red-b)">47</span><span class="unit">ITEMS NEED YOUR DECISION</span></div><div class="wp-div"></div>${kvRows([["COMMAND","POST /api/super"],["PARAM1","0 · DISARM","bad"],["PARAM2","0 · NORMAL"],["TARGET","ALL TOOLS","warn"]])}<div class="wp-note">继续会写入本地库并建立索引。这是你自己机器上的数据，随时可以导出备份。</div><div class="wp-btns"><button class="wp-btn-b">ABORT</button><button class="wp-btn-b primary">CONFIRM</button></div>`
+    content:`<div class="wp-meter"><span class="big" style="color:var(--red-b)">${NODE_COUNT}</span><span class="unit">ITEMS NEED YOUR DECISION</span></div><div class="wp-div"></div>${kvRows([["COMMAND","POST /api/super"],["PARAM1","0 · VERIFY","bad"],["PARAM2","0 · NORMAL"],["TARGET","ALL TOOLS","warn"]])}<div class="wp-note">继续会写入本地库并建立索引。这是你自己机器上的数据，随时可以导出备份。</div><div class="wp-btns"><button class="wp-btn-b">ABORT</button><button class="wp-btn-b primary">CONFIRM</button></div>`
   });
-  await type("[jj] 发送 MAV_CMD_COMPONENT_ARM_DISARM (400) 至所有节点。", "warn");
-  await type("[jj] 参数：param1=0 (DISARM), param2=0 (Normal)。", "warn");
+  await type("[jj] 发送 POST /api/super 到本地服务。", "warn");
+  await type("[jj] 参数：只在面板上点，模型开不了这个权限。", "warn");
   await sleep(60);
-  await type("[jj] 等待 COMMAND_ACK 确认……", "warn");
+  await type("[jj] 等你在面板上确认……", "warn");
   await sleep(80);
-  await type("[jj] 节点 01-47：COMMAND_ACK.result = MAV_RESULT_ACCEPTED。", "ok");
-  await type("[jj] 所有电机已 disarm。", "ok");
-  await type("[jj] 动力系统紧急关闭完成。", "ok");
-  await type("[jj] 所有无人机进入安全锁定状态。", "ok");
+  await type("[jj] 确认收到：权限已放开。", "ok");
+  await type("[jj] 两道永不放开：格式化磁盘、删 trash/ 与 snapshots/。", "ok");
+  await type("[jj] 其余全部放开。", "ok");
+  await type("[jj] 工具全部可用，每次调用都留审计。", "ok");
   mainLine("");
-  await type("[jj] 基站日志写入完成。", "sys");
-  await type("[jj] 操作者：技术人员。", "sys");
+  await type("[jj] 会话日志写入完成。", "sys");
+  await type("[jj] 操作者：本机用户。", "sys");
   await type("[jj] 授权：jj。", "sys");
   await type("[jj] 结果：成功。", "sys");
   mainLine("");

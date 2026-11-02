@@ -57,7 +57,9 @@ test("语言是我们的：无人机/基站那套术语清掉了，工具数换�
   assert.ok(tpl.includes("PSEUDO DIGITAL LIFE PROJECT"), "顶栏是项目名");
   assert.ok(tpl.includes("NODE_COUNT = (window.JJ_BOOT && window.JJ_BOOT.tools)"), "节点数 = 工具数");
   assert.ok(tpl.includes("TELEMETRY / 本机"), "遥测栏是我们的说法");
-  assert.ok(!tpl.includes("MOTORS WILL BE DISARMED"), "「关电机」那套没了");
+  for (const w of ["MOTORS WILL BE DISARMED", "UAV", "BS-07", "无人机", "基站", "DISARM", "550C"]) {
+    assert.ok(!tpl.includes(w), "军事/无人机语境清干净了：" + w);
+  }
 });
 
 test("接上了：full 档是 iframe 加载 /splash，播完/跳过会撤掉", () => {
