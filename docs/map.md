@@ -13,7 +13,7 @@
 | verbs | 26 |
 | CLI 子命令 | 37 |
 
-## 六条纪律落点
+## 纪律落点
 
 | 纪律 | 文件 | 符号 |
 |---|---|---|
@@ -25,6 +25,8 @@
 | 改功能先列清单 | `AGENTS.md` | `改一个功能先列清单` |
 | 写入单入口 | `src/store.ts` | `export function updateMemoryText` |
 | L0 字节级不变 | `test/l0-prefix.test.ts` | `PINNED_PREFIX_HASH` |
+| 本地模型只管理记忆 | `src/memoryonly.ts` | `MEMORY_ONLY_TOOLS` |
+| 改完自己验 | `src/agentguard.ts` | `export function` |
 
 ## 错误码 E_*
 

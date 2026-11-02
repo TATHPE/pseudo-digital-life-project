@@ -123,10 +123,17 @@ if (!up) {
   process.exit(1);
 }
 
-const code = await new Promise<number>((resolve) => {
+const code = await new Promise<number>((resolve) => {(async () => {
   // ?skip=1：夹具模拟的是"已经用起来的人"，不该被首启引导拦住（引导页另有 welcome-test）
-  const t = spawn(process.execPath, ["tools/ui-test.mjs", `http://127.0.0.1:${PORT}/?skip=1`], { cwd: ROOT, stdio: "inherit" });
-  t.on("close", (c) => resolve(c ?? 1));
+  const runOne = (script: string, url: string) => new Promise<number>((res) => {
+    const t = spawn(process.execPath, [script, url], { cwd: ROOT, stdio: "inherit" });
+    t.on("close", (c) => res(c ?? 1));
+  });
+  // 两套页面：主面板（?skip=1 跳过引导）+ 引导页本身。共用同一个夹具与 server。
+  const a = await runOne("tools/ui-test.mjs", `http://127.0.0.1:${PORT}/?skip=1`);
+  const b = await runOne("tools/welcome-test.mjs", `http://127.0.0.1:${PORT}/welcome`);
+  resolve(a || b);
+})();
 });
 
 srv.kill();

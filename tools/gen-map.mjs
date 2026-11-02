@@ -18,7 +18,7 @@ import { join, relative } from "node:path";
 const ROOT = process.cwd();
 const OUT = join(ROOT, "docs", "map.md");
 
-/** 八条纪律的落点：check 会验证 文件存在 且 该文件里出现过 symbol */
+/** 纪律落点：check 会验证 文件存在 且 该文件里出现过 symbol（不要求覆盖每一条纪律） */
 const INVARIANTS = [
   ["一条执行路径", "src/execute.ts", "export async function execute"],
   ["没接上 = 没做完", "tools/ui-test.mjs", "check("],
@@ -28,6 +28,8 @@ const INVARIANTS = [
   ["改功能先列清单", "AGENTS.md", "改一个功能先列清单"],
   ["写入单入口", "src/store.ts", "export function updateMemoryText"],
   ["L0 字节级不变", "test/l0-prefix.test.ts", "PINNED_PREFIX_HASH"],
+  ["本地模型只管理记忆", "src/memoryonly.ts", "MEMORY_ONLY_TOOLS"],
+  ["改完自己验", "src/agentguard.ts", "export function"],
 ];
 
 function walk(dir) {
@@ -99,7 +101,7 @@ lines.push(`| verbs | ${verbRows.length} |`);
 lines.push(`| CLI 子命令 | ${cmds.length} |`);
 lines.push("");
 
-lines.push("## 六条纪律落点");
+lines.push("## 纪律落点");
 lines.push("");
 lines.push("| 纪律 | 文件 | 符号 |");
 lines.push("|---|---|---|");

@@ -86,7 +86,7 @@ for (const m of invRows) {
     fails.push(`纪律「${name.trim()}」说的符号在 ${file} 里找不到：${sym}`);
   }
 }
-if (!fails.length) ok.push(`六条纪律落点全部可指（${invRows.length} 条）`);
+if (!fails.length) ok.push(`纪律落点全部可指（${invRows.length} 条）`);
 
 
 // ── ④ 写入单入口 ────────────────────────────────────────
