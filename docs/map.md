@@ -9,7 +9,7 @@
 | 项 | 数量 |
 |---|---|
 | 源文件（src/**/*.ts） | 97 |
-| 错误码 E_* | 192 |
+| 错误码 E_* | 193 |
 | verbs | 27 |
 | CLI 子命令 | 37 |
 
@@ -58,6 +58,7 @@
 | `E_BAD_SENSITIVITY` | `src/web/server.ts` |
 | `E_BAD_SHELL` | `src/web/server.ts` |
 | `E_BAD_SLOT` | `src/shell.ts` |
+| `E_BAD_SPLASH` | `src/web/server.ts` |
 | `E_BAD_STEP` | `src/web/server.ts` |
 | `E_BAD_TARGET` | `src/decayparams.ts` |
 | `E_BAD_TEMPLATE` | `src/shell.ts` |

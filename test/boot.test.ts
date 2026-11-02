@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { bootOverlay, WHALE_D } from "../src/web/boot.ts";
+import { bootOverlay, WHALE_D, SPLASH_MODES, splashMode } from "../src/web/boot.ts";
 import { PAGE } from "../src/web/page.ts";
 import { WELCOME } from "../src/web/welcome.ts";
 
@@ -58,4 +58,13 @@ test("完整档不会编数字：拿不到就跳过那一行", () => {
   assert.ok(!/row\('MEMORIES','\d/.test(full), "不许把条数写死");
   assert.ok(full.includes("if(c.memories)"), "有值才显示");
   assert.ok(full.includes("if(c.docs)"), "有值才显示");
+});
+
+test("片头档位：off / simple / full 三档，默认 full（配置说了算，不靠'配没配完'猜）", () => {
+  assert.deepEqual([...SPLASH_MODES], ["off", "simple", "full"]);
+  assert.equal(splashMode(undefined), "full", "没配过就是完整档（用户 2026-11-02 要的）");
+  assert.equal(splashMode({ splash: "off" }), "off");
+  assert.equal(splashMode({ splash: "simple" }), "simple");
+  assert.equal(splashMode({ splash: "FULL" }), "full", "大小写不敏感");
+  assert.equal(splashMode({ splash: "乱写的" }), "full", "认不出来就 full，别让人以为坏了");
 });

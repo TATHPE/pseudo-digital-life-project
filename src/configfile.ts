@@ -32,7 +32,18 @@ export interface FileConfig {
   };
   persona?: { name?: string };
   /** 外观偏好（头像框）——与模型配置分开放，清理接口配置时不会被意外抹掉 */
-  ui?: { avatar?: string };
+  ui?: {
+    /** 头像框（已删，保留字段兼容旧配置） */
+    avatar?: string;
+    /**
+     * 开机片头档位（照 dsh-550c-boot 的 off / simple / full）：
+     *   off    不播
+     *   simple 约 3.4s：logo 描边 → 填充 → 呼吸 → 项目名
+     *   full   约 9s：多一层网格擦出 + 逐条真实读数 + READY
+     * 默认 full —— 用户 2026-11-02 明确要完整档。
+     */
+    splash?: string;
+  };
   /**
    * 她叫什么（2026-11-01）：**"鲸鲸" 只是预置人格的名字，不是项目名**。
    * 用户第一次就该能自己取；这里存下来，面板/引导页/窗口标题都读它。

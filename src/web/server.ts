@@ -320,8 +320,10 @@ export function createWebServer(deps: WebDeps) {
           const { WELCOME } = await import("./welcome.ts");
           // 名字可能是用户自己取的（默认是预置人格「鲸鲸」）
           const nm = normalizeAgentName(readFileConfig(deps.home).agent?.name);
-          // 引导页就是在"出生"那一屏，片头给完整档
-          const bootHtml = (await import("./boot.ts")).bootOverlay("full");
+          // 引导页：尊重同一份配置（off 就不播；simple/full 照选）
+          const bootMod2 = await import("./boot.ts");
+          const splash2 = bootMod2.splashMode(readFileConfig(deps.home).ui);
+          const bootHtml = splash2 === "off" ? "" : bootMod2.bootOverlay(splash2 === "simple" ? "simple" : "full");
           const page = WELCOME.split("{{AGENT}}").join(nm).replace("<!--BOOT-->", bootHtml);
           res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
           res.end(req.method === "HEAD" ? undefined : page);
@@ -336,9 +338,11 @@ export function createWebServer(deps: WebDeps) {
         const sourcesDir = joinDir(deps.home, "sources");
         const cfgNow = deps.getConfig();
         const agentName = normalizeAgentName(readFileConfig(deps.home).agent?.name);
-        // 片头两档：没配完（她还在出生）给完整档，之后每次开机给简易档
-        const bootMode = needsWelcome(deps.home) ? "full" : "simple";
-        const bootHtml = (await import("./boot.ts")).bootOverlay(bootMode as never);
+        // 片头档位由**配置**决定（ui.splash：off / simple / full），不再按"配没配完"猜 ——
+        // 那个默认会让配完之后的人永远看不到完整档（用户指出过）。
+        const bootMod = await import("./boot.ts");
+        const splash = bootMod.splashMode(readFileConfig(deps.home).ui);
+        const bootHtml = splash === "off" ? "" : bootMod.bootOverlay(splash);
         const html = PAGE.replace("<!--BOOT-->", bootHtml).replace(
           "window.SOURCES_DIR = null;",
           "window.SOURCES_DIR = " + JSON.stringify(sourcesDir) + ";" +
@@ -699,6 +703,26 @@ export function createWebServer(deps: WebDeps) {
       }
       // ── 本地模型（C-4）：一个端点、列已装、拿当前生效值，面板据此分两块 ──
       // B-0：能力自述（工具来自 verbs / provider 来自配置 / degraded 来自真探测）
+      // ── 外观偏好（现在只剩开机片头档位；头像框已删 2026-11-01）──
+      if (req.method === "GET" && url.pathname === "/api/ui") {
+        const boot = await import("../web/boot.ts");
+        json(res, 200, { splash: boot.splashMode(readFileConfig(deps.home).ui), modes: boot.SPLASH_MODES });
+        return;
+      }
+      if (req.method === "PUT" && url.pathname === "/api/ui") {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
+        const body = JSON.parse(await readBody(req)) as { splash?: string };
+        const boot = await import("../web/boot.ts");
+        const v = String(body.splash ?? "");
+        if (!(boot.SPLASH_MODES as readonly string[]).includes(v)) {
+          json(res, 400, { error: "E_BAD_SPLASH", why: "只能是 " + boot.SPLASH_MODES.join(" / ") });
+          return;
+        }
+        writeFileConfig(deps.home, { ui: { splash: v } });
+        json(res, 200, { ok: true, splash: v });
+        return;
+      }
+
       // ── 宿主层：跑脚本用哪个解释器（默认 PowerShell；Git Bash 让用户自己配）──
       if (req.method === "GET" && url.pathname === "/api/host") {
         const h = await import("../host.ts");

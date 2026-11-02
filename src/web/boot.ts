@@ -23,6 +23,15 @@ export const WHALE_D = "M453.004 35.117c-65.314 46.61-189.755 41.018-213.559 125
 
 export type BootMode = "simple" | "full";
 
+/** 配置里能选的档位（照参照物的 MODE_VALUES） */
+export const SPLASH_MODES = ["off", "simple", "full"] as const;
+
+/** 从配置读档位：认不出来就当 full（宁可多播一次，也别让人以为坏了） */
+export function splashMode(ui: { splash?: string } | undefined): "off" | BootMode {
+  const v = String(ui?.splash ?? "").toLowerCase();
+  return v === "off" ? "off" : v === "simple" ? "simple" : "full";
+}
+
 const NL = String.fromCharCode(10);
 
 const CSS_COMMON = [

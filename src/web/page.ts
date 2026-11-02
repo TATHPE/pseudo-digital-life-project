@@ -964,6 +964,19 @@ description: 周日晚上把这一周压成三句话。
       </div>
 
       <div class="panelbox">
+        <h2>SPLASH · 开机片头</h2>
+        <p class="hint">每次打开软件先播的一段。任何时候<b>点一下画面或按 Esc</b> 都能跳过。</p>
+        <div class="filerow">
+          <select id="splashmode" class="searchbox">
+            <option value="full">完整 · 约 9 秒（网格 + 逐条真实读数 + READY）</option>
+            <option value="simple">简易 · 约 3.4 秒（只写 logo）</option>
+            <option value="off">不播</option>
+          </select>
+          <span id="splashmsg" class="hint"></span>
+        </div>
+      </div>
+
+      <div class="panelbox">
         <h2>SETUP · 重新过一遍引导</h2>
         <p class="hint">引导是<b>第一次打开软件时自动弹</b>的（/welcome）。要再看一遍装了什么、或者从头配一次，从这里进。</p>
         <div class="acts"><button type="button" id="gotoWelcome">打开引导页</button>
@@ -2176,6 +2189,22 @@ function traceTool(name, args, result, ms) {
   return el;
 }
 
+// ── 开机片头档位（ui.splash：off / simple / full）──
+async function loadSplash() {
+  var sel = document.getElementById('splashmode');
+  if (!sel) return;
+  var u = {};
+  try { u = await (await fetch('/api/ui')).json(); } catch (e) { return; }
+  sel.value = u.splash || 'full';
+  sel.onchange = async function () {
+    var msg = document.getElementById('splashmsg');
+    var r = await (await fetch('/api/ui', { method: 'PUT', headers: H,
+      body: JSON.stringify({ splash: sel.value }) })).json();
+    msg.className = r.ok ? 'hint ok' : 'hint err';
+    msg.textContent = r.ok ? '已保存（下次打开软件生效）' : (r.error || '保存失败');
+  };
+}
+
 // ── 命令解释器（host）：默认 PowerShell；Git Bash 让用户自己填路径 ──
 async function loadHost() {
   var h;
@@ -2790,7 +2819,7 @@ document.addEventListener("click", (e) => {
     sideActive = t;
     for (const b of document.querySelectorAll("#side .item")) b.classList.toggle("on", b === t);
   }
-  if (v === "cfg") { show("cfg"); loadSuper(); loadHost(); loadConfig().then(() => loadPersona($("#p-file").value)); return; }
+  if (v === "cfg") { show("cfg"); loadSuper(); loadHost(); loadSplash(); loadConfig().then(() => loadPersona($("#p-file").value)); return; }
   if (v === "toolview") { openTool(Number(t.dataset.tool)); return; }
   if (v === "memview") { openMemory(Number(t.dataset.mem)); return; }
   if (v === "docview") { openDoc(t.dataset.doc); return; }
