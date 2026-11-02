@@ -146,3 +146,38 @@ test("策略文件：不存在时自动生成默认策略", () => {
   assert.equal(readFileSync(p, "utf8"), DEFAULT_POLICY);
   assert.match(DEFAULT_POLICY, /deny,\s+T4/);
 });
+
+test("路径不存在时错误自带下一步：同级清单 / 最接近的 / 该走哪个 verb（她的第 1 条自检）", () => {
+  // 她的原话：「碰到 E_NOT_FOUND 才回来列目录……我先猜后查，浪费了一次调用。」
+  // 一次浪费不靠"下次小心"解决 —— 把答案放进错误里，她一次就能改对。
+  const home = mkdtempSync(join(tmpdir(), "jj-hint-"));
+  try {
+    mkdirSync(join(home, "logs"), { recursive: true });
+    writeFileSync(join(home, "config.json"), "{}");
+
+    // ① 近似文件名 → 指出最接近的
+    assert.throws(() => safePath(home, "config.jso"), (e: Error) => {
+      assert.match(e.message, /E_NOT_FOUND/);
+      assert.match(e.message, /最接近: config\.json/, "要指出最接近的那个");
+      return true;
+    });
+
+    // ② 同级清单要列出来（一次调用就能看清家里有什么）
+    assert.throws(() => safePath(home, "nope.md"), (e: Error) => {
+      assert.match(e.message, /同级: .*logs\//, "要列出同级的目录");
+      return true;
+    });
+
+    // ③ 指到项目根时，明确说改用 project.read（不要让她再猜一次）
+    const rel = "package.json";
+    const projRoot = process.cwd();
+    if (existsSync(join(projRoot, rel))) {
+      assert.throws(() => safePath(home, rel), (e: Error) => {
+        assert.match(e.message, /project\.read/, "该说清用哪个 verb");
+        return true;
+      });
+    }
+  } finally {
+    try { rmSync(home, { recursive: true, force: true }); } catch { /* ignore */ }
+  }
+});

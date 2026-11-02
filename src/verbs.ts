@@ -75,6 +75,57 @@ export function realpathish(p: string): string {
   }
 }
 
+/**
+ * 文件不存在时，**在错误里就把下一步给出来**（2026-11-02）。
+ *
+ * 起因是她自己的复盘：「我看到 git status 里有 research/dsh-550c-boot/，就直接把它当成 home
+ * 下的路径去猜，碰了 E_NOT_FOUND 才回来列目录……我先猜后查，浪费了一次调用。」
+ *
+ * 一次浪费不是靠"下次小心"解决的 —— 把最近的**已存在祖先目录**和它的同级项直接写进错误里，
+ * 她一次就能改对，不用再花一轮 ls。仍然只列 home 内的东西（safePath 已经保证 real 在 home 内）。
+ */
+function nearbyHint(homeReal: string, target: string): string {
+  const parts: string[] = [];
+  // 找一个真实存在的祖先（最多往上 12 层，防止深路径拖慢）
+  let dir = dirname(target);
+  for (let i = 0; i < 12; i++) {
+    if (existsSync(dir)) break;
+    const up = dirname(dir);
+    if (up === dir) break;
+    dir = up;
+  }
+  try {
+    const names = readdirSync(dir, { withFileTypes: true })
+      .slice(0, 40)
+      .map((d) => (d.isDirectory() ? d.name + "/" : d.name));
+    const want = basename(target).toLowerCase();
+    // 最接近的：完整包含 basename，或 basename 包含它（长一点的优先）
+    const near = names
+      .filter((n) => {
+        const x = n.replace("/", "").toLowerCase();
+        return x.includes(want) || (want.length > 2 && want.includes(x));
+      })
+      .sort((a, b) => b.length - a.length)
+      .slice(0, 3);
+    if (near.length) parts.push("最接近: " + near.join(" "));
+    if (names.length) parts.push("同级: " + names.slice(0, 12).join(" ") + (names.length > 12 ? " …" : ""));
+    parts.push("目录: " + relative(homeReal, dir).split(String.fromCharCode(92)).join("/").replace(/^$/, "."));
+    // 最对症的一句：她分不清"相对谁"。这个路径在**项目根**下 → 直接告诉她改走哪个 verb。
+    try {
+      const rel = relative(homeReal, target).split(String.fromCharCode(92)).join("/");
+      for (const root of [project.projectHome(), process.cwd()]) {
+        if (!root) continue;
+        const alt = join(root, rel);
+        if (existsSync(alt)) {
+          parts.push("这条路径在项目根下（" + root + "）→ 用 project.read 读，不要用 file.read");
+          break;
+        }
+      }
+    } catch { /* 拿不到项目根就算了 */ }
+  } catch { /* 列不出来就只报路径 */ }
+  return parts.length ? String.fromCharCode(10) + parts.join(String.fromCharCode(10)) : "";
+}
+
 /** 路径必须在 home 之内，且**解析真实路径后**仍在（防符号链接/目录联接逃逸） */
 export function safePath(home: string, p: string, mustExist = true): string {
   const homeReal = realpathish(home);
@@ -84,7 +135,7 @@ export function safePath(home: string, p: string, mustExist = true): string {
   // rel === "" 就是 home 本身。以前连它一起拒 → `fs.list .` 连家目录都列不了；
   // 现在 home 内全域可动，列根目录是正常需求（记忆核心由 coreguard 单独挡）。
   if (rel.startsWith("..") || isAbsolute(rel)) throw new Error(`E_PATH_DENIED: ${p}`);
-  if (mustExist && !existsSync(real)) throw new Error(`E_NOT_FOUND: ${p}`);
+  if (mustExist && !existsSync(real)) throw new Error(`E_NOT_FOUND: ${p}${nearbyHint(homeReal, real)}`);
   return real;
 }
 
@@ -197,7 +248,11 @@ export const verbs: VerbDef[] = [
         if (!ok.length) return stale + (r.hits.length ? redacted("本地下", r.hits.length) : "（没有相关记忆）");
         return stale + ok.map((h) => `[mem:${h.id}] ${h.text}`).join(String.fromCharCode(10));
       }
-      return r.hits.length ? r.hits.map((h) => `[mem:${h.id}] ${h.text}`).join(String.fromCharCode(10)) : "（没有相关记忆）";
+      if (r.hits.length) return r.hits.map((h) => `[mem:${h.id}] ${h.text}`).join(String.fromCharCode(10));
+      // 0 命中时说清下一步（她的第 2 条自检：一遇到不知道怎么答的题，手就先动了 ——
+      // 换个词再搜一遍，仍然什么都没有。"没有"本身就是答案，别让她在原地打转）。
+      return "（没有相关记忆。这不代表换个说法就能搜到 —— 库里确实没有这个话题。" +
+        "别再换词重搜：要么直接问她，要么说不知道。）";
     },
   },
   {
