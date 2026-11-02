@@ -8,7 +8,7 @@
 
 | 项 | 数量 |
 |---|---|
-| 源文件（src/**/*.ts） | 97 |
+| 源文件（src/**/*.ts） | 98 |
 | 错误码 E_* | 193 |
 | verbs | 27 |
 | CLI 子命令 | 37 |
@@ -332,6 +332,7 @@
 | `src/proposals.ts` | 提议（K-2）：让它会**提要求**，而不是只会照做。 |
 | `src/provider.ts` | 角色路由（13 §2）+ 隐私闸门（19 §0.1 W-A） |
 | `src/pyenv.ts` | 找 MarkItDown 用的 Python（H-1） |
+| `src/queryrewrite.ts` | 查询改写 / 别名归一（E-10，2026-11-02） |
 | `src/recall.ts` | 召回装配（17 §2 的 P10 槽位该放什么） |
 | `src/reembed.ts` | 重建向量索引（C-2） |
 | `src/retrieve.ts` | 两阶段检索（02 §7.1 实测修订 / 12 §9.1） |

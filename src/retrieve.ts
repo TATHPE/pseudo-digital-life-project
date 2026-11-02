@@ -10,6 +10,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { Embedder } from "./embed.ts";
 import { ftsQuery } from "./text.ts";
+import { queryVariants } from "./queryrewrite.ts";
 import { at } from "./assert.ts";
 import { bigrams } from "./text.ts";
 import type { Stage } from "./decay.ts";
@@ -126,12 +127,14 @@ export async function search(
   // 4000 候选 = 8MB 读，单这一步就 57 ms。所以拆成「先取 id，再取需要的列」。
   const q = ftsQuery(query);
   let ranked: Array<{ id: number; score: number }> = [];
-  if (q) {
-    ranked = db.prepare(
+  const ftsRun = (query2: string): Array<{ id: number; score: number }> => {
+    if (!query2) return [];
+    return db.prepare(
       "SELECT memory_id AS id, bm25(memories_fts) AS score FROM memories_fts" +
       " WHERE memories_fts MATCH ? ORDER BY score LIMIT ?",
-    ).all(q, lim) as typeof ranked;
-  }
+    ).all(query2, lim) as Array<{ id: number; score: number }>;
+  };
+  ranked = ftsRun(q);
 
   // 向量召回：词面不重合时的唯一活路。查询向量在这里就要算出来。
   let qv: Float32Array | null = null;
@@ -147,18 +150,48 @@ export async function search(
       if (v.cos >= 0.55) vecIds.set(v.id, v.cos);
     }
   }
-  const allIds = [...new Set([...ranked.map((r) => r.id), ...vecIds.keys()])];
   // 元数据按 id 批量取（不含 embedding）。
   // 用 json_each(?) 而不是 IN (?,?,…)——后者要为每个 chunk 重新 prepare 一个
   // 500 参数的语句，实测占掉 20 ms；json_each 只要一个参数、一条语句。
+  // 只留**还活着**的记忆：status=active、且没被 valid_to 截断。
   const metaById = new Map<number, { text: string; stage: Stage; weight: number; sensitivity?: string }>();
-  if (allIds.length) {
+  const fetchMeta = () => {
+    const ids = [...new Set([...ranked.map((r) => r.id), ...vecIds.keys()])];
+    metaById.clear();
+    if (!ids.length) return;
     const got = db.prepare(
       `SELECT id,text,stage,weight,sensitivity FROM memories
        WHERE status='active' AND (valid_to IS NULL OR julianday(valid_to) > julianday(?))
          AND id IN (SELECT value FROM json_each(?))`,
-    ).all(new Date().toISOString(), JSON.stringify(allIds)) as Array<{ id: number; text: string; stage: Stage; weight: number; sensitivity?: string }>;
+    ).all(new Date().toISOString(), JSON.stringify(ids)) as Array<{ id: number; text: string; stage: Stage; weight: number; sensitivity?: string }>;
     for (const g of got) metaById.set(g.id, { text: g.text, stage: g.stage, weight: g.weight, ...(g.sensitivity ? { sensitivity: g.sensitivity } : {}) });
+  };
+  fetchMeta();
+
+  // ── E-10 查询改写：**有效**候选不足时，用别名归一后的变体再补一路 ──
+  // 触发条件看的是过滤之后还剩几条（教训：一开始看的是过滤前，命中的全是
+  // valid_to 已过 / archived 的记录，于是"有候选"→ 不触发 → 用户还是搜不到）。
+  // 只在几乎没东西时才做：正常查询不多花时间，生造词（abstain 用例）也碰不到。
+  // 合并时取各路最小的 bm25（bm25 是负数，越小越相关），再整体重排一次名次。
+  // JJ_QUERY_REWRITE=0 可关掉（只为做 A/B 对照：同一份代码、同一份数据跑两次）。
+  const rewriteOn = process.env.JJ_QUERY_REWRITE !== "0";
+  if (rewriteOn && metaById.size < 2) {
+    let added = 0;
+    const variants = queryVariants(query).slice(1);
+    for (const v of variants) {
+      const more = ftsRun(ftsQuery(v));
+      if (!more.length) continue;
+      for (const m of more) {
+        const prev = ranked.find((r) => r.id === m.id);
+        if (!prev) { ranked.push(m); added++; }
+        else if (m.score < prev.score) prev.score = m.score;
+      }
+    }
+    if (added) {
+      degraded.push("query_rewritten");
+      ranked.sort((a, b) => a.score - b.score);
+      fetchMeta();
+    }
   }
   // 顺序：先向量分数（越高越前），同分再按 bm25 名次
   const bmScoreById = new Map(ranked.map((r) => [r.id, r.score]));
