@@ -348,6 +348,13 @@ export const PAGE = `<!doctype html>
   #tracebox .tr.tool { border-left-color:var(--ink); color:var(--ink); }
   #tracebox .tr.res { border-left-color:rgba(127,209,139,.5); color:#a9c9a9; max-height:150px; overflow:auto; }
   #tracebox .tr.err { border-left-color:var(--red); color:#e6a0a0; }
+  /* 历史消息里那份「这一轮的过程」：默认收起，点开回看 */
+  .histtrace { margin:6px 0 2px; }
+  .histtrace summary { cursor:pointer; padding:2px 0; }
+  .histtrace .tr { border-left:2px solid var(--line-dim); padding:3px 0 3px 7px; margin:0 0 5px; font-size:12px; line-height:1.6; white-space:pre-wrap; }
+  .histtrace .tr.think { border-left-color:var(--amber); color:#d8c79a; }
+  .histtrace .tr.res { border-left-color:rgba(127,209,139,.5); color:#a9c9a9; max-height:180px; overflow:auto; }
+  .histtrace .tr.err { border-left-color:var(--red); color:#e6a0a0; }
   #tracebox .tr.who { font-size:9px; letter-spacing:.14em; color:var(--ink-dim); display:block; margin-bottom:2px; }
   .dchg { white-space:pre-wrap; word-break:break-all; font:10px/1.55 var(--mono);
           color:var(--ink-dim); max-height:200px; overflow:auto; margin:0; }
@@ -2148,10 +2155,21 @@ async function loadGit(what, path) {
 
 // ── 过程（右栏）：思考与工具调用都在这里，会话栏只留最终回答 ──────
 // 用户 2026-11-01：会话栏只有结果；思考和调用工具的行为移到侧边栏。
-// 历史消息不展开工具卡，但要说清楚「这一轮它动过手」——不然读者会以为它只是嘴说
+//
+// 2026-11-03 修：右栏 tracebox 每轮开始时清空，于是历史里那句「过程见右栏」指向一片空白 ——
+// 用户原话「一轮对话完成后，直接把上一轮的对话进程覆盖了」。
+// 现在每轮的过程随消息一起落盘（payload.trace），这里做成**可点开**：点一下回看那一轮怎么想的。
 function toolsNote(b) {
+  const tr = b.trace || [];
   const n = (b.tools || []).length;
-  return n ? '<div class="hint" data-note>' + n + ' 次工具调用（过程见右栏/动作）</div>' : '';
+  if (!tr.length) return n ? '<div class="hint" data-note>' + n + ' 次工具调用</div>' : '';
+  var body = tr.map(function (x) {
+    var cls = x.k === 'think' ? 'think' : x.k === 'err' ? 'err' : x.k === 'res' ? 'res' : 'tool';
+    var who = x.k === 'think' ? '她在想' : x.k === 'tool' ? '工具' : x.k === 'res' ? '结果' : '错误';
+    return '<div class="tr ' + cls + '"><span class="who">' + escapeHtml(who) +
+      (x.ms != null ? ' · ' + x.ms + 'ms' : '') + '</span>' + escapeHtml(String(x.t || '').slice(0, 800)) + '</div>';
+  }).join('');
+  return '<details class="histtrace"><summary class="hint">这一轮的过程（' + tr.length + ' 步' + (n ? ' · ' + n + ' 次工具调用' : '') + '）</summary>' + body + '</details>';
 }
 
 function traceStart() {

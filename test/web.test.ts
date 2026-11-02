@@ -881,3 +881,18 @@ test("F-3 撤销「忘掉这篇」：restore 后文档与前缀检索都回来",
     assert.ok(fts.c >= 1, "恢复后 FTS 行要重插（否则恢复了也搜不到）");
   } finally { srv.close(); }
 });
+
+test("每一轮的过程要留档：右栏每轮清空，历史里必须能回看（用户说\"上一轮被覆盖\"）", () => {
+  const server = readFileSync(join(process.cwd(), "src/web/server.ts"), "utf8");
+  // 服务端要收集 trace（思考/工具/结果/错误）并写进 agent_reply 的 payload
+  assert.ok(server.includes("const trace: Array<"), "要有 trace 收集器");
+  assert.ok(server.includes('trace.push({ k: "think"'), "思考要进去");
+  assert.ok(server.includes('trace.push({ k: "tool"'), "工具要进去");
+  assert.ok(server.includes("...(trace.length ? { trace } : {})"), "要存进 payload");
+  assert.ok(server.includes("...(p.trace?.length ? { trace: p.trace } : {})"), "读历史时要带出来");
+
+  // 前端：那句「N 次工具调用」要能点开回看那一轮
+  assert.ok(PAGE.includes("b.trace || []"), "页面要读 trace");
+  assert.ok(PAGE.includes('details class="histtrace"'), "要能展开");
+  assert.ok(PAGE.includes("这一轮的过程"), "说清楚展开的是什么");
+});

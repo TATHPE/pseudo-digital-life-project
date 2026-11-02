@@ -173,12 +173,13 @@ function messages(db: DatabaseSync, inboxDir: string): MsgEx[] {
   return events
     .filter((e) => e.kind === "utterance" || e.kind === "agent_reply")
     .map((e) => {
-      const p = (e.payload ?? {}) as { text?: string; tools?: ToolUse[]; cites?: string[]; omitted?: number; omittedDocs?: number };
+      const p = (e.payload ?? {}) as { text?: string; tools?: ToolUse[]; trace?: Array<{ k: string; t: string; ms?: number }>; cites?: string[]; omitted?: number; omittedDocs?: number };
       return {
         ts: e.ts,
         role: e.kind === "utterance" ? ("user" as const) : ("agent" as const),
         text: String(p.text ?? ""),
         ...(p.tools?.length ? { tools: p.tools } : {}),
+        ...(p.trace?.length ? { trace: p.trace } : {}),
         ...(p.cites?.length ? { cites: p.cites } : {}),
         ...(p.omitted ? { omitted: p.omitted } : {}),
         ...(p.omittedDocs ? { omittedDocs: p.omittedDocs } : {}),
@@ -1869,6 +1870,9 @@ export function createWebServer(deps: WebDeps) {
 
         let full = "";
         const used: ToolUse[] = [];
+        // 这一轮的过程（思考/工具/结果/错误）。必须落盘：右栏的 tracebox 只显示当前这一轮，
+        // 新一轮一开始就被清空 —— 用户原话「一轮对话完成后直接把上一轮的对话进程覆盖了」。
+        const trace: Array<{ k: "think" | "tool" | "res" | "err"; t: string; ms?: number }> = [];
         try {
           // getChat 必须在 try 里面：routerFrom 会对空 model 报 E_CONFIG，
           // 而它以前在 try 外面 —— 一抛就穿透到外层 catch，SSE 已经开始，
@@ -1882,13 +1886,14 @@ export function createWebServer(deps: WebDeps) {
             for await (const ev of agent) {
               if (aborted) break;
               if (ev.type === "delta") { full += ev.text; send({ type: "delta", text: ev.text }); }
-              else if (ev.type === "notice") send({ type: "notice", text: ev.text });
-              else if (ev.type === "tool") send({ type: "tool", id: ev.id, name: ev.name, args: ev.args });
+              else if (ev.type === "notice") { trace.push({ k: "think", t: ev.text }); send({ type: "notice", text: ev.text }); }
+              else if (ev.type === "tool") { trace.push({ k: "tool", t: ev.name + " " + String(ev.args ?? "").slice(0, 300) }); send({ type: "tool", id: ev.id, name: ev.name, args: ev.args }); }
               else if (ev.type === "tool_result") {
                 used.push({ name: ev.name, args: "", result: ev.result, ms: ev.ms });
+                trace.push({ k: "res", t: ev.result.slice(0, 1200), ms: ev.ms });
                 send({ type: "tool_result", id: ev.id, name: ev.name, result: ev.result.slice(0, 1500), ms: ev.ms });
               }
-              else if (ev.type === "error") send({ type: "error", message: ev.message });
+              else if (ev.type === "error") { trace.push({ k: "err", t: ev.message }); send({ type: "error", message: ev.message }); }
               else if (ev.type === "done") {
                 // finish=length 说明不是「说完了」，是「到上限了」。不说出来，看着就像回答不完整。
                 if (ev.finish === "length") send({ type: "notice", text: "这次回答到长度上限被截断了 —— 说「继续」我接着往下说。" });
@@ -1918,6 +1923,7 @@ export function createWebServer(deps: WebDeps) {
             v: 1, id: newEventId(), ts: now().toISOString(), kind: "agent_reply", actor: "agent",
             payload: {
               text: full, tools: used,
+              ...(trace.length ? { trace } : {}),
               ...(recalled.length ? { cites: recalled.map((r) => r.id) } : {}),
               ...(omitted ? { omitted } : {}),
               ...(rc.omittedDocs ? { omittedDocs: rc.omittedDocs } : {}),
