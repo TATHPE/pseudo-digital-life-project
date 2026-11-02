@@ -342,7 +342,22 @@ export function createWebServer(deps: WebDeps) {
         // 那个默认会让配完之后的人永远看不到完整档（用户指出过）。
         const bootMod = await import("./boot.ts");
         const splash = bootMod.splashMode(readFileConfig(deps.home).ui);
-        const bootHtml = splash === "off" ? "" : bootMod.bootOverlay(splash);
+        // full  = 550C 骨架上改出来的那份（iframe 隔离，样式互不污染）
+        // simple= 轻量那版（只有项目名逐字写出来）
+        // off   = 不播
+        const bootHtml = splash === "off" ? ""
+          : splash === "full"
+            ? [
+                '<iframe id="jjboot" src="/splash" title="" aria-hidden="true" style="position:fixed;inset:0;z-index:9999;border:0;background:#050706;width:100%;height:100%"></iframe>',
+                "<script>(function(){",
+                "  var f=document.getElementById('jjboot');if(!f)return;var done=false;",
+                "  function off(){if(done)return;done=true;f.style.transition='opacity .5s';f.style.opacity='0';",
+                "    setTimeout(function(){if(f&&f.parentNode)f.parentNode.removeChild(f);},520);}",
+                "  window.addEventListener('message',function(e){if(e.data==='jjboot-done')off();});",
+                "  setTimeout(off,22000);",
+                "})();</script>",
+              ].join(String.fromCharCode(10))
+            : bootMod.bootOverlay(splash);
         const html = PAGE.split("<!--BOOT-->").join(bootHtml).replace(
           "window.SOURCES_DIR = null;",
           "window.SOURCES_DIR = " + JSON.stringify(sourcesDir) + ";" +
@@ -401,6 +416,44 @@ export function createWebServer(deps: WebDeps) {
         const role = url.searchParams.get("role") === "user" ? "user" : "agent";
         for (const ext of ["png", "jpg", "webp"]) rmSync(join(deps.home, "avatars", `${role}.${ext}`), { force: true });
         json(res, 200, { ok: true, role });
+        return;
+      }
+
+      // ── 完整档片头：550C 骨架上改出来的那份，数据现取（拿不到的显示 —）──
+      if ((req.method === "GET" || req.method === "HEAD") && url.pathname === "/splash") {
+        try {
+          const { renderSplash } = await import("./splash.ts");
+          const cfg = deps.getConfig();
+          const meta = (k: string) => { const r = deps.db.prepare("SELECT value v FROM meta WHERE key=?").get(k) as { v?: string } | undefined; return r?.v; };
+          const cnt = (sql: string) => Number((deps.db.prepare(sql).get() as { c?: number })?.c ?? 0);
+          const emb = cfg.roles["embed"];
+          const ex = cfg.roles["express"];
+          let skillsN: number | undefined;
+          try { const sk = await import("../skills.ts"); skillsN = sk.scanSkills(deps.home).length; } catch { /* 没装技能 */ }
+          let mcpServers: number | undefined;
+          try {
+            const mc = (await import("../mcp.ts")).loadMcpConfig(deps.home);
+            mcpServers = Object.keys(mc.servers ?? {}).length;
+          } catch { /* 没配 MCP */ }
+          // 端口用请求自己的 host（比猜 deps 里有什么可靠）
+          const host = String(req.headers.host ?? "");
+          const html = renderSplash({
+            schema: meta("schema_version") ?? undefined,
+            memories: cnt("SELECT count(*) c FROM memories WHERE status='active'"),
+            docs: cnt("SELECT count(*) c FROM documents WHERE deleted_at IS NULL"),
+            chunks: cnt("SELECT count(*) c FROM chunks"),
+            tools: deps.tools ? deps.tools.list().filter((t) => !t.name.startsWith("mcp__")).length : undefined,
+            skills: skillsN,
+            plugins: mcpServers === undefined ? undefined : String(mcpServers) + " server",
+            embed: emb ? String(emb.model) + (emb.provider ? " · " + String(emb.provider) : "") : undefined,
+            model: ex ? String(ex.provider) + "/" + String(ex.model) : undefined,
+            sidecar: host ? host : undefined,
+          });
+          res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+          res.end(req.method === "HEAD" ? undefined : html);
+        } catch (e) {
+          json(res, 500, { error: "E_SPLASH", why: String((e as Error).message ?? e).slice(0, 120) });
+        }
         return;
       }
 

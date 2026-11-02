@@ -8,8 +8,8 @@
 
 | 项 | 数量 |
 |---|---|
-| 源文件（src/**/*.ts） | 98 |
-| 错误码 E_* | 193 |
+| 源文件（src/**/*.ts） | 99 |
+| 错误码 E_* | 194 |
 | verbs | 27 |
 | CLI 子命令 | 37 |
 
@@ -196,6 +196,7 @@
 | `E_SETUP_BUSY` | `src/web/server.ts` |
 | `E_SKILL_NAME` | `src/skills.ts` |
 | `E_SKILL_READ` | `src/skills.ts` |
+| `E_SPLASH` | `src/web/server.ts` |
 | `E_STANDING_BECAUSE` | `src/standing.ts` |
 | `E_STANDING_ID` | `src/standing.ts` |
 | `E_STANDING_NOT_FOUND` | `src/cli/jingjing.ts` `src/web/server.ts` |
@@ -361,6 +362,7 @@
 | `src/web/desk.ts` | 桌面端的**启动令牌**（2026-11-01：软件只有桌面端，不提供浏览器入口）。 |
 | `src/web/page.ts` | 单页（零前端依赖、零构建）。 |
 | `src/web/server.ts` | 本地 Web 面板（17 §4）：127.0.0.1:7700，零前端依赖，SSE 流式。 |
+| `src/web/splash.ts` | 片头（完整档）：**在 dsh-550c-boot 的 550C 骨架上改出来的那一个**。 |
 | `src/web/state.ts` | 状态行（17 §4.1）：一句话，不是数字仪表盘 */ |
 | `src/web/timeline.ts` | 时间轴渲染（17 §4）：**没有"会话"，只有时间；空白要可见** */ |
 | `src/web/welcome.ts` | 首次配置引导页（`/welcome`）。 |
