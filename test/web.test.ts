@@ -944,3 +944,16 @@ test("两档模式：默认只留常用入口，文件/工具 收在高级里（
   assert.ok(PAGE.includes('id="adv-toggle"'), "要有切换按钮");
   assert.ok(PAGE.includes("jj.advanced"), "选择要记住（localStorage）");
 });
+
+test("没有动作时右栏要说话，不能是一片空白（用户：「现在过程看不见了」）", () => {
+  // traceStart() 以前一进来就把「还没有动作」藏掉；这一轮她要是没调工具，
+  // 右栏就剩下空白 —— 看着像功能坏了。现在改成：真有内容时才收提示。
+  assert.ok(PAGE.includes("if (empty) empty.hidden = false;\n"), "traceStart 不藏提示");
+  assert.ok(PAGE.includes("真有动作了，才把提示收起"), "traceStep 里才藏");
+});
+
+test("「先一段后又一段」：think 撤回要按长度兜底（模型常在中间补换行/空格）", () => {
+  assert.ok(PAGE.includes("var exact = acc.slice(-tx.length) === tx;"), "先试完全一致");
+  assert.ok(PAGE.includes("acc.slice(0, Math.max(0, acc.length - tx.length))"), "不一致就按长度裁");
+  assert.ok(PAGE.includes(".replace(/\s+$/, \"\")"), "裁完去掉尾部空白");
+});

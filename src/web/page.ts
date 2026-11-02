@@ -2268,8 +2268,10 @@ function traceStart() {
   if (!box) return;
   box.innerHTML = '';
   trCur = null; trNo = 0;
+  // 「还没有动作」这句不要提前藏起来：这一轮如果她没调工具，右栏就应该是这句话，
+  // 而不是一片空白（用户原话：「现在过程看不见了」）。真有内容时再藏。
   var empty = document.getElementById('dc-trace-empty');
-  if (empty) empty.hidden = true;
+  if (empty) empty.hidden = false;
   var n = document.getElementById('dc-trace-n');
   if (n) n.textContent = '';
 }
@@ -2277,6 +2279,8 @@ function traceStart() {
 function traceStep() {
   var box = document.getElementById('tracebox');
   if (!box) return null;
+  var empty = document.getElementById('dc-trace-empty');
+  if (empty) empty.hidden = true;      // 真有动作了，才把提示收起
   if (trCur) return trCur;
   var prev = box.querySelector('details.trg[open]');
   if (prev) prev.removeAttribute('open');
@@ -3397,10 +3401,16 @@ $("#composer").onsubmit = async (e) => {
         if (d.type === "delta") { acc += d.text; box.innerHTML = escapeHtml(acc) + "<span class='cursor'></span>"; }
         if (d.type === "think") {
           // 「边想边说」那段刚才已经流式显示在正文里了 —— 撤回它，移进右栏。
-          // 只撤末尾完全一致的那一段（模型可能中途换行/加空格，不匹配就不硬砍）。
+          //
+          // 先试完全一致；不一致就**按长度**裁（模型常在中间补换行/空格，
+          // 只认完全匹配的话正文里会剩半句话 —— 用户看到的就是「先一段、后又一段」）。
           var tx = String(d.text || "");
-          if (tx && acc.slice(-tx.length) === tx) {
-            acc = acc.slice(0, -tx.length);
+          if (tx) {
+            var exact = acc.slice(-tx.length) === tx;
+            // 按长度裁时，把紧挨着的空白一起去掉，别留一行空行
+            acc = exact
+              ? acc.slice(0, -tx.length)
+              : acc.slice(0, Math.max(0, acc.length - tx.length)).replace(/\s+$/, "");
             box.innerHTML = escapeHtml(acc) + "<span class='cursor'></span>";
           }
           traceAdd("think", "想", tx);
