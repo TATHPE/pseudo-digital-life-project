@@ -320,7 +320,9 @@ export function createWebServer(deps: WebDeps) {
           const { WELCOME } = await import("./welcome.ts");
           // 名字可能是用户自己取的（默认是预置人格「鲸鲸」）
           const nm = normalizeAgentName(readFileConfig(deps.home).agent?.name);
-          const page = WELCOME.split("{{AGENT}}").join(nm);
+          // 引导页就是在"出生"那一屏，片头给完整档
+          const bootHtml = (await import("./boot.ts")).bootOverlay("full");
+          const page = WELCOME.split("{{AGENT}}").join(nm).replace("<!--BOOT-->", bootHtml);
           res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
           res.end(req.method === "HEAD" ? undefined : page);
           return;
@@ -334,7 +336,10 @@ export function createWebServer(deps: WebDeps) {
         const sourcesDir = joinDir(deps.home, "sources");
         const cfgNow = deps.getConfig();
         const agentName = normalizeAgentName(readFileConfig(deps.home).agent?.name);
-        const html = PAGE.replace(
+        // 片头两档：没配完（她还在出生）给完整档，之后每次开机给简易档
+        const bootMode = needsWelcome(deps.home) ? "full" : "simple";
+        const bootHtml = (await import("./boot.ts")).bootOverlay(bootMode as never);
+        const html = PAGE.replace("<!--BOOT-->", bootHtml).replace(
           "window.SOURCES_DIR = null;",
           "window.SOURCES_DIR = " + JSON.stringify(sourcesDir) + ";" +
             String.fromCharCode(10) + "window.AGENT_NAME = " + JSON.stringify(agentName) + ";",

@@ -184,15 +184,26 @@ test("编码闸：非 UTF-8（GBK）请求体拒收，不写进记忆", async ()
 });
 
 test("页面脚本能通过语法检查（模板字符串里的 \n 会被展开成真换行 → 整页 JS 挂掉）", async () => {
-  const m = PAGE.match(/<script>([\s\S]*)<\/script>/);
-  assert.ok(m, "页面里应有 <script>");
-  const js = m![1]!;
+  // 页面里有**多段** <script>（开机片头一段 + 主面板一段）—— 贪婪匹配会把中间的 HTML 也吞进来，
+  // 所以逐个检查。
+  const blocks = [...PAGE.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((x) => x[1]!);
+  assert.ok(blocks.length >= 1, "页面里应有 <script>");
   const dir = mkdtempSync(join(tmpdir(), "jj-js-"));
-  const f = join(dir, "page.js");
-  writeFileSync(f, js, "utf8");
-  execFileSync(process.execPath, ["--check", f], { stdio: "pipe" });
+  blocks.forEach((js, i) => {
+    const f = join(dir, `page-${i}.js`);
+    writeFileSync(f, js, "utf8");
+    execFileSync(process.execPath, ["--check", f], { stdio: "pipe" });
+  });
+  const js = blocks[blocks.length - 1]!;
   // 额外断言：字符串字面量里不能出现裸换行（上面 --check 会抓，这里给个更直白的提示）
-  assert.ok(!/buf\.split\("[^"]*\n[^"]*"\)/.test(js), "split 参数里出现了真换行");
+  // 不用正则（转义在模板里会被吃）：直接查 split 的参数里有没有真换行
+  const at = js.indexOf('buf.split("');
+  if (at >= 0) {
+    const seg = js.slice(at, js.indexOf(String.fromCharCode(34, 41), at) + 2);
+    const nl = String.fromCharCode(10), cr = String.fromCharCode(13);
+    assert.ok(seg.indexOf(nl) < 0 && seg.indexOf(cr) < 0,
+      "split 的参数里出现了真换行（应该写 String.fromCharCode(10)）");
+  }
 });
 
 // ── 设置：API 与人格（用面板配置，而不是让人去改文件）─────────
