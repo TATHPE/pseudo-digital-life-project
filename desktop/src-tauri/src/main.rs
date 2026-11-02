@@ -8,6 +8,10 @@
 // 基座来自 dieharders/example-tauri-v2-python-server-sidecar（Apache-2.0），
 // 改动：Python → Node；窗口直接指内置面板（/，服务端会自己分流到首启引导）。
 
+// 双击时不要弹控制台窗口：release 用 windows 子系统（GUI），debug 保留控制台方便看日志。
+// 缺这一行时，release exe 是 console 程序 —— 双击就开一个黑框（用户看到的就是"又起了个 PowerShell"）。
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 mod dpapi;
 mod sidecar;
 
