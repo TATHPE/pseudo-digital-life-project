@@ -9,7 +9,7 @@
 | 项 | 数量 |
 |---|---|
 | 源文件（src/**/*.ts） | 99 |
-| 错误码 E_* | 194 |
+| 错误码 E_* | 195 |
 | verbs | 27 |
 | CLI 子命令 | 37 |
 
@@ -120,6 +120,7 @@
 | `E_MODEL` | `src/autobio.ts` `src/eval.ts` `src/provider.ts` `src/transport.ts` |
 | `E_NEEDS_CONFIRM` | `src/confirm.ts` `src/execute.ts` `src/posture.ts` |
 | `E_NEEDS_EGRESS` | `src/egress.ts` `src/posture.ts` `src/project.ts` `src/supergrant.ts` `src/verbs.ts` |
+| `E_NIGHTLOG` | `src/web/server.ts` |
 | `E_NO_ARGV` | `src/shell.ts` |
 | `E_NO_AVATAR` | `src/web/server.ts` |
 | `E_NO_BASH` | `src/web/server.ts` |

@@ -349,6 +349,14 @@ export const PAGE = `<!doctype html>
   #tracebox .tr.res { border-left-color:rgba(127,209,139,.5); color:#a9c9a9; max-height:150px; overflow:auto; }
   #tracebox .tr.err { border-left-color:var(--red); color:#e6a0a0; }
   /* 历史消息里那份「这一轮的过程」：默认收起，点开回看 */
+  /* 「步」：一段推理 + 它的动作。当前步展开，做完的折起来 */
+  .trg { margin:0 0 6px; border-left:1px dashed var(--line-dim); padding-left:6px; }
+  .trg > summary { cursor:pointer; font-size:10px; letter-spacing:.12em; color:var(--ink-dim);
+    padding:1px 0 3px; list-style:none; }
+  .trg > summary::-webkit-details-marker { display:none; }
+  .trg > summary::before { content:'▸ '; }
+  .trg[open] > summary::before { content:'▾ '; }
+  .trg > summary:hover { color:var(--ink); }
   .histtrace { margin:6px 0 2px; }
   .histtrace summary { cursor:pointer; padding:2px 0; }
   .histtrace .tr { border-left:2px solid var(--line-dim); padding:3px 0 3px 7px; margin:0 0 5px; font-size:12px; line-height:1.6; white-space:pre-wrap; }
@@ -1021,6 +1029,7 @@ description: 周日晚上把这一周压成三句话。
         <p class="hint" id="m-state">…</p>
         <!-- 它现在在干什么：这一行之前完全不存在，用户原话「我根本就不知道它在干什么」 -->
         <p class="hint" id="m-live">…</p>
+        <div id="m-nights"></div>
         <div class="two">
           <div><label>共享默认 · route / extract / salience / conflict</label><select id="m-default"></select></div>
           <div><label>夜间整理 · 自传与反思</label><select id="m-night"></select></div>
@@ -2159,54 +2168,116 @@ async function loadGit(what, path) {
 // 2026-11-03 修：右栏 tracebox 每轮开始时清空，于是历史里那句「过程见右栏」指向一片空白 ——
 // 用户原话「一轮对话完成后，直接把上一轮的对话进程覆盖了」。
 // 现在每轮的过程随消息一起落盘（payload.trace），这里做成**可点开**：点一下回看那一轮怎么想的。
+// 把平铺的 trace 分成「步」：一段推理 + 它之后的工具调用与结果 = 一步。
+// 判据与 agent 那边一致：think 出现且当前步已经动过手 → 开新的一步。
+function groupTrace(tr) {
+  var steps = [];
+  var cur = { think: '', items: [] };
+  (tr || []).forEach(function (x) {
+    var k = x.k || 'think';
+    if (k === 'think') {
+      if (cur.items.length) { steps.push(cur); cur = { think: x.t || '', items: [] }; return; }
+      cur.think = (cur.think ? cur.think + String.fromCharCode(10) : '') + String(x.t || '');
+      return;
+    }
+    cur.items.push(x);
+  });
+  if (cur.think || cur.items.length) steps.push(cur);
+  return steps;
+}
+
+function traceItemHtml(x) {
+  var cls = x.k === 'err' ? 'err' : x.k === 'res' ? 'res' : 'tool';
+  var who = x.k === 'tool' ? '工具' : x.k === 'res' ? '结果' : '错误';
+  return '<div class="tr ' + cls + '"><span class="who">' + escapeHtml(who) +
+    (x.ms != null ? ' · ' + x.ms + 'ms' : '') + '</span>' + escapeHtml(String(x.t || '').slice(0, 800)) + '</div>';
+}
+
 function toolsNote(b) {
   const tr = b.trace || [];
   const n = (b.tools || []).length;
   if (!tr.length) return n ? '<div class="hint" data-note>' + n + ' 次工具调用</div>' : '';
-  var body = tr.map(function (x) {
-    var cls = x.k === 'think' ? 'think' : x.k === 'err' ? 'err' : x.k === 'res' ? 'res' : 'tool';
-    var who = x.k === 'think' ? '她在想' : x.k === 'tool' ? '工具' : x.k === 'res' ? '结果' : '错误';
-    return '<div class="tr ' + cls + '"><span class="who">' + escapeHtml(who) +
-      (x.ms != null ? ' · ' + x.ms + 'ms' : '') + '</span>' + escapeHtml(String(x.t || '').slice(0, 800)) + '</div>';
+  var steps = groupTrace(tr);
+  var body = steps.map(function (st, i) {
+    var head = '第 ' + (i + 1) + ' 步' + (st.items.length ? ' · ' + st.items.length + ' 次动作' : '');
+    return '<details class="trg"><summary>' + escapeHtml(head) + '</summary>' +
+      (st.think ? '<div class="tr think"><span class="who">她在想</span>' + escapeHtml(st.think.slice(0, 800)) + '</div>' : '') +
+      st.items.map(traceItemHtml).join('') + '</details>';
   }).join('');
-  return '<details class="histtrace"><summary class="hint">这一轮的过程（' + tr.length + ' 步' + (n ? ' · ' + n + ' 次工具调用' : '') + '）</summary>' + body + '</details>';
+  return '<details class="histtrace"><summary class="hint">这一轮的过程（' + steps.length + ' 步' + (n ? ' · ' + n + ' 次工具调用' : '') + '）</summary>' + body + '</details>';
 }
+
+var trCur = null;   // 当前这一步的容器
+var trNo = 0;       // 第几步
 
 function traceStart() {
   var box = document.getElementById('tracebox');
   if (!box) return;
   box.innerHTML = '';
+  trCur = null; trNo = 0;
   var empty = document.getElementById('dc-trace-empty');
   if (empty) empty.hidden = true;
   var n = document.getElementById('dc-trace-n');
   if (n) n.textContent = '';
 }
+/** 保证有一个「当前步」容器；刚开新的一定展开，上一步收起来 */
+function traceStep() {
+  var box = document.getElementById('tracebox');
+  if (!box) return null;
+  if (trCur) return trCur;
+  var prev = box.querySelector('details.trg[open]');
+  if (prev) prev.removeAttribute('open');
+  trNo += 1;
+  var d = document.createElement('details');
+  d.className = 'trg';
+  d.open = true;
+  var sum = document.createElement('summary');
+  sum.textContent = '第 ' + trNo + ' 步';
+  var body = document.createElement('div');
+  d.appendChild(sum); d.appendChild(body);
+  box.appendChild(d);
+  trCur = { el: d, body: body, sum: sum, acts: 0 };
+  return trCur;
+}
+function traceStepCount() {
+  if (!trCur) return;
+  trCur.sum.textContent = '第 ' + trNo + ' 步' + (trCur.acts ? ' · ' + trCur.acts + ' 次动作' : '');
+}
+
 function traceAdd(kind, who, text) {
   var box = document.getElementById('tracebox');
   if (!box) return;
+  // 一段推理，但当前这步已经动过手 → 是下一轮了，开新的一步
+  if (kind === 'think' && trCur && trCur.acts > 0) { trCur = null; }
+  var st = traceStep();
+  if (!st) return;
   var el = document.createElement('div');
   el.className = 'tr ' + kind;
   if (who) { var w = document.createElement('span'); w.className = 'who'; w.textContent = who; el.appendChild(w); }
   el.appendChild(document.createTextNode(String(text == null ? '' : text)));
-  box.appendChild(el);
+  st.body.appendChild(el);
   var panel = document.getElementById('dc-trace');
   if (panel) panel.scrollTop = panel.scrollHeight;
   var n = document.getElementById('dc-trace-n');
-  if (n) n.textContent = box.children.length + ' 条';
+  if (n) n.textContent = trNo + ' 步';
 }
 // 工具卡：一次调用两段（调用 + 结果），结果回来时补到同一行
 function traceTool(name, args, result, ms) {
   var box = document.getElementById('tracebox');
   if (!box) return null;
+  var st = traceStep();
+  if (!st) return null;
+  st.acts += 1;
+  traceStepCount();
   var el = document.createElement('div');
   el.className = 'tr tool';
   var w = document.createElement('span'); w.className = 'who';
   w.textContent = '工具 · ' + name + (ms != null ? ' · ' + ms + 'ms' : '');
   el.appendChild(w);
   el.appendChild(document.createTextNode(String(args || '')));
-  box.appendChild(el);
+  st.body.appendChild(el);
   var n = document.getElementById('dc-trace-n');
-  if (n) n.textContent = box.children.length + ' 条';
+  if (n) n.textContent = trNo + ' 步';
   if (result != null) traceAdd('res', '结果', String(result).slice(0, 1200));
   return el;
 }
@@ -2828,6 +2899,37 @@ function paintModels(m) {
   fillModels($("#m-night"), (byRole["night"] || {}).model || "", m.installed, true);
   fillModels($("#m-embed"), (byRole["embed"] || {}).model || "", m.installed, true);
   paintLocalLive();
+  paintNightLog();
+}
+
+// 最近几晚它干了什么：数据来自 events(kind=night)，每夜一条（成功失败都记）
+async function paintNightLog() {
+  var box = document.getElementById('m-nights');
+  if (!box) return;
+  var d = null;
+  try { d = await (await fetch('/api/nightlog')).json(); } catch (e) { box.textContent = ''; return; }
+  var runs = (d && d.runs) || [];
+  if (!runs.length) {
+    box.innerHTML = '<p class="hint">还没有夜间整备记录。它不会自己跑 —— 要跑一次：<b>node src/cli/jingjing.ts night</b>（或等外部定时器调 standing tick）。</p>';
+    return;
+  }
+  box.innerHTML = '<p class="hint">最近几晚（每夜一条，成功失败都记）</p>' + runs.slice(0, 7).map(function (r) {
+    var when = String(r.ts || '').slice(5, 16).replace('T', ' ');
+    var head = (r.ok ? '✅ ' : '❌ ') + when;
+    var parts = [];
+    if (r.scanned != null) parts.push('读了 ' + r.scanned + ' 条事件');
+    if (r.candidates != null) parts.push('候选 ' + r.candidates);
+    if (r.added) parts.push('<b>新增 ' + r.added + '</b>');
+    if (r.merged) parts.push('合并 ' + r.merged);
+    if (r.superseded) parts.push('取代 ' + r.superseded);
+    if (r.contradicted) parts.push('反证 ' + r.contradicted);
+    if (r.decayed) parts.push('衰减 ' + r.decayed);
+    if (r.rounds) parts.push(r.rounds + ' 轮' + (r.converged ? '·已收敛' : ''));
+    if (r.ms != null) parts.push(Math.round(r.ms / 100) / 10 + 's');
+    var notes = (r.notes || []).join('；');
+    return '<div class="hint" style="margin:1px 0">' + head + ' · ' + (parts.join(' · ') || '无事可做') +
+      (notes ? ' <span class="dim2">' + escapeHtml(notes) + '</span>' : '') + '</div>';
+  }).join('');
 }
 $("#m-save").addEventListener("click", async function () {
   const btn = this;

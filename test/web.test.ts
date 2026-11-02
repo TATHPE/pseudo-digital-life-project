@@ -896,3 +896,27 @@ test("每一轮的过程要留档：右栏每轮清空，历史里必须能回�
   assert.ok(PAGE.includes('details class="histtrace"'), "要能展开");
   assert.ok(PAGE.includes("这一轮的过程"), "说清楚展开的是什么");
 });
+
+test("右栏「过程」按步分组：一段推理 + 它的动作 = 一步，上一步自动折叠", () => {
+  // 用户看到的是一长串平铺的「想/工具/结果」，分不清"第几次尝试"。
+  // 判据与 agent 那边一致：think 出现且当前步已经动过手 → 开新的一步。
+  assert.ok(PAGE.includes("function groupTrace("), "要有分组函数");
+  assert.ok(PAGE.includes("if (cur.items.length) { steps.push(cur);"), "动手之后的 think 要开新步");
+  assert.ok(PAGE.includes("function traceStep()"), "实时栏也要按步容器");
+  assert.ok(PAGE.includes("prev.removeAttribute('open')"), "开新步时把上一步折起来");
+  assert.ok(PAGE.includes("trCur.acts > 0"), "think 撞上已动手的步 → 换步");
+  assert.ok(PAGE.includes("次动作"), "步头要数动作次数");
+});
+
+test("夜间整备留痕：每夜一条 events，成功失败都记，面板能看", () => {
+  const nightly = readFileSync(join(process.cwd(), "src/nightly.ts"), "utf8");
+  assert.ok(nightly.includes("function recordNight("), "要有留痕函数");
+  assert.ok(nightly.includes('"night", "system", "nightly"'), "写进 events(kind=night)");
+  // 两个返回点都要记：抽取失败、正常结束
+  assert.equal(nightly.split("recordNight(deps.db, report, now").length - 1, 2, "失败与成功都要留痕");
+
+  const server = readFileSync(join(process.cwd(), "src/web/server.ts"), "utf8");
+  assert.ok(server.includes('"/api/nightlog"'), "要有接口");
+  assert.ok(PAGE.includes("paintNightLog"), "面板要显示");
+  assert.ok(PAGE.includes("还没有夜间整备记录"), "从没跑过时要说清楚怎么跑");
+});

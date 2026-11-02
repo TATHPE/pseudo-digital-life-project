@@ -420,6 +420,23 @@ export function createWebServer(deps: WebDeps) {
         return;
       }
 
+      // ── 最近几晚夜间整备干了什么（用户：本地 LLM 完全未知）──
+      if (req.method === "GET" && url.pathname === "/api/nightlog") {
+        try {
+          const rows = deps.db.prepare("SELECT ts,ok,payload FROM events WHERE kind='night' ORDER BY ts DESC LIMIT 14").all() as Array<{ ts: string; ok: number; payload?: string }>;
+          json(res, 200, {
+            runs: rows.map((r) => {
+              let p: Record<string, unknown> = {};
+              try { p = JSON.parse(String(r.payload ?? "{}")) as Record<string, unknown>; } catch { /* 坏数据当空 */ }
+              return { ts: r.ts, ok: r.ok === 1, ...p };
+            }),
+          });
+        } catch (e) {
+          json(res, 500, { error: "E_NIGHTLOG", why: String((e as Error).message ?? e).slice(0, 120) });
+        }
+        return;
+      }
+
       // ── 完整档片头：550C 骨架上改出来的那份，数据现取（拿不到的显示 —）──
       if ((req.method === "GET" || req.method === "HEAD") && url.pathname === "/splash") {
         try {

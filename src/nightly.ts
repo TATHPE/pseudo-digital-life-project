@@ -79,6 +79,43 @@ export interface NightlyReport {
   notes: string[];
 }
 
+/**
+ * 留痕（2026-11-03）：每夜跑完写一条 events，成功失败都写。
+ *
+ * 用户的原话：「本地 LLM 在我这里完全未知，我根本就不知道它在干什么」。
+ * 查下来是真的：events 表里 night / extract / decay_run 全是 0 ——
+ * 报告只出现在 CLI 的 stdout 里，没人跑 CLI 就等于没发生过。
+ *
+ * 只存数字与结论，不存正文（正文已经在 memories 里了）。
+ */
+function recordNight(
+  db: DatabaseSync,
+  report: NightlyReport,
+  now: Date,
+  failed: boolean,
+): void {
+  try {
+    const payload = {
+      scanned: report.scanned,
+      candidates: report.candidates,
+      added: report.added,
+      merged: report.merged,
+      superseded: report.superseded,
+      refined: report.refined,
+      contradicted: report.contradicted,
+      decayed: report.decayed,
+      rounds: report.rounds.length,
+      converged: report.converged,
+      ms: report.ms,
+      cursorTo: report.cursorTo,
+      notes: report.notes.slice(0, 5),
+    };
+    db.prepare("INSERT INTO events(ts,kind,actor,target,payload,ok) VALUES(?,?,?,?,?,?)").run(
+      now.toISOString(), "night", "system", "nightly", JSON.stringify(payload), failed ? 0 : 1,
+    );
+  } catch { /* 留痕失败不该拖垮整备 */ }
+}
+
 /** 记一笔“今晚没抽”（/health 的 degraded 读它）。成功跑完就清掉。 */export function noteNightlySkip(db: DatabaseSync, reason: string, now: Date): void {
   db.prepare("INSERT INTO meta(key,value) VALUES('nightly_skipped',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value")
     .run(`${now.toISOString()} ${reason}`);
@@ -557,6 +594,7 @@ export async function runNightly(deps: NightlyDeps): Promise<NightlyReport> {
     noteNightlySkip(deps.db, "抽取失败（见 notes.E_EXTRACT）", now);
     report.decayed = tickDecay(deps.db, now);
     report.ms = Date.now() - t0;
+    recordNight(deps.db, report, now, true);   // 失败也留痕：不然只剩静默
     return report;
   }
   if (report.cursorTo) {
@@ -566,5 +604,6 @@ export async function runNightly(deps: NightlyDeps): Promise<NightlyReport> {
   report.decayed = tickDecay(deps.db, now);
   clearNightlySkip(deps.db);
   report.ms = Date.now() - t0;
+  recordNight(deps.db, report, now, report.notes.some((n) => n.startsWith("E_")));
   return report;
 }
