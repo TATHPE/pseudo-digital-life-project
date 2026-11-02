@@ -694,6 +694,37 @@ export function createWebServer(deps: WebDeps) {
       }
       // ── 本地模型（C-4）：一个端点、列已装、拿当前生效值，面板据此分两块 ──
       // B-0：能力自述（工具来自 verbs / provider 来自配置 / degraded 来自真探测）
+      // ── 宿主层：跑脚本用哪个解释器（默认 PowerShell；Git Bash 让用户自己配）──
+      if (req.method === "GET" && url.pathname === "/api/host") {
+        const h = await import("../host.ts");
+        const found = h.detectShells({ gitbashPath: readFileConfig(deps.home).host?.gitbashPath });
+        const cur = h.resolveShell(deps.home);
+        json(res, 200, {
+          wanted: readFileConfig(deps.home).host?.shell ?? "auto",
+          active: { kind: cur.shell.kind, label: cur.shell.label, path: cur.shell.path, profile: h.profileOf(cur.shell) },
+          fellBack: cur.fellBack, reason: cur.reason ?? null,
+          available: Object.values(found).filter((x) => x.kind !== "none").map((x) => ({ kind: x.kind, label: x.label, path: x.path })),
+          gitbashPath: readFileConfig(deps.home).host?.gitbashPath ?? null,
+        });
+        return;
+      }
+      if (req.method === "PUT" && url.pathname === "/api/host") {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
+        const body = JSON.parse(await readBody(req)) as { shell?: string; gitbashPath?: string };
+        const allowed = ["auto", "powershell", "pwsh", "gitbash", "bash"];
+        const shell = String(body.shell ?? "auto");
+        if (!allowed.includes(shell)) { json(res, 400, { error: "E_BAD_SHELL", why: "只能是 " + allowed.join(" / ") }); return; }
+        const patch: { shell: string; gitbashPath?: string } = { shell };
+        if (typeof body.gitbashPath === "string") {
+          const p = body.gitbashPath.trim();
+          if (p && !existsSync(p)) { json(res, 400, { error: "E_NO_BASH", why: "这个路径上找不到 bash.exe：" + p }); return; }
+          if (p) patch.gitbashPath = p;
+        }
+        writeFileConfig(deps.home, { host: patch });
+        json(res, 200, { ok: true, host: patch });
+        return;
+      }
+
       // ── 超级权限（2026-11-01）：完全接管电脑，也能改记忆与人格 ──
       // 模型**没有**任何路径能开它：只有这里，且要手输确认词（前端的 confirm 只是提示，
       // 真正的关口是下面的 word 校验 + writeGuarded + 审计事件）。

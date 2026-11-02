@@ -13,6 +13,7 @@ import { verbByName, type VerbCtx, type VerbDef } from "./verbs.ts";
 import type { Policy } from "./policy.ts";
 import { newEventId } from "./journal.ts";
 import { argvSha256, consumeToken, hostProfile, issueToken } from "./shell.ts";
+import { profileOf, resolveShell } from "./host.ts";
 import { checkGrant } from "./grant.ts";
 import { recordPending } from "./confirm.ts";
 
@@ -164,7 +165,9 @@ export async function execute(
   const extra = {
     argv: proposal?.argv, cwd: proposal?.cwd,
     capability: tokenId,
-    profile: tier === "T3" ? (proposal?.profile ?? hostProfile()) : undefined,
+    // T3 记真实宿主：脚本走 config.host.shell 挑的解释器（默认 PowerShell），
+    // 模板走直接 spawn —— 审计里能分清"这句话是在哪种笼子里跑的"（docs/04 §1）。
+    profile: tier === "T3" ? (proposal?.profile ?? profileOf(resolveShell(home).shell)) : undefined,
   };
   try {
     const out = await def.run(args, { ...deps.ctx, currentVerb: def.name, ...(grantCtx ? { grant: grantCtx } : {}) });

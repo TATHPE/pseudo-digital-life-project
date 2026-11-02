@@ -946,6 +946,23 @@ description: 周日晚上把这一周压成三句话。
       </div>
 
       <div class="panelbox">
+        <h2>HOST · 命令解释器</h2>
+        <p class="hint">她跑<b>脚本文件</b>（<code>.ps1</code> / <code>.sh</code> / <code>.mjs</code> / <code>.py</code>）时用哪个解释器。
+          默认用系统自带的 <b>PowerShell 5.1</b>；Git Bash 要你自己给 <code>bash.exe</code> 的路径（安装位置五花八门）。</p>
+        <p class="hint">注意：<b>任意命令不走这里</b>（那是 <code>shell.exec</code> 的 argv 直传，不经 shell 包装）。
+          原因见 <code>src/host.ts</code> 头注释：一条 <code>-Command</code> 就能绕过所有闸门。</p>
+        <div class="filerow">
+          <select id="hostshell" class="searchbox"></select>
+          <span id="hostnow" class="hint"></span>
+        </div>
+        <div class="filerow" id="hostbashrow" hidden>
+          <input id="hostbash" class="searchbox" placeholder="Git Bash 的 bash.exe 绝对路径，如 C:/Program Files/Git/bin/bash.exe" autocomplete="off">
+          <button id="hostsave" type="button">保存路径</button>
+        </div>
+        <p class="hint" id="hostmsg"></p>
+      </div>
+
+      <div class="panelbox">
         <h2>SETUP · 重新过一遍引导</h2>
         <p class="hint">引导是<b>第一次打开软件时自动弹</b>的（/welcome）。要再看一遍装了什么、或者从头配一次，从这里进。</p>
         <div class="acts"><button type="button" id="gotoWelcome">打开引导页</button>
@@ -2158,6 +2175,49 @@ function traceTool(name, args, result, ms) {
   return el;
 }
 
+// ── 命令解释器（host）：默认 PowerShell；Git Bash 让用户自己填路径 ──
+async function loadHost() {
+  var h;
+  try { h = await (await fetch('/api/host')).json(); } catch (e) { return; }
+  var sel = document.getElementById('hostshell');
+  if (!sel) return;
+  var opts = [{ kind: 'auto', label: '自动（推荐：系统自带 PowerShell）' }].concat(h.available || []);
+  sel.innerHTML = opts.map(function (o) {
+    return '<option value="' + escapeHtml(o.kind) + '"' + (o.kind === h.wanted ? ' selected' : '') + '>' +
+      escapeHtml(o.label + (o.path ? ' · ' + o.path : '')) + '</option>';
+  }).join('');
+  var now = document.getElementById('hostnow');
+  if (now) {
+    now.textContent = '现在用：' + (h.active.profile || h.active.kind) +
+      (h.fellBack ? '（' + (h.reason || '回退了') + '）' : '');
+  }
+  var row = document.getElementById('hostbashrow');
+  var inp = document.getElementById('hostbash');
+  if (row) row.hidden = h.wanted !== 'gitbash';
+  if (inp && h.gitbashPath) inp.value = h.gitbashPath;
+  sel.onchange = async function () {
+    var msg = document.getElementById('hostmsg');
+    var r = await (await fetch('/api/host', { method: 'PUT', headers: H,
+      body: JSON.stringify({ shell: sel.value }) })).json();
+    msg.className = r.ok ? 'hint ok' : 'hint err';
+    msg.textContent = r.ok ? '已保存' : (r.why || r.error || '保存失败');
+    await loadHost();
+  };
+}
+(function () {
+  var save = document.getElementById('hostsave');
+  if (!save) return;
+  save.onclick = async function () {
+    var msg = document.getElementById('hostmsg');
+    var p = document.getElementById('hostbash').value.trim();
+    var r = await (await fetch('/api/host', { method: 'PUT', headers: H,
+      body: JSON.stringify({ shell: 'gitbash', gitbashPath: p }) })).json();
+    msg.className = r.ok ? 'hint ok' : 'hint err';
+    msg.textContent = r.ok ? '已保存' : (r.why || r.error || '保存失败');
+    await loadHost();
+  };
+})();
+
 // ── 换模型（卷宗里那一行的入口）：只改 express 的 provider/model ──
 (function () {
   var box = document.getElementById('modelpicker');
@@ -2729,7 +2789,7 @@ document.addEventListener("click", (e) => {
     sideActive = t;
     for (const b of document.querySelectorAll("#side .item")) b.classList.toggle("on", b === t);
   }
-  if (v === "cfg") { show("cfg"); loadSuper(); loadConfig().then(() => loadPersona($("#p-file").value)); return; }
+  if (v === "cfg") { show("cfg"); loadSuper(); loadHost(); loadConfig().then(() => loadPersona($("#p-file").value)); return; }
   if (v === "toolview") { openTool(Number(t.dataset.tool)); return; }
   if (v === "memview") { openMemory(Number(t.dataset.mem)); return; }
   if (v === "docview") { openDoc(t.dataset.doc); return; }

@@ -65,6 +65,8 @@ p, allow, T1, shell.run, shell:*, advise
 p, allow, T3, shell.run, shell:*, enforce
 # 任意 argv：只有「完全权限」窗口能把它跑起来（见 src/grant.ts）
 p, allow, T3, shell.exec, shell:exec, enforce
+# 跑脚本文件（解释器由 config.host.shell 决定：默认 PowerShell，可换 pwsh / Git Bash）
+p, allow, T3, script.run, script:*, enforce
 `;
 
 export function policyPath(home: string): string { return join(home, "policy.csv"); }
@@ -74,6 +76,7 @@ export function modelPath(home: string): string { return join(home, "policy.mode
 /** 老库升级时要补的行：只在「该 verb 一行都没有」时追加，不覆盖人写的 deny */
 const REQUIRED_RULES: Array<[string, string]> = [
   ["shell.exec", "p, allow, T3, shell.exec, shell:exec, enforce"],
+  ["script.run", "p, allow, T3, script.run, script:*, enforce"],
   ["shell.run-T0", "p, allow, T0, shell.run, shell:*, advise"],
   ["shell.run-T1", "p, allow, T1, shell.run, shell:*, advise"],
   ["git.status", "p, allow, T1, git.status, *, advise"],

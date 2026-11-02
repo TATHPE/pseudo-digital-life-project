@@ -38,6 +38,16 @@ export interface FileConfig {
    * 用户第一次就该能自己取；这里存下来，面板/引导页/窗口标题都读它。
    */
   agent?: { name?: string };
+  /**
+   * 宿主层：跑脚本文件时用哪个解释器（2026-11-01 用户要求：PowerShell 默认，Git Bash 自配）。
+   * 只影响「跑 home 里的脚本文件」，**不影响**任意命令的 argv 直传（见 src/host.ts 的头注释）。
+   */
+  host?: {
+    /** auto | powershell | pwsh | gitbash | bash */
+    shell?: string;
+    /** Git Bash 的 bash.exe 绝对路径（安装位置五花八门，探测不到就让用户填） */
+    gitbashPath?: string;
+  };
 }
 
 /**
@@ -84,6 +94,7 @@ export function writeFileConfig(home: string, patch: FileConfig): FileConfig {
     persona: { ...(cur.persona ?? {}), ...(patch.persona ?? {}) },
     ui: { ...(cur.ui ?? {}), ...(patch.ui ?? {}) },
     agent: { ...(cur.agent ?? {}), ...(patch.agent ?? {}) },
+    host: { ...(cur.host ?? {}), ...(patch.host ?? {}) },
   };
   atomicWriteFile(join(home, "config.json"), JSON.stringify(next, null, 2) + "\n");
   cache = null;

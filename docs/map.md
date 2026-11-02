@@ -8,9 +8,9 @@
 
 | 项 | 数量 |
 |---|---|
-| 源文件（src/**/*.ts） | 95 |
-| 错误码 E_* | 189 |
-| verbs | 26 |
+| 源文件（src/**/*.ts） | 96 |
+| 错误码 E_* | 192 |
+| verbs | 27 |
 | CLI 子命令 | 37 |
 
 ## 纪律落点
@@ -56,6 +56,7 @@
 | `E_BAD_RELEASE_ID` | `src/deploy/slot.ts` |
 | `E_BAD_ROLE` | `src/cli/jingjing.ts` `src/web/server.ts` |
 | `E_BAD_SENSITIVITY` | `src/web/server.ts` |
+| `E_BAD_SHELL` | `src/web/server.ts` |
 | `E_BAD_SLOT` | `src/shell.ts` |
 | `E_BAD_STEP` | `src/web/server.ts` |
 | `E_BAD_TARGET` | `src/decayparams.ts` |
@@ -120,6 +121,7 @@
 | `E_NEEDS_EGRESS` | `src/egress.ts` `src/posture.ts` `src/project.ts` `src/supergrant.ts` `src/verbs.ts` |
 | `E_NO_ARGV` | `src/shell.ts` |
 | `E_NO_AVATAR` | `src/web/server.ts` |
+| `E_NO_BASH` | `src/web/server.ts` |
 | `E_NO_CALL` | `src/toolsmoke.ts` |
 | `E_NO_CANDIDATES` | `src/agentguard.ts` |
 | `E_NO_CAPABILITY` | `src/execute.ts` `src/tools.ts` |
@@ -143,6 +145,7 @@
 | `E_NO_RELEASE` | `src/cli/deploy.ts` `src/deploy/slot.ts` `src/deploy/watchdog.ts` |
 | `E_NO_ROLE` | `src/cli/jingjing.ts` |
 | `E_NO_RULE` | `src/policy.ts` |
+| `E_NO_SHELL` | `src/verbs.ts` |
 | `E_NO_SKILL` | `src/skills.ts` |
 | `E_NO_TARGET` | `src/cli/deploy.ts` |
 | `E_NO_TEMPLATE` | `src/shell.ts` |
@@ -246,6 +249,7 @@
 | `project.read` | T0 |
 | `project.search` | T0 |
 | `proposal.create` | T1 |
+| `script.run` | T3 |
 | `shell.exec` | T3 |
 | `shell.run` | T3 |
 | `shell.templates` | T0 |
@@ -305,6 +309,7 @@
 | `src/handoff.ts` | 搬家协议（19 §7.4 / 09 §5）：**quiesce → export → 校验 → import → 补跑** |
 | `src/heartbeat.ts` | 心跳与主动性（01 §10）。 |
 | `src/hooks.ts` | 钩子（hooks）—— `docs/11` 六类能力里最后一块。 |
+| `src/host.ts` | 宿主层（host）的**解释器选择**（2026-11-01 用户要求）： |
 | `src/ingest.ts` | 摄入管道（02 §5.1 转换 → §5.2 分块 → §5.3 幂等） |
 | `src/interpret.ts` | 记忆的「意义层」（H-b）—— 人性缺的第二块。 |
 | `src/interview.ts` | 人格访谈（H-4 第 ⑥ 步）。 |

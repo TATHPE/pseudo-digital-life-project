@@ -8,6 +8,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync,
 import { basename, dirname, isAbsolute, join, normalize, relative } from "node:path";
 import type { Tier } from "./types.ts";
 import { readSkill, scanSkills } from "./skills.ts";
+import { profileOf, resolveShell, scriptArgv } from "./host.ts";
 import { isRescuePath, superEnabled } from "./supergrant.ts";
 import { gitDiff, gitLog, gitStatus } from "./gitview.ts";
 import { projectHome } from "./project.ts";
@@ -94,6 +95,7 @@ import { search, searchDocs } from "./retrieve.ts";
 import { remember } from "./store.ts";
 import { createProposal } from "./proposals.ts";
 import { sanitizedEnv } from "./grant.ts";
+import { } from "./shell.ts";
 import { isCorePath, coreLabel } from "./coreguard.ts";
 import { checkEgress, noteEgressRequest } from "./egress.ts";
 import { renderTemplate, templateCatalog, templateById, planRun, runArgv } from "./shell.ts";
@@ -625,6 +627,47 @@ export const verbs: VerbDef[] = [
         cwd, timeoutMs: 120_000, env: sanitizedEnv(process.env),
       });
       const head = `exit=${res.code ?? res.signal} ${res.ms}ms` +
+        (res.timedOut ? " 超时已杀" : "") + (res.truncated ? " 输出已截断" : "");
+      const body = [res.stdout.trimEnd(), res.stderr.trimEnd()].filter(Boolean).join(String.fromCharCode(10));
+      if (res.timedOut) throw new Error(`E_TIMEOUT: ${head}${body ? String.fromCharCode(10) + body : ""}`);
+      return `${head}${body ? String.fromCharCode(10) + body : ""}`;
+    },
+  },
+  {
+    name: "script.run", tier: "T3", reversible: false,
+    description: "用**当前配置的解释器**（默认 PowerShell，可换 pwsh / Git Bash）跑 workspace/ 里的一个脚本文件" +
+      "（.ps1/.sh/.mjs/.py 都行）。脚本文件可读可审计；**任意命令不走这条路**（那是 shell.exec）。",
+    params: S({
+      script: { type: "string", description: "相对 home 的路径，必须在 workspace/ 下" },
+      args: { type: "array", items: { type: "string" }, description: "传给脚本的参数（可选）" },
+      cwd: { type: "string", description: "相对 home 的工作目录（默认 workspace）" },
+    }, ["script"]),
+    target: (a) => "script:" + String(a.script ?? ""),
+    capability(a, ctx) {
+      const rel = String(a.script ?? "");
+      if (!rel || rel.includes("..") || isAbsolute(rel) || rel.startsWith("/")) {
+        throw new Error("E_BAD_ARGV: script 只收 home 内的相对路径");
+      }
+      const abs = join(ctx.home, rel);
+      // 只允许 workspace/ 下的脚本（和 node.run_script 同一条边界）
+      const ws = join(ctx.home, "workspace") + (process.platform === "win32" ? "\\" : "/");
+      if (!abs.startsWith(ws)) throw new Error("E_PATH_DENIED: 脚本必须在 workspace/ 下");
+      const args = (Array.isArray(a.args) ? a.args : []).map((x) => String(x)).slice(0, 20);
+      return { argv: [abs, ...args], cwd: join(ctx.home, "workspace"), template: "script.run" };
+    },
+    async run(a, ctx) {
+      if (!ctx.grant) throw new Error("E_GRANT_NEEDS_FULL: 跑脚本要全权窗口（它会执行任意代码）");
+      const abs = join(ctx.home, String(a.script ?? ""));
+      const args = (Array.isArray(a.args) ? a.args : []).map((x) => String(x));
+      const pick = resolveShell(ctx.home);
+      if (pick.shell.kind === "none") {
+        throw new Error("E_NO_SHELL: 没有可用的解释器（设置 → 命令解释器里选一个，或给 Git Bash 填路径）");
+      }
+      const argv = scriptArgv(pick.shell, abs, args);
+      const rel = String(a.cwd ?? "workspace");
+      const cwd = join(ctx.home, rel.includes("..") ? "workspace" : rel || ".");
+      const res = await runArgv(argv, { cwd, timeoutMs: 120_000, env: sanitizedEnv(process.env) });
+      const head = `exit=${res.code ?? res.signal} ${res.ms}ms · ${profileOf(pick.shell)}` +
         (res.timedOut ? " 超时已杀" : "") + (res.truncated ? " 输出已截断" : "");
       const body = [res.stdout.trimEnd(), res.stderr.trimEnd()].filter(Boolean).join(String.fromCharCode(10));
       if (res.timedOut) throw new Error(`E_TIMEOUT: ${head}${body ? String.fromCharCode(10) + body : ""}`);
