@@ -157,7 +157,7 @@ export async function search(
   // 用 json_each(?) 而不是 IN (?,?,…)——后者要为每个 chunk 重新 prepare 一个
   // 500 参数的语句，实测占掉 20 ms；json_each 只要一个参数、一条语句。
   // 只留**还活着**的记忆：status=active、且没被 valid_to 截断。
-  const metaById = new Map<number, { text: string; stage: Stage; weight: number; sensitivity?: string; textBigram?: string }>();
+  const metaById = new Map<number, { text: string; stage: Stage; weight: number; sensitivity?: string; textBigram?: string; eraseStage?: number }>();
   const fetchMeta = () => {
     const ids = [...new Set([...ranked.map((r) => r.id), ...vecIds.keys()])];
     metaById.clear();
@@ -174,10 +174,10 @@ export async function search(
       `SELECT id,text,stage,weight,sensitivity,text_bigram,
          (valid_to IS NOT NULL AND julianday(valid_to) <= julianday(?)) AS expired
        FROM memories WHERE status='active' AND id IN (SELECT value FROM json_each(?))`,
-    ).all(new Date().toISOString(), JSON.stringify(ids)) as Array<{ id: number; text: string; stage: Stage; weight: number; sensitivity?: string; text_bigram?: string; expired: number }>;
+    ).all(new Date().toISOString(), JSON.stringify(ids)) as Array<{ id: number; text: string; stage: Stage; weight: number; sensitivity?: string; text_bigram?: string; erase_stage?: number; expired: number }>;
     for (const g of got) {
       const w = g.expired ? Number(g.weight) * EXPIRED_DAMP : Number(g.weight);
-      metaById.set(g.id, { text: g.text, stage: g.stage, weight: w, ...(g.sensitivity ? { sensitivity: g.sensitivity } : {}), ...(g.text_bigram ? { textBigram: g.text_bigram } : {}) });
+      metaById.set(g.id, { text: g.text, stage: g.stage, weight: w, ...(g.sensitivity ? { sensitivity: g.sensitivity } : {}), ...(g.text_bigram ? { textBigram: g.text_bigram } : {}), ...(g.erase_stage ? { eraseStage: Number(g.erase_stage) } : {}) });
     }
   };
   fetchMeta();
@@ -269,6 +269,7 @@ export async function search(
       via: "active" as const,
       score: rrf * (0.6 + 0.4 * r.weight),
       cite: `mem:${r.id}`, bm25Rank: bmRank.get(r.id), cosRank: cosRank.get(r.id), cosine: c,
+      ...((r as { eraseStage?: number }).eraseStage ? { eraseStage: (r as { eraseStage?: number }).eraseStage } : {}),
       ...(r.sensitivity ? { sensitivity: r.sensitivity as "local_only" | "shareable" } : {}),
     };
   });

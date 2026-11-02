@@ -16,6 +16,11 @@ export interface MemoryLine {
   headingPath?: string;
   /** 原话（J-2）：写入时从 journal 取的原句 */
   quote?: string | null;
+  /**
+   * 侵蚀阶段（0 完整 / 1 丢细节 / 2 只剩影子）。
+   * **展示时**按它渲染模糊版；库里存的仍是原文（正文只有人能改）。
+   */
+  eraseStage?: number;
   /** 沿一根线过来的（J-1）：来自哪条、为什么连 */
   viaLink?: { from: number; why: string };
 }

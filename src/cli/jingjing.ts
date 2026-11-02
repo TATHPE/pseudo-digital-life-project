@@ -317,6 +317,16 @@ async function main(): Promise<void> {
         if (applied.egressOpened) console.error("[posture] 代码外发：会话内开放（每次留 audit，面板可一键关）");
         if (applied.paranoid) console.error("[posture] JJ_PARANOID=1：逐次确认 + 外发关闭");
       }
+      // 离线补账（学 whale-card）：睡了 ≥24 小时，醒来补一条真记忆。
+      // 放在 serve 启动时跑一次：这是「她醒来」的那一刻。
+      {
+        try {
+          const lastEv = d.db.prepare("SELECT max(ts) t FROM events").get() as { t?: string } | undefined;
+          const { noteGap } = await import("../gapnote.ts");
+          const g = noteGap(d.db, new Date(), lastEv?.t ? new Date(lastEv.t) : null);
+          if (g.written) console.error("[gap] 补了一条离线记忆（" + Math.round((g.gapMs || 0) / 3600000) + " 小时）");
+        } catch { /* 补账失败不该挡住启动 */ }
+      }
       // 看门狗：桌面壳会传 JJ_PARENT_PID。壳没了（硬杀/崩溃）就自己退 ——
       // 否则 node 会变孤儿占着 7700，下次启动起不来（实测踩到）。
       {

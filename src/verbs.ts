@@ -10,6 +10,7 @@ import type { Tier } from "./types.ts";
 import { readSkill, scanSkills } from "./skills.ts";
 import { profileOf, resolveShell, scriptArgv, withUtf8Output } from "./host.ts";
 import { isRescuePath, superEnabled } from "./supergrant.ts";
+import { renderEroded as erode } from "./erosion.ts";
 import { gitDiff, gitLog, gitStatus } from "./gitview.ts";
 import { projectHome } from "./project.ts";
 
@@ -249,13 +250,15 @@ export const verbs: VerbDef[] = [
       // 参数有界：k 不封顶的话，模型一句 k=10000 就能把整个库拉进上下文
       const kk = Math.max(1, Math.min(20, Math.round(Number(a.k ?? 5)) || 5));
       const r = await search(ctx.db, ctx.embedder, String(a.q ?? ""), { k: kk });
+      // 侵蚀过的按 stage 渲染（原文仍在库里，正文只有人能改）
+      const show = (h: { text: string; eraseStage?: number }) => erode(h.text, h.eraseStage);
       // 云端表达：只回 shareable 的原文；local_only 只报个数
       if (expressIsRemote(ctx)) {
         const ok = r.hits.filter((h) => h.sensitivity === "shareable");
         if (!ok.length) return stale + (r.hits.length ? redacted("本地下", r.hits.length) : "（没有相关记忆）");
-        return stale + ok.map((h) => `[mem:${h.id}] ${h.text}`).join(String.fromCharCode(10));
+        return stale + ok.map((h) => `[mem:${h.id}] ${show(h)}`).join(String.fromCharCode(10));
       }
-      if (r.hits.length) return r.hits.map((h) => `[mem:${h.id}] ${h.text}`).join(String.fromCharCode(10));
+      if (r.hits.length) return r.hits.map((h) => `[mem:${h.id}] ${show(h)}`).join(String.fromCharCode(10));
       // 0 命中时说清下一步（她的第 2 条自检：一遇到不知道怎么答的题，手就先动了 ——
       // 换个词再搜一遍，仍然什么都没有。"没有"本身就是答案，别让她在原地打转）。
       return "（没有相关记忆。这不代表换个说法就能搜到 —— 库里确实没有这个话题。" +

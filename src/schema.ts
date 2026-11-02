@@ -1,5 +1,5 @@
 /** M0 schema（02 §4 + 18 §1 的 outage/审计） */
-export const SCHEMA_VERSION = 11;
+export const SCHEMA_VERSION = 12;
 
 export const MIGRATION_001 = `
 PRAGMA journal_mode=WAL;
@@ -70,6 +70,8 @@ CREATE TABLE IF NOT EXISTS memories (
   weight REAL NOT NULL DEFAULT 0.55,
   stage TEXT NOT NULL DEFAULT 'active' CHECK (stage IN ('active','fading','dormant')),
   recall_count INTEGER NOT NULL DEFAULT 0,
+  -- 三段侵蚀阶段（0 完整 / 1 丢细节 / 2 只剩影子）；详见 erosion.ts
+  erase_stage INTEGER NOT NULL DEFAULT 0,
   last_decay_at TEXT NOT NULL,
   embedding BLOB,
   created_at TEXT NOT NULL, updated_at TEXT NOT NULL,

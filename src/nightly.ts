@@ -602,6 +602,13 @@ export async function runNightly(deps: NightlyDeps): Promise<NightlyReport> {
       .run(report.cursorTo);
   }
   report.decayed = tickDecay(deps.db, now);
+  // 三段侵蚀（学 whale-card）：衰减之后再看谁已经低到该「忘掉细节」了。
+  // 顺序要紧：先重算权重，再决定侵蚀 —— 否则用的是上一轮的旧权重。
+  try {
+    const { tickErosion } = await import("./erosion.ts");
+    const er = tickErosion(deps.db, now);
+    if (er.eroded || er.archived) report.notes.push("ERODE: 侵蚀 " + er.eroded + " 条 / 归档 " + er.archived + " 条");
+  } catch { /* 侵蚀失败不拖垮整备 */ }
   clearNightlySkip(deps.db);
   report.ms = Date.now() - t0;
   recordNight(deps.db, report, now, report.notes.some((n) => n.startsWith("E_")));

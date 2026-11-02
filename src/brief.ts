@@ -11,6 +11,7 @@ import { estimateTokens } from "./tokens.ts";
 import type {
   BriefBudget, BriefInput, BriefOutput, BriefSlot, MemoryLine,
 } from "./types.ts";
+import { renderEroded } from "./erosion.ts";
 
 const DEFAULT_BUDGET: BriefBudget = {
   total: 2000,
@@ -56,6 +57,12 @@ export function timeLine(input: BriefInput): string {
   return `【现在】${fmtTime(now)}。`;
 }
 
+function input0Eroded(m: MemoryLine): string {
+  const st = Number(m.eraseStage ?? 0);
+  if (!st) return m.text;
+  return renderEroded(m.text, st);
+}
+
 function recallLine(m: MemoryLine): string {
   // 文档块：不是“我记得”，是“书里写着”——两种来源在提示里必须一眼能分
   if (m.source === "doc") {
@@ -68,7 +75,10 @@ function recallLine(m: MemoryLine): string {
   // 而不是一条抽象的"待办：提醒生日"。
   const q = m.quote ? String.fromCharCode(12300) + m.quote + String.fromCharCode(12301) + " " : "";
   const via = m.viaLink ? `（接着 #${m.viaLink.from}：${m.viaLink.why}）` : "";
-  return `- [${tag} · ${m.kind} · ${m.stage} ${m.weight.toFixed(2)}] ${q}${m.text}（cite: ${m.id}）${via}`;
+  // 侵蚀过的记忆按 stage 渲染模糊版（原文仍在库里）：她能想起「有这么件事」，但细节记不清。
+  const shown = input0Eroded(m);
+  const worn = m.eraseStage ? " · 细节模糊" : "";
+  return `- [${tag} · ${m.kind} · ${m.stage} ${m.weight.toFixed(2)}${worn}] ${q}${shown}（cite: ${m.id}）${via}`;
 }
 
 function fit<T>(items: T[], max: number, budget: number, render: (x: T) => string) {

@@ -8,7 +8,7 @@
 
 | 项 | 数量 |
 |---|---|
-| 源文件（src/**/*.ts） | 102 |
+| 源文件（src/**/*.ts） | 104 |
 | 错误码 E_* | 198 |
 | verbs | 27 |
 | CLI 子命令 | 37 |
@@ -306,10 +306,12 @@
 | `src/egress.ts` | H-7：代码外发的**按次授权**。 |
 | `src/embed.ts` | Embedding（13 §2 role: embed） |
 | `src/embedindex.ts` | 索引身份（C-2） |
+| `src/erosion.ts` | 三段侵蚀（2026-11-03）。学自 whale-card 的 `render_predicate()`： |
 | `src/eval.ts` | 评估（19 §0.1 W-B / 01 §13）：唯一能证明"它变好了"的东西。 |
 | `src/execute.ts` | 执行入口（04 §4）：**策略 → 执行 → 审计**，一个都不能少。 |
 | `src/firstrun.ts` | 试运行 + 第一句话（H-4 第 ⑦⑧ 步）。 |
 | `src/fsx.ts` | 原子写 + fsync（18 §1.2） |
+| `src/gapnote.ts` | 离线补账（2026-11-03）。学自 whale-card 的一句话： |
 | `src/generation.ts` | 设定封存的**分代**（H-5）。 |
 | `src/gitview.ts` | git 校样（只读）：把"她改了什么"摊开给人看。 |
 | `src/grant.ts` | 会话式授权（K-3）：**窗口内**可以用模型给的 argv，窗口外回到 6 个模板。 |
