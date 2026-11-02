@@ -399,7 +399,11 @@ export const verbs: VerbDef[] = [
       const tmp = `${p}.tmp-${Date.now()}`;
       (await import("./fsx.ts")).atomicWriteFile(tmp, content);
       renameSync(tmp, p);
-      return `写入 ${raw}（${Buffer.byteLength(content)} 字节）`;
+      // 学 Coopanion：写文件后自动提交一版，作者是她 —— 审计告诉你发生过，
+      // git 才拿得回原文。home 不是仓库就什么都不做（不报错）。
+      const ac = await (await import("./autocommit.ts")).autoCommit(ctx.home, relative(ctx.home, p), "写了");
+      const trail = ac.hash ? ` · commit ${ac.hash}` : "";
+      return `写入 ${raw}（${Buffer.byteLength(content)} 字节）${trail}`;
     },
   },
   {

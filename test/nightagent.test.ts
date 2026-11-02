@@ -34,6 +34,7 @@ function fakeChat(script: string[][]): {
 
 const stubTools = (called: string[]): ToolRegistry => ({
   list: () => [],
+  refresh: () => {},
   schema: () => [],
   async run(name) { called.push(name); return { ok: true, output: "库里已有 1 条相似的：提醒吃药", tier: "T0" }; },
 });

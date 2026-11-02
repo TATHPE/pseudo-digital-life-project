@@ -26,6 +26,7 @@ function fakeTools(results: Record<string, { ok: boolean; output: string }>): To
   return {
     calls,
     list: () => [],
+  refresh: () => {},
     schema: () => [{ type: "function", function: { name: "fs_write", description: "", parameters: {} } }] as never,
     async run(name, args) {
       calls.push(name + " " + JSON.stringify(args).slice(0, 30));

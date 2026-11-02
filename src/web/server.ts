@@ -123,6 +123,8 @@ export interface WebDeps {
   /** B-0：真实 MCP 连接结果（面板要能说清"哪个 server 没挂上"） */
   mcpInfo?: { servers: string[]; tools: string[]; errors: string[]; /** 启动时加载的那份 mcp.json 指纹（判「待生效」） */ running?: string | null };
   getEmbedder: () => Embedder | null;
+  /** 重连 MCP（不给 server 就全部）。返回最新实况 */
+  reconnectMcp?: (server?: string) => Promise<{ servers: string[]; tools: string[]; errors: string[]; dropped: number; added: number }>;
   now?: () => Date;
   /** 测试可注入：把"模型回复"换成生成器 */
   reply?: (brief: string, user: string) => AsyncGenerator<string>;
@@ -419,6 +421,22 @@ export function createWebServer(deps: WebDeps) {
         const role = url.searchParams.get("role") === "user" ? "user" : "agent";
         for (const ext of ["png", "jpg", "webp"]) rmSync(join(deps.home, "avatars", `${role}.${ext}`), { force: true });
         json(res, 200, { ok: true, role });
+        return;
+      }
+
+      // ── 插件重连：不用重启整个 sidecar（学 Coopanion 的 World 单独重启）──
+      if (req.method === "POST" && url.pathname === "/api/plugins/reconnect") {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
+        if (!deps.reconnectMcp) { json(res, 400, { error: "E_NO_HUB", why: "这个进程没有 MCP 连接中心" }); return; }
+        let body: { server?: string } = {};
+        try { body = JSON.parse(await readBody(req)) as { server?: string }; } catch { /* 空 body = 全部 */ }
+        try {
+          const st = await deps.reconnectMcp(body.server);
+          if (deps.mcpInfo) { deps.mcpInfo.servers = st.servers; deps.mcpInfo.tools = st.tools; deps.mcpInfo.errors = st.errors; }
+          json(res, 200, { ok: true, ...st });
+        } catch (e) {
+          json(res, 500, { error: "E_RECONNECT", why: String((e as Error).message ?? e).slice(0, 160) });
+        }
         return;
       }
 

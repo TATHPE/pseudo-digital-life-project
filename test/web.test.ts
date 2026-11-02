@@ -920,3 +920,27 @@ test("夜间整备留痕：每夜一条 events，成功失败都记，面板能�
   assert.ok(PAGE.includes("paintNightLog"), "面板要显示");
   assert.ok(PAGE.includes("还没有夜间整备记录"), "从没跑过时要说清楚怎么跑");
 });
+
+test("插件可以单独重连：不用重启整个程序（学 Coopanion 的 World 单独重启）", () => {
+  const hub = readFileSync(join(process.cwd(), "src/mcphub.ts"), "utf8");
+  assert.ok(hub.includes("async reconnect(server?"), "要能只重连一个");
+  assert.ok(hub.includes("loadMcpConfig(this.home)"), "重连要重新读 mcp.json（不然改了没用）");
+  assert.ok(hub.includes("this.dropTools(server)") || hub.includes("this.dropTools(name)"), "先摘掉旧工具");
+  assert.ok(hub.includes("if (!this.cfg.servers[old])"), "磁盘上删掉的 server，工具也要清掉");
+
+  const tools = readFileSync(join(process.cwd(), "src/tools.ts"), "utf8");
+  assert.ok(tools.includes("refresh(next)"), "registry 要能换掉外部工具表");
+  assert.ok(tools.includes("tools_refreshed"), "换工具面要留痕");
+
+  const server = readFileSync(join(process.cwd(), "src/web/server.ts"), "utf8");
+  assert.ok(server.includes('"/api/plugins/reconnect"'), "要有接口");
+  assert.ok(PAGE.includes("cap-reconnect"), "面板要有按钮");
+  assert.ok(PAGE.includes("不用重启程序"), "按钮要说清这件事");
+});
+
+test("两档模式：默认只留常用入口，文件/工具 收在高级里（学 Coopanion 的 normal/advanced）", () => {
+  assert.ok(PAGE.includes("body:not(.advanced) #side .item[data-adv]"), "CSS 要藏高级项");
+  assert.ok(PAGE.includes('data-view="filesview" data-adv'), "文件是高级项");
+  assert.ok(PAGE.includes('id="adv-toggle"'), "要有切换按钮");
+  assert.ok(PAGE.includes("jj.advanced"), "选择要记住（localStorage）");
+});

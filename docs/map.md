@@ -8,8 +8,8 @@
 
 | 项 | 数量 |
 |---|---|
-| 源文件（src/**/*.ts） | 100 |
-| 错误码 E_* | 195 |
+| 源文件（src/**/*.ts） | 102 |
+| 错误码 E_* | 198 |
 | verbs | 27 |
 | CLI 子命令 | 37 |
 
@@ -138,6 +138,7 @@
 | `E_NO_GIT` | `src/gitview.ts` |
 | `E_NO_GRANT` | `src/grant.ts` `src/web/server.ts` |
 | `E_NO_HOME` | `src/handoff.ts` |
+| `E_NO_HUB` | `src/web/server.ts` |
 | `E_NO_KEY` | `src/web/server.ts` |
 | `E_NO_LINK` | `src/cli/jingjing.ts` |
 | `E_NO_MEMORY` | `src/store.ts` `src/web/server.ts` |
@@ -147,6 +148,7 @@
 | `E_NO_RELEASE` | `src/cli/deploy.ts` `src/deploy/slot.ts` `src/deploy/watchdog.ts` |
 | `E_NO_ROLE` | `src/cli/jingjing.ts` |
 | `E_NO_RULE` | `src/policy.ts` |
+| `E_NO_SERVER` | `src/mcphub.ts` |
 | `E_NO_SHELL` | `src/verbs.ts` |
 | `E_NO_SKILL` | `src/skills.ts` |
 | `E_NO_TARGET` | `src/cli/deploy.ts` |
@@ -189,6 +191,7 @@
 | `E_READING_CONTRACT` | `src/store.ts` |
 | `E_RECEIPT_ID` | `src/notify.ts` |
 | `E_RECEIPT_NOT_FOUND` | `src/cli/jingjing.ts` `src/web/server.ts` |
+| `E_RECONNECT` | `src/web/server.ts` |
 | `E_RELEASE_CORRUPT` | `src/deploy/slot.ts` |
 | `E_RELEASE_EXISTS` | `src/deploy/slot.ts` |
 | `E_ROLE_MISSING` | `src/provider.ts` |
@@ -274,6 +277,7 @@
 | `src/assert.ts` | 越界即抛（比 `!` 安全：漏了会炸而不是 NaN 悄悄传播） */ |
 | `src/auth.ts` | 凭据存储（13 §3） |
 | `src/autobio.ts` | 自传（01 §9.1）：一天一条，第一人称，只能引用当日记忆 id。 |
+| `src/autocommit.ts` | 她写文件 → 自动 git commit（2026-11-03）。 |
 | `src/boot.ts` | 断电/停机感知（18 §2） |
 | `src/brief.ts` | 情境简报（06 §3 / 17 §2） |
 | `src/budget.ts` | 记账与预算闸（13 §6）：cached_tokens 必须单独记，否则看不出缓存有没有生效 */ |
@@ -319,6 +323,7 @@
 | `src/journal.ts` | inbox：原始事件的唯一事实源（18 §1.1） |
 | `src/links.ts` | 记忆之间的线（J-5）：抽检与"一句话拆线"。 |
 | `src/mcp.ts` | 最小 MCP stdio 客户端（11 §3 方向 B）。 |
+| `src/mcphub.ts` | MCP 连接中心（2026-11-03）。 |
 | `src/md.ts` | 极简 Markdown → HTML（够用、可测、零依赖；所有文本先转义） */ |
 | `src/memoryonly.ts` | 「本地模型只管理记忆」这条边界，写成**结构**（用户 2026-10-31 再次确认）。 |
 | `src/nightagent.ts` | 夜间整理的「工具循环」抽取器（P0-2） |

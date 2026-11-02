@@ -644,6 +644,11 @@ export const PAGE = `<!doctype html>
           background:#000; border:1px solid var(--line); color:var(--ink); font-weight:700;
           font:10px/1 var(--mono); letter-spacing:.1em; padding:8px 11px; cursor:pointer; z-index:8; }
   #jump:hover { background:rgba(233,240,242,.14); }
+  /* 两档模式（学 Coopanion 的 normal / advanced）：默认只留常用的，其余收在高级里 */
+  body:not(.advanced) #side .item[data-adv] { display:none; }
+  #adv-toggle { margin:6px 0 0; font-size:11px; letter-spacing:.08em; padding:5px 8px;
+    border:1px solid var(--line-dim); background:transparent; color:var(--ink-dim); cursor:pointer; width:100%; }
+  #adv-toggle:hover { color:var(--ink); border-color:var(--line); }
   /* 状态灯（学自 Coopanion 的 rail lamps）：入口上直接亮一个点，不用点进去才知道哪里有事 */
   #side .item { position:relative; }
   #side .item .lamp { position:absolute; right:7px; top:50%; width:6px; height:6px; margin-top:-3px;
@@ -718,14 +723,15 @@ export const PAGE = `<!doctype html>
     <button class="item" type="button" data-view="docsview">文档<span class="m" id="doccount">…</span></button>
     <button class="item" type="button" data-view="auditview">动作<span class="m" id="actcount">…</span><i class="lamp" id="lamp-act"></i></button>
     <button class="item" type="button" data-view="capview">能力<span class="m" id="capcount">…</span><i class="lamp" id="lamp-cap"></i></button>
-    <button class="item" type="button" data-view="filesview">文件<span class="m" id="filecount">项目</span></button>
+    <button class="item" type="button" data-view="filesview" data-adv>文件<span class="m" id="filecount">项目</span></button>
     <button class="item" type="button" id="foldtools">工具<span class="m" id="toolcount">…</span></button>
     <div id="toollist" hidden>
       <input id="toolq" class="searchbox" placeholder="筛工具名 / 说明…" autocomplete="off">
       <div id="toolrows"><button class="item on" data-view="chat">对话<span class="m">与<span data-agent>鲸鲸</span>说话</span></button></div>
-      <button class="item dimmore" id="toolmore" hidden>显示全部</button>
+      <button class="item dimmore" id="toolmore" data-adv hidden>显示全部</button>
     </div>
     <button class="item" type="button" data-view="cfg">设置<span class="m">接口 / 人格</span><i class="lamp" id="lamp-cfg"></i></button>
+    <button type="button" id="adv-toggle" aria-pressed="false">显示高级项</button>
   </div>
 </aside>
 
@@ -2494,8 +2500,25 @@ async function loadCapPage() {
     });
   });
   errs.forEach(function (d) { html += capline(d.replace('mcp-unavailable:', ''), '连不上', true); });
+  // 重连：学 Coopanion 的 World 单独重启 —— 不用重启整个程序
+  html = '<div class="dact" style="margin-bottom:6px"><button type="button" id="cap-reconnect">重连插件（不用重启程序）</button><span class="hint" id="cap-reconnect-msg"></span></div>' + html;
   document.getElementById('cap-mcp').innerHTML = html ||
     '<p class="hint">没装插件。插件是 MCP server：写进 data/mcp.json 的 servers 里，重启面板就会出现在这里。</p>';
+
+  var rbtn = document.getElementById('cap-reconnect');
+  if (rbtn) rbtn.onclick = async function () {
+    var msg = document.getElementById('cap-reconnect-msg');
+    rbtn.disabled = true;
+    if (msg) msg.textContent = '重连中…';
+    try {
+      var r = await (await fetch('/api/plugins/reconnect', { method: 'POST', headers: H, body: '{}' })).json();
+      if (msg) msg.textContent = r.ok
+        ? '已重连：' + (r.servers || []).length + ' 个插件 / ' + (r.tools || []).length + ' 个工具' + ((r.errors || []).length ? '（' + r.errors.join('；') + '）' : '')
+        : '失败：' + (r.why || r.error || '');
+      if (r.ok) await loadCapPage();
+    } catch (e) { if (msg) msg.textContent = '重连失败：' + e.message; }
+    finally { rbtn.disabled = false; }
+  };
 
   var list = (sk && sk.skills) || [];
   var dirsEl = document.getElementById('cap-skills-dirs');
@@ -3413,6 +3436,26 @@ else { const n = Number($("#jumpn").textContent || 0) + 1; $("#jumpn").textConte
   }
   await timeline(); await state(); await memories(); await pending(); await audit();
 };
+// 两档模式：默认只显示常用入口；「文件 / 工具」收在高级里。
+// 学自 Coopanion 的 normal / advanced —— 新手不会一上来面对一屏入口。
+(function initAdvanced() {
+  var key = 'jj.advanced';
+  function apply(on) {
+    document.body.classList.toggle('advanced', on);
+    var b = document.getElementById('adv-toggle');
+    if (b) { b.textContent = on ? '收起高级项' : '显示高级项'; b.setAttribute('aria-pressed', String(on)); }
+  }
+  var on = false;
+  try { on = localStorage.getItem(key) === '1'; } catch (e) { /* 无痕模式 */ }
+  apply(on);
+  var btn = document.getElementById('adv-toggle');
+  if (btn) btn.onclick = function () {
+    var now = !document.body.classList.contains('advanced');
+    apply(now);
+    try { localStorage.setItem(key, now ? '1' : '0'); } catch (e) { /* ignore */ }
+  };
+})();
+
 applyAgentName(); loadAvatars(); applySections(); state(); timeline(); sessions(); tools(); memories(); docs(); audit(); readout(); loadConfig(); pending(); usage(); loadProposals(); loadSurfaceReview(); loadThreads(); loadReceipts(); loadStanding(); loadEgress();
 setInterval(() => { state(); pending(); audit(); readout(); loadEgress(); }, 20000);
 </script>

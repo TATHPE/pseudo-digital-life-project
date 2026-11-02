@@ -276,11 +276,10 @@ async function main(): Promise<void> {
       const policy = await import("../policy.ts").then((m) => m.loadPolicy(HOME));
       const externals: Array<{ name: string; description: string; parameters: Record<string, unknown>; tier: string; call(a: Record<string, unknown>): Promise<string> }> = [];
       const mcpCfg = loadMcpConfig(HOME);
-      const mcp = await attachMcp(mcpCfg, (t) => externals.push({
-        name: t.name, description: t.description, tier: "T2",
-        parameters: t.parameters as Record<string, unknown>,
-        call: (a) => t.call(a),
-      }));
+      // 用 McpHub：能**单独重连**某个 server（学 Coopanion 的 World 可单独重启）
+      const { McpHub } = await import("../mcphub.ts");
+      const hub = new McpHub(HOME, externals);
+      const mcp = await hub.startAll();
       if (mcp.tools.length) console.log(`MCP 工具: ${mcp.tools.join(", ")}`);
       if (mcp.errors.length) console.log(`MCP 未连上: ${mcp.errors.join(" | ")}`);
 
@@ -336,8 +335,14 @@ async function main(): Promise<void> {
         db: d.db, inboxDir: inbox, home: HOME, getTransport, getEmbedder, getConfig,
         tools: registry, getChat, pendingOutage: boot1.outage,
         // running = 我这次启动实际加载的那份配置的指纹；磁盘后来改了就对不上
-        mcpInfo: { servers: Object.keys(mcpCfg.servers ?? {}), tools: mcp.tools, errors: mcp.errors,
+        mcpInfo: { servers: mcp.servers, tools: mcp.tools, errors: mcp.errors,
           running: (await import("../plugins.ts")).mcpFingerprint(HOME) },
+        // 重连（面板按钮 / API 调用）。registry 同步换掉 MCP 那半。
+        reconnectMcp: async (server?: string) => {
+          const st = await hub.reconnect(server);
+          registry.refresh(externals);
+          return st;
+        },
       });
       // 绑哪里：默认只绑回环。容器里必须绑 0.0.0.0（否则宿主通过端口映射也访问不到，
       // 因为容器的 127.0.0.1 不是宿主的 127.0.0.1）；而 compose 只把 0.0.0.0 映射到

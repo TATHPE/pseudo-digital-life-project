@@ -28,6 +28,14 @@ export interface ToolRegistry {
   list(): ToolSpec[];
   schema(): Array<{ type: "function"; function: { name: string; description: string; parameters: unknown } }>;
   run(name: string, args: Record<string, unknown>): Promise<{ ok: boolean; output: string; needsConfirm?: boolean; tier: string }>;
+  /**
+   * 换掉外部工具表（MCP 重连后用）。
+   *
+   * 学自 Coopanion 的 World 可单独 start/stop/restart —— 我们之前改了 mcp.json
+   * 只能重启整个 sidecar（4 秒 + 会话状态全丢）。
+   * 注意：verbs（mine）不动，只重建 external 那一半。
+   */
+  refresh(next: Array<ToolSpec & { call(args: Record<string, unknown>): Promise<string> }>): void;
 }
 
 export interface RegistryDeps {
@@ -49,17 +57,32 @@ export interface RegistryDeps {
 export function createToolRegistry(deps: RegistryDeps): ToolRegistry {
   const externals = deps.external ?? [];
   const mine = deps.allow ? verbs.filter((v) => deps.allow!(v.name)) : verbs;
-  const ext = deps.allow ? externals.filter((e) => deps.allow!(e.name)) : externals;
-  const all: ToolSpec[] = [
-    ...mine.map((v) => ({ name: v.name, description: v.description, parameters: v.params, tier: v.tier })),
-    ...ext.map(({ name, description, parameters, tier }) => ({ name, description, parameters, tier })),
-  ];
+  let ext = deps.allow ? externals.filter((e) => deps.allow!(e.name)) : [...externals];
+  const rebuild = () => {
+    all = [
+      ...mine.map((v) => ({ name: v.name, description: v.description, parameters: v.params, tier: v.tier })),
+      ...ext.map(({ name, description, parameters, tier }) => ({ name, description, parameters, tier })),
+    ];
+    alias.clear();
+    for (const t of all) alias.set(apiName(t.name), t.name);
+  };
+  let all: ToolSpec[] = [];
 
-  const alias = new Map(all.map((t) => [apiName(t.name), t.name]));
+  const alias = new Map<string, string>();
+  rebuild();
   const resolve = (n: string): string => alias.get(n) ?? n;
 
   return {
     list: () => all,
+    refresh(next) {
+      ext = deps.allow ? next.filter((e) => deps.allow!(e.name)) : [...next];
+      rebuild();
+      // 审计里留一笔：工具面变了，事后要能对上是哪次改的
+      try {
+        deps.db.prepare("INSERT INTO events(ts,kind,actor,target,payload,ok) VALUES(?,?,?,?,?,1)")
+          .run(new Date().toISOString(), "tools_refreshed", "system", "mcp", JSON.stringify({ n: ext.length, names: ext.map((e) => e.name).slice(0, 20) }));
+      } catch { /* 记不上就算了 */ }
+    },
     schema: () => all.map((t) => ({
       type: "function" as const,
       function: { name: apiName(t.name), description: t.description, parameters: t.parameters },
