@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { openDb } from "../src/db.ts";
 import { loadPolicy } from "../src/policy.ts";
 import { execute } from "../src/execute.ts";
-import { detectShells, resolveShell, scriptArgv, profileOf } from "../src/host.ts";
+import { detectShells, resolveShell, scriptArgv, profileOf, withUtf8Output } from "../src/host.ts";
 
 const H = () => mkdtempSync(join(tmpdir(), "jj-host-"));
 
@@ -77,4 +77,24 @@ test("script.run：用配置的解释器真跑一个脚本；越界与无窗口�
   const noGrant = await execute({ db: d.db, policy, ctx: { home, now: () => new Date(), env: {} } }, "script.run", { script: "workspace/" + script }, { approved: true });
   assert.equal(noGrant.ok, false);
   assert.match(noGrant.output, /E_GRANT_NEEDS_FULL/);
+});
+
+test("PowerShell 输出编码：只包 -Command，不动 -File 与别的命令", () => {
+  const ps = "C:/WINDOWS/System32/WindowsPowerShell/v1.0/powershell.exe";
+  const a = withUtf8Output([ps, "-NoProfile", "-NonInteractive", "-Command", "Get-ChildItem"]);
+  assert.equal(a.wrapped, true);
+  assert.match(a.argv[4]!, /\[Console\]::OutputEncoding=\[Text\.Encoding\]::UTF8/);
+  assert.match(a.argv[4]!, /Get-ChildItem/, "用户命令要在前奏之后原样保留");
+
+  // -File：跑脚本文件，参数语义不能被改
+  const f = withUtf8Output([ps, "-File", "a.ps1", "-x"]);
+  assert.equal(f.wrapped, false);
+  assert.deepEqual(f.argv, [ps, "-File", "a.ps1", "-x"]);
+
+  // 不是 PowerShell 就不碰
+  assert.equal(withUtf8Output(["node", "-e", "1"]).wrapped, false);
+  assert.equal(withUtf8Output(["git", "status"]).wrapped, false);
+
+  // pwsh 也包（大写 / .exe 都认）
+  assert.equal(withUtf8Output(["C:/x/PWSH.EXE", "-Command", "1"]).wrapped, true);
 });

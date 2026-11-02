@@ -140,3 +140,26 @@ export function profileOf(shell: ShellInfo): string {
   const os = WIN ? "win-local" : "linux-local";
   return os + "/" + (shell.kind === "none" ? "direct" : shell.label);
 }
+
+/**
+ * PowerShell 的输出编码修补（2026-11-01）。
+ *
+ * 问题：Windows PowerShell 5.1 默认把输出按**系统 OEM 代码页**（中文机器是 GBK）写出来，
+ * 而我们按 UTF-8 解码 → 中文全是乱码（实测 `Get-ChildItem` 输出的「目录:」变成 `Ŀ¼:`）。
+ *
+ * 做法：**只在 `-Command` 前面插一句**把 `[Console]::OutputEncoding` 与 `$OutputEncoding` 设成 UTF-8。
+ * 两个边界：
+ *   · `-File` 模式**不动**（那是跑脚本文件，脚本自己决定输出；改 argv 会破坏它的参数语义）
+ *   · 包装后的 argv 是**实际要跑的**，审计里记的也是它（`exec_audit.argv_json` 不许撒谎）
+ */
+export function withUtf8Output(argv: string[]): { argv: string[]; wrapped: boolean } {
+  if (argv.length < 2) return { argv, wrapped: false };
+  const bin = String(argv[0] ?? "").split(/[\/]/).pop()!.toLowerCase().replace(/\.exe$/, "");
+  if (bin !== "powershell" && bin !== "pwsh") return { argv, wrapped: false };
+  const i = argv.findIndex((a) => /^-command$/i.test(a));
+  if (i < 0 || i + 1 >= argv.length) return { argv, wrapped: false };
+  const prelude = "[Console]::OutputEncoding=[Text.Encoding]::UTF8;$OutputEncoding=[Text.Encoding]::UTF8;";
+  const next = [...argv];
+  next[i + 1] = prelude + " " + String(argv[i + 1] ?? "");
+  return { argv: next, wrapped: true };
+}

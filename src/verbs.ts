@@ -8,7 +8,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync,
 import { basename, dirname, isAbsolute, join, normalize, relative } from "node:path";
 import type { Tier } from "./types.ts";
 import { readSkill, scanSkills } from "./skills.ts";
-import { profileOf, resolveShell, scriptArgv } from "./host.ts";
+import { profileOf, resolveShell, scriptArgv, withUtf8Output } from "./host.ts";
 import { isRescuePath, superEnabled } from "./supergrant.ts";
 import { gitDiff, gitLog, gitStatus } from "./gitview.ts";
 import { projectHome } from "./project.ts";
@@ -616,12 +616,15 @@ export const verbs: VerbDef[] = [
       const rel = String(a.cwd ?? "workspace");
       if (rel.includes("..") || rel.startsWith("/")) throw new Error("E_BAD_ARGV: cwd 只收 home 内的相对路径");
       const cwd = join(ctx.home, rel || ".");
-      return { argv, cwd, template: "exec" };
+      // PowerShell 5.1 默认按 GBK 输出 → 中文乱码；这里给 -Command 前面插一句设 UTF-8。
+      // 注意：包装后的 argv 就是**实际执行的**，审计里记的也是它（不许记未包装的那份）。
+      return { argv: withUtf8Output(argv).argv, cwd, template: "exec" };
     },
     async run(a, ctx) {
       // 纵深防御：即使策略层被改松，没有全权窗口也跑不了任意 argv
       if (!ctx.grant) throw new Error("E_GRANT_NEEDS_FULL: 任意 argv 只能在完全权限窗口里跑");
-      const argv = (Array.isArray(a.argv) ? a.argv : []).map((x) => String(x));
+      // 和 capability 里**同一份包装**：审计记的和实际跑必须一致（PowerShell 输出编码）
+      const argv = withUtf8Output((Array.isArray(a.argv) ? a.argv : []).map((x) => String(x))).argv;
       const rel = String(a.cwd ?? "workspace");
       const cwd = join(ctx.home, rel || ".");
       const res = await runArgv(argv, {
