@@ -24,7 +24,13 @@ test("A-3 代码地图里点名的文件都在", () => {
 test("A-3 写的命令都真的存在（不许写在文档里但跑不了）", () => {
   const pkg = JSON.parse(readFileSync("package.json", "utf8")) as { scripts: Record<string, string> };
   for (const s of ["check", "ui:test"]) assert.ok(pkg.scripts[s], `package.json 缺 script ${s}`);
-  assert.ok(MD.includes("node src/cli/jingjing.ts serve 7700"), "serve 的写法要能直接复制");
+  // 桌面端改成随机端口（serve 0 + 一次性令牌），所以不再钉 7700 这个字面量；
+  // 但要保证"能直接复制去跑"的那条命令在，而且 package.json 里的脚本都真的存在。
+  assert.ok(/node src\/cli\/jingjing\.ts serve [0-9]/.test(MD), "serve 的写法要能直接复制");
+  for (const line of MD.split(String.fromCharCode(10))) {
+    const m = line.match(/^npm run ([a-z:]+)\s/);
+    if (m) assert.ok(pkg.scripts[m[1]!], `AGENTS.md 写了 npm run ${m[1]}，但 package.json 没有这个脚本`);
+  }
 });
 
 test("A-3 不缓存环境能答的东西：不许写死测试条数", () => {
