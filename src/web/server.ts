@@ -123,6 +123,8 @@ export interface WebDeps {
   /** B-0：真实 MCP 连接结果（面板要能说清"哪个 server 没挂上"） */
   mcpInfo?: { servers: string[]; tools: string[]; errors: string[]; /** 启动时加载的那份 mcp.json 指纹（判「待生效」） */ running?: string | null };
   getEmbedder: () => Embedder | null;
+  /** 手动跑一次夜间整备（面板按钮用）。返回退出码 */
+  runNight?: () => Promise<number>;
   /** 重连 MCP（不给 server 就全部）。返回最新实况 */
   reconnectMcp?: (server?: string) => Promise<{ servers: string[]; tools: string[]; errors: string[]; dropped: number; added: number }>;
   now?: () => Date;
@@ -1557,6 +1559,26 @@ export function createWebServer(deps: WebDeps) {
         return;
       }
       // ── 权限档位（形状照 DSH：当前会话用输入框旁的选择器切）──
+      // ── 夜间整备：该不该跑（GET）+ 现在跑一次（POST）──
+      if (req.method === "GET" && url.pathname === "/api/night/due") {
+        try {
+          const { dueInfo, nightRunning } = await import("../nightdue.ts");
+          json(res, 200, { ...dueInfo(deps.db), running: nightRunning() });
+        } catch (e) { json(res, 500, { error: String((e as Error)?.message ?? e).slice(0, 120) }); }
+        return;
+      }
+      if (req.method === "POST" && url.pathname === "/api/night/run") {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
+        if (!deps.runNight) { json(res, 400, { error: "E_NO_NIGHT", why: "这个进程没有夜间整备入口" }); return; }
+        try {
+          const code = await deps.runNight();
+          json(res, 200, { ok: code === 0, code });
+        } catch (e) {
+          json(res, 500, { error: "E_NIGHT", why: String((e as Error)?.message ?? e).slice(0, 160) });
+        }
+        return;
+      }
+
       // ── 工作/聊天模式：chat 靠记忆召回，work 带最近几轮历史 + 更宽预算 ──
       if (req.method === "GET" && url.pathname === "/api/mode") {
         try { json(res, 200, { mode: readFileConfig(deps.home).mode === "work" ? "work" : "chat" }); }

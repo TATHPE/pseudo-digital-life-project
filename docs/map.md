@@ -8,8 +8,8 @@
 
 | 项 | 数量 |
 |---|---|
-| 源文件（src/**/*.ts） | 105 |
-| 错误码 E_* | 203 |
+| 源文件（src/**/*.ts） | 106 |
+| 错误码 E_* | 205 |
 | verbs | 27 |
 | CLI 子命令 | 37 |
 
@@ -123,6 +123,7 @@
 | `E_NEED_WHY` | `src/selfupdate.ts` |
 | `E_NEEDS_CONFIRM` | `src/confirm.ts` `src/execute.ts` `src/posture.ts` |
 | `E_NEEDS_EGRESS` | `src/egress.ts` `src/posture.ts` `src/project.ts` `src/supergrant.ts` `src/verbs.ts` |
+| `E_NIGHT` | `src/web/server.ts` |
 | `E_NIGHTLOG` | `src/web/server.ts` |
 | `E_NO_ARGV` | `src/shell.ts` |
 | `E_NO_AVATAR` | `src/web/server.ts` |
@@ -146,6 +147,7 @@
 | `E_NO_LINK` | `src/cli/jingjing.ts` |
 | `E_NO_MEMORY` | `src/store.ts` `src/web/server.ts` |
 | `E_NO_MODEL` | `src/cli/night.ts` |
+| `E_NO_NIGHT` | `src/web/server.ts` |
 | `E_NO_PATH` | `src/project.ts` `src/web/server.ts` |
 | `E_NO_PREV` | `src/selfupdate.ts` |
 | `E_NO_REASON` | `src/decayparams.ts` |
@@ -334,6 +336,7 @@
 | `src/md.ts` | 极简 Markdown → HTML（够用、可测、零依赖；所有文本先转义） */ |
 | `src/memoryonly.ts` | 「本地模型只管理记忆」这条边界，写成**结构**（用户 2026-10-31 再次确认）。 |
 | `src/nightagent.ts` | 夜间整理的「工具循环」抽取器（P0-2） |
+| `src/nightdue.ts` | 夜间整备的自动触发（2026-11-03）。 |
 | `src/nightly.ts` | 夜间整备（01 §9）：消化 inbox → 抽取 → 冲突消解 → 归并。 |
 | `src/notify.ts` | 回执通道（D-3 的前置，`docs/25 §4`）。 |
 | `src/ollama.ts` | Ollama 探测（C-4）：一次 /api/tags + 两个最小调用探针。 |

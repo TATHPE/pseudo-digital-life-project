@@ -319,6 +319,17 @@ async function main(): Promise<void> {
         if (applied.egressOpened) console.error("[posture] 代码外发：会话内开放（每次留 audit，面板可一键关）");
         if (applied.paranoid) console.error("[posture] JJ_PARANOID=1：逐次确认 + 外发关闭");
       }
+      // 夜间整备的自动触发（2026-11-03）：之前**从来没有自动跑过** ——
+      // events 里只有手动那一次，于是「她会自己整理记忆」一直是空头承诺。
+      // 这里在启动后检查一次：距上次 > 20h 就后台跑（不 await，不挡监听）。
+      {
+        try {
+          const { kickNightIfDue } = await import("../nightdue.ts");
+          const { runNightCli } = await import("./night.ts");
+          kickNightIfDue(d.db, () => runNightCli({ home: HOME, dbFile, inbox }), new Date());
+        } catch (e) { console.error("[night] 自动触发失败：" + String((e as Error)?.message ?? e).slice(0, 120)); }
+      }
+
       // 离线补账（学 whale-card）：睡了 ≥24 小时，醒来补一条真记忆。
       // 放在 serve 启动时跑一次：这是「她醒来」的那一刻。
       {
@@ -350,6 +361,11 @@ async function main(): Promise<void> {
         mcpInfo: { servers: mcp.servers, tools: mcp.tools, errors: mcp.errors,
           running: (await import("../plugins.ts")).mcpFingerprint(HOME) },
         // 重连（面板按钮 / API 调用）。registry 同步换掉 MCP 那半。
+        // 面板「现在整理一次」：走 CLI 同一条路（同一份闸门、同一份报告）
+        runNight: async () => {
+          const { runNightCli } = await import("./night.ts");
+          return runNightCli({ home: HOME, dbFile, inbox });
+        },
         reconnectMcp: async (server?: string) => {
           const st = await hub.reconnect(server);
           registry.refresh(externals);

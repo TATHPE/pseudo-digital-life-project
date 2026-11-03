@@ -3008,17 +3008,45 @@ function paintModels(m) {
 }
 
 // 最近几晚它干了什么：数据来自 events(kind=night)，每夜一条（成功失败都记）
+function bindNightRun() {
+  var rb = document.getElementById('night-run');
+  if (!rb) return;
+  rb.onclick = async function () {
+    var m = document.getElementById('night-msg');
+    rb.disabled = true;
+    if (m) m.textContent = '整理中…（读事件 / 抽取 / 冲突消解，几十秒）';
+    try {
+      var r = await (await fetch('/api/night/run', { method: 'POST', headers: H, body: '{}' })).json();
+      if (m) m.textContent = r.ok ? '整理完了' : ('失败：' + (r.why || r.error || ''));
+      await paintNightLog();
+    } catch (e) { if (m) m.textContent = '请求失败：' + e.message; }
+  };
+}
+
 async function paintNightLog() {
   var box = document.getElementById('m-nights');
   if (!box) return;
   var d = null;
   try { d = await (await fetch('/api/nightlog')).json(); } catch (e) { box.textContent = ''; return; }
   var runs = (d && d.runs) || [];
+  // 该不该跑 + 现在跑一次：之前夜间整备**从来没有自动触发过**（用户问出来的）
+  var due = null;
+  try { due = await (await fetch('/api/night/due')).json(); } catch (e) { /* 拿不到就不显示 */ }
+  var bar = '';
+  if (due) {
+    var when = due.lastAt ? String(due.lastAt).slice(5, 16).replace('T', ' ') : null;
+    bar = '<div class="dact" style="margin-bottom:6px">' +
+      (due.running ? '<span class="hint">正在整理…</span>' : '<button type="button" id="night-run">现在整理一次</button>') +
+      '<span class="hint" id="night-msg">' +
+      (due.due ? (when ? '该整理了（上次 ' + when + '）' : '从没整理过') : '还不用跑' + (when ? '（上次 ' + when + '）' : '')) +
+      '</span></div>';
+  }
   if (!runs.length) {
-    box.innerHTML = '<p class="hint">还没有夜间整备记录。它不会自己跑 —— 要跑一次：<b>node src/cli/jingjing.ts night</b>（或等外部定时器调 standing tick）。</p>';
+    box.innerHTML = bar + '<p class="hint">还没有夜间整备记录。它会在启动时自动检查（距上次超过 20 小时就后台跑）；也可以点上面的按钮现在跑一次。</p>';
+    bindNightRun();
     return;
   }
-  box.innerHTML = '<p class="hint">最近几晚（每夜一条，成功失败都记）</p>' + runs.slice(0, 7).map(function (r) {
+  box.innerHTML = bar + '<p class="hint">最近几晚（每夜一条，成功失败都记）</p>' + runs.slice(0, 7).map(function (r) {
     var when = String(r.ts || '').slice(5, 16).replace('T', ' ');
     var head = (r.ok ? '✅ ' : '❌ ') + when;
     var parts = [];
@@ -3035,6 +3063,19 @@ async function paintNightLog() {
     return '<div class="hint" style="margin:1px 0">' + head + ' · ' + (parts.join(' · ') || '无事可做') +
       (notes ? ' <span class="dim2">' + escapeHtml(notes) + '</span>' : '') + '</div>';
   }).join('');
+  // 「现在整理一次」：之前夜间整备**从来没有自动触发过**（用户问出来的）
+  bindNightRun();
+  var rb = document.getElementById('night-run');
+  if (rb) rb.onclick = async function () {
+    var m = document.getElementById('night-msg');
+    rb.disabled = true;
+    if (m) m.textContent = '整理中…（读事件 / 抽取 / 冲突消解，几十秒）';
+    try {
+      var r = await (await fetch('/api/night/run', { method: 'POST', headers: H, body: '{}' })).json();
+      if (m) m.textContent = r.ok ? '整理完了' : ('失败：' + (r.why || r.error || ''));
+      await paintNightLog();
+    } catch (e) { if (m) m.textContent = '请求失败：' + e.message; }
+  };
 }
 $("#m-save").addEventListener("click", async function () {
   const btn = this;
