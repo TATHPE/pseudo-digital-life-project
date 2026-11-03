@@ -1106,6 +1106,7 @@ description: 周日晚上把这一周压成三句话。
 
   <div class="ticker" id="ticker"></div>
   <form id="composer"><div class="wrap">
+    <button type="button" id="modechip" class="permchip" title="聊天 = 靠记忆（默认）；工作 = 带最近几轮上下文，适合连着干活">聊天</button>
     <button type="button" id="perm" class="permchip" title="当前会话的权限档（点开切换）">逐次确认</button>
     <textarea id="m" rows="1" placeholder="说点什么…"></textarea>
     <button id="stop" type="button" title="停止生成">■</button>
@@ -2614,6 +2615,28 @@ $("#egrlist").onclick = async function (e) {
 // ── 权限档：当前会话在输入框旁切；设置只放「以后新建会话的默认值」──
 var PERM = { preset: "ask", remainingS: 0 };
 var PERM_LABEL = { ask: "逐次确认", read: "仅可查看", write: "工作区内修改", full: "完全权限" };
+// 工作/聊天模式：点一下切换，存进 config（跨重启保留）
+var MODE = "chat";
+async function loadMode() {
+  try { MODE = (await (await fetch("/api/mode")).json()).mode || "chat"; } catch (e) { return; }
+  paintMode();
+}
+function paintMode() {
+  var b = document.getElementById("modechip");
+  if (!b) return;
+  b.textContent = MODE === "work" ? "工作" : "聊天";
+  b.className = "permchip" + (MODE === "work" ? " full" : "");
+}
+async function setMode(m) {
+  var r;
+  try { r = await (await fetch("/api/mode", { method: "POST", headers: H, body: JSON.stringify({ mode: m }) })).json(); }
+  catch (e) { return false; }
+  if (r.ok) { MODE = r.mode; paintMode(); return true; }
+  return false;
+}
+var modeBtn = document.getElementById("modechip");
+if (modeBtn) modeBtn.onclick = function () { setMode(MODE === "work" ? "chat" : "work"); };
+
 async function loadPermission() {
   try { PERM = await (await fetch("/api/permission")).json(); } catch (e) { return; }
   paintPermission();
@@ -2676,6 +2699,12 @@ document.addEventListener("keydown", function (e) {
 async function handleSlash(text) {
   // 不用正则：page.ts 是模板字符串，反斜杠在这一层就会被吃掉（踩过）
   var t = String(text || "").trim();
+  // /work /chat：切模式（等价于点那个 chip）
+  if (t === "/work" || t === "/chat") {
+    var okw = await setMode(t === "/work" ? "work" : "chat");
+    pushTicker(okw ? ("模式：" + (t === "/work" ? "工作（带最近几轮上下文）" : "聊天（靠记忆）")) : "切换失败");
+    return true;
+  }
   if (t !== "/permission" && t.indexOf("/permission ") !== 0) return false;
   var arg = t === "/permission" ? "" : t.slice(11).trim().split(" ")[0].toLowerCase();
   if (!arg) { document.getElementById("perm").click(); return true; }
@@ -3036,7 +3065,7 @@ document.addEventListener("click", (e) => {
     sideActive = t;
     for (const b of document.querySelectorAll("#side .item")) b.classList.toggle("on", b === t);
   }
-  if (v === "cfg") { show("cfg"); loadSuper(); loadHost(); loadSplash(); loadConfig().then(() => loadPersona($("#p-file").value)); return; }
+  if (v === "cfg") { show("cfg"); loadSuper(); loadHost(); loadSplash(); loadMode(); loadConfig().then(() => loadPersona($("#p-file").value)); return; }
   if (v === "toolview") { openTool(Number(t.dataset.tool)); return; }
   if (v === "memview") { openMemory(Number(t.dataset.mem)); return; }
   if (v === "docview") { openDoc(t.dataset.doc); return; }
@@ -3477,7 +3506,7 @@ else { const n = Number($("#jumpn").textContent || 0) + 1; $("#jumpn").textConte
   };
 })();
 
-applyAgentName(); loadAvatars(); applySections(); state(); timeline(); sessions(); tools(); memories(); docs(); audit(); readout(); loadConfig(); pending(); usage(); loadProposals(); loadSurfaceReview(); loadThreads(); loadReceipts(); loadStanding(); loadEgress();
+applyAgentName(); loadAvatars(); loadMode(); applySections(); state(); timeline(); sessions(); tools(); memories(); docs(); audit(); readout(); loadConfig(); pending(); usage(); loadProposals(); loadSurfaceReview(); loadThreads(); loadReceipts(); loadStanding(); loadEgress();
 setInterval(() => { state(); pending(); audit(); readout(); loadEgress(); }, 20000);
 </script>
 </body></html>`;

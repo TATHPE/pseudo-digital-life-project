@@ -97,7 +97,11 @@ function fit<T>(items: T[], max: number, budget: number, render: (x: T) => strin
 }
 
 export function buildBrief(input: BriefInput): BriefOutput {
-  const b: BriefBudget = { ...DEFAULT_BUDGET, ...(input.budget ?? {}) };
+  const work = input.mode === "work";
+  // 工作模式把预算放宽：要把最近几轮装进来，2000 装不下
+  const b: BriefBudget = work
+    ? { ...DEFAULT_BUDGET, total: 5200, recalled: 900, prefix: 2600, contracts: 600, ...(input.budget ?? {}) }
+    : { ...DEFAULT_BUDGET, ...(input.budget ?? {}) };
   const p = input.persona;
 
   // ── 稳定前缀（P1–P4）：逐字不变 ───────────────────────
@@ -211,6 +215,25 @@ export function buildBrief(input: BriefInput): BriefOutput {
     p17 = "【我的工具现状】" + bits.join("。") + "。";
   }
   slots.push({ id: "P17", label: "工具现状", tokens: estimateTokens(p17), stable: false });
+  // P18 最近几轮（**只有工作模式**）：让「刚才那条」「上面说的第二件」能被接住。
+  // 聊天模式故意不带 —— 那是它的设计（靠记忆召回，不随轮数增长）。
+  let p18 = "";
+  if (work) {
+    const hist = (input.history ?? []).slice(-16);      // 最多 8 轮（user+agent）
+    const lines: string[] = [];
+    let used = 0;
+    for (let i = hist.length - 1; i >= 0; i--) {
+      const h = hist[i]!;
+      const one = (h.role === "user" ? "你：" : "我：") + h.text.replace(/\s+/g, " ").slice(0, 400);
+      const t = estimateTokens(one);
+      if (used + t > 2400 || lines.length >= 12) break;   // 预算：装不下的更老那轮直接丢
+      used += t;
+      lines.unshift(one);
+    }
+    if (lines.length) p18 = "【最近几轮】" + String.fromCharCode(10) + lines.join(String.fromCharCode(10));
+  }
+  slots.push({ id: "P18", label: "最近几轮", tokens: estimateTokens(p18), stable: false });
+
   // ── 本轮输入 ────────────────────────────────────────
   const p11 = input.user;
   slots.push({ id: "P11", label: "用户输入", tokens: estimateTokens(p11), stable: false });
@@ -219,7 +242,7 @@ export function buildBrief(input: BriefInput): BriefOutput {
   const confidence: BriefOutput["confidence"] =
     narrativeHits === 0 ? "abstain" : narrativeHits < 2 ? "need_evidence" : "answer";
 
-  const body = [p5, p6, p7, p8, p9, p10, p12, p13, p14, p15, NO_FAKE_ACK, p16, p17].filter(Boolean).join("\n\n");
+  const body = [p5, p6, p7, p8, p9, p10, p12, p13, p14, p15, NO_FAKE_ACK, p16, p17, p18].filter(Boolean).join("\n\n");
   const text = [prefixText, body, p11].filter(Boolean).join("\n\n");
   const tokens = estimateTokens(text);
 

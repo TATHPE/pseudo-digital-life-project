@@ -7,6 +7,8 @@ import type { RoleConfig } from "./provider.ts";
 export interface AppConfig {
   roles: Record<string, RoleConfig>;
   ollama: string;
+  /** chat = 靠记忆召回（默认）；work = 带最近几轮历史 + 更宽的预算 */
+  mode?: "chat" | "work";
 }
 
 /** 纯默认（不读任何环境变量）：本地模型名一律为空，缺就是缺（C-5） */

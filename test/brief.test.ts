@@ -66,7 +66,7 @@ test("不变量 3：槽位固定且有序（P1–P11 + 她自己的 P12/P13）�
   // 都在召回之后、用户输入之前；全都是易变槽（装了技能不该让 prefixHash 变）
   // P16「我能看到多少」：她自己的容量，同样放易变区
   assert.deepEqual(r.slots.map((s) => s.id),
-    ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10", "P12", "P13", "P14", "P15", "P16", "P17", "P11"]);
+    ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10", "P12", "P13", "P14", "P15", "P16", "P17", "P18", "P11"]);
   assert.deepEqual(r.slots.filter((s) => s.stable).map((s) => s.id), ["P1", "P2", "P3", "P4"]);
 });
 
@@ -161,4 +161,20 @@ test("P17 工具现状：插件挂了/待生效，她自己必须知道（别假
 
   // 没传就不写这一槽（不编）
   assert.ok(!buildBrief(base({})).text.includes("【我的工具现状】"));
+});
+
+test("工作模式才带最近几轮历史；聊天模式故意不带（靠记忆召回，不随轮数增长）", () => {
+  const hist = [
+    { role: "user" as const, text: "先把 docs/24 的数字对一遍" },
+    { role: "agent" as const, text: "对好了，recall 1.000，abstainF1 1.000。" },
+    { role: "user" as const, text: "那第二条呢" },
+  ];
+  const chat = buildBrief(base({ mode: "chat", history: hist }));
+  assert.ok(!chat.text.includes("【最近几轮】"), "聊天模式不带历史");
+
+  const work = buildBrief(base({ mode: "work", history: hist }));
+  assert.ok(work.text.includes("【最近几轮】"), "工作模式要带");
+  assert.ok(work.text.includes("那第二条呢"), "最近一条必须在");
+  assert.ok(work.text.includes("你：") && work.text.includes("我："), "用户与她的话都要能区分");
+  assert.ok(work.tokens > chat.tokens, "工作模式预算更宽");
 });

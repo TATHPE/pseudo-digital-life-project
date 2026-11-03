@@ -1557,6 +1557,21 @@ export function createWebServer(deps: WebDeps) {
         return;
       }
       // ── 权限档位（形状照 DSH：当前会话用输入框旁的选择器切）──
+      // ── 工作/聊天模式：chat 靠记忆召回，work 带最近几轮历史 + 更宽预算 ──
+      if (req.method === "GET" && url.pathname === "/api/mode") {
+        try { json(res, 200, { mode: readFileConfig(deps.home).mode === "work" ? "work" : "chat" }); }
+        catch { json(res, 200, { mode: "chat" }); }
+        return;
+      }
+      if (req.method === "POST" && url.pathname === "/api/mode") {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
+        const body = JSON.parse(await readBody(req)) as { mode?: string };
+        const mode = body.mode === "work" ? "work" : "chat";
+        writeFileConfig(deps.home, { mode });
+        json(res, 200, { ok: true, mode });
+        return;
+      }
+
       if (req.method === "GET" && url.pathname === "/api/permission") {
         const cur = currentPreset(deps.home, now());
         json(res, 200, { ...cur, presets: PRESETS });
@@ -1800,6 +1815,16 @@ export function createWebServer(deps: WebDeps) {
         const rc = await recallForBrief(deps.db, emb, text, { memK: 6, docK: 4 });
         let omitted = rc.omittedMem;
         const recalled: MemoryLine[] = rc.recalled;
+        // 模式：chat（默认，靠记忆召回） / work（带最近几轮历史 + 更宽的预算）
+        const mode = (() => { try { return readFileConfig(deps.home).mode === "work" ? "work" as const : "chat" as const; } catch { return "chat" as const; } })();
+        // 工作模式才有历史：从 inbox 取最近的 user / agent 文本（不含工具轨迹 ——
+        // 跨轮的 tool 消息在协议上不合法，而且细节已经在右栏里）
+        const history = mode === "work"
+          ? messages(deps.db, deps.inboxDir)
+              .slice(-16)
+              .map((m) => ({ role: (m.role === "user" ? "user" : "agent") as "user" | "agent", text: String(m.text ?? "").slice(0, 600) }))
+              .filter((m) => m.text.trim())
+          : undefined;
         // P16：她自己的容量（问「你能读多少记忆」时要能直接答，不用去查库）
         let capMem = 0, capDocs: number | undefined, capChunks: number | undefined;
         try {
@@ -1888,6 +1913,8 @@ export function createWebServer(deps: WebDeps) {
           powers,
           capacity,
           plugins: pluginState,
+          mode,
+          ...(history ? { history } : {}),
           user: (() => { const note = omissionNote(omitted, rc.omittedDocs); return note ? note + String.fromCharCode(10) : ""; })() + text,
         });
 
@@ -1933,7 +1960,9 @@ export function createWebServer(deps: WebDeps) {
             // 6 步做不完「读文件→改→跑测试→看结果」；super 开着时再宽一点
             let supOn = false;
             try { supOn = (await import("../supergrant.ts")).superEnabled(deps.home); } catch { /* 当作没开 */ }
-            const agent = runAgent({ chat, tools: deps.tools!, maxSteps: supOn ? 16 : 12 }, brief.text, text);
+            // 工作模式：步数与单轮输出都放宽（连着干活要能多走几步、少被截断）
+            const steps = mode === "work" ? (supOn ? 24 : 20) : (supOn ? 16 : 12);
+            const agent = runAgent({ chat, tools: deps.tools!, maxSteps: steps }, brief.text, text);
             for await (const ev of agent) {
               if (aborted) break;
               if (ev.type === "delta") { full += ev.text; send({ type: "delta", text: ev.text, step: ev.step }); }

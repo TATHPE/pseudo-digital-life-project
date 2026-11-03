@@ -304,7 +304,9 @@ async function main(): Promise<void> {
         return (messages: unknown[], tools: any) => t.chat("express", messages, {
           // 1200 对中文长回答不够（≈800-1800 字），她经常在编号列表中间被切断。
           // 3000 是「一整轮说清楚」的量；再长的回答本来也该分轮。
-          containsMemory: false, purpose: "agent", maxTokens: 3000, tools,
+          // 工作模式：单轮输出放宽到 6000（连着干活时 3000 常在编号列表中间截断）
+          containsMemory: false, purpose: "agent",
+          maxTokens: (() => { try { return resolveConfig(HOME).mode === "work" ? 6000 : 3000; } catch { return 3000; } })(), tools,
         });
       };
       const toolCtx = () => ({ db: d.db, embedder: getEmbedder(), home: HOME, now: () => new Date() });

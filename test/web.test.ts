@@ -959,3 +959,19 @@ test("对话界面只呈现最终回答（不再靠文本匹配撤回）", () =>
   assert.ok(PAGE.includes("filter((k) => !turns[k].process)"), "正文只拼非过程的步");
   assert.ok(!PAGE.includes("acc.slice(-tx.length)"), "旧的文本匹配撤回要清掉");
 });
+
+test("工作/聊天模式：接口能读能切，面板有 chip，聊天模式不带历史", () => {
+  const server = readFileSync(join(process.cwd(), "src/web/server.ts"), "utf8");
+  assert.ok(server.includes('"/api/mode"'), "要有模式接口");
+  assert.ok(server.includes('readFileConfig(deps.home).mode === "work"'), "读配置");
+  assert.ok(server.includes("writeFileConfig(deps.home, { mode })"), "写配置（跨重启保留）");
+
+  assert.ok(PAGE.includes('id="modechip"'), "面板要有模式 chip");
+  assert.ok(PAGE.includes("setMode(MODE === \"work\" ? \"chat\" : \"work\")"), "点一下切换");
+  assert.ok(PAGE.includes('t === "/work" || t === "/chat"'), "斜杠命令也要能切");
+
+  // 工作模式放宽步数与单轮输出
+  assert.ok(server.includes('mode === "work" ? (supOn ? 24 : 20)'), "步数按模式放宽");
+  const cli = readFileSync(join(process.cwd(), "src/cli/jingjing.ts"), "utf8");
+  assert.ok(cli.includes('mode === "work" ? 6000 : 3000'), "单轮输出按模式放宽");
+});

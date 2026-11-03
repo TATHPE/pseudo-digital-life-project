@@ -50,6 +50,15 @@ export interface FileConfig {
    */
   agent?: { name?: string };
   /**
+   * 工作模式还是聊天模式（2026-11-03 用户要求）。
+   *
+   * chat（默认）：靠「记忆 + 召回」代替历史，简报固定 2000 token —— 日常闲聊、一百轮也不爆预算。
+   * work：带最近 8 轮真实对话历史、预算放宽到 5000、工具步数 6→16、单轮输出 3000→6000。
+   * 为什么必须分开：「不随轮数增长」在闲聊里成立，在连续干活时是错的 ——
+   * 你连着问三件有依赖的事时，聊天模式会断片（实测她说「我看不到你的界面」）。
+   */
+  mode?: "chat" | "work";
+  /**
    * 宿主层：跑脚本文件时用哪个解释器（2026-11-01 用户要求：PowerShell 默认，Git Bash 自配）。
    * 只影响「跑 home 里的脚本文件」，**不影响**任意命令的 argv 直传（见 src/host.ts 的头注释）。
    */
@@ -150,7 +159,7 @@ export function resolveConfig(home: string, env: Record<string, string | undefin
   if (night) roles["night"] = { ...roles["night"]!, model: night };
   if (lo.embed) roles["embed"] = { ...roles["embed"]!, model: lo.embed };
 
-  const out: AppConfig = { ollama: f.ollama ?? "http://127.0.0.1:11434", roles };
+  const out: AppConfig = { ollama: f.ollama ?? "http://127.0.0.1:11434", roles, ...(f.mode === "work" ? { mode: "work" as const } : { mode: "chat" as const }) };
   // 最后并 env —— 它永远赢
   return applyEnv(out, env);
 }

@@ -91,6 +91,14 @@ export interface BriefInput {
     pending: boolean;
   };
 
+  /**
+   * 工作模式还是聊天模式（2026-11-03）。
+   *  work 会把最近几轮真实对话装进 P18，并把预算放宽；chat 靠记忆召回，不带历史。
+   */
+  mode?: "chat" | "work";
+  /** 最近几轮对话（work 模式才有）：按时间正序，最后一条是最近的一轮 */
+  history?: Array<{ role: "user" | "agent"; text: string }>;
+
   capacity?: {
     memories: number;
     docs?: number;
