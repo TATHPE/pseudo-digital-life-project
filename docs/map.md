@@ -8,8 +8,8 @@
 
 | 项 | 数量 |
 |---|---|
-| 源文件（src/**/*.ts） | 104 |
-| 错误码 E_* | 198 |
+| 源文件（src/**/*.ts） | 105 |
+| 错误码 E_* | 203 |
 | verbs | 27 |
 | CLI 子命令 | 37 |
 
@@ -48,7 +48,7 @@
 | `E_BAD_KEY` | `src/web/server.ts` |
 | `E_BAD_LINK` | `src/web/server.ts` |
 | `E_BAD_MODEL` | `src/web/server.ts` |
-| `E_BAD_NAME` | `src/plugins.ts` `src/web/server.ts` |
+| `E_BAD_NAME` | `src/plugins.ts` `src/selfupdate.ts` `src/web/server.ts` |
 | `E_BAD_PATH` | `src/gitview.ts` `src/web/server.ts` |
 | `E_BAD_PRESET` | `src/web/server.ts` |
 | `E_BAD_RANGE` | `src/decayparams.ts` |
@@ -80,7 +80,7 @@
 | `E_EMBED_COUNT` | `src/transport.ts` |
 | `E_EMBED_DOWN` | `src/retrieve.ts` |
 | `E_EMBED_EMPTY` | `src/retrieve.ts` |
-| `E_EMPTY` | `src/agentguard.ts` `src/ingest.ts` `src/plugins.ts` `src/store.ts` `src/web/server.ts` |
+| `E_EMPTY` | `src/agentguard.ts` `src/ingest.ts` `src/plugins.ts` `src/selfupdate.ts` `src/store.ts` `src/web/server.ts` |
 | `E_EMPTY_EMBEDDING` | `src/embed.ts` |
 | `E_ENCODING` | `src/ingest.ts` `src/persona.ts` `src/web/server.ts` |
 | `E_EXISTS` | `src/plugins.ts` `src/verbs.ts` |
@@ -88,6 +88,7 @@
 | `E_EXPORT_DIR_NOT_EMPTY` | `src/handoff.ts` |
 | `E_EXPORT_INSIDE_HOME` | `src/handoff.ts` |
 | `E_EXTRACT` | `src/nightagent.ts` `src/nightly.ts` |
+| `E_FROZEN` | `src/selfupdate.ts` |
 | `E_GEN_NONE` | `src/generation.ts` |
 | `E_GEN_REASON` | `src/generation.ts` |
 | `E_GIT` | `src/gitview.ts` |
@@ -104,6 +105,7 @@
 | `E_GRANT_SCOPE` | `src/grant.ts` |
 | `E_GRANT_SECRET` | `src/grant.ts` |
 | `E_INDEX` | `src/assert.ts` |
+| `E_INSTALL` | `src/selfupdate.ts` |
 | `E_INTERP_BAD_BASIS` | `src/interpret.ts` |
 | `E_INTERP_NO_BASIS` | `src/interpret.ts` |
 | `E_INTERP_RESTATE` | `src/interpret.ts` |
@@ -118,6 +120,7 @@
 | `E_MISSING` | `src/assert.ts` |
 | `E_MISSING_ARG` | `src/toolsmoke.ts` |
 | `E_MODEL` | `src/autobio.ts` `src/eval.ts` `src/provider.ts` `src/transport.ts` |
+| `E_NEED_WHY` | `src/selfupdate.ts` |
 | `E_NEEDS_CONFIRM` | `src/confirm.ts` `src/execute.ts` `src/posture.ts` |
 | `E_NEEDS_EGRESS` | `src/egress.ts` `src/posture.ts` `src/project.ts` `src/supergrant.ts` `src/verbs.ts` |
 | `E_NIGHTLOG` | `src/web/server.ts` |
@@ -144,6 +147,7 @@
 | `E_NO_MEMORY` | `src/store.ts` `src/web/server.ts` |
 | `E_NO_MODEL` | `src/cli/night.ts` |
 | `E_NO_PATH` | `src/project.ts` `src/web/server.ts` |
+| `E_NO_PREV` | `src/selfupdate.ts` |
 | `E_NO_REASON` | `src/decayparams.ts` |
 | `E_NO_RELEASE` | `src/cli/deploy.ts` `src/deploy/slot.ts` `src/deploy/watchdog.ts` |
 | `E_NO_ROLE` | `src/cli/jingjing.ts` |
@@ -158,7 +162,7 @@
 | `E_NOT_DELETED` | `src/web/server.ts` |
 | `E_NOT_DIR` | `src/project.ts` |
 | `E_NOT_FILE` | `src/project.ts` |
-| `E_NOT_FOUND` | `src/agentguard.ts` `src/plugins.ts` `src/verbs.ts` `src/web/server.ts` |
+| `E_NOT_FOUND` | `src/agentguard.ts` `src/plugins.ts` `src/selfupdate.ts` `src/verbs.ts` `src/web/server.ts` |
 | `E_NOTHING_TO_DO` | `src/web/server.ts` |
 | `E_OLLAMA_DOWN` | `src/cli/jingjing.ts` |
 | `E_ORIGIN` | `src/web/server.ts` |
@@ -200,6 +204,7 @@
 | `E_SETUP_BUSY` | `src/web/server.ts` |
 | `E_SKILL_NAME` | `src/skills.ts` |
 | `E_SKILL_READ` | `src/skills.ts` |
+| `E_SMOKE` | `src/selfupdate.ts` |
 | `E_SPLASH` | `src/web/server.ts` |
 | `E_STANDING_BECAUSE` | `src/standing.ts` |
 | `E_STANDING_ID` | `src/standing.ts` |
@@ -217,7 +222,7 @@
 | `E_TOKEN_MISMATCH` | `src/cli/redteam.ts` `src/shell.ts` |
 | `E_TOKEN_UNKNOWN` | `src/shell.ts` |
 | `E_TOKEN_USED` | `src/cli/redteam.ts` `src/shell.ts` |
-| `E_TOO_BIG` | `src/ingest.ts` `src/plugins.ts` `src/project.ts` `src/verbs.ts` `src/web/server.ts` |
+| `E_TOO_BIG` | `src/ingest.ts` `src/plugins.ts` `src/project.ts` `src/selfupdate.ts` `src/verbs.ts` `src/web/server.ts` |
 | `E_TOOL` | `src/mcp.ts` `src/tools.ts` |
 | `E_TOOL_FAILED` | `src/agent.ts` |
 | `E_UNKNOWN_FIELD` | `src/decayparams.ts` |
@@ -346,6 +351,7 @@
 | `src/reembed.ts` | 重建向量索引（C-2） |
 | `src/retrieve.ts` | 两阶段检索（02 §7.1 实测修订 / 12 §9.1） |
 | `src/schema.ts` | M0 schema（02 §4 + 18 §1 的 outage/审计） */ |
+| `src/selfupdate.ts` | 自我更新三件套（2026-11-03）。按 `docs/18 §4.3` 的流程，落到我们能实现的那部分： |
 | `src/setup.ts` | 首次配置事务（H-4）。 |
 | `src/setupsteps.ts` | 引导步骤的执行（H-4 的第 2–4 步）。 |
 | `src/shell.ts` | T3 受限命令执行（04 §5.2 模板 / §4.1 一次性令牌 / §6 宿主层） |

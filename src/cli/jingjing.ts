@@ -874,6 +874,55 @@ async function main(): Promise<void> {
       return;
     }
 
+    case "selfupdate": {
+      // 自我更新三件套（docs/18 §4.3）：草稿 → 冒烟 → A/B 槽 → 回滚/冻结
+      const su = await import("../selfupdate.ts");
+      const d2 = openDb(dbFile);
+      const sub = rest[0] ?? "list";
+      if (sub === "list") {
+        const drafts = su.listDrafts(HOME);
+        console.log(JSON.stringify({
+          frozenUntil: su.frozenUntil(d2.db),
+          drafts: drafts.map((x) => ({ id: x.id, bytes: x.bytes, because: x.because, evidence: x.evidence, at: x.at })),
+          versions: su.recentVersions(HOME, 5).map((v) => ({ file: v.file, head: v.text.split(String.fromCharCode(10)).slice(2, 4).join(" · ") })),
+        }, null, 2));
+        return;
+      }
+      if (sub === "new") {
+        // selfupdate new <id> <file.md> --because "…"   （内容从文件读，避免命令行转义）
+        const id = rest[1]; const file = rest[2];
+        const bi = rest.indexOf("--because");
+        const because = bi > 0 ? String(rest[bi + 1] ?? "") : "";
+        if (!id || !file) { console.error("用法: selfupdate new <id> <文件.md> --because 为什么"); process.exitCode = 2; return; }
+        const r = su.proposeSkill(HOME, { id, content: readFileSync(file, "utf8"), because });
+        console.log(JSON.stringify(r, null, 2));
+        if (!r.ok) process.exitCode = 1;
+        return;
+      }
+      if (sub === "smoke") {
+        console.log(JSON.stringify(su.smokeDraft(HOME, String(rest[1] ?? "")), null, 2));
+        return;
+      }
+      if (sub === "promote") {
+        const r = su.promoteDraft(HOME, d2.db, String(rest[1] ?? ""));
+        console.log(JSON.stringify(r, null, 2));
+        if (!r.ok) process.exitCode = 1;
+        return;
+      }
+      if (sub === "revert") {
+        const r = su.revertSkill(HOME, d2.db, String(rest[1] ?? ""), String(rest[2] ?? ""));
+        console.log(JSON.stringify(r, null, 2));
+        if (!r.ok) process.exitCode = 1;
+        return;
+      }
+      if (sub === "drop") {
+        console.log(JSON.stringify(su.dropDraft(HOME, String(rest[1] ?? "")), null, 2));
+        return;
+      }
+      console.error("用法: selfupdate list | new <id> <文件> --because … | smoke <id> | promote <id> | revert <id> [理由] | drop <id>");
+      process.exitCode = 2;
+      return;
+    }
     case "capabilities": {
       // B-0：每一行都能追到代码（工具来自 verbs，provider 来自配置，degraded 来自真探测）
       const d = openDb(dbFile);
