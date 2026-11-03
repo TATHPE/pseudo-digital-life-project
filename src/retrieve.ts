@@ -44,6 +44,10 @@ export interface SearchOpts {
   fadingRelevance?: number; // fading 需"话题直接命中"，默认 0.45
   flashbackCap?: number;    // dormant 强线索唤醒上限，默认 2
   mmrLambda?: number;       // 默认 0.7
+  /** RRF 的 K（默认 60）。越小越偏向名次靠前的那一路 */
+  rrfK?: number;
+  /** 权重在融合里占多少（默认 0.4；其余给名次） */
+  weightMix?: number;
 }
 
 export interface SearchMeta {
@@ -189,7 +193,11 @@ export async function search(
   // 合并时取各路最小的 bm25（bm25 是负数，越小越相关），再整体重排一次名次。
   // JJ_QUERY_REWRITE=0 可关掉（只为做 A/B 对照：同一份代码、同一份数据跑两次）。
   const rewriteOn = process.env.JJ_QUERY_REWRITE !== "0";
-  if (rewriteOn && metaById.size < 2) {
+  // 默认**总是**跑改写（2026-11-03 用难用例量出来的）：
+  //   只在「候选 < 2」时触发 → R@1 7/10；总是触发 → 8/10，且三个夹具都没回归。
+  //   代价是每个查询多跑 1-2 次 FTS（每次 < 5ms）。JJ_REWRITE_MIN_CANDS 可回调。
+  const rewriteMin = Number(process.env.JJ_REWRITE_MIN_CANDS ?? 999);
+  if (rewriteOn && metaById.size < rewriteMin) {
     let added = 0;
     const variants = queryVariants(query).slice(1);
     for (const v of variants) {
@@ -258,7 +266,21 @@ export async function search(
   const bmRank = new Map(ranked.map((r, i) => [r.id, i + 1]));
   const cosSorted = [...cos.entries()].sort((a, b) => b[1] - a[1]);
   const cosRank = new Map(cosSorted.map(([id], i) => [id, i + 1]));
-  const K = 60;
+  // 覆盖率特征（实验开关 JJ_COVER_MIX，默认 0 = 关）：
+  // 与查询共享的 bigram 越多，越可能是真在说这件事 —— 对「虚词/偶然重合」有抑制作用。
+  // 默认 0.5（2026-11-03 用难用例量出来的）：R@1 8/10 → 9/10，三个旧夹具无回归。
+  // 0.3 / 0.5 / 0.8 结果相同 —— 说明 0.3 就够，取 0.5 留余量。
+  const COVER = Number(process.env.JJ_COVER_MIX ?? 0.5);
+  const qBi = [...new Set(bigrams(query))];
+  const coverOf = (text2: string): number => {
+    if (!COVER || !qBi.length) return 1;
+    const set = new Set(bigrams(text2));
+    let hit = 0;
+    for (const b2 of qBi) if (set.has(b2)) hit++;
+    return hit / qBi.length;
+  };
+  const K = opts.rrfK ?? 60;
+  const MIX = opts.weightMix ?? 0.4;
   const fused: Hit[] = rows.map((r, i) => {
     const rrf = 1 / (K + (bmRank.get(r.id) ?? lim)) + (cosRank.has(r.id) ? 1 / (K + cosRank.get(r.id)!) : 0);
     const c = cos.get(r.id);
@@ -267,7 +289,7 @@ export async function search(
     return {
       id: r.id, text: r.text, stage: r.stage, weight: r.weight, relevance,
       via: "active" as const,
-      score: rrf * (0.6 + 0.4 * r.weight),
+      score: rrf * ((1 - MIX) + MIX * r.weight) * (COVER ? (1 - COVER) + COVER * coverOf(r.text) : 1),
       cite: `mem:${r.id}`, bm25Rank: bmRank.get(r.id), cosRank: cosRank.get(r.id), cosine: c,
       ...((r as { eraseStage?: number }).eraseStage ? { eraseStage: (r as { eraseStage?: number }).eraseStage } : {}),
       ...(r.sensitivity ? { sensitivity: r.sensitivity as "local_only" | "shareable" } : {}),
@@ -275,9 +297,23 @@ export async function search(
   });
 
   // ── 三道闸（01 §6）：不是"一刀切阈值"，而是按 stage 走不同门 ──
+  // 硬门槛（实验开关 JJ_COVER_MIN，默认 0 = 关）：
+  // 只靠向量进来、且**与查询一个 bigram 都不共享**的候选，不可信 —— 那是看起来像。
+  // **默认关**：它能挡住 abstain 的误召回（2/2），但会误杀「纯语义」的真命中
+  // （实测：把「我对花生过敏」从命中 2 条杀成 0 条）。这个矛盾留给 reranker。
+  const COVER_MIN = Number(process.env.JJ_COVER_MIN ?? 0);
+  let fused2 = fused;
+  if (COVER_MIN > 0) {
+    fused2 = fused.filter((h) => {
+      if (h.bm25Rank) return true;                 // 词面命中过：不算只靠向量
+      return coverOf(h.text) >= COVER_MIN;
+    });
+    if (fused2.length !== fused.length) degraded.push("cover_gate:" + (fused.length - fused2.length));
+  }
+
   const injectable: Hit[] = [];
   let flashUsed = 0;
-  for (const h of fused) {
+  for (const h of fused2) {
     if (h.stage === "active") { injectable.push({ ...h, via: "active" }); continue; }
     if (h.stage === "fading" && h.weight >= fadingMin && h.relevance >= fadingRel) {
       injectable.push({ ...h, via: "fading" }); continue;
@@ -288,7 +324,7 @@ export async function search(
       injectable.push({ ...h, via: "flashback", weight: Math.max(h.weight, 0.5), score: h.score * 1.2 });
     }
   }
-  if (!injectable.length) degraded.push(fused.length ? "all_below_threshold" : "no_candidates");
+  if (!injectable.length) degraded.push(fused2.length ? "all_below_threshold" : "no_candidates");
 
   // ── MMR 去冗余 ──────────────────────────────
   const pool = injectable.slice(0, Math.max(k * 3, 30));

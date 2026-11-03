@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 /**
  * 查询改写（E-10）：别名归一 + 多路补召回。
  *
@@ -72,4 +73,17 @@ test("接上了检索：同一份数据，改写一关就搜不到（我妈 vs �
     // Windows 上 sqlite 句柄没释放时删目录会 EPERM —— 清理失败不该让测试变红
     try { rmSync(home, { recursive: true, force: true }); } catch { /* ignore */ }
   }
+});
+
+test("改写默认总是跑（用难用例量出来的：R@1 7/10 → 8/10）", () => {
+  const src = readFileSync(join(process.cwd(), "src/retrieve.ts"), "utf8");
+  assert.ok(src.includes("process.env.JJ_REWRITE_MIN_CANDS ?? 999"), "默认不再等「候选<2」");
+  assert.ok(src.includes("JJ_QUERY_REWRITE"), "仍可用环境变量关掉");
+});
+
+test("覆盖率加权默认 0.5；硬门槛默认关（它会误杀纯语义的真命中）", () => {
+  const src = readFileSync(join(process.cwd(), "src/retrieve.ts"), "utf8");
+  assert.ok(src.includes("process.env.JJ_COVER_MIX ?? 0.5"), "覆盖率加权默认开");
+  assert.ok(src.includes("process.env.JJ_COVER_MIN ?? 0"), "硬门槛默认关");
+  assert.ok(src.includes("这个矛盾留给 reranker"), "把矛盾写在代码里，别让它变成谜");
 });
