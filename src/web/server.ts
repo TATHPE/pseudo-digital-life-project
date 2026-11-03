@@ -123,7 +123,7 @@ export interface WebDeps {
   /** B-0：真实 MCP 连接结果（面板要能说清"哪个 server 没挂上"） */
   mcpInfo?: { servers: string[]; tools: string[]; errors: string[]; /** 启动时加载的那份 mcp.json 指纹（判「待生效」） */ running?: string | null };
   getEmbedder: () => Embedder | null;
-  /** 手动跑一次夜间整备（面板按钮用）。返回退出码 */
+  /** 手动跑一次闲时整理（面板按钮用）。返回退出码 */
   runNight?: () => Promise<number>;
   /** 重连 MCP（不给 server 就全部）。返回最新实况 */
   reconnectMcp?: (server?: string) => Promise<{ servers: string[]; tools: string[]; errors: string[]; dropped: number; added: number }>;
@@ -442,7 +442,7 @@ export function createWebServer(deps: WebDeps) {
         return;
       }
 
-      // ── 最近几晚夜间整备干了什么（用户：本地 LLM 完全未知）──
+      // ── 最近几晚闲时整理干了什么（用户：本地 LLM 完全未知）──
       if (req.method === "GET" && url.pathname === "/api/nightlog") {
         try {
           const rows = deps.db.prepare("SELECT ts,ok,payload FROM events WHERE kind='night' ORDER BY ts DESC LIMIT 14").all() as Array<{ ts: string; ok: number; payload?: string }>;
@@ -510,7 +510,7 @@ export function createWebServer(deps: WebDeps) {
         let memories = 0;
         try { memories = Number((deps.db.prepare("SELECT count(*) c FROM memories WHERE status='active'").get() as { c?: number })?.c ?? 0); }
         catch { degraded.push("db_unreadable"); }
-        // 夜间整备降级是**可见状态**，不是日志里的一行（E-6：否则 energy 滑到 0 也没人知道为什么）
+        // 闲时整理降级是**可见状态**，不是日志里的一行（E-6：否则 energy 滑到 0 也没人知道为什么）
         try { if (meta(deps.db, "nightly_skipped")) degraded.push("nightly-skipped"); } catch { /* ignore */ }
         // 索引身份（C-2）：换了 embedding 模型却没重建 → 召回不可信，必须让探针看得见
         try {
@@ -1559,7 +1559,7 @@ export function createWebServer(deps: WebDeps) {
         return;
       }
       // ── 权限档位（形状照 DSH：当前会话用输入框旁的选择器切）──
-      // ── 夜间整备：该不该跑（GET）+ 现在跑一次（POST）──
+      // ── 闲时整理：该不该跑（GET）+ 现在跑一次（POST）──
       if (req.method === "GET" && url.pathname === "/api/night/due") {
         try {
           const { dueInfo, nightRunning } = await import("../nightdue.ts");
@@ -1569,7 +1569,7 @@ export function createWebServer(deps: WebDeps) {
       }
       if (req.method === "POST" && url.pathname === "/api/night/run") {
         const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
-        if (!deps.runNight) { json(res, 400, { error: "E_NO_NIGHT", why: "这个进程没有夜间整备入口" }); return; }
+        if (!deps.runNight) { json(res, 400, { error: "E_NO_NIGHT", why: "这个进程没有闲时整理入口" }); return; }
         try {
           const code = await deps.runNight();
           json(res, 200, { ok: code === 0, code });

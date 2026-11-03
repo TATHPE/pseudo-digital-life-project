@@ -8,8 +8,8 @@
 
 | 项 | 数量 |
 |---|---|
-| 源文件（src/**/*.ts） | 106 |
-| 错误码 E_* | 205 |
+| 源文件（src/**/*.ts） | 107 |
+| 错误码 E_* | 206 |
 | verbs | 27 |
 | CLI 子命令 | 37 |
 
@@ -110,6 +110,7 @@
 | `E_INTERP_NO_BASIS` | `src/interpret.ts` |
 | `E_INTERP_RESTATE` | `src/interpret.ts` |
 | `E_INTERP_SHORT` | `src/interpret.ts` |
+| `E_INTERP_UNGROUNDED` | `src/interpretnight.ts` |
 | `E_IS_DIR` | `src/verbs.ts` |
 | `E_MAX_STEPS` | `src/agent.ts` |
 | `E_MCP` | `src/mcp.ts` |
@@ -294,7 +295,7 @@
 | `src/cli/deploy.ts` | !/usr/bin/env node |
 | `src/cli/eval.ts` | CLI：eval —— 跑评估（19 §0.1 W-B）。 |
 | `src/cli/jingjing.ts` | !/usr/bin/env node |
-| `src/cli/night.ts` | CLI：night —— 跑一次夜间整备（抽取 + 冲突消解 + 归并 + 自传）。 |
+| `src/cli/night.ts` | CLI：night —— 跑一次闲时整理（抽取 + 冲突消解 + 归并 + 自传）。 |
 | `src/cli/redteam.ts` | 红队用例（04 §10）：14 条攻击，全部要拦。可执行、可回归。 |
 | `src/commands.ts` | CLI 子命令表（B-0 用）。它必须与 `src/cli/jingjing.ts` 的 switch 分支一致 —— |
 | `src/config.ts` | 角色配置（13 §2） |
@@ -328,6 +329,7 @@
 | `src/host.ts` | 宿主层（host）的**解释器选择**（2026-11-01 用户要求）： |
 | `src/ingest.ts` | 摄入管道（02 §5.1 转换 → §5.2 分块 → §5.3 幂等） |
 | `src/interpret.ts` | 记忆的「意义层」（H-b）—— 人性缺的第二块。 |
+| `src/interpretnight.ts` | 「她对你的理解」的提炼（2026-11-03）。 |
 | `src/interview.ts` | 人格访谈（H-4 第 ⑥ 步）。 |
 | `src/journal.ts` | inbox：原始事件的唯一事实源（18 §1.1） |
 | `src/links.ts` | 记忆之间的线（J-5）：抽检与"一句话拆线"。 |
@@ -336,8 +338,8 @@
 | `src/md.ts` | 极简 Markdown → HTML（够用、可测、零依赖；所有文本先转义） */ |
 | `src/memoryonly.ts` | 「本地模型只管理记忆」这条边界，写成**结构**（用户 2026-10-31 再次确认）。 |
 | `src/nightagent.ts` | 夜间整理的「工具循环」抽取器（P0-2） |
-| `src/nightdue.ts` | 夜间整备的自动触发（2026-11-03）。 |
-| `src/nightly.ts` | 夜间整备（01 §9）：消化 inbox → 抽取 → 冲突消解 → 归并。 |
+| `src/nightdue.ts` | 闲时整理的自动触发（2026-11-03）。 |
+| `src/nightly.ts` | 闲时整理（01 §9）：消化 inbox → 抽取 → 冲突消解 → 归并。 |
 | `src/notify.ts` | 回执通道（D-3 的前置，`docs/25 §4`）。 |
 | `src/ollama.ts` | Ollama 探测（C-4）：一次 /api/tags + 两个最小调用探针。 |
 | `src/persona.ts` | import { readFileSync, mkdirSync, existsSync, readdirSync } from "node |

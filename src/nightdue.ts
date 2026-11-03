@@ -1,7 +1,7 @@
 /**
- * 夜间整备的自动触发（2026-11-03）。
+ * 闲时整理的自动触发（2026-11-03）。
  *
- * 用户的追问：「这个夜间整理从来没启动过吗」
+ * 用户的追问：「这个闲时整理从来没启动过吗」
  * 查下来是真的：`events(kind=night)` 只有一条，还是我手动跑的那次；
  * CLI 只有 `jingjing night`，`standing`/`cron` 里没有模板，桌面壳没有，面板也没有按钮。
  * 于是「她会自己整理记忆」这句承诺，一直是**空头**。
@@ -68,7 +68,7 @@ export function dueInfo(db: DatabaseSync, now = new Date(), opts: { hours?: numb
   };
 }
 
-/** 进程内锁：一次只跑一个夜间整备 */
+/** 进程内锁：一次只跑一个闲时整理 */
 let running = false;
 export function nightRunning(): boolean { return running; }
 

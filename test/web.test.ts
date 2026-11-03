@@ -908,17 +908,18 @@ test("右栏「过程」按步分组：一段推理 + 它的动作 = 一步，�
   assert.ok(PAGE.includes("次动作"), "步头要数动作次数");
 });
 
-test("夜间整备留痕：每夜一条 events，成功失败都记，面板能看", () => {
+test("闲时整理留痕：每次一条 events，成功失败都记，面板能看", () => {
   const nightly = readFileSync(join(process.cwd(), "src/nightly.ts"), "utf8");
   assert.ok(nightly.includes("function recordNight("), "要有留痕函数");
   assert.ok(nightly.includes('"night", "system", "nightly"'), "写进 events(kind=night)");
-  // 两个返回点都要记：抽取失败、正常结束
-  assert.equal(nightly.split("recordNight(deps.db, report, now").length - 1, 2, "失败与成功都要留痕");
+  // **四个返回点都要记**：缺模型 / 没有新事件 / 抽取失败 / 正常结束
+  // （一开始只接了两处，于是「点了按钮跑了但没记录」查不到）
+  assert.equal(nightly.split("recordNight(deps.db, report, now").length - 1, 4, "四条路径都要留痕");
 
   const server = readFileSync(join(process.cwd(), "src/web/server.ts"), "utf8");
   assert.ok(server.includes('"/api/nightlog"'), "要有接口");
   assert.ok(PAGE.includes("paintNightLog"), "面板要显示");
-  assert.ok(PAGE.includes("还没有夜间整备记录"), "从没跑过时要说清楚怎么跑");
+  assert.ok(PAGE.includes("还没有闲时整理记录"), "从没跑过时要说清楚怎么跑");
 });
 
 test("插件可以单独重连：不用重启整个程序（学 Coopanion 的 World 单独重启）", () => {

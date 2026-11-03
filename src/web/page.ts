@@ -646,6 +646,12 @@ export const PAGE = `<!doctype html>
   #jump:hover { background:rgba(233,240,242,.14); }
   /* 两档模式（学 Coopanion 的 normal / advanced）：默认只留常用的，其余收在高级里 */
   body:not(.advanced) #side .item[data-adv] { display:none; }
+  #idle-run { margin:8px 0 0; display:flex; align-items:center; justify-content:space-between; gap:6px;
+    width:100%; font-size:11px; letter-spacing:.08em; padding:5px 8px;
+    border:1px solid var(--line-dim); background:transparent; color:var(--ink-dim); cursor:pointer; }
+  #idle-run:hover { color:var(--ink); border-color:var(--line); }
+  #idle-run[disabled] { opacity:.55; cursor:default; }
+  #idle-run .m { color:var(--ink-dim); font-size:10px; }
   #adv-toggle { margin:6px 0 0; font-size:11px; letter-spacing:.08em; padding:5px 8px;
     border:1px solid var(--line-dim); background:transparent; color:var(--ink-dim); cursor:pointer; width:100%; }
   #adv-toggle:hover { color:var(--ink); border-color:var(--line); }
@@ -731,6 +737,9 @@ export const PAGE = `<!doctype html>
       <button class="item dimmore" id="toolmore" data-adv hidden>显示全部</button>
     </div>
     <button class="item" type="button" data-view="cfg">设置<span class="m">接口 / 人格</span><i class="lamp" id="lamp-cfg"></i></button>
+    <button type="button" id="idle-run" class="railbtn" title="读一遍最近的对话，提炼记忆与「她对你的理解」。跑几十秒，可以继续聊天">
+      <span>闲时整理</span><span class="m" id="idle-when">…</span>
+    </button>
     <button type="button" id="adv-toggle" aria-pressed="false">显示高级项</button>
   </div>
 </aside>
@@ -1046,7 +1055,7 @@ description: 周日晚上把这一周压成三句话。
         <div id="m-nights"></div>
         <div class="two">
           <div><label>共享默认 · route / extract / salience / conflict</label><select id="m-default"></select></div>
-          <div><label>夜间整理 · 自传与反思</label><select id="m-night"></select></div>
+          <div><label>闲时整理 · 自传与反思</label><select id="m-night"></select></div>
         </div>
         <div class="two">
           <div><label>embedding · 换它必须重建索引</label><select id="m-embed"></select></div>
@@ -1303,12 +1312,12 @@ async function state() {
   var e3 = $("#ro-energy");
   if (e3 && en !== null) {
     e3.innerHTML = Math.round(en * 100) + "<span class='u'>%</span>";
-    // E-6 第二步：energy 的唯一恢复点在夜间整备；它没跑就得说清，否则只能看着数字掉
+    // E-6 第二步：energy 的唯一恢复点在闲时整理；它没跑就得说清，否则只能看着数字掉
     var nrc = document.querySelector(".ro-w");
     if (nrc) {
       nrc.title = s.nightlySkipped
-        ? "energy 只在夜间整备后恢复 —— 现在夜间未运行（" + String(s.nightlySkipped).slice(11, 19) + " · 缺模型）"
-        : "energy：每轮对话 -2%，夜间整备 +25%";
+        ? "energy 只在闲时整理后恢复 —— 现在夜间未运行（" + String(s.nightlySkipped).slice(11, 19) + " · 缺模型）"
+        : "energy：每轮对话 -2%，闲时整理 +25%";
     }
     var segs = $("#ro-segs");
     if (segs) {
@@ -3029,7 +3038,7 @@ async function paintNightLog() {
   var d = null;
   try { d = await (await fetch('/api/nightlog')).json(); } catch (e) { box.textContent = ''; return; }
   var runs = (d && d.runs) || [];
-  // 该不该跑 + 现在跑一次：之前夜间整备**从来没有自动触发过**（用户问出来的）
+  // 该不该跑 + 现在跑一次：之前闲时整理**从来没有自动触发过**（用户问出来的）
   var due = null;
   try { due = await (await fetch('/api/night/due')).json(); } catch (e) { /* 拿不到就不显示 */ }
   var bar = '';
@@ -3042,7 +3051,7 @@ async function paintNightLog() {
       '</span></div>';
   }
   if (!runs.length) {
-    box.innerHTML = bar + '<p class="hint">还没有夜间整备记录。它会在启动时自动检查（距上次超过 20 小时就后台跑）；也可以点上面的按钮现在跑一次。</p>';
+    box.innerHTML = bar + '<p class="hint">还没有闲时整理记录。它会在启动时自动检查（距上次超过 20 小时就后台跑）；也可以点上面的按钮现在跑一次。</p>';
     bindNightRun();
     return;
   }
@@ -3063,7 +3072,7 @@ async function paintNightLog() {
     return '<div class="hint" style="margin:1px 0">' + head + ' · ' + (parts.join(' · ') || '无事可做') +
       (notes ? ' <span class="dim2">' + escapeHtml(notes) + '</span>' : '') + '</div>';
   }).join('');
-  // 「现在整理一次」：之前夜间整备**从来没有自动触发过**（用户问出来的）
+  // 「现在整理一次」：之前闲时整理**从来没有自动触发过**（用户问出来的）
   bindNightRun();
   var rb = document.getElementById('night-run');
   if (rb) rb.onclick = async function () {
@@ -3085,7 +3094,7 @@ $("#m-save").addEventListener("click", async function () {
     const body = { default: $("#m-default").value, night: $("#m-night").value, embed: $("#m-embed").value };
     const r = await fetch("/api/models", { method: "PUT", headers: H, body: JSON.stringify(body) });
     const j = await r.json();
-    $("#m-msg").textContent = j.ok ? "已保存：下次夜间整备与重启面板后生效" : ("失败：" + (j.error || r.status));
+    $("#m-msg").textContent = j.ok ? "已保存：下次闲时整理与重启面板后生效" : ("失败：" + (j.error || r.status));
     await loadModels(true);
   } catch (e) {
     $("#m-msg").textContent = "保存失败：" + e.message;
@@ -3547,8 +3556,37 @@ else { const n = Number($("#jumpn").textContent || 0) + 1; $("#jumpn").textConte
   };
 })();
 
-applyAgentName(); loadAvatars(); loadMode(); applySections(); state(); timeline(); sessions(); tools(); memories(); docs(); audit(); readout(); loadConfig(); pending(); usage(); loadProposals(); loadSurfaceReview(); loadThreads(); loadReceipts(); loadStanding(); loadEgress();
+// 左栏「闲时整理」：显示上次什么时候、该不该跑；点一下就跑（用户要的显眼入口）
+async function loadIdle() {
+  var btn = document.getElementById('idle-run'), when = document.getElementById('idle-when');
+  if (!btn) return;
+  var d = null;
+  try { d = await (await fetch('/api/night/due')).json(); } catch (e) { if (when) when.textContent = ''; return; }
+  if (d && d.running) { btn.disabled = true; if (when) when.textContent = '整理中…'; return; }
+  btn.disabled = false;
+  if (when) {
+    if (!d || !d.lastAt) when.textContent = '还没跑过';
+    else {
+      var t = String(d.lastAt);
+      // 只说「多久前」，不说绝对时间：绝对时间要看一眼才知道过了多久
+      var h = (Date.now() - Date.parse(t)) / 3600000;
+      when.textContent = h < 1 ? '刚刚' : (h < 48 ? Math.round(h) + ' 小时前' : Math.round(h / 24) + ' 天前');
+    }
+  }
+}
+document.getElementById('idle-run').onclick = async function () {
+  var btn = this, when = document.getElementById('idle-when');
+  btn.disabled = true;
+  if (when) when.textContent = '整理中…';
+  try {
+    var r = await (await fetch('/api/night/run', { method: 'POST', headers: H, body: '{}' })).json();
+    pushTicker(r.ok ? '闲时整理完成' : ('整理失败：' + (r.why || r.error || '')));
+  } catch (e) { pushTicker('整理请求失败：' + e.message); }
+  await loadIdle();
+};
+applyAgentName(); loadAvatars(); loadMode(); loadIdle(); applySections(); state(); timeline(); sessions(); tools(); memories(); docs(); audit(); readout(); loadConfig(); pending(); usage(); loadProposals(); loadSurfaceReview(); loadThreads(); loadReceipts(); loadStanding(); loadEgress();
 setInterval(() => { state(); pending(); audit(); readout(); loadEgress(); }, 20000);
+setInterval(loadIdle, 300000);
 </script>
 </body></html>`;
 

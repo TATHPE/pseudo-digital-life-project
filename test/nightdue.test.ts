@@ -7,7 +7,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openDb } from "../src/db.ts";
@@ -59,4 +59,12 @@ test("kick：到期才起，且在跑的时候不会起第二个（同一批事�
     assert.equal(calls, 1, "只跑了一次");
     assert.equal(nightRunning(), false, "跑完释放");
   } finally { try { rmSync(home, { recursive: true, force: true }); } catch { /* ignore */ } }
+});
+
+test("三条提前 return 都要留痕：缺模型 / 没有新事件 / 抽取失败", () => {
+  // 之前只有「抽取失败」写记录，另外两条静默 return ——
+  // 于是「点了按钮、跑了、但什么都没发生」在历史里查不到（用户以为功能没启动）。
+  const src = readFileSync(join(process.cwd(), "src/nightly.ts"), "utf8");
+  const n = (src.match(/recordNight\(deps\.db, report, now/g) ?? []).length;
+  assert.equal(n, 4, "四处都要记：缺模型 / 没有新事件 / 抽取失败 / 正常结束，实得 " + n);
 });

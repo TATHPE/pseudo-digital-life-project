@@ -1,5 +1,5 @@
 /**
- * 夜间整备（01 §9）：消化 inbox → 抽取 → 冲突消解 → 归并。
+ * 闲时整理（01 §9）：消化 inbox → 抽取 → 冲突消解 → 归并。
  *
  * 设计取舍：
  *  · 抽取用**本地模型**（role=extract，W-A：能看到记忆原文的角色必须 local）
@@ -32,6 +32,11 @@ export interface NightlyDeps {
   embedder: Embedder | null;
   /** 调本地模型做抽取（非流式）。返回模型原始文本 */
   extract: (prompt: string) => Promise<string>;
+  /**
+   * **纯文本**补全（不带工具 schema），只给「她对你的理解」那一层用。
+   * 说明：extract 是带工具的抽取器，小模型拿到工具会去调工具而不是回一句话。
+   */
+  complete?: (prompt: string) => Promise<string>;
   /** 每个窗口多少条事件（P1-1a：长上下文会稀释注意力，默认 20） */
   windowSize?: number;
   /**
@@ -407,6 +412,9 @@ export async function runNightly(deps: NightlyDeps): Promise<NightlyReport> {
     notes.push(`SKIPPED: ${deps.skipExtract}`);
     noteNightlySkip(deps.db, deps.skipExtract, now);
     report.ms = Date.now() - t0;
+    // 留痕（2026-11-03）：缺模型也得记一条 —— 否则「它今晚没干活」在历史里是隐形的，
+    // 用户只会觉得「这个功能从来没启动过」（他确实是这么问的）。
+    recordNight(deps.db, report, now, true);
     return report;
   }
 
@@ -414,6 +422,9 @@ export async function runNightly(deps: NightlyDeps): Promise<NightlyReport> {
     report.decayed = tickDecay(deps.db, now);
     clearNightlySkip(deps.db);
     report.ms = Date.now() - t0;
+    report.notes.push("没有新事件可整理（游标之后是空的）");
+    // 留痕：点了按钮、跑了、但没有新东西 —— 这也是一条真实结果，不能什么都不说。
+    recordNight(deps.db, report, now, false);
     return report;
   }
 
@@ -609,6 +620,21 @@ export async function runNightly(deps: NightlyDeps): Promise<NightlyReport> {
     const er = tickErosion(deps.db, now);
     if (er.eroded || er.archived) report.notes.push("ERODE: 侵蚀 " + er.eroded + " 条 / 归档 " + er.archived + " 条");
   } catch { /* 侵蚀失败不拖垮整备 */ }
+  // ── 她对你的理解（2026-11-03）：这一层之前**从来没有被写入过** ──
+  // interpret.ts 的机制写得很完整（必须带 basis、不许复述、改看法要 supersede），
+  // 但 writeInterpretation 全仓只有定义、没有调用方 → 简报 P13 永远是空的。
+  // 只在「这一轮真的学到了新东西」时才提炼：没有新记忆就没有新理解，省一次模型调用。
+  if (!deps.skipExtract && (report.added > 0 || report.merged > 0 || report.refined > 0)) {
+    try {
+      const { refineInterpretations } = await import("./interpretnight.ts");
+      // 优先用纯文本通道；没有就退回 extract（会差一些，但不会崩）
+      const ir = await refineInterpretations(deps.db, { complete: deps.complete ?? deps.extract, now });
+      report.notes.push("INTERP: 写 " + ir.written + (ir.replaced ? "（其中改写 " + ir.replaced + "）" : "") + (ir.skipped.length ? " · " + ir.skipped.slice(0, 2).join("；") : ""));
+    } catch (e) {
+      report.notes.push("INTERP: 失败 " + String((e as Error)?.message ?? e).slice(0, 80));
+    }
+  }
+
   clearNightlySkip(deps.db);
   report.ms = Date.now() - t0;
   recordNight(deps.db, report, now, report.notes.some((n) => n.startsWith("E_")));

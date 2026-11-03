@@ -1,5 +1,5 @@
 /**
- * CLI：night —— 跑一次夜间整备（抽取 + 冲突消解 + 归并 + 自传）。
+ * CLI：night —— 跑一次闲时整理（抽取 + 冲突消解 + 归并 + 自传）。
  * 抽取走**本地模型**（role=extract），不出网；这一点由 transport 的守卫保证。
  */
 import { join } from "node:path";
@@ -81,8 +81,17 @@ export async function runNightCli(opts: NightOptions): Promise<number> {
     return extractor(prompt);
   };
 
+  // 纯文本通道（不带工具）：只给「她对你的理解」用
+  const complete = async (prompt: string): Promise<string> => {
+    if (!transport) throw new Error("E_NO_MODEL");
+    const r = await transport.complete("night", [{ role: "user", content: prompt }], {
+      containsMemory: true, purpose: "interpret", maxTokens: 500, temperature: 0.3,
+    });
+    return r.text;
+  };
+
   const report = await runNightly({
-    db: d.db, inboxDir: opts.inbox, home: opts.home, embedder, extract, now,
+    db: d.db, inboxDir: opts.inbox, home: opts.home, embedder, extract, complete, now,
     scoredBy: `extract:${cfg.roles["extract"]?.model || "?"}`,
     ...(skipReason ? { skipExtract: skipReason } : {}),
     ...(opts.rounds ? { rounds: opts.rounds } : {}),
@@ -111,7 +120,7 @@ export async function runNightCli(opts: NightOptions): Promise<number> {
   advance(d.db, { night: true, silenceDays: 1 }, now);
 
   if (skipReason) {
-    console.error("⚠ 夜间整备降级：" + skipReason);
+    console.error("⚠ 闲时整理降级：" + skipReason);
     console.error("   已做：衰减补算 + 状态推进。未做：抽取 / 冲突消解 / 自传。游标未推进，这轮对话没丢。");
     console.error("   要让它真整理：ollama pull qwen2.5:7b-instruct，然后 jingjing models use qwen2.5:7b-instruct");
   }

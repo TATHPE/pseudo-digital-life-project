@@ -105,7 +105,7 @@ export async function capabilities(deps: CapabilitiesDeps): Promise<Capabilities
     note: h.event + " → " + h.template + (h.enabled === false ? "（已停用）" : ""),
   }));
   const cron: CapabilityItem[] = [
-    { name: "night", class: "cron", source: "cli", note: "夜间整备（可手动跑）" },
+    { name: "night", class: "cron", source: "cli", note: "闲时整理（可手动跑）" },
     { name: "beat", class: "cron", source: "cli", note: "心跳 tick" },
   ];
 
