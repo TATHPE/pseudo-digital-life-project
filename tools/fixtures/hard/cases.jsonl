@@ -1,0 +1,12 @@
+{"id":"hard-cake-mom","group":"recall","q":"我妈生日要买什么蛋糕","anyOf":["妈妈买蛋糕","栗子味"],"note":"三条买蛋糕里挑对的那条"}
+{"id":"hard-cake-colleague","group":"recall","q":"给同事买蛋糕买什么口味","anyOf":["巧克力"],"note":"干扰项很近，要靠口味区分"}
+{"id":"hard-weekend-mom","group":"recall","q":"周末跟妈妈有什么安排","anyOf":["妈妈说周末回家吃饭"],"note":"三个人都说周末"}
+{"id":"hard-weekend-dad","group":"recall","q":"周末去钓鱼的事","anyOf":["爸爸说周末去钓鱼"],"note":"同上"}
+{"id":"hard-report-thu","group":"recall","q":"周四要交什么","anyOf":["周四要交季度报告"],"note":"周三/周四/下周三 三条"}
+{"id":"hard-report-next","group":"recall","q":"下周三的报告","anyOf":["下周三要交季度报告"],"note":"同上"}
+{"id":"hard-study-color","group":"recall","q":"书房最后刷成什么颜色","anyOf":["米白色"],"note":"旧方案要排后面"}
+{"id":"hard-allergy","group":"recall","q":"我不能吃什么","anyOf":["花生"],"note":"香菜 vs 花生"}
+{"id":"hard-key","group":"recall","q":"备用钥匙在哪","anyOf":["鞋柜"],"note":""}
+{"id":"hard-gas","group":"recall","q":"出门要注意什么","anyOf":["燃气"],"note":""}
+{"id":"hard-ab-1","group":"abstain","q":"我上次说的那个股票代码是多少","expectEmpty":true,"note":"库里没有"}
+{"id":"hard-ab-2","group":"abstain","q":"我的护照号码","expectEmpty":true,"note":"库里没有"}
