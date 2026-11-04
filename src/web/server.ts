@@ -1972,6 +1972,8 @@ export function createWebServer(deps: WebDeps) {
         // 真正的回答字数（delta 总量 - 被判为过程的量）。为 0 说明这一轮只说了过程、没结论，
         // 典型场景：工具被授权闸门拦下，她说完"我要去查"就停了（用户看到的就是回答不完整）。
         let answerChars = 0;
+        // 最后一次工具调用时的正文长度。done 时若正文没再增长 → 她做完/卡住，但没给结论。
+        let lastToolAt = 0;
         const used: ToolUse[] = [];
         // 这一轮的过程（思考/工具/结果/错误）。必须落盘：右栏的 tracebox 只显示当前这一轮，
         // 新一轮一开始就被清空 —— 用户原话「一轮对话完成后直接把上一轮的对话进程覆盖了」。
@@ -2004,11 +2006,15 @@ export function createWebServer(deps: WebDeps) {
                 used.push({ name: ev.name, args: "", result: ev.result, ms: ev.ms });
                 trace.push({ k: "res", t: ev.result.slice(0, 1200), ms: ev.ms });
                 send({ type: "tool_result", id: ev.id, name: ev.name, result: ev.result.slice(0, 1500), ms: ev.ms });
+                lastToolAt = full.length;
               }
               else if (ev.type === "error") { trace.push({ k: "err", t: ev.message }); send({ type: "error", message: ev.message }); }
               else if (ev.type === "done") {
                 // 一点结论都没有：要么工具被拦、要么光想了没做、要么到步数上限。
                 // 静默结束是这里最糟的选项 —— 用户看到的是「说了一句就没了」。
+                if (used.length > 0 && full.length === lastToolAt) {
+                  send({ type: "notice", text: "这一轮她动过手（" + used.length + " 次工具），但最后没有给结论 —— 多半是卡在等确认（看右栏最后一条）。" });
+                }
                 if (answerChars <= 0) {
                   const lastErr = (() => {
                     for (let i = trace.length - 1; i >= 0; i--) {

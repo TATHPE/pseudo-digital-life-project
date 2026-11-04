@@ -127,7 +127,32 @@ export function resolveShell(
 }
 
 /** 跑脚本的 argv：解释器前缀 + 脚本路径 + 额外参数 */
+/**
+ * 按扩展名选解释器（2026-11-04 修的真 bug）。
+ *
+ * 之前一律用「用户配的那个 shell」跑所有脚本 —— 于是 `.mjs` 被塞给 PowerShell，
+ * 直接报 `Windows PowerShell` + 一个乱码退出码（实测 exit=4294770688）。
+ * 扩展名和解释器是一一对应的，不该让用户配的那个去猜。
+ */
 export function scriptArgv(shell: ShellInfo, scriptPath: string, args: string[] = []): string[] {
+  const ext = (scriptPath.match(/\.[A-Za-z0-9]+$/) ?? [""])[0].toLowerCase();
+  // ① .mjs/.js → node（用当前进程的 node，路径一定对）
+  if (ext === ".mjs" || ext === ".js" || ext === ".cjs") return [process.execPath, scriptPath, ...args];
+  // ② .py → python（优先 python3，Windows 上常是 python）
+  if (ext === ".py") return [WIN ? "python" : "python3", scriptPath, ...args];
+  // ③ .ps1 → 必须是 PowerShell（配置的 shell 是 bash 也得换回来）
+  //    ⚠ shell.kind === "none" 时退回直接执行（尊重「没有解释器」这个事实）
+  if (ext === ".ps1" && shell.kind !== "none") {
+    const ps = shell.kind === "powershell" ? shell.argv : (WIN ? ["powershell", "-NoProfile", "-NonInteractive", "-File"] : ["pwsh", "-NoProfile", "-File"]);
+    const head = ps[ps.length - 1] === "-File" ? ps : [...ps, "-File"];
+    return [...head, scriptPath, ...args];
+  }
+  // ④ .sh / .bash → bash 系；shell 不是就用配置里的
+  if ((ext === ".sh" || ext === ".bash") && shell.kind !== "none") {
+    if (shell.kind === "bash") return [...shell.argv, scriptPath, ...args];
+    return [WIN ? "bash" : "/bin/bash", scriptPath, ...args];
+  }
+  // ⑤ 认不出扩展名：按用户配置的那个解释器（保持原行为）
   if (shell.kind === "none") {
     // 没有解释器就只能直接执行脚本（需要 shebang / 可执行位）
     return [scriptPath, ...args];
@@ -136,8 +161,13 @@ export function scriptArgv(shell: ShellInfo, scriptPath: string, args: string[] 
 }
 
 /** host_profile 字符串（写进 exec_audit）：`win-local/ps5.1` / `linux-local/bash` */
-export function profileOf(shell: ShellInfo): string {
+export function profileOf(shell: ShellInfo, argv0?: string): string {
   const os = WIN ? "win-local" : "linux-local";
+  // 跑 .mjs/.py 时用的是 node/python，不是配置的 shell —— 审计里要如实写
+  const bin = String(argv0 ?? "").toLowerCase();
+  if (/node/.test(bin)) return os + "/node";
+  if (/python/.test(bin)) return os + "/python";
+  if (/bash/.test(bin)) return os + "/bash";
   return os + "/" + (shell.kind === "none" ? "direct" : shell.label);
 }
 

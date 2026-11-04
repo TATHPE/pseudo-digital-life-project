@@ -98,3 +98,30 @@ test("PowerShell 输出编码：只包 -Command，不动 -File 与别的命令",
   // pwsh 也包（大写 / .exe 都认）
   assert.equal(withUtf8Output(["C:/x/PWSH.EXE", "-Command", "1"]).wrapped, true);
 });
+
+test("按扩展名选解释器：.mjs 给 node，.ps1 给 PowerShell（不能一律用配置的那个）", () => {
+  // 实测事故：她写了 patch-market.mjs，script.run 却用 PowerShell 去跑 →
+  // 直接报「Windows PowerShell」+ 乱码退出码（exit=4294770688）。
+  const ps = { kind: "powershell" as const, label: "ps5.1", argv: ["powershell", "-NoProfile", "-NonInteractive", "-File"] };
+  const bash = { kind: "bash" as const, label: "bash", argv: ["C:/Program Files/Git/bin/bash.exe"] };
+
+  const mjs = scriptArgv(ps as never, "C:/data/workspace/x.mjs");
+  assert.match(String(mjs[0]), /node/i, ".mjs 必须用 node 跑：" + mjs[0]);
+  assert.equal(mjs[1], "C:/data/workspace/x.mjs");
+
+  const py = scriptArgv(ps as never, "x.py");
+  assert.match(String(py[0]), /python/i, ".py 要用 python");
+
+  // .ps1 即使配的是 bash，也得换回 PowerShell（-File 必须在）
+  const ps1 = scriptArgv(bash as never, "x.ps1");
+  assert.match(ps1.join(" "), /powershell|pwsh/i, ".ps1 必须用 PowerShell：" + ps1.join(" "));
+  assert.ok(ps1.includes("-File"), "要带 -File");
+
+  // .sh 走 bash；配置是 ps 也要换
+  const sh = scriptArgv(ps as never, "x.sh");
+  assert.match(String(sh[0]), /bash/i, ".sh 要用 bash");
+
+  // 认不出扩展名 → 保持原行为（用配置的）
+  const other = scriptArgv(ps as never, "x.unknown");
+  assert.equal(other[0], "powershell");
+});

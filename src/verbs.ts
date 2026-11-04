@@ -755,7 +755,7 @@ export const verbs: VerbDef[] = [
       const rel = String(a.cwd ?? "workspace");
       const cwd = join(ctx.home, rel.includes("..") ? "workspace" : rel || ".");
       const res = await runArgv(argv, { cwd, timeoutMs: 120_000, env: sanitizedEnv(process.env) });
-      const head = `exit=${res.code ?? res.signal} ${res.ms}ms · ${profileOf(pick.shell)}` +
+      const head = `exit=${res.code ?? res.signal} ${res.ms}ms · ${profileOf(pick.shell, argv[0])}` +
         (res.timedOut ? " 超时已杀" : "") + (res.truncated ? " 输出已截断" : "");
       const body = [res.stdout.trimEnd(), res.stderr.trimEnd()].filter(Boolean).join(String.fromCharCode(10));
       if (res.timedOut) throw new Error(`E_TIMEOUT: ${head}${body ? String.fromCharCode(10) + body : ""}`);
