@@ -110,12 +110,16 @@ test("没召回时把话说死：P10 里紧跟硬提示 + 把契约第一条再�
   assert.ok(none.text.includes("我觉得应该记得"), "把契约第一条再念一遍（用她自己的说法）");
   assert.equal(none.confidence, "abstain");
 
-  // 只召回到契约条目 = 没有"关于这件事"的证据（她说搜「需要完善」回来只有契约条目）
+  // 只召回到契约条目（2026-11-04 改）：以前这里念的是「没有相关记忆」——
+  // 那是假话。她的称呼/生日/边界全在 P6，而 P6 每轮都在。
+  // 实测「我该叫你什么」被这句打成"没证据"，正好压在她最该答得上的问题上。
   const onlyContract = buildBrief(base({
     recalled: [{ id: 1, text: "不确定就说不知道", score: 1, stage: "active", weight: 1, cite: "mem:1", relevance: 1, via: "active", layer: "contract" }],
   } as never));
-  assert.ok(onlyContract.text.includes("这一轮没有与你问的这件事相关的记忆"), "只有契约条目也算没召回");
-  assert.equal(onlyContract.confidence, "abstain");
+  assert.ok(onlyContract.text.includes("只有契约层"), "要说清楚证据在哪一层");
+  assert.ok(onlyContract.text.includes("契约里写着的，就照着答"), "契约里有的不许装不知道");
+  assert.ok(!onlyContract.text.includes("这一轮没有与你问的这件事相关的记忆"), "别再说假话");
+  assert.equal(onlyContract.confidence, "need_evidence", "不是没证据，是证据不在叙事层");
 
   // 有真的叙事召回 → 一个字都不许念（否则每轮都在念经，她很快就学会无视）
   const yes = buildBrief(base({ recalled: mkRecall(3) }));

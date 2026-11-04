@@ -22,7 +22,8 @@
     "setup:e2e": "node tools/setup-e2e.ts",
     "desktop:check": "node tools/desktop-check.mjs",
     "desktop:dev": "cargo tauri dev --manifest-path desktop/src-tauri/Cargo.toml",
-    "desktop:build": "cargo tauri build --manifest-path desktop/src-tauri/Cargo.toml"
+    "desktop:build": "cargo tauri build --manifest-path desktop/src-tauri/Cargo.toml",
+    "eval:about": "node --experimental-strip-types tools/eval-about.ts"
   },
   "dependencies": {
     "casbin": "^5.51.1",

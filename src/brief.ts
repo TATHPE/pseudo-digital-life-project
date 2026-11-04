@@ -160,8 +160,17 @@ export function buildBrief(input: BriefInput): BriefOutput {
     "不要说「上次你说过」「我们之前提过」这类话 —— 那是编。不知道就说不知道，问她。）",
     "（契约第一条：不确定是不是真的记得，就说不记得。别把「我觉得应该记得」说成「我记得」。）",
   ].join("\n");
+  // 只召回到契约条目（2026-11-04）：这时候说「没有相关记忆」是**假话** ——
+  // 她的称呼、生日、边界全在 P6 里，而 P6 每轮都在。实测「我该叫你什么」被这句
+  // 硬提示打成"没证据"，正好压在她最该答得上的那类问题上。
+  // 反编造的本意要保留：不许编"上次你说过"，但契约里写着的不许装不知道。
+  const CONTRACT_ONLY_NOTE = [
+    "（这一轮没有召回叙事记忆，只有契约层（P6）里的条目。",
+    "契约里写着的，就照着答；契约里没有的，说不知道 —— 别猜，也别编「上次你说过」。）",
+  ].join("\n");
+  const contractOnly = noNarrative && r.lines.length > 0;
   const p10body = r.lines.length ? `【召回】\n${r.lines.join("\n")}` : "【召回】无";
-  const p10 = noNarrative ? `${p10body}\n${ABSTAIN_NOTE}` : p10body;
+  const p10 = noNarrative ? `${p10body}\n${contractOnly ? CONTRACT_ONLY_NOTE : ABSTAIN_NOTE}` : p10body;
   slots.push({ id: "P10", label: "召回", tokens: estimateTokens(p10), stable: false });
 
   // ── 她自己那一层（H-a / H-b）────────────────────────
@@ -248,8 +257,9 @@ export function buildBrief(input: BriefInput): BriefOutput {
   slots.push({ id: "P11", label: "用户输入", tokens: estimateTokens(p11), stable: false });
 
   // confidence 四态（01 §6.2）：召回为空时必须能说"不知道"
+  // 只有契约条目 → "need_evidence"：不是"没有证据"，是"证据不在叙事层"（2026-11-04）
   const confidence: BriefOutput["confidence"] =
-    narrativeHits === 0 ? "abstain" : narrativeHits < 2 ? "need_evidence" : "answer";
+    narrativeHits === 0 ? (contractOnly ? "need_evidence" : "abstain") : narrativeHits < 2 ? "need_evidence" : "answer";
 
   const body = [p5, p6, p7, p8, p9, p10, p12, p13, p14, p15, NO_FAKE_ACK, p16, p17, p18, p19].filter(Boolean).join("\n\n");
   const text = [prefixText, body, p11].filter(Boolean).join("\n\n");
