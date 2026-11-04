@@ -72,8 +72,62 @@ test("幂等：游标推进后重跑不重复消化，也不重复写入", async
   assert.equal((d.db.prepare("SELECT count(*) c FROM memories WHERE source_kind='extract'").get() as any).c, 1);
 });
 
-test("冲突：同主题同文本 → NOOP（只抬 confidence）", async () => {
+test("去重前先补向量：没有向量的旧记忆不能对去重隐形（2026-11-04）", async () => {
   const home = H();
+  const inbox = seed(home, ["我住在杭州", "记住了。"]);
+  const d = openDb(join(home, "m.db"));
+  // 手工塞一条**没有向量**的旧记忆：模拟索引覆盖率不足时的历史数据
+  d.db.prepare(`INSERT INTO memories(layer,kind,text,text_bigram,last_decay_at,created_at,updated_at)
+    VALUES('narrative','episode','不要叫我助手，叫名字','不要 叫我','2026-10-20T00:00:00Z','2026-10-20T00:00:00Z','2026-10-20T00:00:00Z')`).run();
+
+  let sawVector = false;
+  const r = await runNightly({
+    db: d.db, inboxDir: inbox, home, embedder: emb,
+    extract: async () => {
+      // 抽取**发生时**，那条旧记忆必须已经补上向量 —— 否则 findSameThing 扫不到它
+      const row = d.db.prepare("SELECT embedding FROM memories WHERE text='不要叫我助手，叫名字'").get() as { embedding: unknown };
+      sawVector = !!row.embedding;
+      return "[]";
+    },
+    now: new Date("2026-10-28T23:00:00Z"),
+  });
+  assert.equal(sawVector, true, "去重之前必须先补向量");
+  assert.ok(r.notes.some((n) => n.startsWith("VEC-BACKFILL:")), "补了多少要留痕：" + r.notes.join(" | "));
+});
+
+test("contract 同槽位：0.85–0.92 的新说法取代旧的，不是两份都留（2026-11-04）", async () => {
+  const home = H();
+  const d = openDb(join(home, "m.db"));
+  // 受控向量：两种「不要叫助手」的说法，cos = 0.90（实测真值 0.930）
+  const near = {
+    name: "stub", dim: 2,
+    async embed(texts: string[]) {
+      return texts.map((t) => t.includes("叫我") ? new Float32Array([1, 0])
+        : t.includes("叫他") ? new Float32Array([0.9, 0.43588989])
+          : new Float32Array([0, 1]));
+    },
+  };
+  const inbox = seed(home, ["以后不要叫我助手", "好。"]);
+  const a = await runNightly({
+    db: d.db, inboxDir: inbox, home, embedder: near as never,
+    extract: reply([{ kind: "boundary", layer: "contract", subject: "称呼", text: "不要叫我助手，叫名字", salience: 0.9 }]),
+    now: new Date("2026-10-28T22:00:00Z"),
+  });
+  assert.equal(a.added, 1);
+  seed(home, ["别叫助手，叫名字", "记住了。"], 22);
+  const b = await runNightly({
+    db: d.db, inboxDir: inbox, home, embedder: near as never,
+    extract: reply([{ kind: "boundary", layer: "contract", subject: "称呼", text: "不要叫他助手，直接叫名字", salience: 0.9 }]),
+    now: new Date("2026-10-28T23:00:00Z"),
+  });
+  assert.equal(b.superseded, 1, JSON.stringify(b));
+  const active = (d.db.prepare("SELECT count(*) c FROM memories WHERE status='active'").get() as any).c;
+  assert.equal(active, 1, "同一个槽位只该留一条活的");
+  const all = (d.db.prepare("SELECT count(*) c FROM memories").get() as any).c;
+  assert.equal(all, 2, "旧的归档不删：历史要留");
+});
+
+test("冲突：同主题同文本 → NOOP（只抬 confidence）", async () => {  const home = H();
   const inbox = seed(home, ["我住在杭州"]);
   const d = openDb(join(home, "m.db"));
   const cand = [{ kind: "fact_hard", layer: "contract", subject: "居住地", text: "住在杭州", salience: 0.9 }];
@@ -363,4 +417,46 @@ test("P1-1a 原话阈值：0.30 的重合也要带上（0.34 会漏掉真实的�
   const events = [ev("以后别叫我「助手」，叫名字就行"), ev("今天天气不错，出去走了走")];
   const q = pickQuote(events as never, "不要叫他助手，直接叫名字");
   assert.equal(q, "以后别叫我「助手」，叫名字就行", "真实原话要能贴上，哪怕字面只重合三成");
+});
+
+test("isMetaFact：系统读数/此刻时间/文件名 都不算「关于人」的事实", async () => {
+  const { isMetaFact } = await import("../src/nightly.ts");
+  const bad = [
+    "库里有 185 条记忆",
+    "记忆库有185条记忆、1篇文档（7块）",
+    "现在是2026年11月2日周一晚上23:44",
+    "posture.ts是启动时设定默认姿态的模块，决定初始权限档",
+    "对 memory.db 的写操作被护栏拒绝",
+    "插件在 7700 端口上重启了一次",
+    "红队 21 例全部拦住",
+  ];
+  const good = [
+    "不要叫他助手，直接叫名字",
+    "她妈妈下周三生日，要提前买蛋糕",
+    "她对花生过敏，不能吃",
+    "她住在杭州",
+    "她不喜欢别人在早上给她打电话",
+  ];
+  for (const t of bad) assert.equal(isMetaFact(t), true, "应判为系统陈述：" + t);
+  for (const t of good) assert.equal(isMetaFact(t), false, "不该误杀：" + t);
+});
+
+test("整夜：关于系统/此刻的候选不入库，关于人的照旧入（2026-11-04 闸门）", async () => {
+  const home = H();
+  const inbox = seed(home, ["我住在杭州", "记住了。"]);
+  const d = openDb(join(home, "m.db"));
+  const r = await runNightly({
+    db: d.db, inboxDir: inbox, home, embedder: emb,
+    extract: reply([
+      { kind: "fact_hard", layer: "contract", subject: "居住地", text: "住在杭州", salience: 0.9, reason: "硬事实" },
+      { kind: "fact_hard", layer: "contract", subject: "库", text: "库里有 185 条记忆", salience: 0.9, reason: "读数" },
+      { kind: "boundary", layer: "contract", subject: "此刻", text: "现在是 2026 年 11 月 2 日 23:44", salience: 0.9, reason: "时间" },
+      { kind: "fact_hard", layer: "contract", subject: "模块", text: "posture.ts 是设定默认姿态的模块", salience: 0.9, reason: "代码" },
+    ]),
+    now: new Date("2026-10-28T23:00:00Z"),
+  });
+  const texts = (d.db.prepare("SELECT text FROM memories ORDER BY id").all() as any[]).map((x) => x.text);
+  assert.deepEqual(texts, ["住在杭州"], "只有关于人的那条该留下：" + texts.join(" / "));
+  assert.equal(r.added, 1);
+  assert.ok(r.notes.some((n) => n.startsWith("META:")), "跳过的条数要留痕：" + r.notes.join(" | "));
 });

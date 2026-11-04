@@ -110,3 +110,22 @@ test("空库时 seedCases 生成不出 recall 用例（CLI 据此报“未覆盖
   assert.equal(cases.filter((c) => c.group === "recall").length, 0, "没记忆就没有 recall 用例");
   assert.ok(cases.every((c) => c.group !== "recall"));
 });
+
+// ── 契约门看的是"现存的活契约"，不是用例文件里钉死的 id ──────────────
+test("契约门现取：旧条被新说法取代后，不该把门带红（2026-11-04）", async () => {
+  const home = H();
+  const d = openDb(join(home, "m.db"));
+  const keep = remember(d.db, { layer: "contract", kind: "promise", text: "不要在工作时段主动打扰" });
+  const gone = remember(d.db, { layer: "contract", kind: "promise", text: "工作时段别打扰我" });
+  // 模拟一次正常的 supersede：旧条归档、指向新条
+  d.db.prepare("UPDATE memories SET status='archived', superseded_by=? WHERE id=?").run(keep, gone);
+
+  // 用例文件里还留着**旧 id** —— 迁移归档之后真实出现过的情形
+  const stale: Case[] = [{ id: `contract-${gone}`, group: "contract", q: "", note: "已归档的旧契约" }];
+  const r = await runEval({ db: d.db, home, embedder: null, cases: stale });
+
+  assert.equal(r.contractOk, true, "门该看现存的活契约：" + JSON.stringify(r.results));
+  assert.equal(r.byGroup.contract.n, 1, "现取 → 只有 1 条活契约");
+  assert.equal(r.results[0]!.id, `contract-${keep}`);
+  assert.equal(r.results[0]!.ok, true);
+});

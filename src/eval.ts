@@ -143,7 +143,21 @@ const CLAIM = /你之前说过|我们上次|你告诉过我|我记得你(说过|
 
 export async function runEval(opts: RunOpts): Promise<EvalReport> {
   const k = opts.k ?? 5;
-  const cases = opts.cases ?? loadCases(opts.home);
+  const loaded = opts.cases ?? loadCases(opts.home);
+  // 契约组是**活库性质**，不是固定 ID（2026-11-04）。
+  //
+  // 用例文件里存的 `contract-<id>` 一旦被新说法正常取代（supersede → 旧条归档），
+  // 这道门就会因为"数据变了"而红，而不是因为契约烂了：实测迁移归档 3 条重复承诺后，
+  // recall 15/15、abstain 5/5、trap 3/3 全绿，只有 contract 3/6。
+  //
+  // 门要测的是"**现在活着的**契约是否不腐"（w=1 / active / 没被取代），所以每次现取。
+  const freshContracts = (): Case[] => {
+    const rows = opts.db.prepare(
+      "SELECT id FROM memories WHERE layer='contract' AND status='active' ORDER BY id LIMIT 6",
+    ).all() as Array<{ id: number }>;
+    return rows.map((r) => ({ id: `contract-${r.id}`, group: "contract", q: "", note: `契约 #${r.id}（现取）` }));
+  };
+  const cases: Case[] = [...loaded.filter((c) => c.group !== "contract"), ...freshContracts()];
 
   const byGroup: Record<Group, { n: number; ok: number }> = {
     recall: { n: 0, ok: 0 }, abstain: { n: 0, ok: 0 }, trap: { n: 0, ok: 0 }, contract: { n: 0, ok: 0 },
@@ -155,8 +169,7 @@ export async function runEval(opts: RunOpts): Promise<EvalReport> {
   if (opts.embedder && cases.length) { try { await search(opts.db, opts.embedder, "预热", { k: 1 }); } catch { /* ignore */ } }
 
   for (const c of cases) {
-    byGroup[c.group].n++;
-    const t0 = performance.now();
+    byGroup[c.group].n++;    const t0 = performance.now();
 
     if (c.group === "contract") {
       const id = Number(c.id.split("-")[1]);

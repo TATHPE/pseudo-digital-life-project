@@ -188,21 +188,48 @@ export function linkIfNew(
  * 结论：7B 对**例子**敏感、对规则列表不敏感，且长上下文会稀释注意力。
  */
 export const EXTRACT_PROMPT = (transcript: string): string => [
-  "你是记忆抽取器。读下面的对话，只输出 JSON 数组（不要解释、不要代码围栏）。",
+  "你是记忆抽取器，从对话里找出**关于这个人**、以后还用得上的事。",
+  "只输出 JSON 数组（不要解释、不要代码围栏）。",
   '每条：{"kind":"episode|thought|preference_hard|fact_hard|promise|boundary","layer":"narrative|contract","subject":"≤8字","text":"一句话","salience":0.9,"reason":"为什么值得记"}',
   "",
-  "只记**她经历/被告知的**；你读到的书/文档不算她的经历（那要走 reading，不是这里）。",
-  "值得记：承诺 / 边界 / 硬事实（→contract）、稳定偏好、重要经历、想通了的事。",
-  "不值得记：寒暄、测试句、系统提示、重复的话、一次性的闲聊。",
-  "最多 3 条；没有值得记的就输出 []。",
+  "先问自己：**这句话，三个月后还用得上吗？** 用得上才记；拿不准就记（偏好和边界比经历更值钱）。",
   "",
-  "例①（值得记）：",
+  "值得记（按优先级）：",
+  "1. 边界：怎么称呼她、不要做什么、别在什么时候打扰 —— boundary / contract",
+  "2. 承诺与约定：答应过的事、要提醒的日期 —— promise / contract",
+  "3. 硬事实：过敏与忌口、家人与关系、住哪、做什么工作、长期目标 —— fact_hard / contract",
+  "4. 稳定偏好：喜欢/讨厌、习惯、口味、作息、说话方式 —— preference_hard / narrative",
+  "5. 重要经历：她讲过的、有情绪重量的事 —— episode / narrative",
+  "",
+  "不值得记（一条都别记）：",
+  "· 系统操作：跑命令、改代码、看日志、重启、端口、测试结果",
+  "· 关于**你自己**（鲸鲸）的能力/配置/限制/用量：能不能上网、要不要确认、token 花了多少",
+  "  —— 那也是「关于系统」，不是关于她。她问「你能做什么」，答案在能力表里，不在记忆里。",
+  "· 一次性的当前状态：现在几点、库里多少条、某个文件在哪",
+  "· 工具输出、报错码、安装步骤、配置项",
+  "· 寒暄、附和、重复的话",
+  "",
+  "写法：text 是**一句独立的事实**，站在「她」的角度，别写成操作流水账。",
+  "  ✗ 用户要求把 tmp/y.txt 写入 world 并验证",
+  "  ✓ 她在意文件有没有真的写进去（要看到证据）",
+  "",
+  "例①（边界）：",
   "对话：用户：以后别叫我助手，叫名字就行",
   '输出：[{"kind":"boundary","layer":"contract","subject":"称呼","text":"不要叫他助手，直接叫名字","salience":0.9,"reason":"明确的称呼边界"}]',
   "",
-  "例②（不值得记）：",
+  "例②（偏好）：",
+  "对话：用户：我一般十点以后才看消息，早上别叫我",
+  '输出：[{"kind":"preference_hard","layer":"narrative","subject":"作息","text":"早上别打扰她，她十点后才看消息","salience":0.8,"reason":"稳定的作息边界"}]',
+  "",
+  "例③（系统操作，不记）：",
+  "对话：用户：跑一下 npm test 看看  鲸鲸：583 条全绿",
+  "输出：[]",
+  "",
+  "例④（寒暄，不记）：",
   "对话：用户：在吗  鲸鲸：在。",
   "输出：[]",
+  "",
+  "最多 4 条；没有就输出 []。",
   "",
   "对话：",
   transcript,
@@ -260,8 +287,38 @@ export function isNoise(text: string): boolean {
   return false;
 }
 
-/** 把事件切成若干窗口（每段单独问一次模型）：长上下文会稀释注意力 */
-export function segmentEvents<T>(items: readonly T[], max = 20): T[][] {
+/**
+ * 「关于系统 / 关于此刻」的陈述 ≠ 关于她的人的记忆（2026-11-04）。
+ *
+ * 起因：库里 220 条里只有 27 条是真正关于人的，其余被两类垃圾占满 ——
+ *   ① 断片记录（193 条，见 startup.ts 的去重修复）
+ *   ② 抽取器把**自己的运行状态**记成了事实：
+ *      「库里有 185 条记忆」×4、「现在是 2026年11月2日 23:44」、
+ *      「posture.ts 是设定默认姿态的模块」、「对 memory.db 的写操作被护栏拒绝」……
+ *
+ * 这些不是"她记住了你"，是"她把仪表盘当成了回忆"。而且它们一写下来就已经过期
+ * （记忆条数会变、时间会走、代码会改），importance 却是 5，于是永不衰减、越攒越多。
+ *
+ * 判据只认**字面形状**，不调模型（闸门先于模型）：宁可漏掉几条真的，
+ * 也不要让"185 条记忆"这种读数混进"关于你"的那一半里。
+ */
+const META_FACT: readonly RegExp[] = [
+  /\d{1,5}\s*条记忆/,                        // 库里有 185 条记忆
+  /记忆库|库里(共有|现在|已经)/,              // 记忆库有 N 条 / 库里共有 N 条
+  /^\s*现在(是|已经)?\s*\d{4}\s*年/,          // 把"现在几点"记成事实
+  /\b[A-Za-z0-9_]{1,40}\.(ts|mjs|js|json|csv|db|md)\b/,  // 文件名当主语（posture.ts / policy.csv）
+  /\bE_[A-Z0-9_]{3,}\b/,                     // 错误码
+  /^\s*(红队|冒烟|回归测试|测试用例)/,
+  /端口|sidecar|PID\b|进程号/,
+];
+
+export function isMetaFact(text: string): boolean {
+  const t = String(text ?? "").trim();
+  if (!t) return true;
+  return META_FACT.some((re) => re.test(t));
+}
+
+/** 把事件切成若干窗口（每段单独问一次模型）：长上下文会稀释注意力 */export function segmentEvents<T>(items: readonly T[], max = 20): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < items.length; i += max) out.push(items.slice(i, i + max));
   return out;
@@ -376,7 +433,6 @@ export async function runNightly(deps: NightlyDeps): Promise<NightlyReport> {
   const t0 = Date.now();
   const now = deps.now ?? new Date();
   const notes: string[] = [];
-  const cap = deps.maxItems ?? 5;
   const th = deps.fuzzyThreshold ?? 0.92;
 
   const cursorRow = deps.db.prepare("SELECT value FROM meta WHERE key='nightly_cursor_ts'").get() as { value?: string } | undefined;
@@ -428,6 +484,29 @@ export async function runNightly(deps: NightlyDeps): Promise<NightlyReport> {
     return report;
   }
 
+  // 去重靠向量，而库里可能有一批**没有向量**的旧记忆（索引覆盖率 29/157 那个坑的后遗症）。
+  // `findSameThing()` 要求 `embedding IS NOT NULL` —— 于是那些行对去重完全隐形，
+  // 模型换个说法就再写一条：实测「不要叫我助手，叫名字」被写成 8 条、
+  // 「下周三生日买蛋糕」4 条，全是这么来的（2026-11-04）。
+  //
+  // 所以**先补向量，再抽取**。补不上就照旧跑 —— 降级要留痕，不假装去重还有效。
+  if (deps.embedder) {
+    try {
+      const { fillMissingEmbeddings } = await import("./fillvec.ts");
+      const fr = await fillMissingEmbeddings(deps.db, deps.embedder, { limit: 200 });
+      if (fr.filled) notes.push("VEC-BACKFILL: 去重前补 " + fr.filled + " 条向量（还缺 " + fr.missing + "）");
+      else if (fr.missing) notes.push("VEC-BACKFILL: 还缺 " + fr.missing + " 条 —— 去重看不见它们");
+    } catch (e) {
+      notes.push("VEC-BACKFILL: 失败（去重退化）" + String((e as Error)?.message ?? "").slice(0, 60));
+    }
+  }
+
+  // 一次整理最多收多少条。**按内容量放，不按次数**（2026-11-04）。
+  //
+  // 原来恒是 5：补跑 121 条历史时，8 个窗口抽出 13 条候选，被一刀切到 5 ——
+  // 「历史回填」这种场景下 5 条是荒谬的。仍然有上限（20），因为宁缺毋滥。
+  const cap = deps.maxItems ?? Math.min(20, Math.max(5, Math.ceil(fresh.length / 10)));
+
   // P1-1a：先把噪声剔掉（短句 / 测试句 / 断电提示），再**分段**问。
   // 实测：88 条原始事件 → 模型回 []；同样的尾部用短提示 + 分段能抽出东西。
   const rounds = Math.min(5, Math.max(1, Math.round(deps.rounds ?? 1)));
@@ -467,6 +546,15 @@ export async function runNightly(deps: NightlyDeps): Promise<NightlyReport> {
       }
     }
     cands.splice(cap);   // 总量上限：宁缺毋滥
+    // 闸门（2026-11-04）：把"关于系统/关于此刻"的陈述剔掉，只留"关于人"的。
+    // 放在 cap 之后、写入之前 —— 模型经常在同一个窗口里既抽出真事实，也抽出读数。
+    {
+      const beforeMeta = cands.length;
+      cands = cands.filter((c) => !isMetaFact(c.text));
+      if (cands.length < beforeMeta) {
+        notes.push(`META: 跳过 ${beforeMeta - cands.length} 条关于系统/此刻的陈述`);
+      }
+    }
     report.candidates = cands.length;
 
 
@@ -492,6 +580,21 @@ export async function runNightly(deps: NightlyDeps): Promise<NightlyReport> {
           const old = new Float32Array(s.embedding.buffer, s.embedding.byteOffset, s.embedding.byteLength / 4);
           const cos = cosine(vec, old);
           if (cos >= th) {
+            verdict = deps.verdict ? await deps.verdict({ oldText: s.text, newText: c.text }) : "supersede";
+            target = s.id;
+            break;
+          }
+          // 同一个槽位只能有一个真相（2026-11-04）。
+          //
+          // 原来是 cos ≥ 0.75 一律 `refine` —— 两条都留着，只连一根边。
+          // 结果是同一个承诺被写成三条：「下周三生日提醒已建立，会提前买蛋糕」/
+          // 「下周三提醒买蛋糕」/「下周三生日提醒，提前买蛋糕」，槽位全是 `contract|提醒`。
+          //
+          // 实测（bge-m3@512）真重复落在 0.842–0.930，而「她住在杭州 / 她住在上海」
+          // 是 0.853 —— **分数本身分不开**。分得开的是槽位：`contract` 是硬事实，
+          // 同一 subject 下新说法就该取代旧的（旧的归档、建 supersedes 边，历史还在）。
+          // narrative 不变：那层本来就允许同一件事有多次不同经历。
+          if (c.layer === "contract" && cos >= 0.85) {
             verdict = deps.verdict ? await deps.verdict({ oldText: s.text, newText: c.text }) : "supersede";
             target = s.id;
             break;

@@ -1,6 +1,11 @@
 /**
  * 启动自检（18 §1.3 / §2.2）：断电检测 → 记 outage → 写一条记忆 → 补算衰减。
- * 幂等：同一个 outage 只记一次（按 last_event_id + to_ts 去重）。
+ * 幂等：**一段空档只记一条**（按 from_ts 去重）。
+ *
+ * 为什么不是 (from_ts, to_ts)：to_ts 是"这次启动的时间"，所以每重启一次就变一次。
+ * 于是一次真正的断片会被反复记成新事件 —— 实测（2026-11-04）同一段 21:23 开始、
+ * 每次都还没等到新对话就又被杀，最后留下 52/48/46/42 分钟四条记忆，
+ * 连同更早的重复一共 193 条"进程被杀"占满整个库。from_ts 才是这段空档的身份。
  */
 import type { DatabaseSync } from "node:sqlite";
 import { join } from "node:path";
@@ -28,9 +33,17 @@ export function startup(deps: {
   let recorded = false;
   if (outage) {
     const dup = deps.db.prepare(
-      "SELECT id FROM outages WHERE from_ts=? AND to_ts=? LIMIT 1",
-    ).get(outage.from.toISOString(), outage.to.toISOString()) as { id: number } | undefined;
-    if (!dup) {
+      "SELECT id, to_ts FROM outages WHERE from_ts=? ORDER BY to_ts DESC LIMIT 1",
+    ).get(outage.from.toISOString()) as { id: number; to_ts: string } | undefined;
+    if (dup) {
+      // 同一段断片又醒了一次：只把结束时间往后推，**绝不写第二条记忆**。
+      // 记忆里那条保留"第一次醒来的时长" —— 它是当时真正知道的事；
+      // 更长的真实空档在 outages 表里，视图要用就读那边。
+      const next = outage.to.toISOString();
+      if (next > dup.to_ts) {
+        deps.db.prepare("UPDATE outages SET to_ts=? WHERE id=?").run(next, dup.id);
+      }
+    } else {
       deps.db.prepare(
         "INSERT INTO outages(from_ts,to_ts,kind,est_error_s,last_event_id,created_at) VALUES(?,?,?,?,?,?)",
       ).run(outage.from.toISOString(), outage.to.toISOString(), outage.kind, 60, last?.id ?? null, now.toISOString());
