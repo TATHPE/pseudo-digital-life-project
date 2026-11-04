@@ -25,7 +25,7 @@ node src/cli/jingjing.ts serve 0      # 端口 0 = OS 分配；要固定端口�
 
 ---
 
-## 2. 十三条纪律
+## 2. 十四条纪律
 
 1. **一条执行路径。** `verbs → execute → policy → audit`。新能力挂在这条线上；`tools.ts` 只是适配层。
 2. **没接上 = 没做完。** 改完一条链路，去库里/日志里找**一行证据**。类型通过不算。
@@ -65,7 +65,10 @@ node src/cli/jingjing.ts serve 0      # 端口 0 = OS 分配；要固定端口�
    反例（2026-11-02）：看到 `git status` 里有 `research/dsh-550c-boot/`，直接按 home 去读，
    白费一次调用。
 
-13. **不知道就先想，别用检索代替思考。** 问题在脑子里的（判断、取舍、该不该做），
+13. **改完要确认自己看的是哪个进程。** 面板（`serve 7700`）和桌面壳的 sidecar（`serve 0`，随机端口）
+   是两个进程；`page.ts` 是模块常量，不重启就还是旧代码。实测：改了页面却截到旧页面，白测一轮。
+
+14. **不知道就先想，别用检索代替思考。** 问题在脑子里的（判断、取舍、该不该做），
    去搜库、翻文件都只是把决定往后推。先给出判断，需要证据时再定点取证 ——
    顺序反了会显得勤快，实际是在躲。反例（2026-11-02）：遇到不知道怎么答的问题，
    先搜了两轮完全不相关的词，才回来想。
@@ -132,7 +135,7 @@ decay.ts          纯函数：weight / classify / reconsolidate / w0FromImportan
 decayparams.ts    参数白名单 + 版本号 + 审计（config.json 的 decay 段）
 retrieve.ts       两阶段检索 + 一跳扩展（expandByLinks）
 recall.ts         P10 装配 + 隐私闸门（shareable 才进简报）
-nightly.ts        夜间整取（游标增量；失败不推进游标）
+nightly.ts        闲时整理（游标增量；失败不推进游标；**四条 return 都留痕**）
 nightagent.ts     夜间抽取的**只读**工具循环
 surface.ts        浮现时机（4 个 trigger + 每日上限）
 embedindex.ts     索引身份（哪版模型建的向量）
@@ -154,12 +157,13 @@ agent.ts          工具循环（step / 用法见 maxSteps）—— **tool 消�
 agentguard.ts     C-1/C-2/C-3：改完自己验 / 先列步骤 / 错误当输入（提醒预算 3 次）
 agenda.ts         她自己在惦记的事（必须带出处、上限 5、可了结）
 interpret.ts      意义层（解释必须挂 derived_from；复述原文不算）
+interpretnight.ts 把它接进闲时整理（五道防线：basis 真实/不许复述/排除系统日志/至少 2 条/可解释性）
 threads.ts        未闭合的线（承诺/待办，aging）
 links.ts          记忆之间的边（why + 止期 + 黑名单；抽检断线共用）
 proposals.ts      「它想做但需要人点头」的提议卡（写 data/pending，不执行）
 notify.ts         回执通道（送达≠已读；3 天没人读就停用对应常驻指令）
 standing.ts       常驻指令（只收模板、必须指定通知通道、每次触发现开 60 秒窗口）
-posture.ts        默认姿态（默认 full + 会话内外发开放；JJ_PARANOID=1 回到什么都问）
+posture.ts        **永远 full**（2026-11-04 档位 UI 删了）；JJ_PARANOID=1 回到什么都问
 memoryonly.ts     本地模型能碰的工具白名单（只记忆类，执行侧也校验）
 
 # ── 技能 / 插件 / 只读工具 ─────────────────────
@@ -168,6 +172,20 @@ plugins.ts        插件（MCP）与技能的**增删**（id 白名单；写 mcp
 hooks.ts          钩子（after_turn / before_night / after_night；只收模板，走 execute）
 gitview.ts        git 只读三连（status/diff/log）—— cwd 是项目根，不是 home
 mcp.ts            MCP stdio 客户端（initialize → tools/list → tools/call）
+
+# ── 这一轮新增（2026-11-03/04）─────────────────
+erosion.ts        三段侵蚀（原文保留，按 erase_stage 渲染）
+gapnote.ts        离线补账（空档 ≥24h 补一条真记忆）
+nightdue.ts       闲时整理的自动触发（≥20h）+ 进程内锁
+fillvec.ts        补缺的向量（写入路径不建向量）
+queryrewrite.ts   别名归一 + 多路补召回（只做别名不做联想）
+selfupdate.ts     草稿区 / 版本记录 / A-B 槽 / 失败冻结 24h
+autocommit.ts     写文件后自动留一版 git（作者是她）
+mcphub.ts         MCP 连接中心（单插件重连，不重启 sidecar）
+toolhint.ts       工具调用 → 人话（路径只留文件名；正文/密钥不上屏）
+host.ts           解释器（按扩展名选）+ PowerShell 输出编码 + profile
+web/desk.ts       桌面端令牌（随机端口 + 一次性令牌 + cookie）
+web/splash.ts     片头完整档（550C 骨架改造）+ web/boot.ts 简易档
 
 # ── 人格 / 配置 ────────────────────────────────
 generation.ts     分代（人格指纹 + 开代理由 + 日志）；改设定只向前生效

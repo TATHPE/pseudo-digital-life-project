@@ -15,9 +15,9 @@
 > 找解释器的顺序：`JJ_PYTHON` → 项目 `.venv` → PATH 上的 `py -3` / `python3` / `python`。
 
 ```bash
-npm run check                         # 类型检查 + 499 条测试 + 地图不漂移（CI 入口；GitHub Actions 就跑这条）
-npm test                              # 499 条断言（node --test）
-npm run ui:test                       # headless Edge 真点真发：48 项交互断言（+3 项空库跳过；面板要在跑）
+npm run check                         # 类型检查 + 583 条测试 + 地图不漂移（CI 入口；GitHub Actions 就跑这条）
+npm test                              # 583 条断言（node --test）
+npm run ui:test                       # headless Edge 真点真发：58 项交互 + 引导页 7 项（面板要在跑）
 node src/cli/jingjing.ts migrate      # 建库 + 自检
 node src/cli/jingjing.ts remember "重要性应该影响衰减速率"
 node src/cli/jingjing.ts search "衰减速率"
@@ -30,14 +30,13 @@ node src/cli/jingjing.ts test leak    # 断言：带记忆原文的云端调用 
 echo <KEY> | node src/cli/jingjing.ts auth set deepseek   # key 存 DPAPI，密文落盘
 node src/cli/jingjing.ts auth list    # 只看指纹
 node src/cli/jingjing.ts test cloud   # 真调云端 + 记账 + 预算闸
-node src/cli/jingjing.ts night        # 夜间整备：抽取 → 冲突消解 → 归并 → 自传
+node src/cli/jingjing.ts night        # 闲时整理：抽取 → 冲突消解 → 归并 → 自传 →「她对你的理解」（启动时距上次 >20h 会自动跑一次）
 node src/cli/jingjing.ts eval         # 评估：recall / abstain / trap / contract 四道门
 node src/cli/jingjing.ts eval --model # 额外跑模型层"编造共同回忆"（花 API 费用）
 node src/cli/jingjing.ts redteam      # 红队 21 例（必须全拦）
 node src/cli/jingjing.ts templates    # shell.run 能跑的模板（id/档位/参数槽）
 node src/cli/jingjing.ts shell git.status                   # T0/T1 只读模板，直接跑
-node src/cli/jingjing.ts shell node.run_script --slots '{"script":"a.mjs"}'        # T3：只预览 argv+指纹
-node src/cli/jingjing.ts shell node.run_script --slots '{"script":"a.mjs"}' --yes  # T3：确认并执行（一次性令牌）
+node src/cli/jingjing.ts shell node.run_script --slots '{"script":"a.mjs"}'        # T3：直接跑（2026-11-04 起不再要确认；过闸门就执行）
 node src/cli/jingjing.ts verb fs.list '{"path":"workspace"}'   # 手动调能力
 node src/cli/jingjing.ts beat --dry-run  # 心跳判定（不写库不发消息）
 node src/cli/jingjing.ts serve 7700 --beat  # 面板 + 每 60s 一次心跳
@@ -48,6 +47,8 @@ node src/cli/jingjing.ts export       # 搬家：导出一致快照 → exports/
 node src/cli/jingjing.ts import <dir> --force  # 搬到新 home（旧目录自动改名备份，然后补跑衰减）
 docker compose -f docker/compose.yaml up -d  # 容器里跑（数据卷 ./data，只映射宿主回环）
 node src/cli/jingjing.ts usage        # 今日花费与按角色/模型拆分
+node src/cli/jingjing.ts selfupdate list   # 自我更新：草稿 / 版本记录 / 冻结状态
+node src/cli/jingjing.ts capabilities  # 能力自述（工具/命令/插件/技能/降级项）
 node src/cli/jingjing.ts serve 7700   # 本地面板 http://127.0.0.1:7700
 npm run ui:test                       # headless Edge 真点真发（CDP），48 项断言
 npm run ui:shot tmp/shot.png          # 截一张图肉眼验收
@@ -87,7 +88,6 @@ node src/cli/brief-demo.ts --full     # M1.1：第 1 轮 vs 第 100 轮简报
 | `src/chunk.ts` | 分块：标题栈 heading_path、代码/表格永不切、400–800 tok、15% 重叠、小块合并 | `02 §5.2` |
 | `src/ingest.ts` | 摄入：markitdown（子进程、路径只进 argv）→ 分块 → 索引；sha256 幂等、旧块标 deleted_at | `02 §5.1/§5.3` |
 | `src/recall.ts` | P10 召回装配 + **隐私闸门**：只有 shareable 进简报，其余只报个数 | `02 §10.1`、`13 §10` |
-| `src/web/static/icon-*.png` | PWA 图标（构建期用 headless Edge 从同一个鲸尾 symbol 渲染） | `19 §7.5` |
 | `src/tools.ts` | **唯一工具面**：verb + MCP 全走 execute；点号→下划线别名 | `11 §5.6` |
 | `src/policy.ts` | casbin 策略（allow/deny × advise/enforce） | `04 §4` |
 | `src/execute.ts` | 策略 → 执行 → 审计，一处不落 | `04 §4` |
@@ -101,7 +101,24 @@ node src/cli/brief-demo.ts --full     # M1.1：第 1 轮 vs 第 100 轮简报
 | `src/configfile.ts` | `data/config.json`（env > 文件 > 默认） | `13 §2` |
 | `src/persona.ts` | 读/写人格文件 + `versions/` 留痕 + **回落到 bundled** | `07 §2`、`18 §4.4` |
 | `src/assert.ts` | 越界即抛（替代 `!`，漏了会炸而不是 NaN 传播） | — |
-| `src/brief.ts` | 11 槽位情境简报 + 稳定前缀 | `06 §3`、`17 §2` |
+| `src/brief.ts` | 情境简报 + 稳定前缀（P1–P18 槽：含「我能看到多少」「工具现状」「最近几轮」） | `06 §3`、`17 §2` |
+| `src/queryrewrite.ts` | 口语/别名归一（我妈→妈妈）+ 多路补召回；只做别名不做联想 | `24` E-10 |
+| `src/erosion.ts` | 三段侵蚀：权重低到 0.03 且没被想起 → 丢细节 → 只剩影子 → 归档；**原文保留**，按 stage 渲染 | `01 §4` |
+| `src/gapnote.ts` | 离线补账：空档 ≥24h 醒来补一条「我睡了 X 天，这期间记忆是空的」 | `18 §2.3` |
+| `src/nightdue.ts` | 闲时整理的自动触发（≥20h）+ 进程内锁 | — |
+| `src/fillvec.ts` | 补缺的向量（写入路径不建向量，覆盖率只涨不落） | `24` E-11 |
+| `src/interpret.ts` / `interpretnight.ts` | 「她对你的理解」：必须带 basis、不许复述、可解释性检查 | `07 §3` |
+| `src/selfupdate.ts` | 自我更新三件套：草稿区 → 冒烟 → A/B 槽 → 回滚 + 连续 2 次失败冻结 24h | `18 §4.3` |
+| `src/autocommit.ts` | 她写文件后自动留一版 git（作者是她）；只在仓库里做、只 add 那一个路径 | `18 §4.4` |
+| `src/mcphub.ts` | MCP 连接中心：单插件重连，不重启 sidecar | `11 §3` |
+| `src/toolhint.ts` | 工具调用 → 一句人话（路径只留文件名、正文/密钥不上屏） | `17 §5` |
+| `src/host.ts` | 解释器：按扩展名选（.mjs→node / .ps1→PowerShell / .sh→bash）+ PS 输出编码 + profile | `04 §6` |
+| `src/grant.ts` / `coreguard.ts` / `supergrant.ts` / `egress.ts` | 会话窗口 / 记忆核心 / 超级权限 / 外发闸门 | `04 §4` |
+| `src/web/desk.ts` | 桌面端令牌：sidecar 随机端口 + 一次性令牌写 `data/.desk.json`，壳带 `?k=` 进来种 cookie | `23 §2` |
+| `src/web/welcome.ts` | 首启引导（八步，含访谈草稿与「终止先说再做」） | `23 §3` |
+| `src/web/boot.ts` / `splash.ts` | 开机片头：simple（3.6s）/ full（550C 骨架改造，9s） | — |
+| `src/gitview.ts` | git 校样（status/diff/log，cwd 限定 projectHome） | `17 §5.4` |
+| `src/skills.ts` / `plugins.ts` | 技能索引（SKILL.md）与插件增删；待生效判定用 `mcpFingerprint` | `11 §4` |
 
 ## 实测（本机，2026-10-27）
 

@@ -2,6 +2,11 @@
 <!-- 真源：D:/LLM/docs/14-与OpenClaw的区别.md（改完跑 npm run docs:sync） -->
 # 鲸鲸 vs OpenClaw：差在哪，还要不要自己做
 
+> **2026-11-04 现状注记**：本文里提到的「权限档（ask/read/write/full）」「T3 每次确认」
+> 已经在代码里被推翻 —— 档位 UI 删除、后端永远 full；T3 过闸门就执行（令牌机制保留但不再自动要求）。
+> 其余结论（记忆模型、T 分类、审计、宿主隔离…）仍然有效。详见 `jingjing/AGENTS.md` 与 `docs/04` 顶部注记。
+
+
 > 版本 v0.2 · 2026-10-27 · 事实来源：`openclaw/openclaw` README（113 KB 快照，`research/openclaw.md`）+ GitHub Search API 快照
 > 结论会改主意，先说结论：**OpenClaw 把"身体和外壳"做到了工业化；鲸鲸只有"记忆与人格"这一个差异点，而且必须承认——`04` 那套权限哲学和它撞车了。**
 

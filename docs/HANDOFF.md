@@ -1,6 +1,6 @@
 # 交接文档（HANDOFF）
 
-> 2026-11-01 最后更新 · 给"下一个我"或下一个人看。
+> 2026-11-04 最后更新 · 给"下一个我"或下一个人看。
 > 你不需要读 3000 行设计文档才能接手——**先把这份读完，再按 §2 跑三条命令验证**。
 
 ---
@@ -10,28 +10,41 @@
 **鲸鲸（`D:/LLM/jingjing`）是一个能跑、能测、能自检、能回滚、能跑命令、能接通云端、有桌面壳的 L3 原型。**
 
 ```
-496 条测试全绿 ｜ 0 error TS ｜ map:check 四条绿 ｜ ui:test 56 项 + 引导页 7 项
-schema v11 ｜ /health → {ok:true, degraded:[]}（hooks 已实现，降级项清空）
+583 条测试全绿 ｜ 0 error TS ｜ map:check 四条绿 ｜ ui:test 58 项 + 引导页 7 项
+schema v12（memories.erase_stage：三段侵蚀）
+/health → {ok:true, degraded:[], local:{…}}（本地模型状态也在里面）
 面板跑在 127.0.0.1:7700（重启用 node tmp/start-panel.mjs）
-桌面壳 desktop/src-tauri/target/debug/jingjing-desktop.exe（**debug 构建，窗口指向 /desk** —— 新壳应指 `/`；
-桌面上有快捷方式「鲸鲸（测试版）」，工作目录必须是 `D:/LLM/jingjing`）
+桌面壳 desktop/src-tauri/target/release/jingjing-desktop.exe（release，GUI 子系统，窗口指向 `/`）
+桌面快捷方式「Pseudo Digital Life Project」，工作目录必须是 D:/LLM/jingjing
 ```
 
-**接手第一件事**：读 `docs/22-待办与技术债.md` §0.3 —— 发布前必须做的 13 项**全部完成**。
-现在只剩三件不在 §0.3 里的活：**release 构建 + 安装包**（用户：等一切完成再构建）、**H-4b 干净机器真跑一遍**、**J-3b / E-3b 两条技术债**。
+**接手第一件事**：读 `docs/22-待办与技术债.md` §0.3 —— 发布前 13 项**全部完成**。
+
+现在剩的活（按价值排）：
+1. **重新 `cargo build --release`** —— exe 落后源码（片头横排、窗口居中、预热页一行都没进去）
+2. **release 安装包（NSIS）** —— 用户：等一切完成再构建
+3. **`jingjing doctor --perms`** —— 把「为什么这个不能用」变成一张自查表（现在只有 `tmp/probe-*.mjs` 探针）
+4. **reranker** —— 难用例基线已有（R@1 9/10 + abstain 0/2），上之前先看 `docs/24` 的「难用例基准」一节
+5. **H-4b 干净机器真跑**、**J-3b / E-3b** 两条技术债
 
 ### 界面（2026-11-01 定稿）
 
 | 事实 | 值 |
 |---|---|
-| **只有桌面端** | sidecar 绑**随机端口** + 一次性令牌（`data/.desk.json`）；壳带 `?k=` 进来种 cookie；浏览器直接开 → 403。PWA 与 Trianon 线已删 |
+| **只有桌面端** | sidecar 绑**随机端口** + 一次性令牌（`data/.desk.json`）；壳带 `?k=` 进来种 cookie；浏览器直接开 → 403 |
 | **首启引导** | `GET /` 服务端分流：没配完 → `/welcome`（全屏八步，含访谈草稿与「终止先说再做」）；配完 → 主面板 |
 | 三列骨架 | 左 wing（**她 / 今天 / 去处**，一屏装下）/ 中 stage（对话 + 输入框）/ 右**卷宗** |
 | 卷宗四签 | 0 等你点头（待确认·它想做·想读代码·回执·未闭合）/ I 计划 / II 改动（`exec_audit` + 「看 git 校样」）/ III 上下文（记忆·文档·模型·用量·抽检·**能借的手脚**） |
 | 去处 | 记忆 · 文档 · 动作 · 能力 · **文件** · 工具 · 设置（一行一个带计数；列表本体在中栏） |
 | 能力屏 | 插件（MCP）/ 技能（SKILL.md）/ 原生工具与命令 / 降级项；插件与技能**能装能删** |
 | 设置 | 超级权限 · 重新打开引导 · 接口（provider/model/key）· 本地模型 · 常驻指令 · 能力 · 人格 · 头像图片 |
-| 配色 | 黑底 + 白细线 + 加粗白字；**青色只给鲸鲸的回话气泡** |
+| 配色 | 黑底 + 白细线 + 加粗白字；**青色只给她的回话气泡** |
+| 过程 | 会话栏**只留最终回答**；思考/工具/结果在右栏「过程」卡，**按步分组**（一段推理 + 它的动作 = 一步，当前步展开、做完的折起）。历史里点开能回看那一轮 |
+| 状态灯 | 左栏「去处」每个入口挂一个小点：记忆有冲突 / 动作有提议 / 能力有降级 / 设置有问题（学 Coopanion 的 rail lamps） |
+| 两档模式 | 输入框旁 chip：**聊天**（靠记忆召回，不带历史）/ **工作**（带最近 8 轮 + 预算放宽）。斜杠 `/work` `/chat` |
+| 闲时整理 | 左栏「闲时整理」按钮（显示上次多久前）+ 设置里「现在整理一次」；**启动时距上次 >20h 自动后台跑** |
+| 权限 | **没有档位了**（2026-11-04 用户：「去掉」）—— 永远 full。硬边界只剩两条：coreguard（memory.db/secrets/persona/inbox）与格式化磁盘/删 trash+snapshots。`JJ_PARANOID=1` 回到什么都问 |
+| **名字的两层** | **项目 = Pseudo Digital Life Project**（exe 的 productName、窗口标题）；**她 = 用户取的名字**（`agent.name`，默认是预置人格「鲸鲸」）。目录 `jingjing` 只是历史遗留 |
 
 崩了怎么办：**只弹报错页**（哪一步失败 / 日志路径 / 三条可试的）。不回落浏览器，也不做「接 API 让 agent 修自己」。
 ---
@@ -45,10 +58,15 @@ schema v11 ｜ /health → {ok:true, degraded:[]}（hooks 已实现，降级项�
 | 检索（两阶段 + 引用） | ✅ | p50 8.6 ms；召回行可见、`mem:`/`doc:` 引用可点 |
 | 工具调用（T0–T3） | ✅ | 21 条红队全拦；T3 一次性令牌 + 杀进程树；`smoke-tools` 能验模型会不会调工具 |
 | A/B 槽 + 自动回滚 | ✅ | 注入 `exit(1)` 版本 → 0.2 s 回 A 槽 |
-| 容器 / 搬家 / 手机 PWA | ✅ | 镜像 2m44s；`export/import` 搬家 3 次零差异 |
+| 容器 / 搬家 | ✅ | 镜像 2m44s；`export/import` 搬家 3 次零差异 |
 | 记账 | ✅ | 聊天/心跳的真实 token 都入 `usage` 表（今天修：之前只有 CLI 会记） |
 | 断电感知 / 衰减 / 心跳 | ✅ | 与模型无关，照常工作 |
-| **记忆整理（夜间整备）** | ❌ **停** | 本地没有能调工具的模型；`night` 退出码 2 |
+| **闲时整理** | ✅ | 启动时距上次 >20h 自动跑；面板有两个入口；每次留痕（含「缺模型/没新事件」两条路径） |
+| 三段侵蚀 | ✅ | 权重 <0.03 且没被反复想起 → 丢细节 → 只剩影子 → 归档。**原文保留**，只按 stage 渲染（`erosion.ts`） |
+| 离线补账 | ✅ | 空档 ≥24h 醒来补一条「我睡了 X 天，这期间记忆是空的」 |
+| 她对你的理解 | ✅ | 闲时整理时提炼，**五道防线**（basis 真实/不许复述/排除系统日志/至少 2 条/可解释性检查） |
+| 自我更新 | ✅ | 草稿区 → 冒烟 → A/B 槽 → 回滚 + 连续 2 次失败冻结 24h（只做技能，核心代码永不自改） |
+| 插件 | ✅ | 待生效判定（`mcpFingerprint`）、单插件重连（不重启 sidecar）、插件状态进简报（P17） |
 
 ---
 
@@ -73,7 +91,7 @@ schema v11 ｜ /health → {ok:true, degraded:[]}（hooks 已实现，降级项�
 | `492d521` | **「允许进云端」原本基本没用**：工具结果把 local_only 原文带出网了 |
 | `4c12e46` | **P0-1 工具调用冒烟** `jingjing smoke-tools`（+11 条测试） |
 | `2aabc1b` | 删 1.5B 后，`night` 给可读出路（退出码 2），不再抛 404 |
-| `0754202` | 删树莓派分支（`docs/99`）；修「过期契约还在喂给模型」 |
+| `0754202` | 修「过期契约还在喂给模型」 |
 | `6350548` `9fda65c` | 侧栏改成黑底 + 白框格子；修「进设置总在最底」；分区标题改标签条（+3 条 ui:test） |
 
 ### 0.1.1 2026-10-30 这一轮（E-6 / C-5 / C-1 / E-1 / D-1）
@@ -184,27 +202,36 @@ node src/cli/deploy.ts smoke                    # 期望：冒烟 20/20
 
 ---
 
-## 3. 代码结构（57 个模块，按职责分组）
+## 3. 代码结构（77 个模块，按职责分组）
 
 ```
 存储与检索   schema.ts  db.ts  store.ts  retrieve.ts  text.ts  embed.ts  fsx.ts  journal.ts
-摄入         chunk.ts（分块）  ingest.ts（markitdown → 块 → 索引）  recall.ts（P10 装配 + 隐私闸门）
-记忆动力学   decay.ts  nightly.ts  autobio.ts  territory.ts  startup.ts  boot.ts
+             新：queryrewrite.ts（别名归一 + 多路补召回）  fillvec.ts（补缺的向量）
+摄入         chunk.ts  ingest.ts（markitdown → 块 → 索引）  recall.ts（P10 装配 + 隐私闸门）
+记忆动力学   decay.ts  erosion.ts（三段侵蚀）  nightly.ts  gapnote.ts（离线补账）  nightdue.ts（该不该跑）
+             autobio.ts  territory.ts  startup.ts  boot.ts  interpret.ts  interpretnight.ts
 状态与人格   state.ts  persona.ts  config.ts  configfile.ts
 模型与路由   provider.ts  transport.ts  tokens.ts  budget.ts  auth.ts
-执行与安全   verbs.ts  policy.ts  execute.ts  shell.ts  confirm.ts  tools.ts  mcp.ts
+本地模型     ollama.ts  pyenv.ts（markitdown 探测）  embedindex.ts（索引身份 + 覆盖率）
+执行与安全   verbs.ts  policy.ts  execute.ts  shell.ts  host.ts（解释器）  confirm.ts
+             tools.ts  mcp.ts  mcphub.ts（单插件重连）  toolhint.ts（工具说人话+脱敏）
+             grant.ts  coreguard.ts  supergrant.ts  egress.ts  posture.ts
+自我更新     selfupdate.ts（草稿区 / 版本 / A-B 槽 / 冻结）  autocommit.ts（写文件留一版）
+              plugins.ts（插件与技能增删）  skills.ts
 发布与回滚   deploy/fingerprint.ts  deploy/slot.ts  deploy/watchdog.ts  deploy/smoke.ts  cli/deploy.ts
 搬家与容器   handoff.ts  docker/Dockerfile  docker/compose.yaml
-主动性       heartbeat.ts
-评估         eval.ts  toolsmoke.ts（工具调用冒烟）  cli/eval.ts  cli/redteam.ts
-界面         web/server.ts  web/page.ts  web/timeline.ts  web/state.ts  md.ts  brief.ts  agent.ts
-             面板能力：证据链（召回行+可点引用）/ 动作审计 / 搜索 / 文档摄入 / 记忆纠错 /
-             停止生成 / 待确认角标/标题闪 / 版本与冻结 / 今日花费 / 回到最新 / 快捷键
-入口         cli/jingjing.ts  cli/night.ts
+主动性       heartbeat.ts  hooks.ts（after_turn / before_night / after_night）  standing.ts  agenda.ts
+评估         eval.ts  toolsmoke.ts  cli/eval.ts  cli/redteam.ts
+界面         web/server.ts  web/page.ts  web/timeline.ts  web/state.ts  web/desk.ts（令牌）
+              web/welcome.ts（首启引导）  web/boot.ts（片头 simple）  web/splash.ts（片头 full）
+             md.ts  brief.ts  agent.ts  gitview.ts  capabilities.ts
+入口         cli/jingjing.ts  cli/night.ts  cli/eval.ts
 ```
 
-数据库表（`data/memory.db`，schema **v8**）：
+数据库表（`data/memory.db`，schema **v12**）：
 `documents / chunks / chunks_fts / memories / memories_fts / vec_memories / memory_links / self_state / intents / outages / usage / exec_audit / events / meta`
+
+v12 新增 `memories.erase_stage`（0 完整 / 1 丢细节 / 2 只剩影子）。**原文不删**，只按 stage 渲染 —— 改正文仍然只有人能走 `store.updateMemoryText`。
 
 发布目录（`data/deploy/`）：
 ```
@@ -220,13 +247,13 @@ state.json                    ← 事实源：active/prev/applied/history/failur
 模型 → tool → execute() → policy(casbin) → verb → shell.run → runArgv(argv) → exec_audit
 ```
 
-T3 的确认不走布尔许可，走令牌：
+T3 的确认层**已删除**（2026-11-04 用户：「把哪些限制档和确认档删了，它现在连一句完整的话都说不出来」）：
 ```
-无令牌 → E_NEEDS_CONFIRM（附确切 argv）→ 人确认 → 签发令牌（绑 argv_sha256+cwd/120s/单次）→ 立即用掉 → 执行
-         ↑ 同时落一张待确认卡（data/pending/，15 min）：面板侧栏就能点“确认执行”
+渲染 argv → checkGrant → 过就跑（审计记 grant:<id>）｜ 过不了就报具体原因（E_NO_GRANT / E_GRANT_*）
 ```
-令牌文件在 `data/tokens/cap_*.json`（用过会留 `used_at`，所以能区分 E_TOKEN_USED 与 E_TOKEN_UNKNOWN）。
-待确认卡在 `data/pending/pnd_*.json`（按指纹去重：模型重试十次也只有一张卡）。
+一次确认 = 一次断句。她连着干几件事时会被切成「说不出完整的话」。
+**令牌机制本身还在**（`issueToken`/`consumeToken`，绑 argv_sha256+cwd/单次），只是 execute 不再自动要求它；
+待确认队列（`data/pending/pnd_*.json`）也还在，别的入口要用仍可用。
 
 **发布路径也只有一条**（同理）：
 ```
@@ -270,6 +297,27 @@ install → smoke(20) → promote → activate → applyRelease → bootAttempt 
 ---
 
 ## 5. 踩过的坑（**按这个顺序读，能省一天**）
+
+
+### 5.0 2026-11-03 → 11-04 这一轮（**先读这节**：全是这三天真踩的）
+
+| # | 症状 | 根因 | 修法 |
+|---|---|---|---|
+| 1 | 片头里还有「550C」 | 那是 **SVG path 画的字形**，`grep 550C` 永远是 0 | 整段删掉字标 SVG，换成文本四行 → 后来改成一行横排 |
+| 2 | 双击 exe 白屏 4 秒 | `tauri.conf` 的 `url` 是 `about:blank`（WebView2 默认白底），黑底预热页从没被加载过 | `url: index.html` + `backgroundColor` + 主题 dark |
+| 3 | 「搜不到」三轮都没修好 | 真根因依次是：**索引覆盖率 29/157** → 阈值 0.55 → **`valid_to` 把整条记忆抹掉** | `embedindex.missing` 自查 + `fillvec.ts` + 到期只降权 |
+| 4 | `Failed to fetch` | 我用 `-like '*jingjing.ts serve*'` 杀了**桌面壳自己的 sidecar** | 见 AGENTS 第 11 条：`serve 7700` 可杀，`serve 0` 不许碰 |
+| 5 | 她说不出完整的话 | T3 每步都 `E_NEEDS_CONFIRM` → 一次确认 = 一次断句 | 删掉确认层（`63cb54b`）；`full` 档也删了（`e2f5ebc`） |
+| 6 | `.mjs` 脚本必然失败 | `script.run` 一律用「配置的 shell」（Windows 上是 PowerShell） | 按扩展名选解释器（node/python/pwsh/bash） |
+| 7 | 回答里混着「我先看一眼…」 | 边想边说与最终回答共用一个 delta 流 | `think` 事件 + 按 `step` 归类，被判为过程的整段移进右栏 |
+| 8 | 每轮过程一清就没了 | 右栏 `traceStart()` 直接 `innerHTML=''` | 过程随 `agent_reply` 落盘，历史里可回看 |
+| 9 | 「她对你的理解」永远是空的 | `writeInterpretation` 全仓只有定义、**没有调用方** | 接进闲时整理 + 五道防线（含可解释性检查） |
+| 10 | `embed-index-incomplete:33` 只涨不落 | `remember()` 只有传了 embedding 才写向量，而启动补账不传 | `fillvec.ts`：启动后 / 整理后补缺的 |
+| 11 | 删 `page.ts` 的 JS 段把 `handleSlash` 定义一起删了 | **page.ts 的 JS 是模板字符串，tsc 看不见** | 补测试：页面里被调用的本地函数必须有定义 |
+| 12 | 生成代码里的反斜杠/反引号被吃（**本会话第 9 次**） | heredoc + JS 字符串 + 模板串三层转义 | 一律写脚本文件，用 `String.fromCharCode()` 拼 |
+
+**一句话**：这一轮修的东西里，一半是「**写了没接上**」（`writeInterpretation`、`fillvec`、`nightly` 自动触发、`think` 落盘），
+另一半是「**同一个字段被两处按不同含义读**」（`valid_to`、`regression`、`mcp.json` 指纹）。
 
 ### 5.1 Windows 编码 / bash 反引号（本项目最高频的事故源，6 次）
 
@@ -414,20 +462,6 @@ install → smoke(20) → promote → activate → applyRelease → bootAttempt 
 
 **为什么不能干脆不用 DPAPI**：key 进环境变量会污染进程环境/崩溃转储/子进程；写原生插件直调 DPAPI 要编译和 prebuilt。现在的取舍是「DPAPI 文件 + 进程内缓存 + windowsHide」，代价是**每个进程启动后第一次读 key 仍要 ~330ms**（只是看不见）。Linux 上走 `libsecret`，没有这个问题。
 
-### 5.12 手机端 / PWA（2026-10-28 新增，3 个坑）
-
-| # | 坑 | 症状 | 修法 |
-|---|---|---|---|
-| 1 | **写操作守卫只认回环 Origin** | 手机通过 Tailscale 打开：页面能看，但发消息 / 改设置 / 确认命令**全是 403** | 改成「回环 **或** Origin 的 host == `Host` 头」；跨站仍拒、`x-jj` 头仍要（跨站发不出自定义头，预检不放行） |
-| 2 | **抽屉没有开关** | `aside` 在 ≤860px 是 `translateX(-102%)`，但 header 上没有按钮能叫它出来 → 手机上 SESSIONS/DOCS/MEMORY/TOOLS/CONFIG **全部不可达**（我一开始就以为是"看不到 DOCS"） | header 左侧加 `≡`；抽屉改**实底**（原来的半透明会让聊天内容透出来）+ `box-shadow:0 0 0 100vmax` 当遮罩 |
-| 3 | **遮罩用伪元素 `z-index:-1` 等于没写** | 伪元素被 `aside` 自己的背景盖住，点外面也看不到变暗 | 改用 `box-shadow` 巨大扩散，天然在元素之后、内容之上 |
-
-另外两件事：
-
-- **`--window-size` 在 Windows 上会被 DPI 缩放**（390×844 变成 510×701）。要真机尺寸必须用 CDP 的 `Emulation.setDeviceMetricsOverride`——`ui:test` 里 `UI_VIEWPORT=390x844` 就是走这条。
-- **图标是构建期真渲染的 PNG**（headless Edge 渲染同一个鲸尾 symbol 到 512/192/180），不是运行时画；manifest 里每个图标都有测试断言「真能取到、真是 PNG」。iOS 不认 SVG 图标，所以必须有 PNG。
-
-
 ### 5.13 面板可用性那一批（2026-10-28，3 个坑）
 
 | # | 坑 | 症状 | 修法 |
@@ -562,7 +596,7 @@ jingjing night
 |---|---|---|
 | D-A | 云端 L2 用哪家 | DeepSeek（已接），可换 anthropic/openai |
 | D-B | embedding 维度 | **512**（已验证几乎无损） |
-| D-C | 常驻主机 | **x86 迷你主机 16 GB**（有 GPU 更好）；现在先用本机不合盖（`09 §4.3`）。Pi 已出局 |
+| D-C | 常驻主机 | **x86 迷你主机 16 GB**（有 GPU 更好）；现在先用本机不合盖 |
 | D-D | 自传模型 | 跟 `JJ_MODEL_NIGHT` 一致（→ digest）；**现在无模型**，随 D-K 一起定 |
 | D-E | 心率默认开不开 | **不开**（`serve --beat` 手动开） |
 | D-F | 自我更新范围 | 只开技能+参数，**核心代码永不自改**（`18 §4.2`）；发布不能带 `policy.csv` 与核心代码 |
@@ -590,10 +624,13 @@ OLLAMA_MODELS=D:\ollama\models
 
 ---
 
-## 9. 文档地图（22 份，按需要读，别通读）
+## 9. 文档地图（27 份，按需要读，别通读）
 
 | 想知道什么 | 读 |
 |---|---|
+| **基线数字与口径（recall/abstain/难用例/reranker 论证）** | `docs/24-基准与口径.md` |
+| **发布与首次配置（桌面端）** | `docs/23-发布-桌面端-首次配置.md` |
+| 常驻指令（只收模板、回执、配额） | `docs/25-常驻指令-设计记录.md` |
 | 这个项目到底在做什么（四条件 / L0–L4 / 四层分解） | `docs/0-定义-数字生命.md` |
 | 衰减、四段生命周期、再巩固、睡眠、心跳 | `docs/01-记忆动力学.md` |
 | 表结构、分块、两阶段检索、MCP 契约 | `docs/02-存储与索引层.md` |
@@ -616,10 +653,12 @@ OLLAMA_MODELS=D:\ollama\models
 
 ---
 
-## 11. 当前进程状态（2026-10-30 18:30，数据已重置 + 四件修完）
+## 11. 当前进程状态（2026-11-04 13:40 · 本轮结束时的快照）
 
 面板在跑：`127.0.0.1:7700`（PID 随重启变化；用 `netstat -ano | grep 7700` 查）。
-`/health` → `{ok:true, schema:"8", release:null, memories:1, degraded:["nightly-skipped"]}`。
+桌面壳的 sidecar 在**随机端口**，端点和令牌见 `data/.desk.json`（pid/port/token）。
+`/health` → `{ok:true, schema:"12", memories:~200, degraded:[], local:{online,installed,running,embed:{calls,texts,ms}}}`。
+`/api/night/due` → 该不该跑闲时整理（上次什么时候、是否正在跑）。
 （`degraded` 里那条是 **E-6 新增的诚实读数**：夜间整备因缺模型被跳过 —— 以前这种情况面板上一片安静，只有 energy 慢慢滑到 0。）
 （那 1 条记忆是断电感知写的「进程被杀 N 分钟」—— **每次 kill 面板都会留一条**，所以反复重启之后不可能保持“完全空库”。这是设计，不是残留。）
 
