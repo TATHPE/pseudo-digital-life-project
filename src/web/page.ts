@@ -1116,7 +1116,6 @@ description: 周日晚上把这一周压成三句话。
   <div class="ticker" id="ticker"></div>
   <form id="composer"><div class="wrap">
     <button type="button" id="modechip" class="permchip" title="聊天 = 靠记忆（默认）；工作 = 带最近几轮上下文，适合连着干活">聊天</button>
-    <button type="button" id="perm" class="permchip" title="当前会话的权限档（点开切换）">逐次确认</button>
     <textarea id="m" rows="1" placeholder="说点什么…"></textarea>
     <button id="stop" type="button" title="停止生成">■</button>
     <button class="send">▲</button>
@@ -1189,11 +1188,6 @@ description: 周日晚上把这一周压成三句话。
   </div>
 </div>
 
-<div id="permpop" hidden role="dialog" aria-modal="true" aria-label="权限档"><div class="permbox">
-  <p class="hint">这是<b>当前会话</b>的权限档。改完立刻生效，关掉面板就回到逐次确认。</p>
-  <div id="permopts"></div>
-  <div class="acts"><button type="button" id="permclose">关闭</button><span id="permmsg" class="hint"></span></div>
-</div></div>
 <script>
 window.SOURCES_DIR = null;   // 服务端会把它替换成 data/sources 的绝对路径（点“摄入”的人才知道文件该放哪）
 const $ = (s) => document.querySelector(s);
@@ -2646,84 +2640,25 @@ async function setMode(m) {
 var modeBtn = document.getElementById("modechip");
 if (modeBtn) modeBtn.onclick = function () { setMode(MODE === "work" ? "chat" : "work"); };
 
-async function loadPermission() {
-  try { PERM = await (await fetch("/api/permission")).json(); } catch (e) { return; }
-  paintPermission();
-}
-function paintPermission() {
-  var b = document.getElementById("perm");
-  if (!b) return;
-  // 会话级：不再显示倒计时（它不会自己过期；换了档或关掉进程才变）
-  b.textContent = PERM_LABEL[PERM.preset] || PERM.preset;
-  b.className = "permchip" + (PERM.preset === "full" ? " full" : "");
-}
-async function setPermission(preset) {
-  var r;
-  try {
-    r = await (await fetch("/api/permission", {
-      method: "POST", headers: H, body: JSON.stringify({ preset: preset }),
-    })).json();
-  } catch (e) { return false; }
-  if (r.ok) { await loadPermission(); return true; }
-  var msg = document.getElementById("permmsg");
-  if (msg) msg.textContent = r.why || r.code || "切换失败";
-  return false;
-}
-function renderPermOptions() {
-  var cur = PERM.preset;
-  var box = document.getElementById("permopts");
-  box.innerHTML = (PERM.presets || []).map(function (x) {
-    var on = x.id === cur ? " on" : "";
-    var warn = x.id === "full" ? " ⚠" : "";
-    return "<button class='opt" + on + "' data-preset='" + escapeHtml(x.id) + "' aria-current='" + (x.id === cur ? "true" : "false") + "'>" +
-      "<b>" + escapeHtml(x.label) + warn + "</b><span>" + escapeHtml(x.hint) + "</span></button>";
-  }).join("");
-}
-document.getElementById("perm").addEventListener("click", function () {
-  renderPermOptions();
-  document.getElementById("permpop").hidden = false;
-  var on = document.querySelector("#permopts .opt.on");
-  if (on) on.focus();
-});
-document.getElementById("permclose").addEventListener("click", function () {
-  document.getElementById("permpop").hidden = true;
-});
-document.getElementById("permpop").addEventListener("click", function (e) {
-  if (e.target.id === "permpop") document.getElementById("permpop").hidden = true;
-});
-document.getElementById("permopts").addEventListener("click", async function (e) {
-  var b = e.target.closest("button[data-preset]");
-  if (!b) return;
-  var preset = b.dataset.preset;
-  // 一键切：选中就生效，没有二次确认（安全边界在"哪些命令永久拒绝"，不在"多点几下手"）
-  if (await setPermission(preset)) document.getElementById("permpop").hidden = true;
-});
-document.addEventListener("keydown", function (e) {
-  if (e.key !== "Escape") return;
-  var pop = document.getElementById("permpop");
-  if (pop && !pop.hidden) { pop.hidden = true; document.getElementById("perm").focus(); }
-});
-
-// /permission 斜杠命令：带参直接切，不带参打开选择器（同 DSH）
+// 斜杠命令：/work、/chat（权限档那层 UI 删了，/permission 也跟着去掉）
 async function handleSlash(text) {
-  // 不用正则：page.ts 是模板字符串，反斜杠在这一层就会被吃掉（踩过）
   var t = String(text || "").trim();
-  // /work /chat：切模式（等价于点那个 chip）
   if (t === "/work" || t === "/chat") {
     var okw = await setMode(t === "/work" ? "work" : "chat");
     pushTicker(okw ? ("模式：" + (t === "/work" ? "工作（带最近几轮上下文）" : "聊天（靠记忆）")) : "切换失败");
     return true;
   }
-  if (t !== "/permission" && t.indexOf("/permission ") !== 0) return false;
-  var arg = t === "/permission" ? "" : t.slice(11).trim().split(" ")[0].toLowerCase();
-  if (!arg) { document.getElementById("perm").click(); return true; }
-  var alias = { full: "full", write: "write", read: "read", ask: "ask" };
-  var preset = alias[arg];
-  if (!preset) { pushTicker("未知档位：" + arg + "（可用 ask / read / write / full）"); return true; }
-  if (await setPermission(preset)) pushTicker("权限已切到 " + preset);
-  return true;
+  return false;
 }
 
+// 权限档这层 UI 删掉了（2026-11-04 用户：「去掉」）。
+// 理由：她默认就是 full，档位只会在干活途中把她打断（一次确认 = 一次断句）。
+// 保留的两条硬边界不在这里：coreguard（记忆核心）与格式化磁盘/救援目录，见 src/grant.ts / coreguard.ts。
+var PERM = { preset: "full" };
+var PERM_LABEL = { full: "完全权限" };
+async function loadPermission() { /* 不再有档位可读：永远 full */ }
+async function setPermission() { return false; }
+function renderPermOptions() { /* 无档位可选 */ }
 // ── 回执（D-3 前置）：送达 ≠ 已读 ───────────────────
 async function loadReceipts() {
   var j;

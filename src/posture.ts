@@ -50,10 +50,13 @@ export function applyDefaultPosture(
   const wanted = (env.JJ_DEFAULT_PRESET as Preset | undefined) ?? DEFAULT_PRESET;
   const valid: Preset[] = ["ask", "read", "write", "full"];
   const def = valid.includes(wanted) ? wanted : DEFAULT_PRESET;
-  // 用户**显式选过**的档位优先（落盘的 posture.json）。
-  // 之前只看内存里的窗口：切到 ask 后内存空了，就被当成「从没切过」，
-  // 每次启动硬拉回 full —— 用户的选择被默认值覆盖。
-  const chosen = chosenPreset(home);
+  // 2026-11-04 用户：「把哪些限制档和确认档删了」「去掉」——
+  // 档位 UI 已经删除，这里**永远 full**（除非 JJ_PARANOID=1 已经在上面的分支返回）。
+  //
+  // 为什么连「用户上次选的 ask」也不再尊重：那一次选择本身就发生在「UI 还在」的时候，
+  // 而 UI 没了以后她没有任何办法切回来 —— 尊重一个已经无法修改的旧值，等于把她永久锁死。
+  const chosen = null as null | ReturnType<typeof chosenPreset>;
+  void chosenPreset;
   const effective = chosen ?? def;
   const want = effective === "ask" ? "ask" : effective;
   const presetApplied = currentPreset(home, now).preset !== want;

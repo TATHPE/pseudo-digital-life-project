@@ -115,13 +115,12 @@ test("权限的两个硬矛盾（2026-11-03）：默认解释器能跑脚本、�
     const out = checkGrant(home, { argv: ["powershell", "-File", "C:/Windows/System32/evil.ps1"], cwd: home, verb: "script.run", asInterpreter: true });
     assert.equal(out.ok, false, "脚本必须在 home 内");
 
-    // ② 矛盾二：切到 ask 后重启会被强制拉回 full
-    setPreset(home, "ask", { because: "用户不想每次都放行" });
-    assert.equal(chosenPreset(home), "ask", "用户的显式选择要落盘");
+    // ② 2026-11-04：档位 UI 删了 → 永远 full（JJ_PARANOID=1 例外）
+    setPreset(home, "ask", { because: "假装用户上次选过 ask" });
     revokeAll(home);                                  // 模拟进程重启（窗口只在内存）
     const r = applyDefaultPosture({} as never, home, { env: {} });
-    assert.equal(r.preset, "ask", "重启后必须尊重用户的 ask，不能被默认值覆盖");
-    assert.equal(currentPreset(home).preset, "ask");
+    assert.equal(r.preset, "full", "永远 full：UI 没了，旧的 ask 不可能再改回来");
+    assert.equal(currentPreset(home).preset, "full");
   } finally {
     try { rmSync(home, { recursive: true, force: true }); } catch { /* ignore */ }
   }

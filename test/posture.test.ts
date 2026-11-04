@@ -30,13 +30,15 @@ test("默认姿态：JJ_PARANOID=1 回到「什么都问」", () => {
   assert.equal(currentPreset(home).preset, "ask");
 });
 
-test("默认姿态：用户手动切过的档不被覆盖", () => {
+test("默认姿态：永远 full（2026-11-04 档位 UI 删了）", () => {
+  // 用户当时说「把哪些限制档和确认档删了」「去掉」。
+  // 旧的 read 档不再被尊重：UI 没了以后也没办法改回来，尊重它等于把她永久锁死。
   const home = H();
   const d = openDb(join(home, "m.db"));
-  setPreset(home, "read", {});
+  setPreset(home, "read", { because: "假装用户上次选了只读" });
   const r = applyDefaultPosture(d.db, home, { env: {} });
-  assert.equal(r.presetApplied, false, "已经有窗口就不动");
-  assert.equal(currentPreset(home).preset, "read", "用户的选择优先");
+  assert.equal(r.preset, "full", "启动就拉到 full");
+  assert.equal(currentPreset(home).preset, "full");
 });
 
 test("记忆核心：数据库/密钥/人格/事件流 一律受保护，其余放行", () => {

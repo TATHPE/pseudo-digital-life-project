@@ -913,8 +913,10 @@ test("工作/聊天模式：接口能读能切，面板有 chip，聊天模式�
   assert.ok(server.includes("writeFileConfig(deps.home, { mode })"), "写配置（跨重启保留）");
 
   assert.ok(PAGE.includes('id="modechip"'), "面板要有模式 chip");
+  assert.ok(!PAGE.includes('id="perm"'), "权限档 chip 已删（2026-11-04 用户：去掉）");
   assert.ok(PAGE.includes("setMode(MODE === \"work\" ? \"chat\" : \"work\")"), "点一下切换");
-  assert.ok(PAGE.includes('t === "/work" || t === "/chat"'), "斜杠命令也要能切");
+  // 斜杠命令：/work /chat（权限档那层删了，/permission 也跟着去掉）
+  assert.ok(PAGE.includes("/work") && PAGE.includes("/chat"), "斜杠命令要能切模式");
 
   // 工作模式放宽步数与单轮输出
   assert.ok(server.includes('mode === "work" ? (supOn ? 24 : 20)'), "步数按模式放宽");
@@ -931,4 +933,13 @@ test("一轮没有结论时必须说出来（不是静默结束）", () => {
   assert.ok(server.includes("if (answerChars <= 0)"), "没结论时要说话");
   assert.ok(server.includes("这一轮没有结论"), "说清楚发生了什么");
   assert.ok(server.includes("被挡住了"), "被拦时要指出是授权问题");
+});
+
+test("页面里被调用的本地函数都必须有定义（tsc 看不见字符串里的 JS）", () => {
+  // 实测事故：删权限档 UI 时把 handleSlash 的定义一起删了，但调用还在 ——
+  // typecheck 通过（那是模板字符串），运行时才炸。
+  const src = PAGE;
+  for (const fn of ["handleSlash", "traceStart", "traceAdd", "traceTool", "paintAnswer", "loadMode", "setMode", "paintLamps", "loadIdle", "paintNightLog"]) {
+    assert.ok(src.includes("function " + fn + "("), "缺定义：" + fn);
+  }
 });
