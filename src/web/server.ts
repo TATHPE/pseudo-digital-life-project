@@ -1969,6 +1969,9 @@ export function createWebServer(deps: WebDeps) {
         });
 
         let full = "";
+        // 真正的回答字数（delta 总量 - 被判为过程的量）。为 0 说明这一轮只说了过程、没结论，
+        // 典型场景：工具被授权闸门拦下，她说完"我要去查"就停了（用户看到的就是回答不完整）。
+        let answerChars = 0;
         const used: ToolUse[] = [];
         // 这一轮的过程（思考/工具/结果/错误）。必须落盘：右栏的 tracebox 只显示当前这一轮，
         // 新一轮一开始就被清空 —— 用户原话「一轮对话完成后直接把上一轮的对话进程覆盖了」。
@@ -1987,9 +1990,9 @@ export function createWebServer(deps: WebDeps) {
             const agent = runAgent({ chat, tools: deps.tools!, maxSteps: steps }, brief.text, text);
             for await (const ev of agent) {
               if (aborted) break;
-              if (ev.type === "delta") { full += ev.text; send({ type: "delta", text: ev.text, step: ev.step }); }
+              if (ev.type === "delta") { full += ev.text; answerChars += ev.text.length; send({ type: "delta", text: ev.text, step: ev.step }); }
               else if (ev.type === "notice") { trace.push({ k: "think", t: ev.text }); send({ type: "notice", text: ev.text }); }
-              else if (ev.type === "think") { trace.push({ k: "think", t: ev.text }); send({ type: "think", text: ev.text }); }
+              else if (ev.type === "think") { answerChars -= ev.text.length; trace.push({ k: "think", t: ev.text }); send({ type: "think", text: ev.text }); }
               else if (ev.type === "tool") {
                 // 参数不原文上屏：翻译成一句人话（学自 Coopanion 的 pet-status）。
                 // 路径只留文件名、正文/密钥/笔记一个字都不显示。
@@ -2004,6 +2007,21 @@ export function createWebServer(deps: WebDeps) {
               }
               else if (ev.type === "error") { trace.push({ k: "err", t: ev.message }); send({ type: "error", message: ev.message }); }
               else if (ev.type === "done") {
+                // 一点结论都没有：要么工具被拦、要么光想了没做、要么到步数上限。
+                // 静默结束是这里最糟的选项 —— 用户看到的是「说了一句就没了」。
+                if (answerChars <= 0) {
+                  const lastErr = (() => {
+                    for (let i = trace.length - 1; i >= 0; i--) {
+                      const t = trace[i]!;
+                      if (t.k === "err") return t.t.slice(0, 120);
+                      if (t.k === "res") return null;   // 有过结果就不算"被拦住"
+                    }
+                    return null;
+                  })();
+                  send({ type: "notice", text: lastErr
+                    ? "这一轮没有结论：上一步被挡住了（" + lastErr + "）。需要你在面板上放行，或换个说法。"
+                    : "这一轮没有结论：她只说了要做什么，没真正动手。可以说「直接做」或「先别做，说说思路」。" });
+                }
                 // finish=length 说明不是「说完了」，是「到上限了」。不说出来，看着就像回答不完整。
                 if (ev.finish === "length") send({ type: "notice", text: "这次回答到长度上限被截断了 —— 说「继续」我接着往下说。" });
                 send({ type: "done", steps: ev.steps });

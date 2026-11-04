@@ -8,7 +8,7 @@
 
 | 项 | 数量 |
 |---|---|
-| 源文件（src/**/*.ts） | 107 |
+| 源文件（src/**/*.ts） | 108 |
 | 错误码 E_* | 206 |
 | verbs | 27 |
 | CLI 子命令 | 37 |
@@ -139,7 +139,7 @@
 | `E_NO_DOC` | `src/web/page.ts` `src/web/server.ts` |
 | `E_NO_DRAFT` | `src/interview.ts` `src/web/server.ts` |
 | `E_NO_EMBED_MODEL` | `src/cli/jingjing.ts` |
-| `E_NO_EMBEDDER` | `src/verbs.ts` |
+| `E_NO_EMBEDDER` | `src/fillvec.ts` `src/verbs.ts` |
 | `E_NO_GIT` | `src/gitview.ts` |
 | `E_NO_GRANT` | `src/grant.ts` `src/web/server.ts` |
 | `E_NO_HOME` | `src/handoff.ts` |
@@ -317,6 +317,7 @@
 | `src/erosion.ts` | 三段侵蚀（2026-11-03）。学自 whale-card 的 `render_predicate()`： |
 | `src/eval.ts` | 评估（19 §0.1 W-B / 01 §13）：唯一能证明"它变好了"的东西。 |
 | `src/execute.ts` | 执行入口（04 §4）：**策略 → 执行 → 审计**，一个都不能少。 |
+| `src/fillvec.ts` | 补向量：只补**缺的**，不重建全部（2026-11-03）。 |
 | `src/firstrun.ts` | 试运行 + 第一句话（H-4 第 ⑦⑧ 步）。 |
 | `src/fsx.ts` | 原子写 + fsync（18 §1.2） |
 | `src/gapnote.ts` | 离线补账（2026-11-03）。学自 whale-card 的一句话： |

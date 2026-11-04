@@ -976,3 +976,14 @@ test("工作/聊天模式：接口能读能切，面板有 chip，聊天模式�
   const cli = readFileSync(join(process.cwd(), "src/cli/jingjing.ts"), "utf8");
   assert.ok(cli.includes('mode === "work" ? 6000 : 3000'), "单轮输出按模式放宽");
 });
+
+test("一轮没有结论时必须说出来（不是静默结束）", () => {
+  // 实测：用户问「这是怎么回事最近 project.read error」，她回了 77 字「先说清楚我要做什么…」
+  // 然后就没了 —— 因为 project.read 被授权闸门拦住。用户看到的就是「回答不完整」。
+  const server = readFileSync(join(process.cwd(), "src/web/server.ts"), "utf8");
+  assert.ok(server.includes("let answerChars = 0"), "要数真正的回答量");
+  assert.ok(server.includes("answerChars -= ev.text.length"), "被判为过程的部分要扣掉");
+  assert.ok(server.includes("if (answerChars <= 0)"), "没结论时要说话");
+  assert.ok(server.includes("这一轮没有结论"), "说清楚发生了什么");
+  assert.ok(server.includes("被挡住了"), "被拦时要指出是授权问题");
+});

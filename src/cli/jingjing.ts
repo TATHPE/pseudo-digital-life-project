@@ -319,6 +319,18 @@ async function main(): Promise<void> {
         if (applied.egressOpened) console.error("[posture] 代码外发：会话内开放（每次留 audit，面板可一键关）");
         if (applied.paranoid) console.error("[posture] JJ_PARANOID=1：逐次确认 + 外发关闭");
       }
+      // 补向量（2026-11-03）：写入路径不建向量，于是每启动一次多一条缺的 ——
+      // /health 那个 embed-index-incomplete:N 只会涨。这里是水龙头，不只是舀水。
+      {
+        try {
+          const { fillMissingEmbeddings } = await import("../fillvec.ts");
+          const emb0 = getEmbedder();
+          fillMissingEmbeddings(d.db, emb0)
+            .then((r) => { if (r.filled) console.error("[vec] 补齐 " + r.filled + " 条向量（还缺 " + r.missing + "）"); })
+            .catch(() => { /* 补不上就留着，/health 会继续报 */ });
+        } catch { /* ignore */ }
+      }
+
       // 夜间整备的自动触发（2026-11-03）：之前**从来没有自动跑过** ——
       // events 里只有手动那一次，于是「她会自己整理记忆」一直是空头承诺。
       // 这里在启动后检查一次：距上次 > 20h 就后台跑（不 await，不挡监听）。

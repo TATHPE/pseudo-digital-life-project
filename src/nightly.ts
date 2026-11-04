@@ -629,6 +629,12 @@ export async function runNightly(deps: NightlyDeps): Promise<NightlyReport> {
       const { refineInterpretations } = await import("./interpretnight.ts");
       // 优先用纯文本通道；没有就退回 extract（会差一些，但不会崩）
       const ir = await refineInterpretations(deps.db, { complete: deps.complete ?? deps.extract, now });
+      // 顺带把这一轮新写入却缺向量的记忆补上（写入路径不建向量，见 fillvec.ts）
+      if (deps.embedder) {
+        const { fillMissingEmbeddings } = await import("./fillvec.ts");
+        const fr = await fillMissingEmbeddings(deps.db, deps.embedder);
+        if (fr.filled) report.notes.push("VEC: 补齐 " + fr.filled + " 条（还缺 " + fr.missing + "）");
+      }
       report.notes.push("INTERP: 写 " + ir.written + (ir.replaced ? "（其中改写 " + ir.replaced + "）" : "") + (ir.skipped.length ? " · " + ir.skipped.slice(0, 2).join("；") : ""));
     } catch (e) {
       report.notes.push("INTERP: 失败 " + String((e as Error)?.message ?? e).slice(0, 80));
