@@ -2011,7 +2011,7 @@ function paintMemScope(sum, count) {
     return "<button type='button' data-scope='" + scope + "' aria-pressed='" + (MEMSCOPE === scope) + "'>" +
       label + "<span class='n'>" + (n == null ? "" : n) + "</span></button>";
   };
-  el.innerHTML = chip("about", "关于你", sum.about) +
+  el.innerHTML = chip("about", "关于你" + (sum.about7d ? " +" + sum.about7d : ""), sum.about) +
     chip("all", "全部", sum.total) +
     (sum.outage ? chip("outage", "断片", sum.outage) : "");
   Array.prototype.forEach.call(el.querySelectorAll("button"), function (b) {

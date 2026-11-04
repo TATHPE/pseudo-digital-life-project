@@ -234,6 +234,15 @@ export function buildBrief(input: BriefInput): BriefOutput {
   }
   slots.push({ id: "P18", label: "最近几轮", tokens: estimateTokens(p18), stable: false });
 
+  // P19 我还不知道的（2026-11-04）：缺口卡只能等人逛到记忆屏；这条让缺口出现在对话里。
+  // 一天最多一次（调用方用 meta 冷却），且明说「没聊到别硬问」。
+  const gap = input.gapAsk ? String(input.gapAsk).trim() : "";
+  const p19 = gap
+    ? "【我还不知道的】" + gap + String.fromCharCode(10) +
+      "（这轮要是聊到相关的，就顺口问一句；没聊到别硬问，也别连着问第二次 —— 查户口很烦。）"
+    : "";
+  slots.push({ id: "P19", label: "我不知道的", tokens: estimateTokens(p19), stable: false });
+
   // ── 本轮输入 ────────────────────────────────────────
   const p11 = input.user;
   slots.push({ id: "P11", label: "用户输入", tokens: estimateTokens(p11), stable: false });
@@ -242,7 +251,7 @@ export function buildBrief(input: BriefInput): BriefOutput {
   const confidence: BriefOutput["confidence"] =
     narrativeHits === 0 ? "abstain" : narrativeHits < 2 ? "need_evidence" : "answer";
 
-  const body = [p5, p6, p7, p8, p9, p10, p12, p13, p14, p15, NO_FAKE_ACK, p16, p17, p18].filter(Boolean).join("\n\n");
+  const body = [p5, p6, p7, p8, p9, p10, p12, p13, p14, p15, NO_FAKE_ACK, p16, p17, p18, p19].filter(Boolean).join("\n\n");
   const text = [prefixText, body, p11].filter(Boolean).join("\n\n");
   const tokens = estimateTokens(text);
 

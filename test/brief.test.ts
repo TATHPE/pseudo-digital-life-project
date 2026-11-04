@@ -26,8 +26,7 @@ test("不变量 1：P1–P4 逐字不变 → prefixHash 跨轮稳定", () => {
 
 test("不变量 1b：人格变了 → prefixHash 必须变", () => {
   const a = buildBrief(base());
-  const b = buildBrief(base({ persona: { ...persona, core: persona.core + "\n新增一句。" } }));
-  assert.notEqual(a.prefixHash, b.prefixHash);
+  const b = buildBrief(base({ persona: { ...persona, core: persona.core + "\n新增一句。" } }));  assert.notEqual(a.prefixHash, b.prefixHash);
 });
 
 test("不变量 2：总量 ≤2000，且第 1 轮 ≤ 第 100 轮（不随轮数增长）", () => {
@@ -65,8 +64,9 @@ test("不变量 3：槽位固定且有序（P1–P11 + 她自己的 P12/P13）�
   // P12「我惦记的」/ P13「我怎么理解你」是 H-a/H-b 加的两层；P14「可用技能」是 docs/11 的第二优先
   // 都在召回之后、用户输入之前；全都是易变槽（装了技能不该让 prefixHash 变）
   // P16「我能看到多少」：她自己的容量，同样放易变区
+  // P19「我还不知道的」：记忆缺口，一天最多一次（2026-11-04）
   assert.deepEqual(r.slots.map((s) => s.id),
-    ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10", "P12", "P13", "P14", "P15", "P16", "P17", "P18", "P11"]);
+    ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10", "P12", "P13", "P14", "P15", "P16", "P17", "P18", "P19", "P11"]);
   assert.deepEqual(r.slots.filter((s) => s.stable).map((s) => s.id), ["P1", "P2", "P3", "P4"]);
 });
 
@@ -177,4 +177,15 @@ test("工作模式才带最近几轮历史；聊天模式故意不带（靠记�
   assert.ok(work.text.includes("那第二条呢"), "最近一条必须在");
   assert.ok(work.text.includes("你：") && work.text.includes("我："), "用户与她的话都要能区分");
   assert.ok(work.tokens > chat.tokens, "工作模式预算更宽");
+});
+
+test("P19 我还不知道的：有缺口才出现，且明说「没聊到别硬问」（2026-11-04）", () => {
+  const none = buildBrief(base());
+  assert.ok(!none.text.includes("【我还不知道的】"), "没缺口时不能凭空问");
+
+  const ask = buildBrief(base({ gapAsk: "你一般几点之后不想被打扰？" }));
+  assert.ok(ask.text.includes("【我还不知道的】"));
+  assert.ok(ask.text.includes("几点之后不想被打扰"));
+  assert.ok(ask.text.includes("没聊到别硬问"), "要压住查户口感");
+  assert.ok(ask.tokens <= 2000, "加了这一槽也不能破预算");
 });

@@ -17,6 +17,22 @@ import type { AddressInfo } from "node:net";
 
 const tmp = () => mkdtempSync(join(tmpdir(), "jj-web-"));
 
+/** fetch 规范禁用了一批端口（6665–6669、10080 …），而这台机器的动态端口范围里就有它们。
+ *  listen(0) 一旦落在那里，undici 直接 "bad port" —— 不是代码错，是环境。
+ *  这条以前只写在 start() 里，另外 5 个测试各自 listen(0) 没这道保险，
+ *  于是整仓跑会偶尔红一条、单跑那个文件又是绿的（2026-11-04 抓到）。 */
+const BLOCKED_PORTS = new Set([0, 6665, 6666, 6667, 6668, 6669, 10080]);
+
+async function listenSafe(srv: { listen(p: number, h: string, cb: () => void): unknown; address(): unknown; close(cb: () => void): unknown }): Promise<number> {
+  for (let attempt = 0; ; attempt++) {
+    await new Promise<void>((r) => { srv.listen(0, "127.0.0.1", () => r()); });
+    const port = (srv.address() as AddressInfo).port;
+    if (!BLOCKED_PORTS.has(port)) return port;
+    await new Promise<void>((r) => { srv.close(() => r()); });
+    if (attempt > 8) throw new Error(`E_BAD_PORT: 连续撞到禁用端口 ${port}`);
+  }
+}
+
 async function start() {
   const dir = tmp();
   const d = openDb(join(dir, "m.db"));
@@ -30,16 +46,9 @@ async function start() {
     now: () => new Date("2026-10-28T12:00:00Z"),
     reply: async function* () { yield "在。"; yield "（本地桩）"; },
   });
-  // fetch 规范禁用了一批端口（6665–6669、10080 …），而这台机器的动态端口范围里就有它们：
-  // listen(0) 万一落在那里，undici 会直接 “bad port” —— 不是代码错，是环境。重试一次即可。
-  const BLOCKED = new Set([0, 6665, 6666, 6667, 6668, 6669, 10080]);
-  for (let attempt = 0; ; attempt++) {
-    await new Promise<void>((r) => srv.listen(0, "127.0.0.1", () => r()));
-    const port = (srv.address() as AddressInfo).port;
-    if (!BLOCKED.has(port)) return { srv, port, base: `http://127.0.0.1:${port}`, dir };
-    await new Promise<void>((r) => srv.close(() => r()));
-    if (attempt > 8) throw new Error(`E_BAD_PORT: 连续撞到禁用端口 ${port}`);
-  }
+  // 端口可能落在 fetch 的禁用段（见 listenSafe）；这里只负责起得来
+  const port = await listenSafe(srv);
+  return { srv, port, base: `http://127.0.0.1:${port}`, dir };
 }
 
 test("页面里没有「新对话」——重置人格的入口不该存在", () => {
@@ -58,9 +67,7 @@ test("桌面端令牌：没令牌 403、带 ?k= 放行并种 cookie、/health �
     getEmbedder: () => null,
     getConfig: () => ({ roles: { express: { provider: "deepseek", model: "x" } }, ollama: "" }) as never,
   });
-  await new Promise<void>((r) => srv.listen(0, "127.0.0.1", () => r()));
-  const addr = srv.address() as { port: number };
-  const base = `http://127.0.0.1:${addr.port}`;
+  const base = `http://127.0.0.1:${await listenSafe(srv)}`;
   try {
     assert.equal((await fetch(`${base}/`)).status, 403, "浏览器直接开就是 403");
     assert.equal((await fetch(`${base}/?k=wrong`)).status, 403, "错的令牌也是 403");
@@ -366,8 +373,7 @@ test("待确认队列仍然可用（手工写入 + 面板读取），但 execute
     getConfig: () => ({ ollama: "", roles: { express: { provider: "deepseek", model: "x", embed: { provider: "ollama", model: "bge-m3" } } } }),
     now: () => new Date(),
   });
-  await new Promise<void>((r) => srv.listen(0, "127.0.0.1", () => r()));
-  const port = (srv.address() as { port: number }).port;
+  const port = await listenSafe(srv);
   const base = "http://127.0.0.1:" + port;
   const H2 = { "x-jj": "1", "content-type": "application/json" };
   try {
@@ -432,8 +438,7 @@ test("文档：/api/docs 列出摄入的文档，点开能看到块，忘掉后�
     getTransport: () => { throw new Error("no model"); }, getEmbedder: () => null,
     getConfig: () => ({ ollama: "", roles: { express: { provider: "deepseek", model: "x", embed: { provider: "ollama", model: "bge-m3" } } } }),
   });
-  await new Promise<void>((r) => srv.listen(0, "127.0.0.1", () => r()));
-  const base = `http://127.0.0.1:${(srv.address() as AddressInfo).port}`;
+  const base = `http://127.0.0.1:${await listenSafe(srv)}`;
   try {
     const ing = await ingestFile(d.db, join(dir, "sources", "k.md"), { home: dir });
     assert.equal(ing.skipped, false);
@@ -554,8 +559,7 @@ test("头像：上传验收文件头（伪造 mime 也不行），SVG 一律拒�
     getTransport: () => { throw new Error("no model"); }, getEmbedder: () => null,
     getConfig: () => ({ ollama: "", roles: { express: { provider: "deepseek", model: "x", embed: { provider: "ollama", model: "bge-m3" } } } }),
   });
-  await new Promise<void>((r) => srv.listen(0, "127.0.0.1", () => r()));
-  const base = `http://127.0.0.1:${(srv.address() as AddressInfo).port}`;
+  const base = `http://127.0.0.1:${await listenSafe(srv)}`;
   const H = { "x-jj": "1", "content-type": "application/json" };
   try {
     // 一个 1×1 的真 PNG（67 字节）
@@ -700,8 +704,7 @@ test("面板摄入：候选列表只列未摄入的，编码不对不装成 E_NO
     getTransport: () => { throw new Error("no model"); }, getEmbedder: () => null,
     getConfig: () => ({ ollama: "", roles: { express: { provider: "deepseek", model: "x", embed: { provider: "ollama", model: "bge-m3" } } } }),
   });
-  await new Promise<void>((r) => srv.listen(0, "127.0.0.1", () => r()));
-  const base = `http://127.0.0.1:${(srv.address() as AddressInfo).port}`;
+  const base = `http://127.0.0.1:${await listenSafe(srv)}`;
   const H = { "x-jj": "1", "content-type": "application/json" };
   try {
     const c1 = await (await fetch(`${base}/api/ingest/candidates`)).json() as any[];
@@ -962,6 +965,21 @@ test("页面里被调用的本地函数都必须有定义（tsc 看不见字符�
   for (const fn of ["handleSlash", "traceStart", "traceAdd", "traceTool", "paintAnswer", "loadMode", "setMode", "paintLamps", "loadIdle", "paintNightLog"]) {
     assert.ok(src.includes("function " + fn + "("), "缺定义：" + fn);
   }
+});
+
+test("缺口会进对话：一次 /api/say 之后记下「问过了」，免得每轮查户口", async () => {
+  const { srv, base, dir } = await start();
+  try {
+    await (await fetch(`${base}/api/say`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text: "在吗" }),
+    })).text();
+    const { DatabaseSync } = await import("node:sqlite");
+    const db = new DatabaseSync(join(dir, "m.db"), { readOnly: true });
+    const row = db.prepare("SELECT value FROM meta WHERE key='profile_asked_at'").get() as any;
+    db.close();
+    assert.ok(row?.value, "拼简报时要记下'问过了'（P19 的冷却靠它）");
+  } finally { srv.close(); }
 });
 
 test("缺口卡：GET 问三件、POST 答一句就落库，再问就少一件（2026-11-04）", async () => {

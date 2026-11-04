@@ -51,3 +51,16 @@ test("夜里抽出来的（subject 对上）也算答过，别再问第二遍", 
   assert.equal(answered(d.db, "所在地"), true);
   assert.ok(!openGaps(d.db, 99).some((g) => g.key === "所在地"));
 });
+
+test("什么时候问：一天最多一次（否则她会每轮查户口）", async () => {
+  const { nextAsk, markAsked } = await import("../src/profile.ts");
+  const d = openDb(join(H(), "m.db"));
+  const t0 = new Date("2026-11-04T10:00:00Z");
+  const first = nextAsk(d.db, t0);
+  assert.ok(first, "有缺口、也没问过 → 该问");
+  markAsked(d.db, t0);
+
+  assert.equal(nextAsk(d.db, new Date("2026-11-04T23:00:00Z")), null, "13 小时后不该再问");
+  const later = nextAsk(d.db, new Date("2026-11-05T11:00:00Z"));
+  assert.equal(later?.key, first!.key, "过了 24 小时可以再问同一题");
+});

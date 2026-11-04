@@ -99,6 +99,15 @@ export interface BriefInput {
   /** 最近几轮对话（work 模式才有）：按时间正序，最后一条是最近的一轮 */
   history?: Array<{ role: "user" | "agent"; text: string }>;
 
+  /**
+   * 我还不知道的一件事（P19，2026-11-04）。
+   *
+   * 记忆缺口卡只在人逛到记忆屏时才有用。这条让缺口在她**自己开口**时出现：
+   * 有未答的题 + 距上次问超过 24 小时，才塞一句问法进来。
+   * 措辞里写死「没聊到别硬问」—— 否则她会每轮都查户口。
+   */
+  gapAsk?: string | null;
+
   capacity?: {
     memories: number;
     docs?: number;

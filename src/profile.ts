@@ -59,6 +59,38 @@ export function openGaps(db: DatabaseSync, limit = 3): Gap[] {
   }
 }
 
+// ── 什么时候**问**（下面那一节是"答了怎么落库"）──────────────
+
+/** 上次问是什么时候（meta 里；进程重启也不会忘） */
+const ASK_MARK = "profile_asked_at";
+
+/**
+ * 这一轮该不该顺口问一句。
+ *
+ * 只有两个条件：还有没答的题、距上次问超过 cooldown（默认 24h）。
+ * 不做"话题相关才问"的判断 —— 那要模型参与，而她现在连自己在问什么都记不住。
+ */
+export function nextAsk(db: DatabaseSync, now = new Date(), cooldownMs = 24 * 60 * 60 * 1000): Gap | null {
+  const gaps = openGaps(db, 1);
+  if (!gaps.length) return null;
+  try {
+    const r = db.prepare("SELECT value FROM meta WHERE key=?").get(ASK_MARK) as { value?: string } | undefined;
+    if (r?.value) {
+      const t = Date.parse(r.value);
+      if (Number.isFinite(t) && now.getTime() - t < cooldownMs) return null;
+    }
+  } catch { /* 没有 meta 表 = 从没问过 */ }
+  return gaps[0]!;
+}
+
+/** 记下"问过了"（在拼简报时调，不管她最后有没有真问 —— 否则一天能问十次） */
+export function markAsked(db: DatabaseSync, now = new Date()): void {
+  try {
+    db.prepare("INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value")
+      .run(ASK_MARK, now.toISOString());
+  } catch { /* 记不下就退化成每轮都问 —— 但不该阻断对话 */ }
+}
+
 /**
  * 落一条答案。空文本拒绝；已经有答案的题返回 null（不覆盖 —— 改主意要走记忆编辑）。
  */

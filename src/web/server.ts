@@ -1207,12 +1207,15 @@ export function createWebServer(deps: WebDeps) {
       if (req.method === "GET" && url.pathname === "/api/memories/summary") {
         const r = deps.db.prepare(
           `SELECT count(*) AS total,
-                  sum(CASE WHEN ${OUTAGE_SQL} THEN 1 ELSE 0 END) AS outage
+                  sum(CASE WHEN ${OUTAGE_SQL} THEN 1 ELSE 0 END) AS outage,
+                  sum(CASE WHEN NOT ${OUTAGE_SQL} AND julianday(created_at) > julianday('now','-7 days')
+                           THEN 1 ELSE 0 END) AS about7d
              FROM memories WHERE status='active'`,
-        ).get() as { total: number; outage: number | null };
+        ).get() as { total: number; outage: number | null; about7d: number | null };
         const total = Number(r.total ?? 0);
         const outage = Number(r.outage ?? 0);
-        json(res, 200, { total, outage, about: total - outage });
+        // 本周新增的「关于你」：没有这条，用户只能靠感觉判断"是不是越记越多"
+        json(res, 200, { total, outage, about: total - outage, about7d: Number(r.about7d ?? 0) });
         return;
       }
       const memId = url.pathname.match(/^\/api\/memories\/(\d+)$/);
@@ -1970,6 +1973,14 @@ export function createWebServer(deps: WebDeps) {
           powers = sg.powersLine(deps.home, perm.preset, egressStatus(deps.home, { now: now() }).until !== null);
         } catch { /* 读不到就不加这一槽 */ }
         const selfState = advance(deps.db, { turns: 1, silenceDays: last ? (now().getTime() - new Date(last.ts).getTime()) / 86400000 : 0 }, now());
+        // 缺口：一天最多问一次（冷却写 meta，免得她每轮查户口）
+        let gapAsk: string | null = null;
+        try {
+          const { nextAsk, markAsked } = await import("../profile.ts");
+          const g = nextAsk(deps.db, now());
+          if (g) { gapAsk = g.question; markAsked(deps.db, now()); }
+        } catch { /* 没有缺口就算了 */ }
+
         const brief = buildBrief({
           now: now(), persona: loadPersona(deps.home), contracts, recalled,
           lastSeenAt: last ? new Date(last.ts) : null,
@@ -1983,6 +1994,7 @@ export function createWebServer(deps: WebDeps) {
           plugins: pluginState,
           mode,
           ...(history ? { history } : {}),
+          ...(gapAsk ? { gapAsk } : {}),
           user: (() => { const note = omissionNote(omitted, rc.omittedDocs); return note ? note + String.fromCharCode(10) : ""; })() + text,
         });
 
