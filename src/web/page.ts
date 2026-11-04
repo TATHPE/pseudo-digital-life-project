@@ -613,6 +613,13 @@ export const PAGE = `<!doctype html>
   .memscope button[aria-pressed="true"] { color:var(--ink); font-weight:700; border-color:var(--ink);
                                           box-shadow: inset 2px 0 0 var(--ink); }
   .memscope .n { opacity:.7; margin-left:5px; }
+  /* 「关于你」的缺口卡：只在记忆屏、只在「关于你」视图里出现，不弹窗 */
+  #gapcard { border:1px dashed var(--line-dim); padding:10px; margin:10px 0 4px; }
+  #gapcard .gapq { font:12px/1.7 var(--mono); color:var(--ink-dim); margin-bottom:8px; }
+  #gapcard .gapchips { display:flex; gap:6px; flex-wrap:wrap; }
+  #gapcard .gapchips button { font:12px/1.2 var(--mono); color:var(--ink); background:transparent;
+                              border:1px solid var(--line-dim); padding:7px 10px; cursor:pointer; }
+  #gapcard .gapchips button:hover { border-color:var(--ink); }
 
   .capbox { border:1px solid var(--line-dim); margin:4px 0; }
   .capbox > summary { padding:5px 7px; font:10px/1 var(--mono); letter-spacing:.12em;
@@ -866,6 +873,7 @@ export const PAGE = `<!doctype html>
         <h2>记忆 · MEMORY</h2>
         <p class="hint">按活跃度排；点一条看正文、出处与它的来历。</p>
         <input id="q" class="searchbox" placeholder="搜记忆 / 文档…（Ctrl+K 也能到这儿）" autocomplete="off">
+        <div id="gapcard" hidden></div>
         <div class="memscope" id="memscope"></div>
         <div id="memlist"></div>
       </div>
@@ -2021,6 +2029,7 @@ async function memories(limit) {
   MEMS = rows;
   MEMPAGE = lim;
   paintMemScope(sum, MEMSCOPE === "all" ? sum.total : (MEMSCOPE === "about" ? sum.about : sum.outage));
+  loadGaps();
   const more = rows.length >= MEMPAGE
     ? "<button class='item dimmore' id='memmore'>看更早的（已显示 " + rows.length + " 条）</button>"
     : "";
@@ -2031,6 +2040,49 @@ async function memories(limit) {
     "<span class='bar'><i style='width:" + Math.round(r.weight * 100) + "%'></i></span></button>").join("") + more;
   const mb = $("#memmore");
   if (mb) mb.onclick = function () { memories(Math.min(200, MEMPAGE * 5)); };
+}
+
+// ── 「关于你」的缺口（2026-11-04）─────────────────────────────
+// 夜里抽不出「她几点睡」这种事实（语料九成是工作日志）。那就直接问，
+// 一次问三句，答一句落一条 contract。不弹窗：只在她主动看记忆屏时出现在顶部。
+var GAPS = [];
+async function loadGaps() {
+  var el = $("#gapcard"); if (!el) return;
+  var j = {};
+  try { j = await (await fetch("/api/profile/gaps")).json(); } catch (e) { return; }
+  GAPS = (j && j.gaps) || [];
+  // 断片视图里不问（那是"翻旧账"的地方）；「全部」和新库都问 ——
+  // 尤其在库里还没有「关于你」的记忆时，这张卡才是这屏唯一有用的东西。
+  if (!GAPS.length || MEMSCOPE === "outage") { el.hidden = true; el.innerHTML = ""; return; }
+  el.hidden = false;
+  el.innerHTML = "<div class='gapq'>还有 " + GAPS.length + " 件关于你的事我不知道。答一句我就记下（不想说就跳过）：</div>" +
+    "<div class='gapchips'>" + GAPS.map(function (g, i) {
+      return "<button type='button' data-gap='" + i + "'>" + escapeHtml(g.question) + "</button>";
+    }).join("") + "</div>";
+  Array.prototype.forEach.call(el.querySelectorAll("button[data-gap]"), function (b) {
+    b.onclick = function () { askGap(GAPS[Number(b.dataset.gap)]); };
+  });
+}
+function askGap(g) {
+  if (!g) return;
+  var el = $("#gapcard");
+  el.innerHTML = "<div class='gapq'>" + escapeHtml(g.question) + "</div>" +
+    "<div class='gapchips'><input id='gapinput' class='searchbox' placeholder='写一句就行（Esc 放弃）' autocomplete='off'>" +
+    "<button type='button' id='gapsave'>记住</button></div>";
+  var inp = $("#gapinput"); if (inp) inp.focus();
+  var save = async function () {
+    var text = inp ? inp.value.trim() : "";
+    if (!text) return;
+    var j = {};
+    try {
+      j = await (await fetch("/api/profile/answer", { method: "POST", headers: H, body: JSON.stringify({ key: g.key, text: text }) })).json();
+    } catch (e) { j = {}; }
+    if (j && j.ok) pushTicker("记住了：" + g.key);
+    else pushTicker("没记上：" + ((j && j.why) || "未知原因"));
+    loadGaps(); memories();
+  };
+  var btn = $("#gapsave"); if (btn) btn.onclick = save;
+  if (inp) inp.onkeydown = function (e) { if (e.key === "Enter") save(); if (e.key === "Escape") loadGaps(); };
 }
 async function openTool(i) {
   const t = TOOLS[i]; if (!t) return;

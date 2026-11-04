@@ -66,6 +66,17 @@ check("工具项可点", await js(`(() => {
 const toolTitle = await js(`document.querySelector('#t-title').textContent`);
 check("工具详情有内容", typeof toolTitle === "string" && toolTitle.length > 3, toolTitle);
 
+// 「关于你」的缺口卡（2026-11-04）：库里还没有「关于你」的记忆时，它才是这屏唯一有用的东西
+check("记忆屏有「关于你」的缺口卡", await js(`(async () => {
+  const b = document.querySelector('#side .item[data-view=memlistview]');
+  if (!b) return false;
+  b.click();
+  await new Promise((r) => setTimeout(r, 800));
+  const card = document.querySelector('#gapcard');
+  if (!card || card.hidden) return false;
+  return card.querySelectorAll('button[data-gap]').length >= 1;
+})()`));
+
 // 记忆 → 记忆详情（空库时没有可点的项，跳过而不是报错）
 const hasMem = await js("!!document.querySelector('#side .item[data-view=memview]')");
 if (hasMem) {

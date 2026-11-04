@@ -964,8 +964,44 @@ test("页面里被调用的本地函数都必须有定义（tsc 看不见字符�
   }
 });
 
-test("记忆视图：关于你 / 全部 / 断片 分流，summary 报三个数（2026-11-04）", async () => {
+test("缺口卡：GET 问三件、POST 答一句就落库，再问就少一件（2026-11-04）", async () => {
   const { srv, base, dir } = await start();
+  try {
+    const g1 = await (await fetch(`${base}/api/profile/gaps`)).json() as any;
+    assert.equal(g1.gaps.length, 3);
+    assert.equal(g1.total, 6);
+
+    const r = await fetch(`${base}/api/profile/answer`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-jj": "1" },
+      body: JSON.stringify({ key: "称呼", text: "叫我小飞就行" }),
+    });
+    assert.equal(r.status, 200);
+
+    const g2 = await (await fetch(`${base}/api/profile/gaps`)).json() as any;
+    assert.equal(g2.answered, 1, "答过的题要记成已答");
+    assert.ok(!g2.gaps.some((x: any) => x.key === "称呼"), "答过的题不该再问");
+    assert.equal(g2.gaps.length, 3, "还有 5 件没答，仍然先问三件");
+
+    const { DatabaseSync } = await import("node:sqlite");
+    const db = new DatabaseSync(join(dir, "m.db"), { readOnly: true });
+    const row = db.prepare("SELECT text,source_ref,scored_by FROM memories WHERE source_ref='profile:称呼'").get() as any;
+    db.close();
+    assert.equal(row?.text, "叫我小飞就行");
+    assert.equal(row?.scored_by, "human:profile");
+
+    // 没 x-jj 头不许写（跨站）
+    const bad = await fetch(`${base}/api/profile/answer`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ key: "作息", text: "十点后" }),
+    });
+    assert.equal(bad.status, 403);
+
+    assert.ok(PAGE.includes('id="gapcard"'), "面板要有缺口卡");
+  } finally { srv.close(); }
+});
+
+test("记忆视图：关于你 / 全部 / 断片 分流，summary 报三个数（2026-11-04）", async () => {  const { srv, base, dir } = await start();
   try {
     const { DatabaseSync } = await import("node:sqlite");
     const db2 = new DatabaseSync(join(dir, "m.db"));

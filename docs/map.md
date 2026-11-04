@@ -8,8 +8,8 @@
 
 | 项 | 数量 |
 |---|---|
-| 源文件（src/**/*.ts） | 109 |
-| 错误码 E_* | 206 |
+| 源文件（src/**/*.ts） | 110 |
+| 错误码 E_* | 209 |
 | verbs | 27 |
 | CLI 子命令 | 37 |
 
@@ -37,6 +37,7 @@
 | `E_AGENDA_EMPTY` | `src/agenda.ts` |
 | `E_AGENDA_FULL` | `src/agenda.ts` |
 | `E_AGENDA_NO_SOURCE` | `src/agenda.ts` |
+| `E_ALREADY` | `src/profile.ts` |
 | `E_BAD_ACTION` | `src/web/server.ts` |
 | `E_BAD_ARG` | `src/plugins.ts` |
 | `E_BAD_ARG_VALUE` | `src/toolsmoke.ts` |
@@ -80,7 +81,7 @@
 | `E_EMBED_COUNT` | `src/transport.ts` |
 | `E_EMBED_DOWN` | `src/retrieve.ts` |
 | `E_EMBED_EMPTY` | `src/retrieve.ts` |
-| `E_EMPTY` | `src/agentguard.ts` `src/ingest.ts` `src/plugins.ts` `src/selfupdate.ts` `src/store.ts` `src/web/server.ts` |
+| `E_EMPTY` | `src/agentguard.ts` `src/ingest.ts` `src/plugins.ts` `src/profile.ts` `src/selfupdate.ts` `src/store.ts` `src/web/server.ts` |
 | `E_EMPTY_EMBEDDING` | `src/embed.ts` |
 | `E_ENCODING` | `src/ingest.ts` `src/persona.ts` `src/web/server.ts` |
 | `E_EXISTS` | `src/plugins.ts` `src/verbs.ts` |
@@ -112,6 +113,7 @@
 | `E_INTERP_SHORT` | `src/interpret.ts` |
 | `E_INTERP_UNGROUNDED` | `src/interpretnight.ts` |
 | `E_IS_DIR` | `src/verbs.ts` |
+| `E_JSON` | `src/web/server.ts` |
 | `E_MAX_STEPS` | `src/agent.ts` |
 | `E_MCP` | `src/mcp.ts` |
 | `E_MCP_CLOSED` | `src/mcp.ts` |
@@ -229,6 +231,7 @@
 | `E_TOOL` | `src/mcp.ts` `src/tools.ts` |
 | `E_TOOL_FAILED` | `src/agent.ts` |
 | `E_UNKNOWN_FIELD` | `src/decayparams.ts` |
+| `E_UNKNOWN_GAP` | `src/profile.ts` |
 | `E_UNKNOWN_KIND` | `src/decayparams.ts` |
 | `E_UNKNOWN_PARAM` | `src/decayparams.ts` |
 | `E_UNKNOWN_TOOL` | `src/toolsmoke.ts` |
@@ -349,6 +352,7 @@
 | `src/policy.ts` | 策略层（04 §4 / 12 §9.2）：唯一有权说"不"的地方。 |
 | `src/posture.ts` | 默认姿态（用户 2026-10-31 的判断）： |
 | `src/preflight.ts` | 本地端点前置检查（C-3） |
+| `src/profile.ts` | 「关于你」的缺口（2026-11-04） |
 | `src/project.ts` | 项目读取（K-1） |
 | `src/proposals.ts` | 提议（K-2）：让它会**提要求**，而不是只会照做。 |
 | `src/provider.ts` | 角色路由（13 §2）+ 隐私闸门（19 §0.1 W-A） |

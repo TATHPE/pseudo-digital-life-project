@@ -1184,6 +1184,25 @@ export function createWebServer(deps: WebDeps) {
         json(res, 200, rows);
         return;
       }
+      // 「关于你」的缺口（2026-11-04）：记忆不够多，就由人补 —— 面板问三句，答一句落一条。
+      if (req.method === "GET" && url.pathname === "/api/profile/gaps") {
+        try {
+          const { openGaps, GAPS } = await import("../profile.ts");
+          const gaps = openGaps(deps.db, 3);
+          json(res, 200, { gaps, answered: GAPS.length - openGaps(deps.db, 99).length, total: GAPS.length });
+        } catch { json(res, 200, { gaps: [], answered: 0, total: 0 }); }
+        return;
+      }
+      if (req.method === "POST" && url.pathname === "/api/profile/answer") {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
+        let body: { key?: unknown; text?: unknown } = {};
+        try { body = JSON.parse(await readBody(req)) as typeof body; } catch { json(res, 400, { error: "E_JSON" }); return; }
+        const { answerGap } = await import("../profile.ts");
+        const r = answerGap(deps.db, String(body.key ?? ""), String(body.text ?? ""), now());
+        json(res, r.ok ? 200 : 400, r.ok ? { ok: true, id: r.id } : r);
+        return;
+      }
+
       // 记忆的三个数：总数 / 关于你 / 断片。给面板的两个 chip 用。
       if (req.method === "GET" && url.pathname === "/api/memories/summary") {
         const r = deps.db.prepare(
