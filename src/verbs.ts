@@ -10,6 +10,8 @@ import type { Tier } from "./types.ts";
 import { readSkill, scanSkills } from "./skills.ts";
 import { profileOf, resolveShell, scriptArgv, withUtf8Output } from "./host.ts";
 import { isRescuePath, superEnabled } from "./supergrant.ts";
+import { currentPreset } from "./grant.ts";
+import { allowFor } from "./egress.ts";
 import { renderEroded as erode } from "./erosion.ts";
 import { gitDiff, gitLog, gitStatus } from "./gitview.ts";
 import { projectHome } from "./project.ts";
@@ -201,6 +203,17 @@ function egressEnv(ctx: VerbCtx, target: string): Record<string, string | undefi
   if (!expressIsRemote(ctx)) return env;              // 表达模型在本地：不发出去，不用批
   const r = checkEgress(ctx.home, target, { env });
   if (r.ok) return env;
+  // 完全权限档本身就是出网通行证（2026-11-04 用户："我已经开启了完全权限"还是弹）。
+  //
+  // 踩过两次：① egress 有自己的 24 小时窗口，过期后 full 档也拦 —— 用户第二天再聊就
+  // 又看到授权框，只能理解为"权限没生效"；② 两套闸（档位 / 外发）对用户来说都是"权限"，
+  // 分开解释就是为难人。所以：档位是 full 时，外发直接放行，但**照旧写审计**。
+  try {
+    if (currentPreset(ctx.home).preset === "full") {
+      allowFor(ctx.home, 24 * 60 * 60_000, "完全权限档：会话内允许外发（仍逐条审计）");
+      return env;
+    }
+  } catch { /* 读不到档位就按原逻辑走 */ }
   noteEgressRequest(ctx.home, target, ctx.currentVerb ?? "project.read");
   throw new Error(
     "E_NEEDS_EGRESS: 当前表达模型在云端，读这一条等于把代码/文档发出去：" + target +

@@ -294,3 +294,35 @@ test("K-3 默认档：一键切当前会话不需要确认，但把 full 存成�
   assert.equal(needsConfirm("write"), false);
   assert.equal(needsConfirm("ask"), false);
 });
+
+test("完全权限档 = 出网通行证：用户「我已经开启了完全权限」就不该再看到授权框", async () => {
+  // 踩过两次：① egress 有自己的 24h 窗口，过期后 full 档也拦 —— 用户第二天再聊又看到授权框；
+  // ② 两套闸（档位 / 外发）对用户来说都是"权限"，分开解释就是为难人。
+  const { mkdtempSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { openDb } = await import("../src/db.ts");
+  const { execute } = await import("../src/execute.ts");
+  const { loadPolicy } = await import("../src/policy.ts");
+  const { resolveConfig } = await import("../src/configfile.ts");
+  const { setPreset, revokeAll } = await import("../src/grant.ts");
+
+  const home = mkdtempSync(join(tmpdir(), "jj-eg-"));
+  try {
+    const cfg = resolveConfig(home);
+    const d = openDb(join(home, "memory.db"));
+    const policy = await loadPolicy(home);
+    const deps = { db: d.db, policy, ctx: { db: d.db, home, cfg, now: () => new Date(), embedder: null } } as never;
+
+    revokeAll(home);
+    const before = await execute(deps, "project.read", { path: "src/brief.ts" }, { approved: true });
+    assert.equal(before.ok, false, "低档位时仍然拦");
+
+    setPreset(home, "full", { because: "测试：完全权限档应等同出网通行证" });
+    const after = await execute(deps, "project.read", { path: "src/brief.ts" }, { approved: true });
+    assert.equal(after.ok, true, "full 档下读项目代码要放行");
+  } finally {
+    try { revokeAll(home); } catch { /* ignore */ }
+    try { rmSync(home, { recursive: true, force: true }); } catch { /* sqlite 句柄 */ }
+  }
+});
