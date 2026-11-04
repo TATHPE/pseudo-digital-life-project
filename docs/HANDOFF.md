@@ -14,14 +14,14 @@
 schema v12（memories.erase_stage：三段侵蚀）
 /health → {ok:true, degraded:[], local:{…}}（本地模型状态也在里面）
 面板跑在 127.0.0.1:7700（重启用 node tmp/start-panel.mjs）
-桌面壳 desktop/src-tauri/target/release/jingjing-desktop.exe（release，GUI 子系统，窗口指向 `/`）
+桌面壳 desktop/src-tauri/target/release/jingjing-desktop.exe（**2026-11-04 22:05 重新构建**，8.5 MB，PE Subsystem=2，窗口最大化 + 指向 `/`）
 桌面快捷方式「Pseudo Digital Life Project」，工作目录必须是 D:/LLM/jingjing
 ```
 
 **接手第一件事**：读 `docs/22-待办与技术债.md` §0.3 —— 发布前 13 项**全部完成**。
 
 现在剩的活（按价值排）：
-1. **重新 `cargo build --release`** —— exe 落后源码（片头横排、窗口居中、预热页一行都没进去）
+1. ~~重新 `cargo build --release`~~ ✅ 已完成（`833f951`）
 2. **release 安装包（NSIS）** —— 用户：等一切完成再构建
 3. **`jingjing doctor --perms`** —— 把「为什么这个不能用」变成一张自查表（现在只有 `tmp/probe-*.mjs` 探针）
 4. **reranker** —— 难用例基线已有（R@1 9/10 + abstain 0/2），上之前先看 `docs/24` 的「难用例基准」一节
