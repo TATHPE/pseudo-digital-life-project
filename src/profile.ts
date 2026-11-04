@@ -50,6 +50,24 @@ export function answered(db: DatabaseSync, key: string): boolean {
   return Boolean(bySubject);
 }
 
+/**
+ * 六道题各自的答案（没答过的 key 不出现）。
+ * 给 `jingjing profile` 用：让人一眼看见"她到底知道你什么"。
+ */
+export function answers(db: DatabaseSync): Map<string, { text: string; from: string }> {
+  const out = new Map<string, { text: string; from: string }>();
+  for (const g of GAPS) {
+    const r = db.prepare(
+      `SELECT text, source_ref, scored_by FROM memories
+        WHERE status='active' AND (source_ref=? OR subject=?)
+        ORDER BY CASE WHEN source_ref=? THEN 0 ELSE 1 END, id DESC LIMIT 1`,
+    ).get(gapSourceRef(g.key), g.key, gapSourceRef(g.key)) as
+      { text: string; source_ref: string | null; scored_by: string } | undefined;
+    if (r) out.set(g.key, { text: r.text, from: r.source_ref === gapSourceRef(g.key) ? "你答的" : "她抽出来的" });
+  }
+  return out;
+}
+
 /** 还没答的题（面板只展示前 3 条，问多了像表单） */
 export function openGaps(db: DatabaseSync, limit = 3): Gap[] {
   try {

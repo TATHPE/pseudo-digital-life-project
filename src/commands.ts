@@ -6,6 +6,6 @@ export const CLI_COMMANDS = [
   "migrate", "remember", "search", "verify", "outage", "serve", "config", "models", "links", "threads", "proposal", "grant", "standing", "persona", "setup",
   "capabilities", "doctor", "reembed", "auth", "usage", "test", "night", "shell", "ingest", "docs",
   "forget-doc", "export", "verify-export", "import", "smoke-tools", "templates", "redteam",
-  "verb", "beat", "eval", "decay", "bench",
+  "verb", "beat", "eval", "decay", "bench", "profile",
 ];
 

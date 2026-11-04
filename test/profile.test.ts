@@ -64,3 +64,18 @@ test("什么时候问：一天最多一次（否则她会每轮查户口）", as
   const later = nextAsk(d.db, new Date("2026-11-05T11:00:00Z"));
   assert.equal(later?.key, first!.key, "过了 24 小时可以再问同一题");
 });
+
+test("profile status 要能区分「你答的」和「她抽出来的」", async () => {
+  const { answers } = await import("../src/profile.ts");
+  const d = openDb(join(H(), "m.db"));
+  answerGap(d.db, "称呼", "叫我小飞");
+  // 夜里抽出来的一条（没有 source_ref，只有 subject）
+  d.db.prepare(`INSERT INTO memories(layer,kind,text,text_bigram,subject,last_decay_at,created_at,updated_at)
+    VALUES('contract','fact_hard','住在杭州','住 在','所在地','2026-11-01T00:00:00Z','2026-11-01T00:00:00Z','2026-11-01T00:00:00Z')`).run();
+
+  const m = answers(d.db);
+  assert.equal(m.size, 2);
+  assert.deepEqual(m.get("称呼"), { text: "叫我小飞", from: "你答的" });
+  assert.equal(m.get("所在地")?.from, "她抽出来的", "抽出来的要标出来 —— 人能据此决定要不要改");
+  assert.ok(!m.has("忌口"), "没答的不该出现");
+});

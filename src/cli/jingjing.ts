@@ -844,6 +844,41 @@ async function main(): Promise<void> {
       process.exitCode = 2;
       return;
     }
+    case "profile": {
+      // 「关于你」现在到底有什么、还缺什么（2026-11-04）。
+      // 不花钱、不调模型：只读库 + 那张六道题的表。
+      const { GAPS, answers, answerGap } = await import("../profile.ts");
+      const d = openDb(dbFile);
+      const op = rest[0] ?? "status";
+      if (op === "set") {
+        const key = String(rest[1] ?? "").trim();
+        const text = rest.slice(2).join(" ").trim();
+        const r = answerGap(d.db, key, text);
+        if (!r.ok) { console.error(`${r.code}: ${r.why}`); process.exitCode = 1; return; }
+        console.log(`记住了：${key} → ${text}`);
+        return;
+      }
+      if (op !== "status") {
+        console.error("用法: jingjing profile [status] ｜ jingjing profile set <称呼|作息|忌口|生日|所在地|工作> \"……\"");
+        process.exitCode = 2;
+        return;
+      }
+      const got = answers(d.db);
+      const active = (d.db.prepare("SELECT count(*) c FROM memories WHERE status='active'").get() as { c: number }).c;
+      console.log(`关于你：${got.size}/${GAPS.length} 件事我心里有数（active 记忆 ${active} 条）`);
+      for (const g of GAPS) {
+        const a = got.get(g.key);
+        if (a) console.log(`  ✅ ${g.key.padEnd(4)} ${a.text.slice(0, 34)}   （${a.from}）`);
+        else console.log(`  ⬜ ${g.key.padEnd(4)} 还不知道 —— ${g.question}`);
+      }
+      const missing = GAPS.filter((g) => !got.has(g.key));
+      if (missing.length) {
+        console.log(String.fromCharCode(10) + "补一条：" + `jingjing profile set ${missing[0]!.key} "……"`);
+      } else {
+        console.log(String.fromCharCode(10) + "六件事都知道了。");
+      }
+      return;
+    }
     case "links": {
       // J-5：抽检与一句话拆线。关系必须"送到眼前"，而且**当场能断**。
       const d = openDb(dbFile);

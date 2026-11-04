@@ -11,7 +11,7 @@
 | 源文件（src/**/*.ts） | 110 |
 | 错误码 E_* | 209 |
 | verbs | 27 |
-| CLI 子命令 | 37 |
+| CLI 子命令 | 38 |
 
 ## 纪律落点
 
@@ -276,7 +276,7 @@
 
 ## CLI 子命令
 
-`migrate` · `remember` · `search` · `verify` · `outage` · `serve` · `config` · `models` · `links` · `threads` · `proposal` · `grant` · `standing` · `persona` · `setup` · `capabilities` · `doctor` · `reembed` · `auth` · `usage` · `test` · `night` · `shell` · `ingest` · `docs` · `forget-doc` · `export` · `verify-export` · `import` · `smoke-tools` · `templates` · `redteam` · `verb` · `beat` · `eval` · `decay` · `bench`
+`migrate` · `remember` · `search` · `verify` · `outage` · `serve` · `config` · `models` · `links` · `threads` · `proposal` · `grant` · `standing` · `persona` · `setup` · `capabilities` · `doctor` · `reembed` · `auth` · `usage` · `test` · `night` · `shell` · `ingest` · `docs` · `forget-doc` · `export` · `verify-export` · `import` · `smoke-tools` · `templates` · `redteam` · `verb` · `beat` · `eval` · `decay` · `bench` · `profile`
 
 ## 源文件
 
