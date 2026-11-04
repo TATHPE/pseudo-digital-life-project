@@ -8,7 +8,7 @@
 ## 1. 三条命令
 
 ```bash
-npm run check      # tsc + 全部测试 + 地图不漂移；改任何东西之后必跑，必须全绿
+npm run check      # tsc + 全部测试（607 条）。地图是单独一步 npm run map:check，CI 两条都跑
 npm run ui:test    # headless Edge 真点真发：主面板 + 首启引导页两套（自动起夹具，端口 7701）
 npm run desktop:dev   # 桌面壳（Tauri，窗口指本机面板；会自己起 sidecar）
 
@@ -125,9 +125,9 @@ node src/cli/jingjing.ts serve 0      # 端口 0 = OS 分配；要固定端口�
 ## 6. 代码地图（一行一个，只写"找什么去哪"）
 
 ```
-cli/jingjing.ts   入口（30 个命令；CLI_COMMANDS 表与 switch 必须一致，有测试盯）
+cli/jingjing.ts   入口（38 个命令；CLI_COMMANDS 表与 switch 必须一致，有测试盯）
 web/server.ts     HTTP + SSE；/health 的 degraded 是全部状态的汇合点
-web/page.ts       整个面板（1467 行内联 HTML/CSS/JS，无框架无构建）
+web/page.ts       整个面板（3607 行内联 HTML/CSS/JS，无框架无构建）
 verbs.ts          **唯一**的能力表（tools.ts 只是适配层）
 execute/policy    策略与审计（casbin，deny-overrides）
 store.ts          remember / reinforce / tickDecay / updateMemoryText / patchMemoryMeta
@@ -174,6 +174,8 @@ gitview.ts        git 只读三连（status/diff/log）—— cwd 是项目根�
 mcp.ts            MCP stdio 客户端（initialize → tools/list → tools/call）
 
 # ── 这一轮新增（2026-11-03/04）─────────────────
+explicit.ts       **当场记住**：说「记住 X」「以后别…（指向人）」「我对…过敏」→ 立刻落库
+profile.ts        「关于你」的六道题（称呼/作息/忌口/生日/所在地/工作）+ 缺口 + 一天一问的冷却
 erosion.ts        三段侵蚀（原文保留，按 erase_stage 渲染）
 gapnote.ts        离线补账（空档 ≥24h 补一条真记忆）
 nightdue.ts       闲时整理的自动触发（≥20h）+ 进程内锁

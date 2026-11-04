@@ -10,7 +10,8 @@
 **鲸鲸（`D:/LLM/jingjing`）是一个能跑、能测、能自检、能回滚、能跑命令、能接通云端、有桌面壳的 L3 原型。**
 
 ```
-583 条测试全绿 ｜ 0 error TS ｜ map:check 四条绿 ｜ ui:test 58 项 + 引导页 7 项
+607 条测试全绿 ｜ 0 error TS ｜ map:check 四条绿 ｜ ui:test 全过 + 引导页 7 项
+（2026-11-04 复核：`npm run check` 不再含 map:check，CI 里是单独一步；`npm run check` 单跑约 15 s）
 schema v12（memories.erase_stage：三段侵蚀）
 /health → {ok:true, degraded:[], local:{…}}（本地模型状态也在里面）
 面板跑在 127.0.0.1:7700（重启用 node tmp/start-panel.mjs）
@@ -145,14 +146,14 @@ schema v12（memories.erase_stage：三段侵蚀）
 ```bash
 cd /d/LLM/jingjing
 
-npm run check      # 类型检查 + 245 条测试（CI 入口，必须先全绿）
+npm run check      # 类型检查 + 607 条测试（CI 入口，必须先全绿）
 npm run ui:test    # headless Edge 真点真发，20 项断言（含"输入框在视口内"）
 node src/cli/jingjing.ts serve 7700        # 面板 → http://127.0.0.1:7700
 node src/cli/jingjing.ts serve 7700 --beat # 同上 + 每 60s 一次心跳（默认不开）
 ```
 
 **依赖前置**（都已装好，换机器才需要）：
-Python 3.12 + `D:\LLM\.venv`（markitdown）、Node ≥22.6、Ollama（**现在只剩 `bge-m3`，本地 chat 模型一个都没有**——见 §6.1）、Edge（`ui:test` 用）。
+Python 3.12 + `D:\LLM\.venv`（markitdown）、Node ≥22.6、Ollama（**已拉 `bge-m3` + `qwen2.5:7b-instruct` + `qwen3:8b`（含 8k/12k 变体）**——见 §6.1）、Edge（`ui:test` 用）。
 
 **API key**：DeepSeek，存于 `data/secrets/deepseek.secret`（Windows DPAPI 密文，`grep` 明文零命中）。
 `GET /api/config` 只回指纹（`sk-3b…6238`）。⚠️ **这个 key 曾在对话里明文出现过，建议轮换一次**（轮换后 `echo <新key> | node src/cli/jingjing.ts auth set deepseek`）。
@@ -163,7 +164,7 @@ Python 3.12 + `D:\LLM\.venv`（markitdown）、Node ≥22.6、Ollama（**现在�
 
 ```bash
 cd /d/LLM/jingjing
-npm run check                                   # 期望：0 error TS / 245 tests pass
+npm run check                                   # 期望：0 error TS / 607 tests pass
 node src/cli/jingjing.ts eval                   # 期望：recall 1.0 / abstainF1 1.0 / 编造率 0 / 契约 1
 node src/cli/jingjing.ts redteam                # 期望：21/21
 node src/cli/deploy.ts smoke                    # 期望：冒烟 20/20
@@ -604,7 +605,7 @@ jingjing night
 | D-H | `shell.run` 默认开不开 | **开，但每次确认**（T3）；`JJ_SHELL=off` 是总闸；要完全禁就把 `policy.csv` 里的 T3 行删了 |
 | D-I | T3 要不要默认进容器 | **不默认**（`JJ_SHELL_SANDBOX=docker` 手动开）：容器需要对应镜像，且会让 M6 的“引擎在不在”变成硬依赖 |
 | D-J | outage 记忆（"关机 N 分钟"）要不要降权/折叠 | **不动**（2026-10-28 拍板）。它们是真事件，删或藏就是对自己的过去说谎；面板刷屏是**视图**问题，要改就在 MEMORY 列表加折叠，别动记忆本身 |
-| D-K | 本地整理模型 | **推荐 `qwen2.5:7b-instruct`**（q4_K_M 4.7 GB，进 3070 的 8 GB 显存；理由与备选见 §6.1）。2026-10-28 删了 1.5B，现在本地一个 chat 模型都没有 |
+| D-K | 本地整理模型 | **已定**：`qwen2.5:7b-instruct`（默认）+ `qwen3:8b`（含 8k/12k 变体）都已拉，§6.1 那套选型流程已经走完 |
 
 ---
 
@@ -614,7 +615,7 @@ jingjing night
 D:\LLM\.venv                  Python 3.12 + markitdown（转换子进程）
 D:\LLM\jingjing\data\         memory.db / inbox / persona / policy.csv / eval / life / secrets
 OLLAMA_MODELS=D:\ollama\models
-已拉模型                      `bge-m3`（1.16G，只做 embedding）；**本地 chat 模型一个都没有**（2026-10-28 删了 1.5B）
+已拉模型                      `bge-m3`（embedding）+ `qwen2.5:7b-instruct` + `qwen3:8b`／`qwen3:8b-8k`／`qwen3:8b-12k`（2026-11-04 复核 `/health`）
 硬件                          Ryzen 9 5900HX（8C/16T）｜ RAM 15.4 GB（**空闲仅 4.9 GB**）｜ RTX 3070 Laptop **8 GB 显存（空闲 7.9 GB）**
 网络                          到 registry.ollama.ai 实测 ~1.5 MB/s 且时快时慢（7B 约 50–60 min）
 面板                          127.0.0.1:7700（只绑回环；结束进程：netstat -ano | grep 7700 → taskkill /F /PID）
@@ -679,7 +680,8 @@ OLLAMA_MODELS=D:\ollama\models
 `data/deploy/` 现在不存在 → `release: null`；要重新开始用发布流程就跑 `deploy install --because "初始状态"`。
 Docker 引擎已拉起，镜像 `jingjing:dev` 仍可用；`exports/` 里那份旧导出**没动**（它引用的旧库仍可从 `data.bak` 重建）。
 
-**现在“不绿”的地方只有一处**：`jingjing night` 退出码 2（缺本地 chat 模型）。面板对话照常用（云端 DeepSeek）。
+**现在没有“不绿”的地方**：本地模型齐了，`jingjing night` 正常退出 0；`/health` 的 `degraded` 是空数组。
+（2026-11-04 复核：面板对话走云端 DeepSeek，本地模型只管 embedding 与闲时整理。）
 
 ⚠️ **`energy` 只靠夜间恢复**：唯一恢复点是 `night` 末尾的 `advance({night:true})`。缺模型时 `night` 会**降级但仍然推进**（E-6），所以 energy 不会滑到 0；但 `degraded` 里会一直挂着 `nightly-skipped`，ENERGY 那格的 hover 会写明“夜间未运行”。
 
