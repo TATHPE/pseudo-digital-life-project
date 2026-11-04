@@ -159,31 +159,15 @@ if (hasMem) {
   })()`));
 } else skip("记忆详情显示来源", "空库");
 
-// ── 权限档（位置照 DSH：输入框旁的选择器，不是设置里）──────
-check("权限 chip 在输入框旁，且能切档", await js(`(async () => {
-  const chip = document.querySelector('#composer #perm');
-  if (!chip) return false;
-  const before = chip.textContent.trim();
-  chip.click();
-  await new Promise((r) => setTimeout(r, 300));
-  const opts = document.querySelectorAll('#permopts button[data-preset]');
-  if (opts.length < 3) return false;
-  const readOnly = [...opts].find((b) => b.dataset.preset === 'read');
-  if (!readOnly) return false;
-  readOnly.click();
-  await new Promise((r) => setTimeout(r, 900));
-  const after = chip.textContent.trim();
-  window.__perm = { before, after, n: opts.length };
-  return after !== before && /仅可查看/.test(after);
-})()`), await js("JSON.stringify(window.__perm || {})"));
-
-check("/permission 斜杠命令能切回逐次确认", await js(`(async () => {
-  const i = document.querySelector('#m');
-  i.value = '/permission ask';
-  document.querySelector('#composer').dispatchEvent(new Event('submit', { cancelable: true }));
-  await new Promise((r) => setTimeout(r, 1000));
-  const chip = document.querySelector('#composer #perm');
-  return /逐次确认/.test(chip.textContent);
+// ── 权限档（2026-11-04 已删：永远 full，一次确认 = 一次断句）──────
+// 这条原来验的是「chip 在输入框旁、能切档」。档位删了，验的东西就得反过来：
+// 输入框旁**不该**再有任何档位控件，也不该有 /permission 命令把它变回来。
+check("权限档 UI 已删除：输入框旁没有档位控件（永远 full）", await js(`(async () => {
+  // 注意别用 .permchip 当判据：模式 chip（聊天/工作）复用了这个类名，
+  // 按类名找会把它当成残留的权限档 —— 第一版就是这么误红的。
+  const presets = document.querySelectorAll('#perm, #permopts, #permopts button[data-preset], #composer [data-preset]');
+  const mode = document.querySelector('#modechip');
+  return presets.length === 0 && !!mode;
 })()`));
 
 // ── F-3 记忆撤销：忘记之后 5 秒内能撤回 ─────────────

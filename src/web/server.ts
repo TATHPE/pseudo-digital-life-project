@@ -64,6 +64,19 @@ import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 const joinDir = (a: string, b: string) => join(a, b);
 const posixPath = (p: string) => p.split("\\").join("/");
+/**
+ * 「不是关于人、是关于机器」的那一类记忆（断片 / 睡过头）。
+ *
+ * 只用于**视图分流**，不参与任何写入或删除：D-J（2026-10-28）拍过
+ * 「outage 是真事件，不动记忆，要改就改视图」。现在它占 active 的 92%，
+ * 视图这层不能再不做了 —— 否则「记忆」这一屏打开就是 193 条「进程被杀 N 分钟」。
+ *
+ * `ifnull(source_ref,'')` 不是防御性写法，是必须的：source_ref 允许为 NULL，
+ * 而 `NULL = 'startup'` 是 NULL，`NOT (NULL OR …)` 还是 NULL —— 整行会被静默过滤掉。
+ * 第一版就是这么写的，测试直接抓到「关于你 0 条」。
+ */
+const OUTAGE_SQL =
+  "(ifnull(source_ref,'')='startup' OR text LIKE '进程被杀%' OR text LIKE '我睡了%' OR text LIKE '断电%' OR text LIKE '关机%')";
 import type { StreamTransport } from "../transport.ts";
 import type { Embedder } from "../embed.ts";
 import type { MemoryLine, Tier } from "../types.ts";
@@ -1151,6 +1164,10 @@ export function createWebServer(deps: WebDeps) {
       }
       if (req.method === "GET" && url.pathname === "/api/memories") {
         const q = url.searchParams.get("q") ?? "";
+        // 两种视图（2026-11-04）：断片记录占了 active 的 92%，把「关于你」淹没了。
+        // 只过滤**视图**，不动数据（D-J 2026-10-28：outage 是真事件，改视图不改记忆）。
+        const scope = url.searchParams.get("scope") ?? "all";
+        const scopeSql = scope === "about" ? ` AND NOT ${OUTAGE_SQL}` : scope === "outage" ? ` AND ${OUTAGE_SQL}` : "";
         const rows = q
           ? (deps.getEmbedder()
             ? (await search(deps.db, deps.getEmbedder()!, q, { k: 12 })).hits.map((h) => ({
@@ -1158,13 +1175,25 @@ export function createWebServer(deps: WebDeps) {
             }))
             : [])
           : (deps.db.prepare(
-            `SELECT id,text,stage,weight,kind FROM memories WHERE status='active'
+            `SELECT id,text,stage,weight,kind FROM memories WHERE status='active'${scopeSql}
              ORDER BY weight DESC, updated_at DESC LIMIT ? OFFSET ?`)
             .all(
               Math.min(200, Math.max(1, Number(url.searchParams.get("limit") ?? 40))),
               Math.max(0, Number(url.searchParams.get("offset") ?? 0)),
             ) as Array<{ id: number; text: string; stage: string; weight: number; kind: string }>);
         json(res, 200, rows);
+        return;
+      }
+      // 记忆的三个数：总数 / 关于你 / 断片。给面板的两个 chip 用。
+      if (req.method === "GET" && url.pathname === "/api/memories/summary") {
+        const r = deps.db.prepare(
+          `SELECT count(*) AS total,
+                  sum(CASE WHEN ${OUTAGE_SQL} THEN 1 ELSE 0 END) AS outage
+             FROM memories WHERE status='active'`,
+        ).get() as { total: number; outage: number | null };
+        const total = Number(r.total ?? 0);
+        const outage = Number(r.outage ?? 0);
+        json(res, 200, { total, outage, about: total - outage });
         return;
       }
       const memId = url.pathname.match(/^\/api\/memories\/(\d+)$/);
@@ -1821,6 +1850,13 @@ export function createWebServer(deps: WebDeps) {
 
         const ts = now().toISOString();
         appendEvent(deps.inboxDir, { v: 1, id: newEventId(), ts, kind: "utterance", actor: "user", payload: { text } });
+
+        // 当场记住（2026-11-04）：明确的记性请求不排队等夜里那一次批处理。
+        // 纯规则、不看模型（认不出就交给夜间整理）—— 误记比漏记贵。
+        try {
+          const { captureExplicit, writeExplicit } = await import("../explicit.ts");
+          for (const e of captureExplicit(text)) writeExplicit(deps.db, e, text, now());
+        } catch { /* 捕获失败不影响这轮对话 */ }
 
         // 召回 → 简报。云端只收 shareable；local_only 只报个数（13 §10）
         const emb = deps.getEmbedder();

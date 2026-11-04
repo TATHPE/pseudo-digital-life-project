@@ -605,6 +605,14 @@ export const PAGE = `<!doctype html>
   #toollist .searchbox { margin: 6px 0; }
   .item.mini { padding: 4px 6px; font-size: 12px; }
   .dimmore { color: var(--dim); }
+  /* 记忆的两个视图（2026-11-04）：断片记录占 92%，不能再让它排在「关于你」前面 */
+  .memscope { display:flex; gap:6px; flex-wrap:wrap; margin:8px 0 6px; }
+  .memscope button { font:11px/1 var(--mono); letter-spacing:.06em; color:var(--dim);
+                     background:transparent; border:1px solid var(--line-dim); padding:6px 9px; cursor:pointer; }
+  .memscope button:hover { color:var(--ink); border-color:var(--ink); }
+  .memscope button[aria-pressed="true"] { color:var(--ink); font-weight:700; border-color:var(--ink);
+                                          box-shadow: inset 2px 0 0 var(--ink); }
+  .memscope .n { opacity:.7; margin-left:5px; }
 
   .capbox { border:1px solid var(--line-dim); margin:4px 0; }
   .capbox > summary { padding:5px 7px; font:10px/1 var(--mono); letter-spacing:.12em;
@@ -858,6 +866,7 @@ export const PAGE = `<!doctype html>
         <h2>记忆 · MEMORY</h2>
         <p class="hint">按活跃度排；点一条看正文、出处与它的来历。</p>
         <input id="q" class="searchbox" placeholder="搜记忆 / 文档…（Ctrl+K 也能到这儿）" autocomplete="off">
+        <div class="memscope" id="memscope"></div>
         <div id="memlist"></div>
       </div>
     </div>
@@ -1984,12 +1993,34 @@ $("#toolq").addEventListener("input", function () { TOOLQ = this.value; paintToo
 $("#toolmore").addEventListener("click", function () { TOOLALL = true; paintTools(); });
 const renderTools = () => tools();
 var MEMPAGE = 8;   // 侧栏先给 8 条；点「看更早的」按 8→40→200 往上翻
+// 记忆的两个视图（2026-11-04）：默认「关于你」。
+// 起因：active 209 条里 193 条是「进程被杀 N 分钟」，记忆屏打开就是这些，
+// 人看不到她到底记住了自己什么。数据不动（D-J），只做视图分流。
+var MEMSCOPE = "about";   // about | all | outage
+function paintMemScope(sum, count) {
+  var el = $("#memscope"); if (!el) return;
+  var chip = function (scope, label, n) {
+    return "<button type='button' data-scope='" + scope + "' aria-pressed='" + (MEMSCOPE === scope) + "'>" +
+      label + "<span class='n'>" + (n == null ? "" : n) + "</span></button>";
+  };
+  el.innerHTML = chip("about", "关于你", sum.about) +
+    chip("all", "全部", sum.total) +
+    (sum.outage ? chip("outage", "断片", sum.outage) : "");
+  Array.prototype.forEach.call(el.querySelectorAll("button"), function (b) {
+    b.onclick = function () { MEMSCOPE = b.dataset.scope; memories(); };
+  });
+  var mc = $("#memcount"); if (mc) mc.textContent = (count == null ? sum.total : count) + " 条";
+}
 async function memories(limit) {
   var lim = limit || MEMPAGE;
-  const rows = await (await fetch("/api/memories?limit=" + lim)).json();
+  var sum = { total: 0, about: 0, outage: 0 };
+  try { sum = await (await fetch("/api/memories/summary")).json(); } catch (e) { /* 老服务没有这个接口就算了 */ }
+  // 第一次进来才自动选：没有「关于你」的记忆就退回全部（新库/全断片时不至于空屏）
+  if (!limit && MEMSCOPE === "about" && !sum.about) MEMSCOPE = "all";
+  const rows = await (await fetch("/api/memories?scope=" + MEMSCOPE + "&limit=" + lim)).json();
   MEMS = rows;
   MEMPAGE = lim;
-  var mc = $("#memcount"); if (mc) mc.textContent = rows.length + " 条";
+  paintMemScope(sum, MEMSCOPE === "all" ? sum.total : (MEMSCOPE === "about" ? sum.about : sum.outage));
   const more = rows.length >= MEMPAGE
     ? "<button class='item dimmore' id='memmore'>看更早的（已显示 " + rows.length + " 条）</button>"
     : "";
@@ -2615,9 +2646,10 @@ $("#egrlist").onclick = async function (e) {
   await fetch("/api/egress", { method: "POST", headers: H, body: JSON.stringify(body) });
   await loadEgress();
 };
-// ── 权限档：当前会话在输入框旁切；设置只放「以后新建会话的默认值」──
-var PERM = { preset: "ask", remainingS: 0 };
-var PERM_LABEL = { ask: "逐次确认", read: "仅可查看", write: "工作区内修改", full: "完全权限" };
+// ── 权限档：**已删除**（2026-11-04 用户：「去掉」）──
+// 她默认就是 full，档位只会在干活途中把她打断（一次确认 = 一次断句）。
+// 保留的两条硬边界不在这里：coreguard（记忆核心）与格式化磁盘/救援目录，
+// 见 src/grant.ts / coreguard.ts。loadPermission() 留着是因为启动流程会调它。
 // 工作/聊天模式：点一下切换，存进 config（跨重启保留）
 var MODE = "chat";
 async function loadMode() {
@@ -2652,10 +2684,6 @@ async function handleSlash(text) {
 }
 
 // 权限档这层 UI 删掉了（2026-11-04 用户：「去掉」）。
-// 理由：她默认就是 full，档位只会在干活途中把她打断（一次确认 = 一次断句）。
-// 保留的两条硬边界不在这里：coreguard（记忆核心）与格式化磁盘/救援目录，见 src/grant.ts / coreguard.ts。
-var PERM = { preset: "full" };
-var PERM_LABEL = { full: "完全权限" };
 async function loadPermission() { /* 不再有档位可读：永远 full */ }
 async function setPermission() { return false; }
 function renderPermOptions() { /* 无档位可选 */ }

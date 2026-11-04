@@ -128,8 +128,28 @@ test("POST /api/say：SSE 流式返回，并把两条事件写进 inbox", async 
   } finally { srv.close(); }
 });
 
-test("GET /api/memories：无 embedder 时退化为按权重列，不报错", async () => {
-  const { srv, base } = await start();
+test("POST /api/say 会当场记住「记住：X」（不等夜里那次批处理）", async () => {
+  const { srv, base, dir } = await start();
+  try {
+    const r = await fetch(`${base}/api/say`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text: "记住：我对花生过敏" }),
+    });
+    await r.text();   // 读完 SSE，确保这一轮跑完
+    const { DatabaseSync } = await import("node:sqlite");
+    const db = new DatabaseSync(join(dir, "m.db"), { readOnly: true });
+    const row = db.prepare("SELECT text,kind,layer,quote,scored_by FROM memories WHERE scored_by='rule:explicit'").get() as any;
+    db.close();
+    assert.ok(row, "该写进一条规则记忆");
+    assert.equal(row.text, "我对花生过敏");
+    assert.equal(row.kind, "fact_hard");
+    assert.equal(row.layer, "contract");
+    assert.equal(row.quote, "记住：我对花生过敏", "原话要留");
+  } finally { srv.close(); }
+});
+
+test("GET /api/memories：无 embedder 时退化为按权重列，不报错", async () => {  const { srv, base } = await start();
   try {
     const rows = await (await fetch(`${base}/api/memories`)).json() as any[];
     assert.ok(rows.length >= 2);
@@ -941,5 +961,45 @@ test("页面里被调用的本地函数都必须有定义（tsc 看不见字符�
   const src = PAGE;
   for (const fn of ["handleSlash", "traceStart", "traceAdd", "traceTool", "paintAnswer", "loadMode", "setMode", "paintLamps", "loadIdle", "paintNightLog"]) {
     assert.ok(src.includes("function " + fn + "("), "缺定义：" + fn);
+  }
+});
+
+test("记忆视图：关于你 / 全部 / 断片 分流，summary 报三个数（2026-11-04）", async () => {
+  const { srv, base, dir } = await start();
+  try {
+    const { DatabaseSync } = await import("node:sqlite");
+    const db2 = new DatabaseSync(join(dir, "m.db"));
+    for (const t of [
+      "进程被杀 5 分钟（10-30 18:45–18:50），其间无经历",
+      "进程被杀 9 分钟（10-31 01:07–01:16），其间无经历",
+    ]) {
+      remember(db2, {
+        layer: "narrative", kind: "episode", text: t, sourceKind: "agent",
+        sourceRef: "startup", now: new Date("2026-10-30T10:00:00Z"),
+      });
+    }
+    db2.close();
+
+    const sum = await (await fetch(`${base}/api/memories/summary`)).json() as any;
+    assert.equal(sum.total, 4, "start() 的两条 + 两条断片");
+    assert.equal(sum.outage, 2);
+    assert.equal(sum.about, 2);
+
+    const about = await (await fetch(`${base}/api/memories?scope=about`)).json() as any[];
+    assert.equal(about.length, 2);
+    assert.ok(about.every((r) => !r.text.includes("进程被杀")), "「关于你」里不许有断片");
+
+    const outage = await (await fetch(`${base}/api/memories?scope=outage`)).json() as any[];
+    assert.equal(outage.length, 2);
+    assert.ok(outage.every((r) => r.text.includes("进程被杀")));
+
+    const all = await (await fetch(`${base}/api/memories`)).json() as any[];
+    assert.equal(all.length, 4, "不带 scope 仍是全部（老调用方不受影响）");
+
+    // 面板上得真有这两个 chip，否则接口白做
+    assert.ok(PAGE.includes('id="memscope"'), "面板要有视图切换");
+    assert.ok(PAGE.includes("/api/memories/summary"), "面板要读三个数");
+  } finally {
+    await new Promise<void>((r) => srv.close(() => r()));
   }
 });
