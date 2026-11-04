@@ -309,15 +309,6 @@ export function createWebServer(deps: WebDeps) {
     try {
       // 桌面工作台里的「真数据层」：独立页面，供 iframe 嵌入（Trianon 会吞掉所有按键与点击）
 
-      // 桌面工作台（Trianon，MIT，整块搬来的单文件）：同源提供、不联网、离线自包含。
-      // 壳的窗口指向这里；`/` 仍然是给用户/PWA 的内置面板。
-      // 旧壳兼容（2026-11-01）：改动前构建的 exe 只会去 /desk。
-      // 那条线（Trianon）已经删了，这里给一条 302 到 / —— 新壳直接指 /，这条可以随时删。
-      if ((req.method === "GET" || req.method === "HEAD") && url.pathname === "/desk") {
-        res.writeHead(302, { location: "/" });
-        res.end();
-        return;
-      }
 
       // 首次配置的引导页：分流放在**服务端**，所以桌面壳一行都不用改（窗口仍然加载 /）
       if ((req.method === "GET" || req.method === "HEAD") && (url.pathname === "/" || url.pathname === "/welcome")) {
