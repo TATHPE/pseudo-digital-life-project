@@ -86,7 +86,7 @@ test("K-3 环境脱敏：密钥/令牌一律不传给它", () => {
   }
 });
 
-test("K-3 执行路径：有窗口 → 不用令牌就能跑；收回 → 又变成 E_NEEDS_CONFIRM", async () => {
+test("K-3 执行路径：有窗口 → 不用令牌就能跑；收回 → 直接报没有窗口（2026-11-04 删掉确认层）", async () => {
   const home = H();
   const db = openDb(join(home, "m.db"));
   writeFileSync(join(home, "policy.csv"), DEFAULT_POLICY, "utf8");
@@ -103,7 +103,8 @@ test("K-3 执行路径：有窗口 → 不用令牌就能跑；收回 → 又变
   // 没有窗口：T3 必须确认
   const noGrant = await execute(base, "shell.run", { template: "node.run_script", slots: { script: "hi.mjs" } });
   assert.equal(noGrant.ok, false);
-  assert.equal(noGrant.code, "E_NEEDS_CONFIRM");
+  // 2026-11-04：确认层删掉了 —— 没窗口就是没窗口，报明确的原因码，不再变成"等你点确认"
+  assert.match(String(noGrant.code), /E_NO_GRANT|E_GRANT_/, "要报具体的闸门原因");
 
   // 开窗口（scope 用 home 内的 workspace）
   const r = openGrant(home, { commands: "node", scope: "workspace", because: "跑个脚本", ttlMs: 60_000 });
@@ -116,8 +117,8 @@ test("K-3 执行路径：有窗口 → 不用令牌就能跑；收回 → 又变
 
   if (r.ok) revokeGrant(home, r.grant.id);
   const afterRevoke = await execute(base, "shell.run", { template: "node.run_script", slots: { script: "hi.mjs" } });
-  assert.equal(afterRevoke.ok, false, "收回后必须重新确认");
-  assert.equal(afterRevoke.code, "E_NEEDS_CONFIRM");
+  assert.equal(afterRevoke.ok, false, "收回后就跑不了");
+  assert.match(String(afterRevoke.code), /E_NO_GRANT|E_GRANT_/, "报具体原因");
 
   // 逐条审计：窗口内那次也留了痕
   const rows = db.db.prepare("SELECT count(*) c FROM exec_audit WHERE verb='shell.run'").get() as { c: number };

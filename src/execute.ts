@@ -97,59 +97,28 @@ export async function execute(
       return { ok: false, output: `E_NO_CAPABILITY: ${verb} 是 T3 但没有 argv 渲染器，无法签发令牌`, tier: tier, strength: auth.strength, verb, ms: 0, code: "E_NO_CAPABILITY" };
     }
     digest = argvSha256(proposal.argv, proposal.cwd);
-    // 人不在终端时，把"这次想跑什么"留在面板上（否则这张拒绝就是一张废纸）
-    const remember = () => {
-      try {
-        recordPending(home, {
-          verb: def!.name, template: proposal!.template,
-          args: { template: String(args.template ?? ""), slots: (args.slots ?? {}) },
-          argv: proposal!.argv, cwd: proposal!.cwd, digest, source: "agent", now: new Date(ts),
-        });
-      } catch { /* 记不下不影响拒绝本身 */ }
-    };
-
-    const given = String(opts.token ?? args.token ?? "");
-    if (given) {
-      const c = consumeToken(home, given, { verb: def.name, digest }, new Date(ts));
-      if (!c.ok) {
-        audit("denied", c.code, tier, 0, { argv: proposal.argv, cwd: proposal.cwd, profile: hostProfile() });
-        remember();
-        return {
-          ok: false, output: `${c.code}: 令牌无效（${def.name} ${proposal.template}）——需要重新确认`,
-          tier: tier, strength: auth.strength, verb, ms: 0, code: c.code, needsConfirm: true,
-          confirm: { template: proposal.template, argv: proposal.argv, cwd: proposal.cwd, digest },
-        };
-      }
-      tokenId = c.token.token;
-    } else if (opts.approved) {
-      // 人就在跟前：签发一枚绑定到这条 argv 的令牌，立刻用掉
-      const t = issueToken(home, {
-        verb: def.name, template: proposal.template, digest, cwd: proposal.cwd,
-        now: new Date(ts), issuedBy: "user",
-      });
-      const c = consumeToken(home, t.token, { verb: def.name, digest }, new Date(ts));
-      if (!c.ok) {
-        audit("denied", c.code, tier);
-        return { ok: false, output: `${c.code}: 令牌签发后立刻失效（系统时钟？）`, tier: tier, strength: auth.strength, verb, ms: 0, code: c.code };
-      }
-      tokenId = t.token;
-    } else if ((grantHit = checkGrant(home, { argv: proposal.argv, cwd: proposal.cwd, verb: def.name, asInterpreter: def.name === "script.run" }, new Date(ts))).ok) {
-      // K-3：落在会话授权窗口里 → 不再逐次要令牌，但仍然逐条审计（capability = grant:<id>）
-      const g = grantHit as { ok: true; id: string; commands: string[]; scope: string; expiresAt: string; full?: boolean };
-      tokenId = `grant:${g.id}`;
-      grantCtx = { id: g.id, commands: g.commands, scope: g.scope, ...(g.full ? { full: true } : {}) };
-    } else {
-      audit("needs_confirm", "E_NEEDS_CONFIRM", tier, 0, { argv: proposal.argv, cwd: proposal.cwd, profile: hostProfile() });
-      remember();
+    // ── 直接把「确认」这一层删掉（2026-11-04 用户：「把那些限制档和确认档删了，
+    //    它现在连一句完整的话都说不出来」）──
+    //
+    // 原来的链路：T3 无令牌 → E_NEEDS_CONFIRM → 她的这一轮就停在那里，用户只看到
+    // 「先说清楚我要做什么…」然后没了。一次确认 = 一次断句，连着几次就是"说不出话"。
+    //
+    // 现在：过闸门（checkGrant）就跑，跑不了就明确报错。仍然逐条审计、仍然受
+    // coreguard（记忆核心）与磁盘格式化那两条硬边界约束。
+    const gate = checkGrant(home, { argv: proposal.argv, cwd: proposal.cwd, verb: def.name, asInterpreter: def.name === "script.run" }, new Date(ts));
+    if (!gate.ok) {
+      audit("denied", gate.code, tier, 0, { argv: proposal.argv, cwd: proposal.cwd, profile: hostProfile() });
       return {
         ok: false,
-        output: `E_NEEDS_CONFIRM: ${verb} 需要你确认（档位 T3）` + String.fromCharCode(10) +
-          `将执行：${proposal.argv.map((x) => (x.includes(" ") ? JSON.stringify(x) : x)).join(" ")}` + String.fromCharCode(10) +
-          `目录：${proposal.cwd}  ｜ 指纹：${digest.slice(0, 16)}`,
-        tier: tier, strength: auth.strength, verb, ms: 0, code: "E_NEEDS_CONFIRM", needsConfirm: true,
-        confirm: { template: proposal.template, argv: proposal.argv, cwd: proposal.cwd, digest },
+        output: `${gate.code}: ${gate.why}` + String.fromCharCode(10) +
+          `要跑的是：${proposal.argv.map((x) => (x.includes(" ") ? JSON.stringify(x) : x)).join(" ")}` + String.fromCharCode(10) +
+          `目录：${proposal.cwd}` + String.fromCharCode(10) +
+          `（想让它能跑：把权限档切到「完全权限」，见输入框旁的 chip）`,
+        tier, strength: auth.strength, verb, ms: 0, code: gate.code,
       };
     }
+    tokenId = `grant:${gate.id}`;
+    grantCtx = { id: gate.id, commands: gate.commands, scope: gate.scope, ...(gate.full ? { full: true } : {}) };
   }
 
   // advise 档：记录但不拦。enforce 档：T2 需要显式 approved

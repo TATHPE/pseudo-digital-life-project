@@ -12,6 +12,7 @@ import {
   TEMPLATES, argvSha256, cleanEnv, consumeToken, issueToken, planRun, renderTemplate, runArgv, sweepTokens,
   templateById, tokensDir, dockerAvailable, _resetDockerProbe,
 } from "../src/shell.ts";
+import { setPreset } from "../src/grant.ts";
 
 const H = () => mkdtempSync(join(tmpdir(), "jj-shell-"));
 const at = (ms: number) => new Date(Date.UTC(2026, 9, 28, 12, 0, 0) + ms);
@@ -230,20 +231,18 @@ test("runArgv：超时杀的是**进程树**（孙子也停）", async () => {
 
 // ── execute 集成：T3 令牌链 ─────────────────────────────────
 
-test("execute：T3 不确认 → needsConfirm + 确切 argv；--yes 才跑，并写审计", async () => {
+test("execute：T3 不再要确认（2026-11-04 用户：确认档删了），直接跑并写审计", async () => {
   const { home, db, ex } = await rigEx();
   writeFileSync(join(home, "workspace", "hi.mjs"), "console.log('hi from shell.run')");
 
-  const need = await ex("shell.run", { template: "node.run_script", slots: { script: "hi.mjs" } });
-  assert.equal(need.ok, false);
-  assert.equal(need.code, "E_NEEDS_CONFIRM");
-  assert.deepEqual(need.confirm?.argv, ["node", "hi.mjs"]);
-  assert.equal(need.confirm?.cwd, join(home, "workspace"));
-
-  const run = await ex("shell.run", { template: "node.run_script", slots: { script: "hi.mjs" } }, { approved: true });
+  // 一次确认 = 一次断句。她连着做几件事时会被切成"说不出完整的话"，所以这层删了。
+  // 现在：过闸门就跑；过不了就报具体原因（不再变成"等你点确认"）。
+  // 生产里 full 档是默认，启动时 applyDefaultPosture 会开窗口；测试里显式开一次。
+  setPreset(home, "full", { because: "测试：T3 不再要确认，但要有授权窗口" });
+  const run = await ex("shell.run", { template: "node.run_script", slots: { script: "hi.mjs" } });
   assert.equal(run.ok, true, run.output);
   assert.match(run.output, /hi from shell\.run/);
-  assert.match(String(run.capability), /^cap_/);
+  assert.match(String(run.capability), /^(cap_|grant:)/, "确认层删了，现在记 grant:<id>");
 
   const row = db.prepare("SELECT tier,capability,host_profile,decision,argv_json FROM exec_audit ORDER BY rowid DESC LIMIT 1").get() as any;
   assert.equal(row.tier, "T3");
@@ -261,22 +260,24 @@ test("execute：T0/T1 模板不需要确认（只读命令不该打扰人）", a
   assert.equal(v.tier, "T0");
 });
 
-test("execute：令牌被改过/重放都跑不了", async () => {
-  const { home, ex } = await rigEx();
+test("令牌机制本身还在（改过/重放都拒），只是 T3 不再自动要求它", () => {
+  // 确认层从 execute 里删掉了，但 issueToken/consumeToken 仍然可用 ——
+  // 它的语义是"一枚绑定到确切 argv 的一次性票"，将来别的入口要用还是对的。
+  const home = mkdtempSync(join(tmpdir(), "jj-tok-"));
+  mkdirSync(join(home, "workspace"), { recursive: true });
   writeFileSync(join(home, "workspace", "a.mjs"), "console.log('a')");
   writeFileSync(join(home, "workspace", "b.mjs"), "console.log('b')");
 
   const r1 = renderTemplate(home, "node.run_script", { script: "a.mjs" });
   const t = issueToken(home, { verb: "shell.run", template: r1.template, digest: r1.digest, cwd: r1.cwd });
 
-  const swapped = await ex("shell.run", { template: "node.run_script", slots: { script: "b.mjs" }, token: t.token });
-  assert.equal(swapped.code, "E_TOKEN_MISMATCH");
-
-  const ok = await ex("shell.run", { template: "node.run_script", slots: { script: "a.mjs" }, token: t.token });
-  assert.equal(ok.ok, true, ok.output);
-
-  const replay = await ex("shell.run", { template: "node.run_script", slots: { script: "a.mjs" }, token: t.token });
-  assert.equal(replay.code, "E_TOKEN_USED");
+  // 换成 b.mjs 的指纹 → 不匹配
+  const r2 = renderTemplate(home, "node.run_script", { script: "b.mjs" });
+  assert.equal(consumeToken(home, t.token, { verb: "shell.run", digest: r2.digest }).ok, false, "换脚本就失效");
+  // 原指纹 → 可以用一次
+  assert.equal(consumeToken(home, t.token, { verb: "shell.run", digest: r1.digest }).ok, true);
+  // 再用一次 → 已用
+  assert.equal(consumeToken(home, t.token, { verb: "shell.run", digest: r1.digest }).ok, false, "一次性");
 });
 
 test("execute：JJ_SHELL=off 是总闸（连 T0 模板也停）", async () => {

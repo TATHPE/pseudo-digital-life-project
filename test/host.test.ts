@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { setPreset } from "../src/grant.ts";
 import { join } from "node:path";
 import { openDb } from "../src/db.ts";
 import { loadPolicy } from "../src/policy.ts";
@@ -54,6 +55,8 @@ test("scriptArgv：解释器前缀在前、脚本在中、参数在后", () => {
 test("script.run：用配置的解释器真跑一个脚本；越界与无窗口都拒", async () => {
   const home = H();
   mkdirSync(join(home, "workspace"), { recursive: true });
+  // 2026-11-04：确认层删了 —— 没窗口 = E_NO_GRANT，所以要显式开一个（生产里 full 是默认）
+  setPreset(home, "full", { because: "测试：script.run 需要一个授权窗口" });
   const isWin = process.platform === "win32";
   const script = isWin ? "hello.ps1" : "hello.sh";
   writeFileSync(join(home, "workspace", script), isWin ? "Write-Output 'hi'\n" : "echo hi\n", "utf8");
@@ -74,9 +77,12 @@ test("script.run：用配置的解释器真跑一个脚本；越界与无窗口�
   const outside = await execute({ db: d.db, policy, ctx }, "script.run", { script: "evil.ps1" });
   assert.equal(outside.ok, false, "不在 workspace/ 下也要拒");
 
-  const noGrant = await execute({ db: d.db, policy, ctx: { home, now: () => new Date(), env: {} } }, "script.run", { script: "workspace/" + script }, { approved: true });
-  assert.equal(noGrant.ok, false);
-  assert.match(noGrant.output, /E_GRANT_NEEDS_FULL/);
+  // 没有授权窗口的 home（上面那个已经 setPreset full 了，所以另开一个）
+  const bare = H();
+  const bd = openDb(join(bare, "m.db"));
+  const noGrant = await execute({ db: bd.db, policy, ctx: { home: bare, now: () => new Date(), env: {} } }, "script.run", { script: "workspace/" + script }, { approved: true });
+  assert.equal(noGrant.ok, false, "没有窗口就不该跑");
+  assert.match(noGrant.output, /E_NO_GRANT|E_GRANT_/, "报具体的闸门原因");
 });
 
 test("PowerShell 输出编码：只包 -Command，不动 -File 与别的命令", () => {
