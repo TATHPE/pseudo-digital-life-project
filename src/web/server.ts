@@ -1875,9 +1875,13 @@ export function createWebServer(deps: WebDeps) {
 
         // 当场记住（2026-11-04）：明确的记性请求不排队等夜里那一次批处理。
         // 纯规则、不看模型（认不出就交给夜间整理）—— 误记比漏记贵。
+        // 记下了要**说出来**：不说的话，"她记住了"和"她没听见"在界面上长得一模一样。
+        const memos: string[] = [];
         try {
           const { captureExplicit, writeExplicit } = await import("../explicit.ts");
-          for (const e of captureExplicit(text)) writeExplicit(deps.db, e, text, now());
+          for (const e of captureExplicit(text)) {
+            if (writeExplicit(deps.db, e, text, now())) memos.push(e.text);
+          }
         } catch { /* 捕获失败不影响这轮对话 */ }
 
         // 召回 → 简报。云端只收 shareable；local_only 只报个数（13 §10）
@@ -2003,6 +2007,8 @@ export function createWebServer(deps: WebDeps) {
           "cache-control": "no-store", connection: "keep-alive",
         });
         const send = (o: unknown) => { try { res.write(`data: ${JSON.stringify(o)}` + String.fromCharCode(10, 10)); } catch { /* 已断开 */ } };
+        // 当场记住的要说出来（否则"记住了"和"没听见"在界面上一样）
+        for (const m of memos) send({ type: "memo", text: "已记下：" + m });
         // 用户点“停止”/关页面时浏览器会断开；服务端必须跟着停，否则只是“看不见”，token 照烧
         let aborted = false;
         res.on("close", () => { aborted = true; });

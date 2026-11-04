@@ -3499,6 +3499,10 @@ $("#composer").onsubmit = async (e) => {
           box.innerHTML = "<span class='err'>" + escapeHtml(d.message || "对话不可用") + "</span>";
           continue;
         }
+        if (d.type === "memo") {
+          // 当场记住的那一条：走底部 ticker，不占对方的话（2026-11-04）
+          pushTicker(d.text);
+        }
         if (d.type === "notice") {
           // 2026-11-01：思考移到右栏「过程」，会话栏只留最终回答
           traceAdd("think", "想", d.text);

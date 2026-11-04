@@ -143,7 +143,8 @@ test("POST /api/say 会当场记住「记住：X」（不等夜里那次批处�
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ text: "记住：我对花生过敏" }),
     });
-    await r.text();   // 读完 SSE，确保这一轮跑完
+    const sse = await r.text();   // 读完 SSE，确保这一轮跑完
+    const frames = sse.split("\n\n").filter(Boolean).map((f) => JSON.parse(f.replace(/^data: /, "")));
     const { DatabaseSync } = await import("node:sqlite");
     const db = new DatabaseSync(join(dir, "m.db"), { readOnly: true });
     const row = db.prepare("SELECT text,kind,layer,quote,scored_by FROM memories WHERE scored_by='rule:explicit'").get() as any;
@@ -153,6 +154,8 @@ test("POST /api/say 会当场记住「记住：X」（不等夜里那次批处�
     assert.equal(row.kind, "fact_hard");
     assert.equal(row.layer, "contract");
     assert.equal(row.quote, "记住：我对花生过敏", "原话要留");
+    // 记下了要说出来，否则"记住了"和"没听见"在界面上一样
+    assert.ok(frames.some((f) => f.type === "memo" && String(f.text).includes("花生过敏")), JSON.stringify(frames).slice(0, 300));
   } finally { srv.close(); }
 });
 
