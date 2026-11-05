@@ -191,6 +191,36 @@ check("能回到记录页", await js(`(async () => {
   return log && !log.hidden;
 })()`));
 
+// ⑦b 头像：>512KB 的图要能换（用户实测「换不了」——原图 2–5MB，服务端限 512KB）
+const avatarCheck = await js(`(async () => {
+  // 先回设置页（这一步在记录页上跑，得自己过去）
+  const goCfg = document.querySelector('.nb-go[data-v="cfg"]');
+  if (goCfg) goCfg.click();
+  for (let i = 0; i < 20; i++) { if (document.querySelectorAll('.nb-jump').length) break; await new Promise((r) => setTimeout(r, 300)); }
+  const jump = [...document.querySelectorAll('.nb-jump')].find((x) => x.textContent.trim() === '头像');
+  if (!jump) return 'no-tab';
+  jump.click();
+  await new Promise((r) => setTimeout(r, 400));
+  const inp = document.querySelector('input[data-av="agent"]');
+  if (!inp) return 'no-input';
+  const c = document.createElement('canvas'); c.width = 900; c.height = 900;
+  const cx = c.getContext('2d');
+  const im = cx.createImageData(900, 900);
+  for (let i = 0; i < im.data.length; i += 4) { im.data[i] = Math.random() * 255; im.data[i + 1] = Math.random() * 255; im.data[i + 2] = Math.random() * 255; im.data[i + 3] = 255; }
+  cx.putImageData(im, 0, 0);
+  const blob = await new Promise((r) => c.toBlob(r, 'image/png'));
+  const kb = Math.round(blob.size / 1024);
+  const dt = new DataTransfer(); dt.items.add(new File([blob], 'big.png', { type: 'image/png' }));
+  inp.files = dt.files;
+  inp.dispatchEvent(new Event('change'));
+  await new Promise((r) => setTimeout(r, 4000));
+  const j = await (await fetch('/api/avatars')).json();
+  return { kb, ok: !!j.agent, url: j.agent && j.agent.url, imgs: document.querySelectorAll('#nb-log .nb-gav').length };
+})()`);
+if (avatarCheck === 'no-tab' || avatarCheck === 'no-input') skip("大头像能换", "设置页没打开");
+else check("大头像能换（>512KB 的图本地缩到 256px 再发）", avatarCheck && avatarCheck.ok === true,
+  avatarCheck ? `${avatarCheck.kb}KB 原图 · 对话里 ${avatarCheck.imgs} 张头像` : "?");
+
 // ⑧ 没有 JS 运行时错误
 check("没有 JS 运行时错误", errs.length === 0, errs.slice(0, 2).join(" | "));
 

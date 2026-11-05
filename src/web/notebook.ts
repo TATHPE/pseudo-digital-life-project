@@ -1918,6 +1918,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
           fetch('/api/avatar?role=' + role, { method: 'DELETE', headers: H })
             .then(function(r){ return r.json(); }).then(function(j){
             tick(j.ok ? '已删除头像' : (j.error || '没删成'));
+            if (j.ok) loadAvatars();
             cfgView();
           });
         };
@@ -1945,15 +1946,45 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
           if (inp) inp.click();
         };
       });
+      // 头像上传：先在本地缩到 256px 再发。
+      // 以前直接把原图 dataURL 发过去 —— 手机拍的图随便就 2–5MB，服务端限 512KB，
+      // 于是「换不了」而且看不出为什么（用户实测）。
+      function shrink(file, cb){
+        var rd = new FileReader();
+        rd.onload = function(){
+          var img = new Image();
+          img.onload = function(){
+            try {
+              var max = 256;
+              var w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+              var k = Math.min(1, max / Math.max(w, h));
+              var cw = Math.max(1, Math.round(w * k)), ch = Math.max(1, Math.round(h * k));
+              var c = document.createElement('canvas');
+              c.id = 'nb-avcanvas';
+              c.width = cw; c.height = ch;
+              var cx = c.getContext('2d');
+              cx.drawImage(img, 0, 0, cw, ch);
+              var out = c.toDataURL('image/png');
+              // 缩完还大（少见：透明大图），退一层 JPEG
+              if (out.length > 480 * 1024) out = c.toDataURL('image/jpeg', 0.86);
+              cb(out);
+            } catch (e) { cb(rd.result); }
+          };
+          img.onerror = function(){ cb(rd.result); };
+          img.src = String(rd.result);
+        };
+        rd.readAsDataURL(file);
+      }
       Array.prototype.forEach.call(box.querySelectorAll('input[data-av]'), function(inp){
         inp.onchange = function(){
           var f = inp.files && inp.files[0]; if (!f) return;
-          var rd = new FileReader();
-          rd.onload = function(){
-            fetch('/api/avatar', { method: 'POST', headers: H, body: JSON.stringify({ role: inp.getAttribute('data-av'), dataUrl: rd.result }) })
-              .then(function(r){ return r.json(); }).then(function(j){ tick(j.ok ? '头像已换' : (j.error || '换不了')); cfgView(); });
-          };
-          rd.readAsDataURL(f);
+          shrink(f, function(dataUrl){
+            fetch('/api/avatar', { method: 'POST', headers: H, body: JSON.stringify({ role: inp.getAttribute('data-av'), dataUrl: dataUrl }) })
+              .then(function(r){ return r.json(); }).then(function(j){
+                tick(j.ok ? '头像已换' : (j.hint || j.error || '换不了'));
+                if (j.ok) { loadAvatars(); cfgView(); }
+              }).catch(function(){ tick('换不了（请求失败）'); });
+          });
         };
       });
       on('cf-doc', function(){
