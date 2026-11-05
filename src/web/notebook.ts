@@ -106,6 +106,17 @@ body{background:var(--void);color:var(--ink);font:15px/1.85 var(--sans);
 .nb-search{width:100%;max-width:420px;background:none;border:1px solid var(--line-dim);color:var(--ink);
   font:13px/1.6 var(--sans);padding:8px 10px;outline:none;margin:0 0 8px}
 .nb-search:focus{border-color:var(--line)}
+.nb-run{border-top:1px solid var(--line-dim);margin-bottom:6px}
+.nb-runrow{display:grid;grid-template-columns:84px 1fr auto;gap:12px;align-items:baseline;padding:9px 2px;border-bottom:1px solid var(--line-dim);font:12.5px/1.6 var(--sans)}
+.nb-runrow .k{font:9.5px/1.6 var(--mono);letter-spacing:.12em;color:var(--dim2)}
+.nb-runrow .v{color:var(--ink)}
+.nb-runrow .m{font:10px/1.6 var(--mono);color:var(--dim2);text-align:right}
+.nb-form-wrap{max-width:640px}
+.nb-form{display:grid;gap:8px;padding:6px 0 4px}
+.nb-fld{display:grid;grid-template-columns:76px 1fr;gap:10px;align-items:center}
+.nb-fld span{font:9.5px/1 var(--mono);letter-spacing:.12em;color:var(--dim2)}
+.nb-fld .nb-search{margin:0}
+.nb-actrow{display:flex;align-items:center;gap:8px;margin-top:4px}
 .nb-sub{font:13px/1.9 var(--sans);color:var(--ink);border-left:2px solid var(--cyan);padding-left:12px;margin:8px 0}
 .nb-sheet{max-width:calc(var(--measure) + 76px);margin:0 auto;padding:24px 24px 0 8px}
 .nb-e{display:grid;grid-template-columns:64px 1fr;gap:0 12px;position:relative;padding:16px 0 20px;border-top:1px solid var(--line-dim)}
@@ -633,9 +644,13 @@ body{background:var(--void);color:var(--ink);font:15px/1.85 var(--sans);
       fetch('/api/proposals?status=open').then(function(r){ return r.json(); }).catch(function(){ return []; }),
       fetch('/api/dossier').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
       fetch('/health').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
+      fetch('/api/usage').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
+      fetch('/api/night/due').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
+      fetch('/api/egress').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
     ]).then(function(res){
       var st = res[0] || {}, sum = res[1] || {}, props = Array.isArray(res[2]) ? res[2] : [];
       var dors = res[3] || {}, health = res[4] || {};
+      var use = res[5] || {}, night = res[6] || {}, eg = res[7] || {};
       var ctx = dors.context || {};
       var deg = health.degraded || [];
       var d = new Date();
@@ -671,7 +686,20 @@ body{background:var(--void);color:var(--ink);font:15px/1.85 var(--sans);
           hc('技能', String(ctx.skills == null ? '…' : ctx.skills)) +
           hc('断片', String(sum.outage == null ? '…' : sum.outage), Number(sum.outage || 0) > 0) +
         '</div>' +
-        '<div class="nb-sec">§ 02 记录</div>' +
+        '<div class="nb-sec">§ 02 进行中</div>' +
+        '<div class="nb-run">' +
+          '<div class="nb-runrow"><span class="k">正在跑</span><span class="v">' +
+            (night.running ? '夜里那次整理正在跑' : '没有在跑的后台任务') + '</span>' +
+            '<span class="m">' + (night.lastAt ? '上次整理 ' + esc(String(night.lastAt).slice(5, 16).replace('T', ' ')) : '还没整理过') + '</span></div>' +
+          '<div class="nb-runrow"><span class="k">已花</span><span class="v">' + USD +
+            Number(use.todayUsd || 0).toFixed(3) + '</span><span class="m">今天 ' + Number(use.calls || 0) +
+            ' 次调用 · ' + Number(use.inTokens || 0) + '/' + Number(use.outTokens || 0) + ' tok</span></div>' +
+          '<div class="nb-runrow"><span class="k">等批准</span><span class="v">' +
+            (props.length + (Array.isArray(eg.pending) ? eg.pending.length : Number(eg.pending || 0) || 0)) +
+            '</span><span class="m">' + props.length + ' 个提议' +
+            ((Array.isArray(eg.pending) && eg.pending.length) ? ' · ' + eg.pending.length + ' 个外发' : '') + '</span></div>' +
+        '</div>' +
+        '<div class="nb-sec">§ 03 记录</div>' +
         '</div>';
       Array.prototype.forEach.call(el.querySelectorAll('[data-home]'), function(b){
         b.onclick = function(){
@@ -863,45 +891,133 @@ body{background:var(--void);color:var(--ink);font:15px/1.85 var(--sans);
   function cfgView(){
     var el = $('nb-view');
     el.innerHTML = head('设置') + wrap('<div id="nb-cfg"><div class="nb-empty">读取中…</div></div>');
-    var cfg = {}, ui = {}, models = null;
+    function sec(t, inner){
+      return '<div class="nb-sec">' + t + '</div>' + inner;
+    }
+    function field(label, id, val, ph){
+      return '<label class="nb-fld"><span>' + label + '</span>' +
+        '<input id="' + id + '" class="nb-search" value="' + esc(val || '') + '" placeholder="' + esc(ph || '') + '"></label>';
+    }
     Promise.all([
       fetch('/api/config').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
       fetch('/api/ui').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
-      fetch('/api/models').then(function(r){ return r.json(); }).catch(function(){ return null; }),
+      fetch('/api/models').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
       fetch('/api/mode').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
+      fetch('/api/host').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
+      fetch('/api/standing').then(function(r){ return r.json(); }).catch(function(){ return []; }),
+      fetch('/api/grants').then(function(r){ return r.json(); }).catch(function(){ return []; }),
+      fetch('/api/egress').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
+      fetch('/health').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
+      fetch('/api/persona').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
     ]).then(function(res){
-      cfg = res[0] || {}; ui = res[1] || {}; models = res[2]; var mode = (res[3] || {}).mode || 'chat';
-      var locals = (models && (models.installed || models.models)) || [];
-      var html = '<div class="nb-kv">' +
-        '<b>云端</b><span>' + esc(cfg.provider || '?') + ' / ' + esc(cfg.model || '?') + ' · ' +
-        (cfg.hasKey ? '密钥在（' + esc(cfg.keyFingerprint || '') + '）' : '没有密钥') + '</span>' +
-        '<b>本地</b><span>' + (locals.length ? esc(locals.slice(0, 6).join(' · ')) : '没有已拉模型') + '</span>' +
-        '<b>密钥存放</b><span>' + esc(cfg.secretStore || '?') + '</span>' +
-        '</div>' +
-        '<div style="margin:14px 0 6px;font:10px/1 var(--mono);letter-spacing:.14em;color:var(--dim2)">模式</div>' +
-        '<div><button class="nb-btn" data-mode="chat">聊天（靠记忆，不带历史）</button>' +
-        '<button class="nb-btn" data-mode="work">工作（带最近几轮）</button></div>' +
-        '<div style="margin:14px 0 6px;font:10px/1 var(--mono);letter-spacing:.14em;color:var(--dim2)">开机片头</div>' +
-        '<div><select id="nb-splash" class="nb-search" style="max-width:320px">' +
-        '<option value="full">完整（约 7 秒）</option><option value="simple">简易（约 3.6 秒）</option>' +
-        '<option value="off">不播</option></select></div>' +
-        '<div style="margin-top:18px"><a class="nb-btn" href="/welcome" style="text-decoration:none">重新过一遍引导</a></div>' +
-        '<div class="nb-empty" style="margin-top:14px">当前模式：' + esc(mode) + ' · 片头：' + esc(ui.splash || 'full') + '</div>';
-      var box = $('nb-cfg'); if (box) box.innerHTML = html;
-      Array.prototype.forEach.call(box.querySelectorAll('[data-mode]'), function(b){
+      var c = res[0] || {}, ui = res[1] || {}, m = res[2] || {}, mode = (res[3] || {}).mode || 'chat';
+      var host = res[4] || {}, sd = Array.isArray(res[5]) ? res[5] : [];
+      var grants = Array.isArray(res[6]) ? res[6] : [];
+      var eg = res[7] || {}, health = res[8] || {}, persona = res[9] || {};
+      var locals = m.installed || m.models || m.names || [];
+      var roleModel = function(name){
+        var hit = (m.roles || []).filter(function(x){ return x.role === name; })[0];
+        return hit ? String(hit.model) : '';
+      };
+      var curEmbed = roleModel('embed'), curChat = roleModel('route') || roleModel('default');
+      var deg = health.degraded || [];
+      var gen = persona.generation || {};
+      var html = '';
+      html += sec('接口 · 云端',
+        '<div class="nb-form">' +
+        field('provider', 'cf-prov', c.provider || '', 'deepseek') +
+        field('model', 'cf-model', c.model || '', 'deepseek-flash') +
+        field('baseUrl', 'cf-base', c.baseUrl || '', '留空用默认') +
+        field('key', 'cf-key', '', c.hasKey ? '已有（' + (c.keyFingerprint || '') + '），留空不改' : '粘贴 key') +
+        '<div class="nb-actrow"><button class="nb-btn" id="cf-save">保存</button>' +
+        '<button class="nb-btn" id="cf-test">测试连接</button>' +
+        '<span class="nb-empty" id="cf-msg"></span></div></div>');
+      html += sec('本地模型',
+        '<div class="nb-form">' +
+        '<label class="nb-fld"><span>embed</span><select id="cf-embed" class="nb-search">' +
+        (locals.length ? '' : '<option value="">（没有已拉模型）</option>') +
+        locals.map(function(x){ return '<option value="' + esc(x) + '"' + (curEmbed && String(x).indexOf(curEmbed) === 0 ? ' selected' : '') + '>' + esc(x) + '</option>'; }).join('') +
+        '</select></label>' +
+        '<label class="nb-fld"><span>chat</span><select id="cf-chat" class="nb-search">' +
+        (locals.length ? '' : '<option value="">（没有已拉模型）</option>') +
+        locals.map(function(x){ return '<option value="' + esc(x) + '"' + (curChat && String(x).indexOf(curChat) === 0 ? ' selected' : '') + '>' + esc(x) + '</option>'; }).join('') +
+        '</select></label>' +
+        '<div class="nb-actrow"><button class="nb-btn" id="cf-msave">保存模型</button>' +
+        '<span class="nb-empty">端点 ' + esc(m.endpoint || '—') + ' · ' + (m.online ? '在线' : '离线') + '</span></div></div>');
+      html += sec('人格',
+        '<div class="nb-form">' + field('名字', 'cf-name', (c.agent && c.agent.name) || '', '她叫什么') +
+        '<div class="nb-actrow"><button class="nb-btn" id="cf-nsave">保存名字</button>' +
+        '<span class="nb-empty">第 ' + esc(String(gen.index == null ? '—' : gen.index)) + ' 代' +
+        (gen.reason ? ' · ' + esc(String(gen.reason).slice(0, 40)) : '') + '</span></div></div>');
+      html += sec('主机 · 命令解释器',
+        '<div class="nb-form"><label class="nb-fld"><span>用哪个</span>' +
+        '<select id="cf-shell" class="nb-search">' +
+        ['auto', 'powershell', 'pwsh', 'gitbash'].map(function(x){
+          return '<option value="' + x + '"' + (x === (host.wanted || 'auto') ? ' selected' : '') + '>' + x + '</option>';
+        }).join('') + '</select></label>' +
+        '<div class="nb-actrow"><button class="nb-btn" id="cf-hsave">保存</button>' +
+        '<span class="nb-empty">当前 ' + esc((host.active && host.active.label) || '—') + '</span></div></div>');
+      html += sec('常驻指令', sd.length ? sd.map(function(x){
+        return '<div class="nb-runrow"><span class="k">' + esc(x.when || '') + '</span>' +
+          '<span class="v">' + esc(x.because || x.id) + '</span>' +
+          '<button class="nb-btn" data-off="' + esc(x.id) + '">停用</button></div>';
+      }).join('') : '<div class="nb-empty">没有常驻指令。</div>');
+      html += sec('限制',
+        '<div class="nb-runrow"><span class="k">档位</span><span class="v">全开（full）</span>' +
+        '<span class="m">2026-11-05：限制全部撤掉，等软件能用了再谈</span></div>' +
+        '<div class="nb-runrow"><span class="k">授权窗口</span><span class="v">' + grants.length + ' 个</span>' +
+        '<span class="m">启动自动开，不会逐次问你</span></div>' +
+        '<div class="nb-runrow"><span class="k">代码外发</span><span class="v">开</span>' +
+        '<span class="m">每次仍写审计</span></div>' +
+        '<div class="nb-runrow"><span class="k">超级权限</span><span class="v">关</span>' +
+        '<span class="m">只影响「改记忆库本体/人格」这一档，需要时手动开</span></div>');
+      html += sec('状态',
+        '<div class="nb-kv"><b>模式</b><span>' + esc(mode) + '</span>' +
+        '<b>片头</b><span>' + esc(ui.splash || 'full') + '</span>' +
+        '<b>降级</b><span>' + (deg.length ? esc(deg.join(' · ')) : '没有') + '</span>' +
+        '<b>数据库</b><span>' + esc(String(health.db || health.size || '—')) + '</span></div>');
+      html += sec('导出 / 导入',
+        '<div class="nb-empty">目前没有页面入口，用命令：<br>' +
+        'node src/cli/jingjing.ts export &lt;目录&gt;　·　node src/cli/jingjing.ts import &lt;目录&gt;</div>');
+      var box = $('nb-cfg');
+      if (box) box.innerHTML = '<div class="nb-form-wrap">' + html + '</div>';
+      function msg(t, ok){ var e = $('cf-msg'); if (e) { e.textContent = t; e.className = ok ? 'hint ok' : 'hint err'; } }
+      function on(id, fn){ var b = $(id); if (b) b.onclick = fn; }
+      on('cf-save', function(){
+        var b = { provider: $('cf-prov').value.trim(), model: $('cf-model').value.trim() };
+        if ($('cf-base').value.trim()) b.baseUrl = $('cf-base').value.trim();
+        if ($('cf-key').value.trim()) b.key = $('cf-key').value.trim();
+        fetch('/api/config', { method: 'PUT', headers: H, body: JSON.stringify(b) })
+          .then(function(r){ return r.json(); }).then(function(j){ msg(j.ok ? '已保存' : (j.error || '失败'), !!j.ok); });
+      });
+      on('cf-test', function(){
+        msg('测试中…', true);
+        fetch('/api/test-cloud', { method: 'POST', headers: H, body: '{}' })
+          .then(function(r){ return r.json(); }).then(function(j){
+            msg(j.ok ? ('通了 · ' + j.ms + 'ms') : (j.error || j.hint || '不通'), !!j.ok);
+          });
+      });
+      on('cf-msave', function(){
+        var b = {};
+        if ($('cf-embed').value) b.embed = $('cf-embed').value;
+        if ($('cf-chat').value) b.default = $('cf-chat').value;
+        fetch('/api/models', { method: 'PUT', headers: H, body: JSON.stringify(b) })
+          .then(function(r){ return r.json(); }).then(function(j){ msg(j.ok ? '模型已保存' : (j.error || '失败'), !!j.ok); });
+      });
+      on('cf-nsave', function(){
+        fetch('/api/config', { method: 'PUT', headers: H, body: JSON.stringify({ agent: { name: $('cf-name').value.trim() } }) })
+          .then(function(r){ return r.json(); }).then(function(j){ msg(j.ok ? '名字已保存' : (j.error || '失败'), !!j.ok); });
+      });
+      on('cf-hsave', function(){
+        fetch('/api/host', { method: 'PUT', headers: H, body: JSON.stringify({ shell: $('cf-shell').value }) })
+          .then(function(r){ return r.json(); }).then(function(j){ msg(j.ok ? '解释器已保存' : (j.error || '失败'), !!j.ok); });
+      });
+      Array.prototype.forEach.call(box.querySelectorAll('[data-off]'), function(b){
         b.onclick = function(){
-          fetch('/api/mode', { method: 'POST', headers: H, body: JSON.stringify({ mode: b.getAttribute('data-mode') }) })
-            .then(function(){ tick('模式：' + b.getAttribute('data-mode')); cfgView(); });
+          fetch('/api/standing/' + encodeURIComponent(b.getAttribute('data-off')) + '/disable', { method: 'POST', headers: H, body: '{}' })
+            .then(function(){ tick('已停用'); cfgView(); });
         };
       });
-      var sel = $('nb-splash');
-      if (sel) {
-        sel.value = ui.splash || 'full';
-        sel.onchange = function(){
-          fetch('/api/ui', { method: 'PUT', headers: H, body: JSON.stringify({ splash: sel.value }) })
-            .then(function(){ tick('片头：' + sel.value + '（下次打开生效）'); });
-        };
-      }
     });
   }
 

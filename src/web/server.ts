@@ -1068,6 +1068,7 @@ export function createWebServer(deps: WebDeps) {
         // 只读一次：每次 get() 在 Windows 上是一个 PowerShell 进程（DPAPI 解密）
         const key = store.get(ex.provider as Provider);
         json(res, 200, {
+          agent: { name: normalizeAgentName(readFileConfig(deps.home).agent?.name) },
           provider: ex.provider,
           model: ex.model,
           baseUrl: ex.baseUrl ?? null,

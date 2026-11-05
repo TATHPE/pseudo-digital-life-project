@@ -31,6 +31,8 @@ export interface AppliedDefaults {
   paranoid: boolean;
 }
 
+// 2026-11-05 用户：「所有权限*限制*都撤了，等软件能用了再谈限制」。
+// 所以默认 full：启动就开一个全量授权窗口，执行类能力不再逐次问。
 export const DEFAULT_PRESET: Preset = "full";
 
 // 2026-11-01 用户定：默认从 write 提到 **full** —— 开箱就能跑任意命令，
@@ -50,11 +52,7 @@ export function applyDefaultPosture(
   const wanted = (env.JJ_DEFAULT_PRESET as Preset | undefined) ?? DEFAULT_PRESET;
   const valid: Preset[] = ["ask", "read", "write", "full"];
   const def = valid.includes(wanted) ? wanted : DEFAULT_PRESET;
-  // 2026-11-04 用户：「把哪些限制档和确认档删了」「去掉」——
-  // 档位 UI 已经删除，这里**永远 full**（除非 JJ_PARANOID=1 已经在上面的分支返回）。
-  //
-  // 为什么连「用户上次选的 ask」也不再尊重：那一次选择本身就发生在「UI 还在」的时候，
-  // 而 UI 没了以后她没有任何办法切回来 —— 尊重一个已经无法修改的旧值，等于把她永久锁死。
+  // 2026-11-05 用户：限制全部撤掉。默认 full，启动自动开窗口（20 秒后第一次执行不用问）。
   const chosen = null as null | ReturnType<typeof chosenPreset>;
   void chosenPreset;
   const effective = chosen ?? def;
@@ -63,10 +61,10 @@ export function applyDefaultPosture(
   if (presetApplied) setPreset(home, want, { because: chosen ? `沿用你上次选的档位（${chosen}）` : `启动默认姿态（${def}）` }, now);
   const preset = want;
 
-  // 代码外发：默认在会话内开放，但每次仍写 audit；面板上可一键关
+  // 代码外发：默认开放（2026-11-05 限制全撤），每次仍写 audit。
   let egressOpened = false;
   if (egressStatus(home, { env, now }).until === null) {
-    allowFor(home, 24 * 60 * 60_000, "默认姿态：会话内允许外发（可一键关）");
+    allowFor(home, 24 * 60 * 60_000, "限制已撤：会话内允许外发");
     egressOpened = true;
   }
   void db;
