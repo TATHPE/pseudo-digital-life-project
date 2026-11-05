@@ -23,6 +23,8 @@ export interface NightOptions {
   dbFile: string;
   inbox: string;
   dryRun?: boolean;
+  /** dry-run 时也把 notes 打出来（核对抽取质量用） */
+  verbose?: boolean;
   skipAutobio?: boolean;
   /** E-7：同一批事件重复巩固几轮（1..5） */
   rounds?: number;
@@ -137,7 +139,8 @@ export async function runNightCli(opts: NightOptions): Promise<number> {
   if (!opts.dryRun) {
     console.log(JSON.stringify(out, null, 2));
   } else {
-    console.log(JSON.stringify({ dryRun: true, scanned: report.scanned, candidates: report.candidates }, null, 2));
+    // --verbose：dry-run 也把 notes 全打出来（核对有没有按新模板给 quote）
+    console.log(JSON.stringify({ dryRun: true, scanned: report.scanned, candidates: report.candidates, ...(opts.verbose ? { notes: report.notes } : {}) }, null, 2));
   }
   return 0;
 }

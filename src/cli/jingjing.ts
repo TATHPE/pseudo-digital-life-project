@@ -1166,6 +1166,7 @@ async function main(): Promise<void> {
         home: HOME, dbFile, inbox,
         skipAutobio: rest.includes("--no-autobio"),
         dryRun: rest.includes("--dry-run"),
+        verbose: rest.includes("--verbose"),
         ...(Number.isFinite(rounds) && rounds && rounds > 1 ? { rounds } : {}),
       });
       process.exitCode = code;

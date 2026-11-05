@@ -84,6 +84,8 @@ export interface NightlyReport {
   cursorTo: string | null;
   ms: number;
   notes: string[];
+  /** 被原文核对丢掉的条数（2026-11-05） */
+  dropped?: number;
 }
 
 /**
