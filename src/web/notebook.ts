@@ -20,6 +20,7 @@ export const NOTEBOOK = `<!doctype html>
 <title>鲸鲸 · 记录本</title>
 <style>
 :root{
+  color-scheme:dark;
   --void:#0b0e0b;--ink:#e9f0f2;--dim:#9fb0b3;--dim2:#66757a;
   --line:rgba(233,240,242,.30);--line-dim:rgba(233,240,242,.10);
   --cyan:#0f97a4;--amber:#c9a227;--fade:#8a9698;
@@ -56,6 +57,26 @@ body{background:var(--void);color:var(--ink);font:15px/1.85 var(--sans);-webkit-
 .nb-go.warn .n{color:var(--amber)}
 
 .nb-page{min-width:0;overflow:auto;padding:0 0 110px;scroll-behavior:auto}
+.nb-home{max-width:calc(var(--measure) + 76px);margin:0 auto;padding:26px 24px 8px 8px}
+.nb-kicker{font:10px/1 var(--mono);letter-spacing:.22em;color:var(--dim2);margin-bottom:14px}
+.nb-greet{font:26px/1.35 var(--sans);font-weight:700;letter-spacing:-.01em;margin:0 0 8px}
+.nb-greet em{font-style:italic;font-weight:400;border-bottom:1px solid var(--line)}
+.nb-meta{font:10.5px/1.7 var(--mono);color:var(--dim2);letter-spacing:.04em}
+.nb-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:18px 0 6px}
+.nb-card2{display:block;text-align:left;border:1px solid var(--line-dim);background:rgba(233,240,242,.015);color:var(--ink);padding:11px 12px;cursor:pointer}
+.nb-card2:hover{border-color:var(--line);background:rgba(233,240,242,.04)}
+.nb-card2 .k{display:block;font:9px/1 var(--mono);letter-spacing:.16em;color:var(--dim2);margin-bottom:9px}
+.nb-card2 b{display:block;font:22px/1 var(--sans);font-weight:700}
+.nb-card2 .m{display:block;font:9.5px/1.6 var(--mono);color:var(--dim2);margin-top:6px}
+.nb-card2.wait{border-color:var(--amber)}
+.nb-card2.wait .k,.nb-card2.wait b{color:var(--amber)}
+.nb-health{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:1px;margin:10px 0 20px;border:1px solid var(--line-dim);background:var(--line-dim)}
+.nb-hc{background:var(--void);padding:8px 9px;min-width:0}
+.nb-hc .k{font:8.5px/1 var(--mono);letter-spacing:.14em;color:var(--dim2)}
+.nb-hc .v{font:11px/1.5 var(--mono);color:var(--dim);margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nb-hc.bad .v{color:var(--amber)}
+.nb-sec{display:flex;align-items:baseline;gap:10px;margin:22px 0 6px;font:9.5px/1 var(--mono);letter-spacing:.2em;color:var(--dim2)}
+.nb-sec:after{content:"";flex:1;height:1px;background:var(--line-dim)}
 .nb-pagehd{display:flex;align-items:baseline;gap:12px;padding:18px 22px 10px;max-width:1100px;margin:0 auto}
 .nb-pagehd h1{font:10px/1 var(--mono);letter-spacing:.18em;color:var(--dim2);margin:0;font-weight:400}
 .nb-pagehd .sp{flex:1}
@@ -182,13 +203,14 @@ body{background:var(--void);color:var(--ink);font:15px/1.85 var(--sans);-webkit-
   border:1px solid var(--line-dim);padding:4px 6px;cursor:pointer}
 </style></head>
 <body>
+<!--BOOT-->
 <div class="nb">
   <div class="nb-top">
     <span><i class="nb-dot"></i><b id="nb-line">醒着</b></span>
     <span id="nb-counts"></span>
     <span class="sp"></span>
     <span id="nb-usd">今天 $0.000</span><span id="nb-model">—</span>
-    <span><a href="/classic" style="color:inherit;text-decoration:underline">完整面板</a></span>
+    <span id="nb-shell">记录本</span>
   </div>
 
   <div class="nb-main">
@@ -207,6 +229,7 @@ body{background:var(--void);color:var(--ink);font:15px/1.85 var(--sans);-webkit-
     </nav>
 
     <main class="nb-page" id="nb-page">
+      <section id="nb-home"></section>
       <div id="nb-board" hidden></div>
       <div id="nb-view" hidden></div>
       <div class="nb-sheet" id="nb-log"></div>
@@ -372,7 +395,9 @@ body{background:var(--void);color:var(--ink);font:15px/1.85 var(--sans);-webkit-
         btn.remove();
       };
     });
-    requestAnimationFrame(function(){ $('nb-page').scrollTop = $('nb-page').scrollHeight; });
+    requestAnimationFrame(function(){
+      $('nb-page').scrollTop = AT_BOTTOM ? $('nb-page').scrollHeight : 0;
+    });
   }
 
   // ── 她收着的（标本页）─────────────────────────
@@ -380,6 +405,7 @@ body{background:var(--void);color:var(--ink);font:15px/1.85 var(--sans);-webkit-
     BOARD = !!on;
     $('nb-board').hidden = !on;
     $('nb-log').hidden = !!on;
+    showHome(!on);
     $('nb-board-btn').className = 'nb-go' + (on ? ' cur' : '');
     if (on) loadBoard();
   }
@@ -522,7 +548,7 @@ body{background:var(--void);color:var(--ink);font:15px/1.85 var(--sans);-webkit-
     var ta = $('nb-say');
     var text = (ta.value || '').trim();
     if (!text) return;
-    BUSY = true; ta.value = ''; ta.style.height = '24px';
+    BUSY = true; AT_BOTTOM = true; ta.value = ''; ta.style.height = '24px';
     LEAF = []; paintLeaf();
 
     var mine = document.createElement('article');
@@ -589,11 +615,73 @@ body{background:var(--void);color:var(--ink);font:15px/1.85 var(--sans);-webkit-
     this.style.height = 'auto'; this.style.height = Math.min(160, this.scrollHeight) + 'px';
   });
 
+  // ── 工作台（编号分节 + 三张状态卡 + 健康格）────────────
+  var USD = String.fromCharCode(36);
+  function showHome(on){ var h = $('nb-home'); if (h) h.hidden = !on; }
+  function loadHome(){
+    var el = $('nb-home');
+    if (!el) return;
+    Promise.all([
+      fetch('/api/state').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
+      fetch('/api/memories/summary').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
+      fetch('/api/proposals?status=open').then(function(r){ return r.json(); }).catch(function(){ return []; }),
+      fetch('/api/dossier').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
+      fetch('/health').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
+    ]).then(function(res){
+      var st = res[0] || {}, sum = res[1] || {}, props = Array.isArray(res[2]) ? res[2] : [];
+      var dors = res[3] || {}, health = res[4] || {};
+      var ctx = dors.context || {};
+      var deg = health.degraded || [];
+      var d = new Date();
+      var wd = ['周日','周一','周二','周三','周四','周五','周六'][d.getDay()];
+      var p2 = function(n){ return String(n).padStart(2, '0'); };
+      var date = d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate());
+      var h0 = d.getHours();
+      var hello = h0 < 6 ? '凌晨好' : h0 < 12 ? '早上好' : h0 < 18 ? '下午好' : '晚上好';
+      var about = sum.about == null ? '…' : sum.about;
+      var hc = function(k, v, bad){
+        return '<div class="nb-hc' + (bad ? ' bad' : '') + '"><div class="k">' + k +
+          '</div><div class="v">' + esc(v) + '</div></div>';
+      };
+      el.innerHTML = '<div class="nb-home">' +
+        '<div class="nb-kicker">№ 001 · 工作台</div>' +
+        '<h1 class="nb-greet">' + hello + '。<em>她记得 ' + esc(String(about)) + ' 件关于你的事。</em></h1>' +
+        '<div class="nb-meta">' + date + ' · ' + wd + ' · ' + esc(String(st.line || '醒着')) +
+          ' · 今天 ' + USD + Number(ctx.todayUsd || 0).toFixed(3) + '</div>' +
+        '<div class="nb-cards">' +
+          '<button class="nb-card2' + (props.length ? ' wait' : '') + '" data-home="wait"><span class="k">待你处理</span><b>' +
+            props.length + '</b><span class="m">批准 / 拒绝</span></button>' +
+          '<button class="nb-card2" data-home="board"><span class="k">她记得</span><b>' + esc(String(about)) +
+            '</b><span class="m">关于你 · 本周 +' + Number(sum.about7d || 0) + '</span></button>' +
+          '<button class="nb-card2" data-home="cfg"><span class="k">状态</span><b>' +
+            (deg.length ? '有 ' + deg.length + ' 项' : '正常') + '</b><span class="m">' +
+            (deg.length ? esc(deg.slice(0, 2).join(' · ')) : 'degraded 0') + '</span></button>' +
+        '</div>' +
+        '<div class="nb-health">' +
+          hc('模型', ctx.model || '—') +
+          hc('记忆', String(ctx.memories == null ? '…' : ctx.memories)) +
+          hc('文档', String(ctx.docs == null ? '…' : ctx.docs) + '/' + String(ctx.chunks == null ? '…' : ctx.chunks)) +
+          hc('工具', String(ctx.tools == null ? '…' : ctx.tools)) +
+          hc('技能', String(ctx.skills == null ? '…' : ctx.skills)) +
+          hc('断片', String(sum.outage == null ? '…' : sum.outage), Number(sum.outage || 0) > 0) +
+        '</div>' +
+        '<div class="nb-sec">§ 02 记录</div>' +
+        '</div>';
+      Array.prototype.forEach.call(el.querySelectorAll('[data-home]'), function(b){
+        b.onclick = function(){
+          var w = b.getAttribute('data-home');
+          if (w === 'board') Board(true);
+          else if (w === 'cfg') go('cfg');
+          else showTab(0);
+        };
+      });
+    }).catch(function(){});
+  }
   // ── 去处：记忆 / 文档 / 能力 / 校样 / 设置 ──────────────────
   var KIND = { boundary:'边界', promise:'承诺', fact_hard:'事实', fact:'事实',
     preference_hard:'偏好', preference_soft:'偏好', episode:'经历', thought:'想法',
     reading:'读来的', anchor:'锚点', contract:'契约', gist:'梗概' };
-  var VIEW = 'chat';
+  var VIEW = 'chat', AT_BOTTOM = false;
   function head(title, extra){
     return '<div class="nb-pagehd"><h1>' + esc(title) + '</h1><span class="sp"></span>' +
       (extra || '') + '</div>';
@@ -605,6 +693,7 @@ body{background:var(--void);color:var(--ink);font:15px/1.85 var(--sans);-webkit-
       x.className = 'nb-go' + (x.getAttribute('data-v') === v ? ' cur' : '');
     });
     var chat = v === 'chat';
+    showHome(chat);
     $('nb-log').hidden = !chat;
     $('nb-board').hidden = true;
     $('nb-view').hidden = chat;
@@ -811,7 +900,7 @@ body{background:var(--void);color:var(--ink);font:15px/1.85 var(--sans);-webkit-
   }
 
   // ── 启动 ─────────────────────────────────────
-  loadState(); loadTimeline(); loadTabs();
+  loadState(); loadTimeline(); loadTabs(); loadHome();
   // 深链接：?view=board|mem|docs|cap|git|cfg（截图、书签、排障都靠它）
   (function(){
     var m = /[?&]view=([a-z]+)/.exec(location.search || '');
