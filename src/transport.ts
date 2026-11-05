@@ -304,6 +304,8 @@ export function createStreamTransport(
 // ── 带工具调用的流式对话（agent 循环用）────────────────────────
 export type ChatEvent =
   | { type: "delta"; text: string }
+  /** 模型的推理通道（不是回答）：界面上归到「过程」，绝不混进正文 */
+  | { type: "think"; text: string }
   | { type: "tool_calls"; calls: Array<{ id: string; name: string; args: string }> }
   | { type: "notice"; text: string }
   | { type: "done"; finish: string };
@@ -372,6 +374,8 @@ export function createChatTransport(router: Router, opts: TransportOpts = {}) {
 
           if (c.provider === "ollama") {
             const d = j.message ?? {};
+            // 推理通道：thinking 归到 think，绝不混进正文（用户看到的就是「回答里全是过程」）
+            if (d.thinking) yield { type: "think", text: String(d.thinking) };
             if (d.content) yield { type: "delta", text: d.content };
             for (const [i, tc] of (d.tool_calls ?? []).entries()) {
               const cur = acc.get(i) ?? { id: `call_${i}`, name: "", args: "" };
@@ -389,6 +393,11 @@ export function createChatTransport(router: Router, opts: TransportOpts = {}) {
           } else {
             const ch = (j.choices ?? [])[0] ?? {};
             const d = ch.delta ?? {};
+            // DeepSeek 的推理模型把思考放在 reasoning_content；有些网关叫 reasoning。
+            // 以前这两路都被丢掉，只取 content —— 而模型自己又会把推理写进正文，
+            // 于是「回答」看起来像操作流水账。现在分开走：推理 → think → 右栏「过程」。
+            const rc = (d as any).reasoning_content ?? (d as any).reasoning;
+            if (rc) yield { type: "think", text: String(rc) };
             if (d.content) yield { type: "delta", text: d.content };
             for (const tc of d.tool_calls ?? []) {
               const i = Number(tc.index ?? 0);

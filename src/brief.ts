@@ -252,6 +252,17 @@ export function buildBrief(input: BriefInput): BriefOutput {
     : "";
   slots.push({ id: "P19", label: "我不知道的", tokens: estimateTokens(p19), stable: false });
 
+  // P20 怎么说话（2026-11-05）：正文只放结论。
+  // 之前她常把过程写进正文（“先跑一条 curl…报错了…再换一种…”），用户看到的就是流水账，
+  // 结论反而沉在最后。过程本来就有地方去（右栏「过程」/ 消息里的工具条），不必占正文。
+  const p20 = [
+    "【怎么说】",
+    "正文只放结论和结果：她要的那句话、那张表、那个数字。",
+    "过程（我先试了什么、哪一步报错、又换了个办法）不要写进正文；真要留，用 <think>…</think> 包起来，会被折叠到「过程」。",
+    "做完事就直接说做完了什么样；没做成，直说卡在哪一句。",
+  ].join(String.fromCharCode(10));
+  slots.push({ id: "P20", label: "怎么说", tokens: estimateTokens(p20), stable: true });
+
   // ── 本轮输入 ────────────────────────────────────────
   const p11 = input.user;
   slots.push({ id: "P11", label: "用户输入", tokens: estimateTokens(p11), stable: false });

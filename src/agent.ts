@@ -86,6 +86,8 @@ export async function* runAgent(deps: AgentDeps, system: string, user: string): 
     try {
       for await (const ev of deps.chat(messages, schema)) {
         if (ev.type === "delta") { text += ev.text; yield { type: "delta", text: ev.text, step }; }
+        // 推理通道原样转出去（面板归到「过程」），不进 text —— 否则正文里全是「我先…再…」
+        else if (ev.type === "think") yield { type: "think", text: ev.text, step };
         // notice 必须传出去：它是“云端不行了，这条用本地模型答”的唯一标记。
         // 以前这里把它吞了 —— 面板上永远看不到降级，等于“静默降级”。
         else if (ev.type === "notice") yield { type: "notice", text: ev.text };

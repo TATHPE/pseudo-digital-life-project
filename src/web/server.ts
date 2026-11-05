@@ -208,6 +208,27 @@ function messages(db: DatabaseSync, inboxDir: string): MsgEx[] {
     });
 }
 
+/**
+ * 把正文里**明写的思考**拆出去（2026-11-05）。
+ *
+ * 有两类「思考混进正文」：
+ *  · 模型把推理写成正文（“我先跑一条 curl，结果报错，再换一种…”）——这类靠提示词约束 + 推理通道分离；
+ *  · 模型用 <think>…</think> 或 ```think 把推理包起来 —— 这类是**确定的**，这里直接拆走，
+ *    正文只留结论，拆出来的丢进过程（trace）。
+ */
+export function splitThink(text: string): { text: string; thinks: string[] } {
+  const thinks: string[] = [];
+  let out = String(text ?? "");
+  out = out.replace(/<think(?:ing)?>([\s\S]*?)<\/(?:think|thinking)>/gi, (_m, body: string) => {
+    if (body.trim()) thinks.push(body.trim().slice(0, 1200));
+    return "";
+  });
+  out = out.replace(/```think\n([\s\S]*?)```/gi, (_m, body: string) => {
+    if (body.trim()) thinks.push(body.trim().slice(0, 1200));
+    return "";
+  });
+  return { text: out.trim(), thinks };
+}
 /** 工具卡（服务端渲染，前端只负责展开/收起） */
 export function toolCardHtml(t: ToolUse): string {
   const name = esc(t.name);
@@ -2488,6 +2509,12 @@ export function createWebServer(deps: WebDeps) {
             ? "还没有可用的模型。去设置里填云端 key，或装本地模型：ollama pull bge-m3，再 jingjing models use <模型名>"
             : raw.slice(0, 200);
           send({ type: "error", message: msg });
+        }
+        // 正文只留结论：<think> 之类明写的推理拆到过程里（面板右栏第四个签）
+        if (full) {
+          const sp = splitThink(full);
+          if (sp.thinks.length) for (const t of sp.thinks) trace.push({ k: "think", t });
+          if (sp.text) full = sp.text;
         }
         if (full) {
           appendEvent(deps.inboxDir, {
