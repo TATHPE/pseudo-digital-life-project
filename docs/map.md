@@ -9,7 +9,7 @@
 | 项 | 数量 |
 |---|---|
 | 源文件（src/**/*.ts） | 116 |
-| 错误码 E_* | 216 |
+| 错误码 E_* | 217 |
 | verbs | 27 |
 | CLI 子命令 | 39 |
 
@@ -159,6 +159,7 @@
 | `E_NOT_FILE` | `src/project.ts` |
 | `E_NOT_FOUND` | `src/agentguard.ts` `src/plugins.ts` `src/selfupdate.ts` `src/verbs.ts` `src/web/server.ts` |
 | `E_NOTHING_TO_DO` | `src/web/server.ts` |
+| `E_NOTHING_TO_UNDO` | `src/web/server.ts` |
 | `E_OLLAMA_DOWN` | `src/cli/jingjing.ts` |
 | `E_ORIGIN` | `src/web/server.ts` |
 | `E_OUT_OF_PROJECT` | `src/agentguard.ts` `src/project.ts` |

@@ -8,7 +8,7 @@ import { whaleSvg } from "./brand.ts";
 import * as deskT from "./desk.ts";
 import { groupTimeline, gapLabel, type Msg } from "./timeline.ts";
 import { appendEvent, newEventId, readEvents } from "../journal.ts";
-import { openSession, touchSession, closeSession, listSessions, getSession, titleFrom } from "../sessions.ts";
+import { openSession, touchSession, closeSession, listSessions, getSession, titleFrom, branchSession, undoSession, undoKeep } from "../sessions.ts";
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { search, searchDocs } from "../retrieve.ts";
 import { buildBrief } from "../brief.ts";
@@ -503,6 +503,31 @@ export function createWebServer(deps: WebDeps) {
         setTimeout(() => process.exit(0), 60);
         return;
       }
+      // ── 待你处理：提议 + 代码外发，合成一个列表（2026-11-05）──
+      // 回复仍然走各自原有的接口（/api/proposals/:id、/api/egress），这里只做汇总。
+      if (req.method === "GET" && url.pathname === "/api/approvals") {
+        try {
+          const { listProposals } = await import("../proposals.ts");
+          const { egressStatus } = await import("../egress.ts");
+          const props = listProposals(deps.home, { status: "open" }) as Array<{ id: string; title?: string; why?: string; createdAt?: string }>;
+          const eg = egressStatus(deps.home, { now: now() });
+          const items = [
+            ...props.map((p) => ({
+              id: p.id, kind: "proposal",
+              title: String(p.title ?? ""), detail: String(p.why ?? ""),
+              at: String(p.createdAt ?? ""), route: "/api/proposals/" + p.id,
+            })),
+            ...(eg.pending || []).map((x) => ({
+              id: "egress:" + x.path, kind: "egress",
+              title: "要把代码发出去：" + x.path,
+              detail: String(x.verb ?? "") + " · " + String(x.at ?? ""),
+              at: String(x.at ?? ""), route: "/api/egress",
+            })),
+          ];
+          json(res, 200, { items, count: items.length });
+        } catch (e) { json(res, 500, { error: String((e as Error)?.message ?? e).slice(0, 160) }); }
+        return;
+      }
       // ── 会话：一次可指认的对话（2026-11-05）──
       if (req.method === "GET" && url.pathname === "/api/sessions") {
         try { json(res, 200, { sessions: listSessions(deps.db, Number(url.searchParams.get("limit") ?? 30)) }); }
@@ -515,6 +540,7 @@ export function createWebServer(deps: WebDeps) {
         const row = getSession(deps.db, id);
         if (!row) { json(res, 404, { error: "E_NO_SESSION" }); return; }
         const { events } = readEvents(deps.inboxDir);
+        const keep = undoKeep(deps.db, id);
         const msgs = events
           .filter((e) => (e.kind === "utterance" || e.kind === "agent_reply") &&
             String(((e.payload ?? {}) as { session?: string }).session ?? "") === id)
@@ -522,15 +548,43 @@ export function createWebServer(deps: WebDeps) {
             const p = (e.payload ?? {}) as { text?: string };
             return { role: e.kind === "utterance" ? "user" : "agent", text: String(p.text ?? ""), ts: e.ts };
           });
-        json(res, 200, { session: row, messages: msgs });
+        // 工具轨迹：从 agent_reply 的 tools 里抽（这是我们现在真有的数据）
+        const tools: Array<{ name: string; args: string; result: string; ms?: number }> = [];
+        for (const e of events) {
+          if (e.kind !== "agent_reply") continue;
+          if (String(((e.payload ?? {}) as { session?: string }).session ?? "") !== id) continue;
+          const p = (e.payload ?? {}) as { tools?: Array<{ name?: string; args?: string; result?: string; ms?: number }> };
+          for (const t of p.tools ?? []) {
+            tools.push({
+              name: String(t.name ?? ""), args: String(t.args ?? ""), result: String(t.result ?? ""),
+              ...(typeof t.ms === "number" ? { ms: t.ms } : {}),
+            });
+          }
+        }
+        const shown = keep == null ? msgs : msgs.slice(0, keep);
+        json(res, 200, { session: row, messages: shown, tools });
         return;
       }
-      const sessAct = url.pathname.match(/^\/api\/sessions\/([A-Za-z0-9_-]{4,40})\/(close|rename|interrupt)$/);
+      const sessAct = url.pathname.match(/^\/api\/sessions\/([A-Za-z0-9_-]{4,40})\/(close|rename|interrupt|branch|undo)$/);
       if (req.method === "POST" && sessAct) {
         const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
         const id = String(sessAct[1]);
         const what = String(sessAct[2]);
         if (what === "close") { json(res, 200, { ok: closeSession(deps.db, id, now()) }); return; }
+        if (what === "branch") {
+          const r = branchSession(deps.db, id, now());
+          json(res, r ? 200 : 404, r ? { ok: true, session: r } : { error: "E_NO_SESSION" });
+          return;
+        }
+        if (what === "undo") {
+          // 撤回这一问一答：用会话自己的消息计数（不依赖时间戳，也不重扫 inbox）
+          const cur = getSession(deps.db, id);
+          if (!cur) { json(res, 404, { error: "E_NO_SESSION" }); return; }
+          if (cur.msgs <= 0) { json(res, 400, { error: "E_NOTHING_TO_UNDO" }); return; }
+          const ok = undoSession(deps.db, id, Math.max(0, cur.msgs - 2));
+          json(res, 200, { ok });
+          return;
+        }
         if (what === "rename") {
           const body = JSON.parse(await readBody(req)) as { title?: string };
           touchSession(deps.db, id, { title: String(body.title ?? "") });

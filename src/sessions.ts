@@ -39,6 +39,10 @@ const DDL = [
 
 export function ensureSessions(db: DatabaseSync): void {
   try { db.exec(DDL); } catch { /* 只读库等极端情况：不影响对话 */ }
+  // 后加的两列：分叉来源、撤回起点。ALTER 失败说明已经有了。
+  for (const ddl of ["ALTER TABLE sessions ADD COLUMN parent_id TEXT", "ALTER TABLE sessions ADD COLUMN undo_keep INTEGER"]) {
+    try { db.exec(ddl); } catch { /* 已有 */ }
+  }
 }
 
 function rowOf(r: Record<string, unknown>): SessionRow {
@@ -110,4 +114,32 @@ export function getSession(db: DatabaseSync, id: string): SessionRow | null {
 export function titleFrom(text: string): string {
   const t = String(text).replace(/\s+/g, " ").trim();
   return t.length > 24 ? t.slice(0, 24) + "…" : t;
+}
+
+/** 从这次会话分叉：新开一个，记下 parent_id（消息不复制 —— 复制了也不是同一次对话） */
+export function branchSession(db: DatabaseSync, id: string, now: Date): SessionRow | null {
+  ensureSessions(db);
+  const src = db.prepare("SELECT * FROM sessions WHERE id=?").get(id) as Record<string, unknown> | undefined;
+  if (!src) return null;
+  const r = rowOf(src);
+  const nid = newSessionId(now);
+  const ts = now.toISOString();
+  const title = (r.title ? r.title + "（分叉）" : "分叉").slice(0, 60);
+  db.prepare("INSERT INTO sessions(id,title,status,created_at,updated_at,closed_at,msgs,parent_id) VALUES(?,?,?,?,?,NULL,0,?)")
+    .run(nid, title, "idle", ts, ts, id);
+  return rowOf(db.prepare("SELECT * FROM sessions WHERE id=?").get(nid) as Record<string, unknown>);
+}
+
+/** 撤回最后一轮：记下「保留前 N 条」，详情接口从 N 之后截断（inbox 追加写、不改历史） */
+export function undoSession(db: DatabaseSync, id: string, keep: number): boolean {
+  ensureSessions(db);
+  const r = db.prepare("UPDATE sessions SET undo_keep=? WHERE id=?").run(Math.max(0, keep), id);
+  return Number(r.changes ?? 0) > 0;
+}
+
+export function undoKeep(db: DatabaseSync, id: string): number | null {
+  try {
+    const r = db.prepare("SELECT undo_keep FROM sessions WHERE id=?").get(id) as { undo_keep?: number } | undefined;
+    return r && r.undo_keep != null ? Number(r.undo_keep) : null;
+  } catch { return null; }
 }

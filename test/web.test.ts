@@ -235,6 +235,30 @@ test("会话：一问一答挂在同一个 session 上，关掉之后开新的�
     assert.equal(l2.sessions.filter((x: any) => x.status === "closed").length, 1);
   } finally { srv.close(); }
 });
+test("会话：分叉与撤回（2026-11-05）", async () => {
+  const { srv, base } = await start();
+  try {
+    const h = { "content-type": "application/json", "x-jj": "1" };
+    const say = (t: string) => fetch(`${base}/api/say`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: t }) }).then((r) => r.text());
+    await say("一");
+    await say("二");
+    const l = await (await fetch(`${base}/api/sessions`)).json() as any;
+    const id = l.sessions[0].id;
+
+    const br = await (await fetch(`${base}/api/sessions/${id}/branch`, { method: "POST", headers: h, body: "{}" })).json() as any;
+    assert.equal(br.ok, true);
+    assert.ok(br.session.id && br.session.id !== id, "分叉是新会话");
+    assert.match(br.session.title, /分叉/);
+
+    const before = (await (await fetch(`${base}/api/sessions/${id}`)).json() as any).messages.length;
+    assert.equal(before, 4);
+    const un = await (await fetch(`${base}/api/sessions/${id}/undo`, { method: "POST", headers: h, body: "{}" })).json() as any;
+    assert.equal(un.ok, true, JSON.stringify(un));
+    const after = (await (await fetch(`${base}/api/sessions/${id}`)).json() as any).messages.length;
+    assert.ok(after < before, `撤回后消息应更少：${before} → ${after}`);
+    assert.equal(after, 2, "撤掉最后一问一答");
+  } finally { srv.close(); }
+});
 test("诊断 / 部署 / 导出校验：面板能自己说清状态（2026-11-05）", async () => {
   const { srv, base } = await start();
   try {

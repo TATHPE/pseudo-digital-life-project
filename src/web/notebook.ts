@@ -106,6 +106,7 @@ body{background:var(--void);color:var(--ink);font:15px/1.85 var(--sans);
 .nb-search{width:100%;max-width:420px;background:none;border:1px solid var(--line-dim);color:var(--ink);
   font:13px/1.6 var(--sans);padding:8px 10px;outline:none;margin:0 0 8px}
 .nb-search:focus{border-color:var(--line)}
+.nb-appr{border-top:1px solid var(--line-dim);padding:12px 2px}
 .nb-gapq{border-top:1px solid var(--line-dim);padding:12px 2px}
 .nb-gapt{font:14px/1.7 var(--sans);color:var(--ink)}
 .nb-gapt .m{display:block;font:10px/1.6 var(--mono);color:var(--dim2);margin-top:2px}
@@ -730,7 +731,8 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
       Array.prototype.forEach.call(el.querySelectorAll('[data-home]'), function(b){
         b.onclick = function(){
           var w = b.getAttribute('data-home');
-          if (w === 'board') Board(true);
+          if (w === 'wait') go('approvals');
+          else if (w === 'board') Board(true);
           else if (w === 'cfg') go('cfg');
           else showTab(0);
         };
@@ -777,6 +779,57 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
     });
   }
 
+  // ── 待你处理：提议 + 代码外发（2026-11-05）──────────────────
+  function approvalsView(){
+    var el = $('nb-view');
+    el.innerHTML = head('待你处理') + wrap('<div id="nb-appr"><div class="nb-empty">读取中…</div></div>');
+    function paint(){
+      fetch('/api/approvals').then(function(r){ return r.json(); }).then(function(j){
+        var items = (j && j.items) || [];
+        var box = $('nb-appr');
+        if (!items.length) { box.innerHTML = '<div class="nb-empty">没有等你点头的事。</div>'; return; }
+        box.innerHTML = items.map(function(x, i){
+          var isP = x.kind === 'proposal';
+          return '<div class="nb-appr">' +
+            '<div class="nb-gapt">' + esc(x.title || '') + '<span class="m">' + esc(x.kind) + ' · ' + esc(String(x.at || '').slice(0, 16).replace('T', ' ')) + '</span></div>' +
+            (x.detail ? '<div class="nb-empty">' + esc(x.detail) + '</div>' : '') +
+            '<div class="nb-actrow">' +
+            (isP
+              ? '<button class="nb-btn" data-ok="' + i + '">同意</button><button class="nb-btn" data-no="' + i + '">不用</button>'
+              : '<button class="nb-btn" data-ok="' + i + '">允许一次</button>') +
+            '</div></div>';
+        }).join('') +
+        '<div class="nb-actrow" style="margin-top:14px"><button class="nb-btn" id="nb-egoff">收回全部外发授权</button></div>';
+        Array.prototype.forEach.call(box.querySelectorAll('[data-ok]'), function(b){
+          b.onclick = function(){
+            var it = items[Number(b.getAttribute('data-ok'))];
+            if (!it) return;
+            var req = it.kind === 'proposal'
+              ? fetch(it.route, { method: 'POST', headers: H, body: JSON.stringify({ action: 'accept', reason: '我同意，你来做' }) })
+              : fetch('/api/egress', { method: 'POST', headers: H, body: JSON.stringify({ action: 'once', path: String(it.id).replace('egress:', '') }) });
+            req.then(function(){ tick('已同意'); paint(); loadState(); });
+          };
+        });
+        Array.prototype.forEach.call(box.querySelectorAll('[data-no]'), function(b){
+          b.onclick = function(){
+            var it = items[Number(b.getAttribute('data-no'))];
+            if (!it) return;
+            fetch(it.route, { method: 'POST', headers: H, body: JSON.stringify({ action: 'reject', reason: '不做' }) })
+              .then(function(){ tick('已拒绝'); paint(); loadState(); });
+          };
+        });
+        var off = $('nb-egoff');
+        if (off) off.onclick = function(){
+          fetch('/api/egress', { method: 'POST', headers: H, body: JSON.stringify({ action: 'revoke' }) })
+            .then(function(){ tick('外发授权已收回'); paint(); loadState(); });
+        };
+      }).catch(function(){
+        var box = $('nb-appr'); if (box) box.innerHTML = '<div class="nb-empty">读取失败。</div>';
+      });
+    }
+    paint();
+  }
+
   // ── 会话：一次可指认的对话（2026-11-05）────────────────────────
   function sessView(){
     var el = $('nb-view');
@@ -806,18 +859,56 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
     var back = $('nb-sback'); if (back) back.onclick = function(){ sessView(); };
     fetch('/api/sessions/' + encodeURIComponent(id)).then(function(r){ return r.json(); }).then(function(j){
       var msgs = (j && j.messages) || [];
+      var tools = (j && j.tools) || [];
       var meta = (j && j.session) || {};
-      var rows = msgs.length ? msgs.map(function(m){
+      // 文件：工具参数里像路径的那些；终端：跑过命令的工具
+      var files = tools.filter(function(t){ return /(^|[\\/])[\w.-]+\.(ts|js|mjs|json|md|html|css|py|ps1|sh)$/.test(String(t.args || '')); });
+      var terms = tools.filter(function(t){ return /shell|run|exec|bash|pwsh/i.test(String(t.name || '')); });
+      var tab = function(k, label, n){
+        return '<button class="nb-jump' + (k === 'msgs' ? ' on' : '') + '" data-tab="' + k + '">' + label +
+          (n == null ? '' : ' ' + n) + '</button>';
+      };
+      var head2 = '<div class="nb-kv"><b>开始</b><span>' + esc(String(meta.created_at || '').slice(0, 16).replace('T', ' ')) + '</span>' +
+        '<b>状态</b><span>' + esc(meta.status || '—') + '</span>' +
+        '<b>条数</b><span>' + Number(meta.msgs || 0) + '</span></div>';
+      var acts = '<div class="nb-actrow" style="margin:6px 0 10px">' +
+        '<button class="nb-btn" id="nb-branch">从这里分叉</button>' +
+        '<button class="nb-btn" id="nb-undo">撤回最后一轮</button></div>';
+      var tabs = '<div class="nb-jumpbar" style="position:static;border-top:0;border-bottom:1px solid var(--line-dim)">' +
+        tab('msgs', '记录', msgs.length) + tab('files', '文件', files.length) + tab('term', '终端', terms.length) + '</div>';
+      var bodyMsgs = msgs.length ? msgs.map(function(m){
         var mine = m.role === 'user';
         return '<div class="nb-e ' + (mine ? 'me' : 'her') + '" style="border-top:1px solid var(--line-dim)">' +
           '<div class="g">' + esc(String(m.ts || '').slice(11, 16)) +
           '<span class="w">' + (mine ? '你' : '她') + '</span></div>' +
           '<div class="b"><div class="nb-say"><div>' + esc(String(m.text || '').slice(0, 1200)) + '</div></div></div></div>';
       }).join('') : '<div class="nb-empty">这次会话没有留下消息。</div>';
-      var head2 = '<div class="nb-kv"><b>开始</b><span>' + esc(String(meta.created_at || '').slice(0, 16).replace('T', ' ')) + '</span>' +
-        '<b>状态</b><span>' + esc(meta.status || '—') + '</span>' +
-        '<b>条数</b><span>' + Number(meta.msgs || 0) + '</span></div>';
-      $('nb-sdetail').innerHTML = head2 + rows;
+      var bodyFiles = files.length ? files.map(function(t){
+        return '<div class="nb-runrow"><span class="k">' + esc(String(t.name || '')) + '</span>' +
+          '<span class="v">' + esc(String(t.args || '').slice(0, 160)) + '</span><span></span></div>';
+      }).join('') : '<div class="nb-empty">这次会话没碰过文件。</div>';
+      var bodyTerm = terms.length ? terms.map(function(t){
+        return '<div class="nb-pre">$ ' + esc(String(t.args || '').slice(0, 300)) +
+          String.fromCharCode(10) + esc(String(t.result || '').slice(0, 800)) + '</div>';
+      }).join('') : '<div class="nb-empty">这次会话没跑过命令。</div>';
+      $('nb-sdetail').innerHTML = head2 + acts + tabs +
+        '<div id="nb-stab-msgs">' + bodyMsgs + '</div>' +
+        '<div id="nb-stab-files" hidden>' + bodyFiles + '</div>' +
+        '<div id="nb-stab-term" hidden>' + bodyTerm + '</div>';
+      var br = $('nb-branch');
+      if (br) br.onclick = function(){ fetch('/api/sessions/' + encodeURIComponent(id) + '/branch', { method: 'POST', headers: H, body: '{}' }).then(function(){ tick('已分叉'); sessView(); }); };
+      var un = $('nb-undo');
+      if (un) un.onclick = function(){ fetch('/api/sessions/' + encodeURIComponent(id) + '/undo', { method: 'POST', headers: H, body: '{}' }).then(function(){ tick('已撤回最后一轮'); sessDetail(id); }); };
+      Array.prototype.forEach.call($('nb-sdetail').querySelectorAll('[data-tab]'), function(b){
+        b.onclick = function(){
+          var k = b.getAttribute('data-tab');
+          Array.prototype.forEach.call($('nb-sdetail').querySelectorAll('[data-tab]'), function(x){ x.className = 'nb-jump'; });
+          b.className = 'nb-jump on';
+          ['msgs', 'files', 'term'].forEach(function(t){
+            var e = $('nb-stab-' + t); if (e) e.hidden = t !== k;
+          });
+        };
+      });
     }).catch(function(){
       var box = $('nb-sdetail'); if (box) box.innerHTML = '<div class="nb-empty">读取失败。</div>';
     });
@@ -858,6 +949,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
     else if (v === 'cfg') cfgView();
     else if (v === 'gap') gapView();
     else if (v === 'sess') sessView();
+    else if (v === 'approvals') approvalsView();
     else el.innerHTML = head('？') + wrap('<div class="nb-empty">没有这一页。</div>');
   }
   Array.prototype.forEach.call(document.querySelectorAll('.nb-go[data-v]'), function(b){
@@ -1236,7 +1328,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
     var v = m ? m[1] : '';
     if (v === 'board') { go('home'); setTimeout(function(){ Board(true); }, 120); return; }
     if (v === 'chat') { go('chat'); return; }
-    if (['mem','docs','cap','git','cfg','gap','sess'].indexOf(v) >= 0) { setTimeout(function(){ go(v); }, 120); return; }
+    if (['mem','docs','cap','git','cfg','gap','sess','approvals'].indexOf(v) >= 0) { setTimeout(function(){ go(v); }, 120); return; }
     go('home');
   })();
   setInterval(function(){ loadState(); loadTabs(); }, 20000);
