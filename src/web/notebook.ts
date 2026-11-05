@@ -118,7 +118,6 @@ body{background:var(--void);color:var(--ink);font:15px/1.85 var(--sans);
 .nb-jump{font:10px/1 var(--mono);letter-spacing:.06em;color:var(--dim);background:none;
   border:1px solid var(--line-dim);padding:6px 8px;cursor:pointer}
 .nb-jump:hover{color:var(--ink);border-color:var(--line)}
-.nb-jump.on{color:var(--void);background:var(--ink);border-color:var(--ink)}
 .nb-sec{scroll-margin-top:44px}
 .nb-opts{display:flex;flex-wrap:wrap;gap:6px}
 .nb-opt{font:11px/1 var(--mono);color:var(--dim);background:none;border:1px solid var(--line-dim);padding:7px 9px;cursor:pointer}
@@ -908,10 +907,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
     var SECS = [];
     function sec(t, inner){
       SECS.push(t);
-      var i = SECS.length;
-      // 一次只显示一节：设置页有一千九百像素高，靠滚动=看不见（用户连问两次）。
-      return '<div class="nb-secwrap" data-i="' + i + '"' + (i === 1 ? '' : ' hidden') + '>' +
-        '<div class="nb-sec" id="cf-sec-' + i + '">' + t + '</div>' + inner + '</div>';
+      return '<div class="nb-sec" id="cf-sec-' + SECS.length + '">' + t + '</div>' + inner;
     }
     function field(label, id, val, ph){
       return '<label class="nb-fld"><span>' + label + '</span>' +
@@ -1027,18 +1023,13 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
         '<b>降级</b><span>' + (deg.length ? esc(deg.join(' · ')) : '没有') + '</span></div>');
       var box = $('nb-cfg');
       var jump = '<div class="nb-jumpbar">' + SECS.map(function(t, i){
-        return '<button class="nb-jump' + (i === 0 ? ' on' : '') + '" data-i="' + (i + 1) + '">' + esc(t) + '</button>';
+        return '<button class="nb-jump" data-to="cf-sec-' + (i + 1) + '">' + esc(t) + '</button>';
       }).join('') + '</div>';
       if (box) box.innerHTML = jump + '<div class="nb-form-wrap">' + html + '</div>';
       Array.prototype.forEach.call(box.querySelectorAll('.nb-jump'), function(b){
         b.onclick = function(){
-          var want = b.getAttribute('data-i');
-          Array.prototype.forEach.call(box.querySelectorAll('.nb-jump'), function(x){ x.className = 'nb-jump'; });
-          b.className = 'nb-jump on';
-          Array.prototype.forEach.call(box.querySelectorAll('.nb-secwrap'), function(w){
-            w.hidden = w.getAttribute('data-i') !== want;
-          });
-          var p = document.getElementById('nb-page'); if (p) p.scrollTop = 0;
+          var t = document.getElementById(b.getAttribute('data-to'));
+          if (t) t.scrollIntoView({ block: 'start' });
         };
       });
       function msg(t, ok){ var e = $('cf-msg'); if (e) { e.textContent = t; e.className = 'hint ' + (ok ? 'ok' : 'err'); } }
