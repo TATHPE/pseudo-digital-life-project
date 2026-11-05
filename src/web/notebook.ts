@@ -30,6 +30,8 @@ export const NOTEBOOK = `<!doctype html>
   --measure:660px;
 }
 *{box-sizing:border-box}
+/* hidden 要真的藏住：.nb-tabs 有 display:flex，会盖过 UA 的 [hidden]{display:none} */
+[hidden]{display:none !important}
 ::-webkit-scrollbar{width:8px;height:8px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--line-dim);border-radius:0}
@@ -1100,7 +1102,12 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
     $('nb-board').hidden = true;
     $('nb-view').hidden = home || chat;
     var cb = $('nb-composer'); if (cb) cb.hidden = !chat;
-    var tb = $('nb-tabs'); if (tb) tb.hidden = home;
+    // 记录页是纯文字：右栏那四个切口是工作台的东西，不该跟着对话流杵在旁边
+    var tb = $('nb-tabs'); if (tb) tb.hidden = home || chat;
+    // 右栏撤掉时，输入区要跟着铺到右边，不然留一条 52px 的空白
+    var railGone = home || chat;
+    var cbx = $('nb-composer'); if (cbx) cbx.style.right = railGone ? '0px' : '52px';
+    var tk = document.querySelector('.nb-tick'); if (tk) tk.style.right = railGone ? '0px' : '52px';
     $('nb-board-btn').className = 'nb-go';
     var el = $('nb-view');
     if (home) { $('nb-page').scrollTop = 0; return; }
