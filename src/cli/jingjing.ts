@@ -397,6 +397,12 @@ async function main(): Promise<void> {
         } catch { /* 写不了就只在日志里说 */ }
         console.log(`鲸鲸面板: http://${bind === "0.0.0.0" ? "127.0.0.1" : bind}:${port}  (store=${store.kind}, express=${cfg.roles.express!.provider}/${cfg.roles.express!.model})`);
         if (release) { try { markHealthy(HOME, release); } catch { /* 单槽模式 */ } }
+        // QQ 桥：bridge.json 里 enabled=true 就跟着面板一起起。关窗 = 杀 sidecar = 桥一起退，
+        // 所以不用另开终端（2026-11-05 用户要的）。桥起不来不影响面板。
+        void import("../bridge.ts").then((m) => {
+          if (!m.readBridgeConfig(HOME).enabled) return;
+          void m.startBridge(HOME, { log: (x) => console.log("[bridge] " + x) });
+        }).catch(() => {});
         const cleanup = () => { if (deskToken) clearDeskRuntime(HOME); };
         process.once("exit", cleanup);
         process.once("SIGINT", () => { cleanup(); process.exit(0); });
