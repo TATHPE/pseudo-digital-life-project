@@ -471,6 +471,8 @@ function setProgress(p, nodeLabel){
 }
 
 /* ===== 窗口系统 ===== */
+const dimEl = document.getElementById('dim');
+function syncDim(){ if (!dimEl) return; dimEl.classList.toggle('show', activeWindows.length > 0); }
 const activeWindows = [];
 let zCounter = 500;
 function openWindow(opt){
@@ -489,7 +491,7 @@ function openWindow(opt){
     const status = document.createElement("div"); status.className = "wp-status";
     status.innerHTML = `<span>${opt.status||"READY"}</span><span class="spacer"></span><span class="wp-clock">${nowStr()}</span>`;
     el.appendChild(status);
-    document.body.appendChild(el); activeWindows.push(el);
+    document.body.appendChild(el); activeWindows.push(el); syncDim();
     const clockEl = status.querySelector(".wp-clock");
     const clockTimer = setInterval(() => { if (clockEl) clockEl.textContent = nowStr(); }, 1000);
     title.querySelector('[data-act="close"]').addEventListener("click", () => closeSelf());
@@ -504,6 +506,7 @@ function openWindow(opt){
         el.remove();
         const i = activeWindows.indexOf(el);
         if (i >= 0) activeWindows.splice(i, 1);
+        syncDim();
         resolve();
       }, 200);
     }
