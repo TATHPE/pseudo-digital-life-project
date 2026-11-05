@@ -291,6 +291,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
       <div class="nb-go" data-v="docs">文档<span class="n" id="nb-ndocs">…</span></div>
       <div class="nb-go" data-v="cap">能力</div>
       <div class="nb-go" data-v="logs">日志</div>
+      <div class="nb-go" data-v="files">文件</div>
       <div class="nb-go" data-v="git">校样</div>
       <div class="nb-go" data-v="cfg">设置</div>
       <div class="nb-grow"></div>
@@ -344,7 +345,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
 (function(){
   var $ = function(id){ return document.getElementById(id); };
   var H = { 'content-type':'application/json', 'x-jj':'1' };
-  var TL = [], BOARD = false, CUR = 0, TAB = -1, BUSY = false, AV = {}, AC = null;
+  var TL = [], BOARD = false, CUR = 0, TAB = -1, BUSY = false, AV = {}, AC = null, MEM_OFF = 0;
 
   function esc(s){
     return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
@@ -940,6 +941,68 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
     paint();
   }
 
+  // ── 文件：项目的只读浏览（走 project.tree / project.read 两个 verb，不是裸 fs）──
+  function filesView(dir){
+    var el = $('nb-view');
+    var cur = dir || '';
+    function crumbs(d){
+      var parts = d ? d.split('/') : [];
+      var out = '<button class="nb-btn" data-dir="">根</button>';
+      var acc = '';
+      parts.forEach(function(p){
+        acc = acc ? acc + '/' + p : p;
+        out += '<span style="color:var(--dim2);margin:0 4px">/</span>' +
+          '<button class="nb-btn" data-dir="' + esc(acc) + '">' + esc(p) + '</button>';
+      });
+      return out;
+    }
+    function paint(){
+      el.innerHTML = head('文件', '<button class="nb-btn" id="nb-froot">根目录</button>') +
+        wrap('<div class="nb-actrow" style="margin-bottom:8px">' + crumbs(cur) + '</div>' +
+        '<div id="nb-flist"><div class="nb-empty">读取中…</div></div>');
+      var fr = $('nb-froot'); if (fr) fr.onclick = function(){ filesView(''); };
+      Array.prototype.forEach.call(el.querySelectorAll('[data-dir]'), function(b){
+        b.onclick = function(){ filesView(b.getAttribute('data-dir')); };
+      });
+      fetch('/api/project/tree?dir=' + encodeURIComponent(cur)).then(function(r){ return r.json(); }).then(function(j){
+        var box = $('nb-flist');
+        if (!j.ok) { box.innerHTML = '<div class="nb-empty">读不了：' + esc(j.error || '?') + '</div>'; return; }
+        var rows = j.entries || [];
+        box.innerHTML = rows.length ? rows.map(function(x){
+          var isDir = x.type === 'dir';
+          return '<button class="nb-row" data-' + (isDir ? 'dir2' : 'file') + '="' + esc(x.path) + '">' +
+            '<span class="tag">' + (isDir ? '目录' : '文件') + '</span>' + esc(x.path.split('/').pop()) +
+            '<span class="m">' + (isDir ? '' : (x.bytes == null ? '' : Math.round(x.bytes / 1024) + ' KB')) + '</span></button>';
+        }).join('') : '<div class="nb-empty">这个目录是空的。</div>';
+        Array.prototype.forEach.call(box.querySelectorAll('[data-dir2]'), function(b){
+          b.onclick = function(){ filesView(b.getAttribute('data-dir2')); };
+        });
+        Array.prototype.forEach.call(box.querySelectorAll('[data-file]'), function(b){
+          b.onclick = function(){ fileOpen(b.getAttribute('data-file')); };
+        });
+      }).catch(function(){
+        var box = $('nb-flist'); if (box) box.innerHTML = '<div class="nb-empty">读取失败。</div>';
+      });
+    }
+    paint();
+  }
+
+  function fileOpen(path){
+    var el = $('nb-view');
+    el.innerHTML = head('文件', '<button class="nb-btn" id="nb-fback">← 回去</button>') +
+      wrap('<div class="nb-empty">读取中…</div>');
+    var dir = path.split('/').slice(0, -1).join('/');
+    var back = $('nb-fback'); if (back) back.onclick = function(){ filesView(dir); };
+    fetch('/api/project/file?path=' + encodeURIComponent(path)).then(function(r){ return r.json(); }).then(function(j){
+      var text = j.ok ? String(j.text || '') : ('读不了：' + (j.error || j.code || '?'));
+      el.innerHTML = head(path, '<button class="nb-btn" id="nb-fback2">← 回去</button>') +
+        wrap('<div class="nb-pre" style="max-height:70vh">' + esc(text.slice(0, 20000)) + '</div>');
+      var b2 = $('nb-fback2'); if (b2) b2.onclick = function(){ filesView(dir); };
+    }).catch(function(){
+      el.innerHTML = head(path) + wrap('<div class="nb-empty">读取失败。</div>');
+    });
+  }
+
   // ── 日志：执行层审计（2026-11-05）────────────────────────────
   function logsView(){
     var el = $('nb-view');
@@ -1159,6 +1222,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
     else if (v === 'docs') docsView();
     else if (v === 'cap') capView();
     else if (v === 'logs') logsView();
+    else if (v === 'files') filesView('');
     else if (v === 'git') gitView();
     else if (v === 'cfg') cfgView();
     else if (v === 'gap') gapView();
@@ -1180,16 +1244,22 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
       box.onkeydown = function(e){ if (e.key === 'Enter') memView(box.value.trim()); };
       box.focus();
     }
-    var url = q ? '/api/memories?q=' + encodeURIComponent(q) : '/api/memories?limit=80';
+    if (!q) MEM_OFF = MEM_OFF || 0; else MEM_OFF = 0;
+    var url = q ? '/api/memories?q=' + encodeURIComponent(q) + '&limit=40'
+      : '/api/memories?limit=40&offset=' + MEM_OFF;
     fetch(url).then(function(r){ return r.json(); }).then(function(rows){
       if (!Array.isArray(rows)) rows = [];
       var list = $('nb-mlist');
-      list.innerHTML = rows.length ? rows.map(function(m){
+      var more = (!q && rows.length === 40) ? '<div class="nb-actrow" style="margin-top:10px">' +
+        '<button class="nb-btn" id="nb-mmore">看更早的 40 条</button></div>' : '';
+      list.innerHTML = (rows.length ? rows.map(function(m){
         return '<button class="nb-row" data-mem="' + m.id + '">' +
           '<span class="tag">' + esc(KIND[m.kind] || m.kind || '') + '</span>' +
           esc(String(m.text).slice(0, 110)) +
           '<span class="m">#' + m.id + ' · ' + esc(m.stage) + ' · ' + Number(m.weight).toFixed(2) + '</span></button>';
-      }).join('') : '<div class="nb-empty">没有匹配的记忆。</div>';
+      }).join('') : '<div class="nb-empty">没有匹配的记忆。</div>') + (!q ? more : '');
+      var mb = $('nb-mmore');
+      if (mb) mb.onclick = function(){ MEM_OFF += 40; memView(''); };
       Array.prototype.forEach.call(list.querySelectorAll('[data-mem]'), function(b){
         b.onclick = function(){ memDetail(Number(b.getAttribute('data-mem'))); };
       });
@@ -1356,7 +1426,73 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
             esc(t.name) + '<span class="m">' + esc(String(t.note || '').slice(0, 120)) + '</span></div>';
         }).join('');
       var box = $('nb-cap'); if (box) box.innerHTML = html;
+      paintPlugins();
     }).catch(function(){});
+
+    // 插件：MCP 服务器与技能（增删 + 重连）—— 旧面板有，新界面之前只剩只读
+    function paintPlugins(){
+      fetch('/api/plugins').then(function(r){ return r.json(); }).then(function(j){
+        var box = $('nb-cap'); if (!box || !j.ok) return;
+        var mcp = j.mcp || [], sk = j.skills || [];
+        box.innerHTML += '<div class="nb-sec">MCP 服务器</div>' +
+          (mcp.length ? mcp.map(function(m){
+            return '<div class="nb-row" style="cursor:default"><span class="tag">' + esc(m.trust || 'trusted') + '</span>' +
+              esc(m.name) + '<span class="m">' + esc([m.command].concat(m.args || []).join(' ').slice(0, 90)) + '</span>' +
+              '<button class="nb-btn danger" data-delmcp="' + esc(m.name) + '">删</button></div>';
+          }).join('') : '<div class="nb-empty">还没接 MCP 服务器。</div>') +
+          '<div class="nb-form" style="margin-top:8px">' +
+          '<input id="nb-mcpname" class="nb-search" placeholder="名字，如 filesystem">' +
+          '<input id="nb-mcpcmd" class="nb-search" placeholder="命令，如 npx">' +
+          '<input id="nb-mcpargs" class="nb-search" placeholder="参数，空格分隔：-y @modelcontextprotocol/server-filesystem D:/tmp">' +
+          '<div class="nb-actrow"><button class="nb-btn" id="nb-mcpadd">接上</button>' +
+          '<button class="nb-btn" id="nb-mcpre">重连全部</button>' +
+          '<span class="nb-empty" id="nb-mcpmsg"></span></div></div>' +
+          '<div class="nb-sec">技能</div>' +
+          (sk.length ? sk.map(function(x){
+            return '<div class="nb-row" style="cursor:default"><span class="tag">skill</span>' + esc(x.id || x.name || '?') +
+              '<span class="m">' + esc(String(x.description || x.title || '').slice(0, 70)) + '</span>' +
+              '<button class="nb-btn danger" data-delsk="' + esc(x.id || x.name) + '">删</button></div>';
+          }).join('') : '<div class="nb-empty">没有额外技能。</div>');
+
+        Array.prototype.forEach.call(box.querySelectorAll('[data-delmcp]'), function(b){
+          b.onclick = function(){
+            var name = b.getAttribute('data-delmcp');
+            if (!window.confirm('删掉 ' + name + '？')) return;
+            fetch('/api/plugins', { method: 'POST', headers: H, body: JSON.stringify({ kind: 'mcp', action: 'remove', name: name }) })
+              .then(function(r){ return r.json(); }).then(function(){ capView(); });
+          };
+        });
+        Array.prototype.forEach.call(box.querySelectorAll('[data-delsk]'), function(b){
+          b.onclick = function(){
+            var name = b.getAttribute('data-delsk');
+            if (!window.confirm('删掉技能 ' + name + '？')) return;
+            fetch('/api/plugins', { method: 'POST', headers: H, body: JSON.stringify({ kind: 'skill', action: 'remove', name: name }) })
+              .then(function(r){ return r.json(); }).then(function(){ capView(); });
+          };
+        });
+        var add = $('nb-mcpadd');
+        if (add) add.onclick = function(){
+          var name = ($('nb-mcpname') || {}).value || '';
+          var cmd = ($('nb-mcpcmd') || {}).value || '';
+          var args = (($('nb-mcpargs') || {}).value || '').split(/\s+/).filter(Boolean);
+          var msg = $('nb-mcpmsg');
+          if (!name.trim() || !cmd.trim()) { if (msg) msg.textContent = '名字和命令都要填'; return; }
+          fetch('/api/plugins', { method: 'POST', headers: H, body: JSON.stringify({ kind: 'mcp', action: 'add', name: name.trim(), command: cmd.trim(), args: args }) })
+            .then(function(r){ return r.json(); }).then(function(r){
+              if (msg) msg.textContent = r.ok ? '接上了' : (r.error || '没接上');
+              if (r.ok) capView();
+            });
+        };
+        var re = $('nb-mcpre');
+        if (re) re.onclick = function(){
+          var msg = $('nb-mcpmsg');
+          fetch('/api/plugins/reconnect', { method: 'POST', headers: H, body: '{}' })
+            .then(function(r){ return r.json(); }).then(function(r){
+              if (msg) msg.textContent = r.ok ? '重连完了' : (r.why || r.error || '重连失败');
+            });
+        };
+      }).catch(function(){});
+    }
   }
 
   function gitView(){
@@ -1834,7 +1970,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
     var v = m ? m[1] : '';
     if (v === 'board') { go('home'); setTimeout(function(){ Board(true); }, 120); return; }
     if (v === 'chat') { go('chat'); return; }
-    if (['mem','docs','cap','git','cfg','gap','sess','approvals','logs'].indexOf(v) >= 0) { setTimeout(function(){ go(v); }, 120); return; }
+    if (['mem','docs','cap','git','cfg','gap','sess','approvals','logs','files'].indexOf(v) >= 0) { setTimeout(function(){ go(v); }, 120); return; }
     go('home');
     if (location.search.indexOf("pal=1") >= 0) setTimeout(palOpen, 200);
   })();
