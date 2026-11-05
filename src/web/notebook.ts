@@ -400,37 +400,59 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
     }).catch(function(){});
   }
 
+  var DAYS_SHOWN = 8;
   function renderDays(){
-    var days = TL.filter(function(b){ return b.type === 'day'; });
+    var days = TL.filter(function(b){ return b.type === 'day'; }).slice().reverse(); // 新 → 旧
     var html = '';
     var today = new Date();
     var p = function(n){ return String(n).padStart(2,'0'); };
     var todayLabel = today.getFullYear() + '-' + p(today.getMonth()+1) + '-' + p(today.getDate());
-    html += '<div class="nb-day on" data-jump="' + todayLabel + '"><span class="mk"></span>' +
-      '<span><span class="d">今天</span><span class="m">' + hhmm(today.toISOString()) + '</span></span></div>';
-    days.slice(-8).reverse().forEach(function(d){
+    // 今天：只在今天真的有话时才钉在顶上（以前不管有没有都显示，点了还会跳到最上面）
+    var md = String(Number(todayLabel.slice(5, 7))) + ' 月 ' + String(Number(todayLabel.slice(8, 10))) + ' 日';
+    var hasToday = days.some(function(d){ return String(d.label || '').indexOf(md) >= 0; });
+    if (hasToday) {
+      html += '<div class="nb-day on" data-d="' + todayLabel + '"><span class="mk"></span>' +
+        '<span><span class="d">今天</span><span class="m">' + hhmm(today.toISOString()) + '</span></span></div>';
+    }
+    days.slice(0, DAYS_SHOWN).forEach(function(d){
       var gap = d.gapMs ? ('距上次 ' + Math.round(d.gapMs/3600000) + ' 小时') : '';
-      html += '<div class="nb-day" data-jump="' + esc(d.label) + '">' +
-        '<span class="mk"></span><span><span class="d">' + esc(d.label) + '</span>' +
+      var lab = String(d.label || '');
+      var isToday = lab.indexOf(md) >= 0;
+      if (isToday && hasToday) return;   // 顶上已经钉了一个「今天」，别再列一次
+      html += '<div class="nb-day' + (isToday ? ' on' : '') + '" data-d="' + esc(lab) + '">' +
+        '<span class="mk"></span><span><span class="d">' + esc(isToday ? '今天' : lab) + '</span>' +
         '<span class="m">' + esc(gap) + '</span></span></div>';
     });
+    var rest = days.length - DAYS_SHOWN;
+    if (rest > 0) {
+      html += '<div class="nb-day" id="nb-moreday" style="opacity:.8">' +
+        '<span class="mk"></span><span><span class="d">更早…</span>' +
+        '<span class="m">还有 ' + rest + ' 天</span></span></div>';
+    }
     $('nb-days').innerHTML = html;
-    Array.prototype.forEach.call($('nb-days').querySelectorAll('.nb-day'), function(el){
+    var more = $('nb-moreday');
+    if (more) more.onclick = function(){ DAYS_SHOWN += 30; renderDays(); };
+    Array.prototype.forEach.call($('nb-days').querySelectorAll('.nb-day[data-d]'), function(el){
       el.onclick = function(){
         Board(false);
         go('chat');
         Array.prototype.forEach.call($('nb-days').querySelectorAll('.nb-day'), function(x){ x.classList.remove('on'); });
         el.classList.add('on');
-        var lab = el.getAttribute('data-jump');
+        var lab = el.getAttribute('data-d');
         var marks = $('nb-log').querySelectorAll('.nb-daymark');
+        var target = null;
         for (var i = 0; i < marks.length; i++) {
-          if ((marks[i].textContent || '').indexOf(lab) >= 0) { marks[i].scrollIntoView({ block:'start' }); return; }
+          var dl = marks[i].getAttribute('data-d') || '';
+          // 今天用日期前缀匹配（标记是「11 月 5 日 周四」，不是 2026-11-05）
+          if (lab === todayLabel ? dl.indexOf(md) >= 0 : dl === lab) { target = marks[i]; break; }
         }
-        $('nb-page').scrollTop = 0;
+        if (target) target.scrollIntoView({ block: 'start' });
+        else $('nb-page').scrollTop = 0;
       };
     });
   }
 
+  // 消息下面那排证据条（工具次数 / 引用条数 / 未发送的本地记忆）
   function evChips(b){
     var out = [];
     var tn = (b.tools || []).length;
@@ -440,16 +462,18 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
     return out;
   }
 
+  // 头像：启动时拉一次，对话流里每条消息旁边画一张
   function loadAvatars(){
     fetch('/api/avatars').then(function(r){ return r.json(); }).then(function(j){
       AV = j || {};
       if (TL.length && $('nb-log')) renderLog();
     }).catch(function(){});
   }
+
   function renderLog(){
     var html = '', n = 0;
     TL.forEach(function(b){
-      if (b.type === 'day') { html += '<div class="nb-daymark">' + esc(b.label) + '</div>'; return; }
+      if (b.type === 'day') { html += '<div class="nb-daymark" data-d="' + (b.label || '') + '">' + esc(b.label) + '</div>'; return; }
       if (b.type !== 'msg') return;
       n++;
       var mine = b.role === 'user';
