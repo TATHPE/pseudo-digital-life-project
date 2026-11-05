@@ -80,7 +80,19 @@ export async function runNightCli(opts: NightOptions): Promise<number> {
       }),
       onTool: (t) => toolTrace.push(t),
     });
-    return extractor(prompt);
+    try {
+      return await extractor(prompt);
+    } catch (e) {
+      // 纯抽取模型（如 NuExtract3）在 Ollama 里没有 tools 能力：
+      // 那就退到「不带工具的纯文本抽取」——它本来也不需要查库，核对交给 verbatimGate。
+      const msg = String((e as Error)?.message ?? e);
+      if (!/does not support tools/i.test(msg)) throw e;
+      let out = "";
+      for await (const ev of chatTransport.chat("extract", [{ role: "user", content: prompt }], {
+        containsMemory: true, purpose: "nightly-extract", maxTokens: 1200, temperature: 0.2,
+      })) { if (ev.type === "delta") out += ev.text; }
+      return out;
+    }
   };
 
   // 纯文本通道（不带工具）：只给「她对你的理解」用
