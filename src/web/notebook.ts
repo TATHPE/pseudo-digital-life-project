@@ -500,7 +500,9 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
         var btn = document.createElement('button');
         btn.className = 'nb-more';
         btn.textContent = '展开全文（约 ' + String(b.text || '').length + ' 字，还有 ' + Math.max(1, Math.round((String(b.text || '').length - 700) / 60)) + ' 行）';
-        btn.onclick = function(){ fold.classList.add('open'); btn.remove(); };
+        // 记住要展开的是哪个（以前靠 previousElementSibling 猜，位置一变就"展开了个寂寞"）
+        btn.setAttribute('data-target', id);
+        btn.onclick = function(){ var t = document.getElementById(btn.getAttribute('data-target')); if (t) t.classList.add('open'); btn.remove(); };
         // 插到正文下面、证据条上面（以前 appendChild 到 .b 末尾，会被证据条挤到更下面）
         fold.parentNode.parentNode.insertBefore(btn, fold.parentNode.nextSibling);
         html = holder.innerHTML;
@@ -511,9 +513,8 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
     // 折叠按钮（innerHTML 之后重新绑）
     Array.prototype.forEach.call($('nb-log').querySelectorAll('.nb-more'), function(btn){
       btn.onclick = function(){
-        var prev = btn.previousElementSibling;
-        var fold = prev ? prev.querySelector('.nb-fold') : null;
-        if (fold) fold.classList.add('open');
+        var t = document.getElementById(btn.getAttribute('data-target') || '');
+        if (t) t.classList.add('open');
         btn.remove();
       };
     });

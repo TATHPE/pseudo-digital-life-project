@@ -47,6 +47,13 @@ const out = [];
 const check = (n, ok, d = "") => out.push([n, ok, d]);
 const skip = (n, why) => out.push([n, null, why]);
 
+// ⓪ 先去记录页：工作台上输入框是隐藏的（[hidden] 现在真的生效了，量不到尺寸）
+await js(`(async () => {
+  const d = document.querySelector('.nb-day');
+  if (d) { d.click(); await new Promise((r) => setTimeout(r, 400)); }
+  return 1;
+})()`);
+
 // ① 壳：三列都在，输入框在视口内
 const layout = await js(`(() => {
   const q = (s) => document.querySelector(s);
@@ -79,6 +86,21 @@ if (entries > 0) {
     return getComputedStyle(her).borderLeftColor.includes('15, 151, 164');
   })()`));
 } else skip("每条有页边时间戳", "空库");
+
+// ②b 长回答要能展开（用户实测：点了"展开了个寂寞"）
+const hasFold = await js(`!!document.querySelector('#nb-log .nb-more')`);
+if (hasFold) {
+  check("点「展开全文」真的展开（高度变大、按钮消失）", await js(`(async () => {
+    const btn = document.querySelector('#nb-log .nb-more');
+    const fold = document.getElementById(btn.getAttribute('data-target'));
+    if (!fold) return false;
+    const before = fold.getBoundingClientRect().height;
+    btn.click();
+    await new Promise((r) => setTimeout(r, 300));
+    const after = fold.getBoundingClientRect().height;
+    return after > before + 40 && !document.querySelector('#nb-log .nb-more');
+  })()`));
+} else skip("展开全文", "库里没有超长回答");
 
 // ③ 切口签能开合
 check("点切口签能展开面板", await js(`(async () => {

@@ -89,6 +89,13 @@ for (const [i, ev] of [
   });
 }
 
+// ④b 长回答夹具：3400 字，让「展开全文」真的出现（用户实测：点了没反应）
+appendEvent(join(HOME, "inbox"), {
+  v: 1, id: newEventId(), ts: new Date(Date.now() - 30000).toISOString(),
+  kind: "agent_reply", actor: "agent",
+  payload: { text: "这是一条很长的回答，用来测展开全文。".repeat(220) },
+});
+
 // ⑤ D-3 夹具：一条待读回执 + 一条常驻指令（面板要能显示、能标读、能停用）
 pushReceipt(HOME, { kind: "standing", ok: true, title: "std-check 跑完了：node.run_script",
   body: "exit=0 std-ok", source: "standing:std-check" }, now);
