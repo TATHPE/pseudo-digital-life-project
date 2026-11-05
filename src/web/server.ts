@@ -286,6 +286,33 @@ export function faviconSvg(): string {
 
 
 
+
+/** 从事件流里把「一问一答」配成轮次：一条 utterance 开一轮，后面那条 agent_reply 是它的回答 */
+interface TurnRow { id: string; userTs: string; agentTs: string | null; user: string; agent: string; tools: number }
+function readTurns(deps: WebDeps, sessionId: string): TurnRow[] {
+  const { events } = readEvents(deps.inboxDir);
+  const mine = events
+    .filter((e) => (e.kind === "utterance" || e.kind === "agent_reply") &&
+      String(((e.payload ?? {}) as { session?: string }).session ?? "") === sessionId)
+    .slice()
+    .sort((a, b) => String(a.ts).localeCompare(String(b.ts)));
+  const out: TurnRow[] = [];
+  for (const e of mine) {
+    const p = (e.payload ?? {}) as { text?: string; tools?: unknown[] };
+    if (e.kind === "utterance") {
+      out.push({ id: e.id, userTs: e.ts, agentTs: null, user: String(p.text ?? ""), agent: "", tools: 0 });
+    } else {
+      const last = out[out.length - 1];
+      if (last && last.agentTs === null) {
+        last.agentTs = e.ts;
+        last.agent = String(p.text ?? "");
+        last.tools = Array.isArray(p.tools) ? p.tools.length : 0;
+      }
+    }
+  }
+  return out;
+}
+
 export function createWebServer(deps: WebDeps) {
   const now = deps.now ?? (() => new Date());
   // 每次请求都 createStore 会重新做一遍 DPAPI 探测（又是一个 PowerShell 进程）；
@@ -588,6 +615,42 @@ export function createWebServer(deps: WebDeps) {
         }
         const shown = keep == null ? msgs : msgs.slice(0, keep);
         json(res, 200, { session: row, messages: shown, tools });
+        return;
+      }
+      // ── 轮次：一问一答 = 一轮（2026-11-05）。能单独撤回、重问、看这一轮的审计 ──
+      const turnList = url.pathname.match(/^\/api\/sessions\/([A-Za-z0-9_-]{4,40})\/turns$/);
+      if (req.method === "GET" && turnList) {
+        const id = String(turnList[1]);
+        json(res, 200, { turns: readTurns(deps, id) });
+        return;
+      }
+      const turnAct = url.pathname.match(/^\/api\/sessions\/([A-Za-z0-9_-]{4,40})\/turns\/([A-Za-z0-9_-]{4,40})\/(undo|retry|audit)$/);
+      if (req.method === "POST" && turnAct) {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
+        const sid = String(turnAct[1]);
+        const tid = String(turnAct[2]);
+        const what = String(turnAct[3]);
+        const turns = readTurns(deps, sid);
+        const idx = turns.findIndex((t) => t.id === tid);
+        if (idx < 0) { json(res, 404, { error: "E_NO_TURN" }); return; }
+        if (what === "undo") {
+          // 保留这一轮之前的消息（每轮两条：问 + 答）
+          const ok = undoSession(deps.db, sid, idx * 2);
+          json(res, 200, { ok });
+          return;
+        }
+        if (what === "retry") {
+          // 重问：把用户原话交回去，由面板重新发（不在服务端偷偷重跑）
+          json(res, 200, { ok: true, text: turns[idx]!.user });
+          return;
+        }
+        // 这一轮的审计：按 [用户时间, 回复时间] 取 exec_audit
+        const from = turns[idx]!.userTs;
+        const to = turns[idx]!.agentTs || now().toISOString();
+        const rows = deps.db.prepare(
+          "SELECT ts,verb,decision,exit_code,argv_json FROM exec_audit WHERE ts>=? AND ts<=? ORDER BY ts ASC LIMIT 50",
+        ).all(from, to) as Array<{ ts: string; verb: string; decision: string; exit_code: number | null; argv_json: string }>;
+        json(res, 200, { audit: rows.map((r) => ({ ts: r.ts, verb: r.verb, decision: r.decision, exit: r.exit_code, argv: String(r.argv_json ?? '').slice(0, 200) })) });
         return;
       }
       const sessAct = url.pathname.match(/^\/api\/sessions\/([A-Za-z0-9_-]{4,40})\/(close|rename|interrupt|branch|undo)$/);

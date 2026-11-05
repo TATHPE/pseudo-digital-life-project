@@ -9,7 +9,7 @@
 | 项 | 数量 |
 |---|---|
 | 源文件（src/**/*.ts） | 116 |
-| 错误码 E_* | 217 |
+| 错误码 E_* | 218 |
 | verbs | 27 |
 | CLI 子命令 | 39 |
 
@@ -153,6 +153,7 @@
 | `E_NO_TARGET` | `src/cli/deploy.ts` |
 | `E_NO_TEMPLATE` | `src/shell.ts` |
 | `E_NO_TRASH` | `src/verbs.ts` |
+| `E_NO_TURN` | `src/web/server.ts` |
 | `E_NOT_A_REPO` | `src/gitview.ts` |
 | `E_NOT_DELETED` | `src/web/server.ts` |
 | `E_NOT_DIR` | `src/project.ts` |

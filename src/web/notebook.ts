@@ -106,6 +106,8 @@ body{background:var(--void);color:var(--ink);font:15px/1.85 var(--sans);
 .nb-search{width:100%;max-width:420px;background:none;border:1px solid var(--line-dim);color:var(--ink);
   font:13px/1.6 var(--sans);padding:8px 10px;outline:none;margin:0 0 8px}
 .nb-search:focus{border-color:var(--line)}
+.nb-turn{border-top:1px solid var(--line-dim);padding:12px 2px}
+.nb-audit{font:11px/1.7 var(--mono);color:var(--dim);margin-top:6px}
 .nb-appr{border-top:1px solid var(--line-dim);padding:12px 2px}
 .nb-gapq{border-top:1px solid var(--line-dim);padding:12px 2px}
 .nb-gapt{font:14px/1.7 var(--sans);color:var(--ink)}
@@ -928,7 +930,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
         '<button class="nb-btn" id="nb-branch">从这里分叉</button>' +
         '<button class="nb-btn" id="nb-undo">撤回最后一轮</button></div>';
       var tabs = '<div class="nb-jumpbar" style="position:static;border-top:0;border-bottom:1px solid var(--line-dim)">' +
-        tab('msgs', '记录', msgs.length) + tab('files', '文件', files.length) + tab('term', '终端', terms.length) + '</div>';
+        tab('msgs', '记录', msgs.length) + tab('turns', '轮次', null) + tab('files', '文件', files.length) + tab('term', '终端', terms.length) + '</div>';
       var bodyMsgs = msgs.length ? msgs.map(function(m){
         var mine = m.role === 'user';
         return '<div class="nb-e ' + (mine ? 'me' : 'her') + '" style="border-top:1px solid var(--line-dim)">' +
@@ -944,20 +946,75 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
         return '<div class="nb-pre">$ ' + esc(String(t.args || '').slice(0, 300)) +
           String.fromCharCode(10) + esc(String(t.result || '').slice(0, 800)) + '</div>';
       }).join('') : '<div class="nb-empty">这次会话没跑过命令。</div>';
+      var bodyTurns = '<div id="nb-turns"><div class="nb-empty">读取中…</div></div>';
       $('nb-sdetail').innerHTML = head2 + acts + tabs +
         '<div id="nb-stab-msgs">' + bodyMsgs + '</div>' +
+        '<div id="nb-stab-turns" hidden>' + bodyTurns + '</div>' +
         '<div id="nb-stab-files" hidden>' + bodyFiles + '</div>' +
         '<div id="nb-stab-term" hidden>' + bodyTerm + '</div>';
       var br = $('nb-branch');
       if (br) br.onclick = function(){ fetch('/api/sessions/' + encodeURIComponent(id) + '/branch', { method: 'POST', headers: H, body: '{}' }).then(function(){ tick('已分叉'); sessView(); }); };
       var un = $('nb-undo');
       if (un) un.onclick = function(){ fetch('/api/sessions/' + encodeURIComponent(id) + '/undo', { method: 'POST', headers: H, body: '{}' }).then(function(){ tick('已撤回最后一轮'); sessDetail(id); }); };
+      // 轮次：一问一答一行，按钮各自独立
+      fetch('/api/sessions/' + encodeURIComponent(id) + '/turns').then(function(r){ return r.json(); }).then(function(tj){
+        var turns = (tj && tj.turns) || [];
+        var box = $('nb-turns');
+        if (!box) return;
+        box.innerHTML = turns.length ? turns.map(function(t, i){
+          return '<div class="nb-turn">' +
+            '<div class="nb-gapt">' + (i + 1) + '. ' + esc(String(t.user || '').slice(0, 80)) +
+            '<span class="m">' + esc(String(t.userTs || '').slice(11, 16)) +
+            (t.agentTs ? ' · 答 ' + esc(String(t.agentTs).slice(11, 16)) : ' · 没答') +
+            (t.tools ? ' · ' + t.tools + ' 个工具' : '') + '</span></div>' +
+            (t.agent ? '<div class="nb-sub">' + esc(String(t.agent).slice(0, 220)) + '</div>' : '') +
+            '<div class="nb-actrow">' +
+            '<button class="nb-btn" data-tundo="' + esc(t.id) + '">撤回这一轮</button>' +
+            '<button class="nb-btn" data-tretry="' + esc(t.id) + '">重问</button>' +
+            '<button class="nb-btn" data-taudit="' + esc(t.id) + '">这一轮的审计</button>' +
+            '</div><div class="nb-audit" id="aud-' + esc(t.id) + '"></div></div>';
+        }).join('') : '<div class="nb-empty">还没有轮次。</div>';
+        Array.prototype.forEach.call(box.querySelectorAll('[data-tundo]'), function(b){
+          b.onclick = function(){
+            var tid = b.getAttribute('data-tundo');
+            fetch('/api/sessions/' + encodeURIComponent(id) + '/turns/' + tid + '/undo', { method: 'POST', headers: H, body: '{}' })
+              .then(function(){ tick('已撤回这一轮'); sessDetail(id); });
+          };
+        });
+        Array.prototype.forEach.call(box.querySelectorAll('[data-tretry]'), function(b){
+          b.onclick = function(){
+            var tid = b.getAttribute('data-tretry');
+            fetch('/api/sessions/' + encodeURIComponent(id) + '/turns/' + tid + '/retry', { method: 'POST', headers: H, body: '{}' })
+              .then(function(r){ return r.json(); }).then(function(j){
+                go('chat');
+                var ta = $('nb-say');
+                if (ta && j.text) { ta.value = j.text; ta.focus(); tick('原话已填回输入框，回车重问'); }
+              });
+          };
+        });
+        Array.prototype.forEach.call(box.querySelectorAll('[data-taudit]'), function(b){
+          b.onclick = function(){
+            var tid = b.getAttribute('data-taudit');
+            var out = document.getElementById('aud-' + tid);
+            if (!out) return;
+            out.textContent = '读取中…';
+            fetch('/api/sessions/' + encodeURIComponent(id) + '/turns/' + tid + '/audit', { method: 'POST', headers: H, body: '{}' })
+              .then(function(r){ return r.json(); }).then(function(j){
+                var rows = (j && j.audit) || [];
+                out.innerHTML = rows.length ? rows.map(function(a){
+                  return '<div class="nb-au">' + esc(String(a.ts || '').slice(11, 19)) + ' ' + esc(a.verb) +
+                    ' · ' + esc(a.decision) + (a.exit == null ? '' : ' · exit ' + a.exit) + '</div>';
+                }).join('') : '<div class="nb-empty">这一轮没有经过执行层的动作。</div>';
+              }).catch(function(){ out.textContent = '读取失败'; });
+          };
+        });
+      }).catch(function(){ var box = $('nb-turns'); if (box) box.innerHTML = '<div class="nb-empty">读取失败。</div>'; });
       Array.prototype.forEach.call($('nb-sdetail').querySelectorAll('[data-tab]'), function(b){
         b.onclick = function(){
           var k = b.getAttribute('data-tab');
           Array.prototype.forEach.call($('nb-sdetail').querySelectorAll('[data-tab]'), function(x){ x.className = 'nb-jump'; });
           b.className = 'nb-jump on';
-          ['msgs', 'files', 'term'].forEach(function(t){
+          ['msgs', 'turns', 'files', 'term'].forEach(function(t){
             var e = $('nb-stab-' + t); if (e) e.hidden = t !== k;
           });
         };

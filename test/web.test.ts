@@ -259,6 +259,33 @@ test("会话：分叉与撤回（2026-11-05）", async () => {
     assert.equal(after, 2, "撤掉最后一问一答");
   } finally { srv.close(); }
 });
+test("轮次：一问一答配成一轮，能单独撤回（2026-11-05）", async () => {
+  const { srv, base } = await start();
+  try {
+    const h = { "content-type": "application/json", "x-jj": "1" };
+    const say = (t: string) => fetch(`${base}/api/say`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: t }) }).then((r) => r.text());
+    await say("第一问");
+    await say("第二问");
+    const l = await (await fetch(`${base}/api/sessions`)).json() as any;
+    const id = l.sessions[0].id;
+
+    const turns = (await (await fetch(`${base}/api/sessions/${id}/turns`)).json() as any).turns;
+    assert.equal(turns.length, 2, "两问两轮");
+    assert.equal(turns[0].user, "第一问");
+    assert.ok(turns[0].agentTs, "第一轮有回答");
+
+    const u = await (await fetch(`${base}/api/sessions/${id}/turns/${turns[0].id}/undo`, { method: "POST", headers: h, body: "{}" })).json() as any;
+    assert.equal(u.ok, true);
+    const after = (await (await fetch(`${base}/api/sessions/${id}`)).json() as any).messages;
+    assert.equal(after.length, 0, "撤回第一轮 = 一条不剩");
+
+    const rt = await (await fetch(`${base}/api/sessions/${id}/turns/${turns[1].id}/retry`, { method: "POST", headers: h, body: "{}" })).json() as any;
+    assert.equal(rt.text, "第二问", "重问把原话交回来");
+
+    const au = await (await fetch(`${base}/api/sessions/${id}/turns/${turns[1].id}/audit`, { method: "POST", headers: h, body: "{}" })).json() as any;
+    assert.ok(Array.isArray(au.audit), "审计是一个数组（这一轮没执行就是空）");
+  } finally { srv.close(); }
+});
 test("诊断 / 部署 / 导出校验：面板能自己说清状态（2026-11-05）", async () => {
   const { srv, base } = await start();
   try {
