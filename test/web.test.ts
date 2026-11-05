@@ -11,6 +11,7 @@ import { execute } from "../src/execute.ts";
 import { ingestFile } from "../src/ingest.ts";
 import { loadPolicy } from "../src/policy.ts";
 import { PAGE } from "../src/web/page.ts";
+import { NOTEBOOK } from "../src/web/notebook.ts";
 import { groupTimeline, gapLabel } from "../src/web/timeline.ts";
 import { expenseLine } from "../src/web/state.ts";
 import type { AddressInfo } from "node:net";
@@ -1010,30 +1011,31 @@ test("F-3 撤销「忘掉这篇」：restore 后文档与前缀检索都回来",
   } finally { srv.close(); }
 });
 
-test("每一轮的过程要留档：右栏每轮清空，历史里必须能回看（用户说\"上一轮被覆盖\"）", () => {
+test("每一轮的过程要留档：右栏第四个签能看当前这一轮，重开也能看最近一轮", () => {
+  // 2026-11-05：这两条以前测的是 src/web/page.ts —— 已下线、程序不再引用的旧面板，
+  // 于是「过程」功能在记录本里根本没有，测试却是绿的。现在改成测 NOTEBOOK。
   const server = readFileSync(join(process.cwd(), "src/web/server.ts"), "utf8");
-  // 服务端要收集 trace（思考/工具/结果/错误）并写进 agent_reply 的 payload
   assert.ok(server.includes("const trace: Array<"), "要有 trace 收集器");
   assert.ok(server.includes('trace.push({ k: "think"'), "思考要进去");
   assert.ok(server.includes('trace.push({ k: "tool"'), "工具要进去");
   assert.ok(server.includes("...(trace.length ? { trace } : {})"), "要存进 payload");
   assert.ok(server.includes("...(p.trace?.length ? { trace: p.trace } : {})"), "读历史时要带出来");
 
-  // 前端：那句「N 次工具调用」要能点开回看那一轮
-  assert.ok(PAGE.includes("b.trace || []"), "页面要读 trace");
-  assert.ok(PAGE.includes('details class="histtrace"'), "要能展开");
-  assert.ok(PAGE.includes("这一轮的过程"), "说清楚展开的是什么");
+  // 记录本：第四个签 + 过程容器 + 分组函数
+  assert.ok(NOTEBOOK.includes('data-t="4"'), "右栏要有第四个签");
+  assert.ok(NOTEBOOK.includes("id=\"nb-trace\""), "要点开就能画过程");
+  assert.ok(NOTEBOOK.includes("function groupTrace("), "要按步分组");
+  assert.ok(NOTEBOOK.includes("TRACE.push({ k: 'think'"), "思考要进过程");
+  assert.ok(NOTEBOOK.includes("TRACE.push({ k: 'tool'"), "工具要进过程");
+  assert.ok(NOTEBOOK.includes("TRACE.push({ k: 'res'"), "结果要进过程");
+  assert.ok(NOTEBOOK.includes("TRACE.push({ k: 'err'"), "错误要进过程");
+  assert.ok(NOTEBOOK.includes("bb.trace"), "重开时要能捞出最近一轮的过程");
 });
 
-test("右栏「过程」按步分组：一段推理 + 它的动作 = 一步，上一步自动折叠", () => {
-  // 用户看到的是一长串平铺的「想/工具/结果」，分不清"第几次尝试"。
-  // 判据与 agent 那边一致：think 出现且当前步已经动过手 → 开新的一步。
-  assert.ok(PAGE.includes("function groupTrace("), "要有分组函数");
-  assert.ok(PAGE.includes("if (cur.items.length) { steps.push(cur);"), "动手之后的 think 要开新步");
-  assert.ok(PAGE.includes("function traceStep()"), "实时栏也要按步容器");
-  assert.ok(PAGE.includes("prev.removeAttribute('open')"), "开新步时把上一步折起来");
-  assert.ok(PAGE.includes("trCur.acts > 0"), "think 撞上已动手的步 → 换步");
-  assert.ok(PAGE.includes("次动作"), "步头要数动作次数");
+test("过程按步分组：一段推理 + 它的动作 = 一步，上一步自动折叠", () => {
+  assert.ok(NOTEBOOK.includes("function groupTrace("), "要有分组函数");
+  assert.ok(NOTEBOOK.includes("if (cur.items.length) { steps.push(cur);"), "动手之后再想 = 开新的一步");
+  assert.ok(NOTEBOOK.includes("第 ' + (i + 1) + ' 步"), "面板上要标出第几步");
 });
 
 test("闲时整理留痕：每次一条 events，成功失败都记，面板能看", () => {

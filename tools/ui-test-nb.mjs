@@ -68,7 +68,7 @@ const layout = await js(`(() => {
 })()`);
 check("记录本三列都在（目录 / 正文 / 切口）", layout && layout.log && layout.rail && layout.top);
 check("输入框在视口内", layout && layout.inputBottom > 0 && layout.inputBottom <= layout.vh, JSON.stringify(layout));
-check("切口四个签", layout && layout.tabs === 4, String(layout && layout.tabs));
+check("右栏五个签（0 / I / II / III / IV）", layout && layout.tabs === 5, String(layout && layout.tabs));
 if (layout && layout.days > 0) check("左栏按天有记录", true, layout.days + " 天");
 else skip("左栏按天有记录", "库里还没有对话");
 
@@ -181,6 +181,25 @@ check("「她收着的」能翻出来", await js(`(async () => {
   const el = document.getElementById('nb-board');
   return el && !el.hidden && /她收着的/.test(el.textContent || '');
 })()`));
+
+// ⑥b 右栏第四个签：过程（有过程就列步，没有也要说话）
+const traceTab = await js(`(async () => {
+  const t = document.querySelector('.nb-tab[data-t="4"]');
+  if (!t) return 'no-tab';
+  t.click();
+  await new Promise((r) => setTimeout(r, 400));
+  const p = document.getElementById('nb-panel');
+  if (!p || p.hidden) return 'hidden';
+  const box = document.getElementById('nb-trace');
+  if (!box) return 'no-box';
+  return { text: box.textContent.slice(0, 120), steps: box.querySelectorAll('.nb-step').length };
+})()`);
+if (traceTab === "no-tab" || traceTab === "hidden" || traceTab === "no-box") {
+  check("过程签能开", false, String(traceTab));
+} else {
+  check("过程签能开（画出步数，不是空白）", traceTab.steps > 0 && (traceTab.text || "").length > 4,
+    traceTab.steps ? `${traceTab.steps} 步` : traceTab.text.slice(0, 40));
+}
 
 // ⑦ 回到记录
 check("能回到记录页", await js(`(async () => {

@@ -174,6 +174,13 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
 .nb-e .g .w{display:block;color:var(--dim);letter-spacing:.06em}
 .nb-modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.62);z-index:40}
 .nb-modal{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:41;width:min(560px,92vw);max-height:80vh;overflow:auto;background:var(--void);border:1px solid var(--line);padding:16px 18px}
+.nb-step{border-left:1px solid var(--line-dim);padding:2px 0 6px 10px;margin:8px 0}
+.nb-step .hd{font:9px/1 var(--mono);letter-spacing:.16em;color:var(--dim2);margin-bottom:6px}
+.nb-tr{font:11px/1.7 var(--mono);color:var(--ink);margin:4px 0;word-break:break-word}
+.nb-tr .w{display:inline-block;min-width:44px;color:var(--dim);margin-right:6px}
+.nb-tr.think{color:var(--dim)}
+.nb-tr.res{color:var(--dim2)}
+.nb-tr.err{color:#e06c6c}
 .nb-gav{display:block;width:22px;height:22px;object-fit:cover;margin:0 0 5px auto;border:1px solid var(--line-dim);opacity:.85}
 .nb-e.me .g .w{color:var(--amber)}
 .nb-e .b{min-width:0}
@@ -315,6 +322,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
         <button class="nb-tab" data-t="1" id="nb-t1">I<span class="c" id="nb-c1">0</span></button>
         <button class="nb-tab" data-t="2" id="nb-t2">II<span class="c" id="nb-c2">0</span></button>
         <button class="nb-tab" data-t="3" id="nb-t3">III<span class="c" id="nb-c3">0</span></button>
+        <button class="nb-tab" data-t="4" id="nb-t4">IV<span class="c" id="nb-c4">0</span></button>
       </div>
       <div class="nb-panel" id="nb-panel" hidden></div>
     </aside>
@@ -349,6 +357,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
   var $ = function(id){ return document.getElementById(id); };
   var H = { 'content-type':'application/json', 'x-jj':'1' };
   var TL = [], BOARD = false, CUR = 0, TAB = -1, BUSY = false, AV = {}, AC = null, MEM_OFF = 0, CFG_TAB = 0;
+  var TRACE = [];   // 当前这一轮的过程（想/用/结果/错）；右栏第四个签看它
 
   function esc(s){
     return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
@@ -396,6 +405,14 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
   function loadTimeline(){
     return fetch('/api/timeline').then(function(r){ return r.json(); }).then(function(blocks){
       TL = blocks || [];
+      // 不在对话中途时，右栏显示**最近一轮**的过程（payload.trace 一直在库里）
+      if (!BUSY) {
+        for (var i = TL.length - 1; i >= 0; i--) {
+          var bb = TL[i];
+          if (bb.type === 'msg' && bb.role === 'agent' && bb.trace && bb.trace.length) { TRACE = bb.trace.slice(); break; }
+        }
+        if (TAB === 4) paintTrace();
+      }
       renderDays();
       renderLog();
     }).catch(function(){});
@@ -608,6 +625,39 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
     });
   }
 
+  function groupTrace(tr){
+    var steps = [];
+    var cur = { think: '', items: [] };
+    (tr || []).forEach(function(x){
+      var k = x.k || 'think';
+      if (k === 'think') {
+        if (cur.items.length) { steps.push(cur); cur = { think: x.t || '', items: [] }; return; }
+        cur.think = (cur.think ? cur.think + String.fromCharCode(10) : '') + String(x.t || '');
+        return;
+      }
+      cur.items.push(x);
+    });
+    if (cur.think || cur.items.length) steps.push(cur);
+    return steps;
+  }
+
+  function paintTrace(){
+    var box = $('nb-trace');
+    if (!box) return;
+    var steps = groupTrace(TRACE);
+    var c4 = $('nb-c4'); if (c4) c4.textContent = String(steps.length);
+    if (!steps.length) { box.innerHTML = '<div class="nb-empty">这一轮还没有过程。她说一句话、动一次手，这里会长出来。</div>'; return; }
+    box.innerHTML = '<h3>过程 · ' + steps.length + ' 步</h3>' + steps.map(function(st, i){
+      var items = st.items.map(function(x){
+        var who = x.k === 'tool' ? '用' : x.k === 'res' ? '结果' : x.k === 'err' ? '错' : '·';
+        var cls = x.k === 'err' ? 'err' : x.k === 'res' ? 'res' : 'tool';
+        return '<div class="nb-tr ' + cls + '"><span class="w">' + who + (x.ms != null ? ' · ' + x.ms + 'ms' : '') + '</span>' +
+          esc(String(x.t || '').slice(0, 800)) + '</div>';
+      }).join('');
+      var think = st.think ? '<div class="nb-tr think"><span class="w">想</span>' + esc(String(st.think).slice(0, 900)) + '</div>' : '';
+      return '<div class="nb-step"><div class="hd">第 ' + (i + 1) + ' 步</div>' + think + items + '</div>';
+    }).join('');
+  }
   function showTab(i){
     var panel = $('nb-panel');
     if (TAB === i) { TAB = -1; panel.hidden = true; paintTab(-1); return; }
@@ -630,6 +680,11 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
         ag.map(function(x){ return '<div class="nb-card"><div class="t">' + esc(x.t) + '</div><div class="s">来自 ' + esc(x.from||'') + '</div></div>'; }).join('') +
         th.map(function(x){ return '<div class="nb-card"><div class="t">' + esc(x.t) + '</div><div class="s">' + esc(String(x.d||0)) + ' 天' + (x.aging?' · 变旧':'') + '</div></div>'; }).join('')
         : '<div class="nb-empty">手上没有未了的事。</div>');
+      return;
+    }
+    if (i === 4) {
+      panel.innerHTML = '<div id="nb-trace"></div>';
+      paintTrace();
       return;
     }
     if (i === 2) {
@@ -677,6 +732,8 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
     AC = new AbortController();
     var stopBtn = $('nb-stop'); if (stopBtn) stopBtn.hidden = false;
     LEAF = []; paintLeaf();
+    TRACE = [];
+    if (TAB === 4) paintTrace();
 
     var mine = document.createElement('article');
     mine.className = 'nb-e me';
@@ -712,8 +769,18 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
               $('nb-page').scrollTop = $('nb-page').scrollHeight;
             } else if (ev.type === 'think') {
               leafAdd('想', ev.text);
+              TRACE.push({ k: 'think', t: ev.text });
+              if (TAB === 4) paintTrace();
             } else if (ev.type === 'tool') {
               leafAdd('用', ev.name + ' ' + String(ev.args || '').slice(0, 80));
+              TRACE.push({ k: 'tool', t: ev.name + ' ' + String(ev.args || '').slice(0, 300) });
+              if (TAB === 4) paintTrace();
+            } else if (ev.type === 'tool_result') {
+              TRACE.push({ k: 'res', t: String(ev.result || '').slice(0, 1200), ms: ev.ms });
+              if (TAB === 4) paintTrace();
+            } else if (ev.type === 'error') {
+              TRACE.push({ k: 'err', t: String(ev.message || '').slice(0, 300) });
+              if (TAB === 4) paintTrace();
             } else if (ev.type === 'notice' || ev.type === 'memo') {
               tick(ev.text);
             } else if (ev.type === 'error') {
@@ -727,7 +794,9 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
     }).then(function(){
       BUSY = false; AC = null;
       var sb = $('nb-stop'); if (sb) sb.hidden = true;
-      LEAF = []; paintLeaf();   // 过程片收起来：它常驻会一直盖着正文
+      LEAF = []; paintLeaf();
+    TRACE = [];
+    if (TAB === 4) paintTrace();   // 过程片收起来：它常驻会一直盖着正文
       go('chat');
       return loadTimeline().then(function(){
         loadState(); loadTabs();

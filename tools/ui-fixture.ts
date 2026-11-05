@@ -89,6 +89,22 @@ for (const [i, ev] of [
   });
 }
 
+// ④a 过程夹具：一条带 think/tool/res/err 的回答（右栏第四个签要能画出来）
+appendEvent(join(HOME, "inbox"), {
+  v: 1, id: newEventId(), ts: new Date(Date.now() - 45000).toISOString(),
+  kind: "agent_reply", actor: "agent",
+  payload: {
+    text: "这一段是过程夹具：她先想了想，然后跑了一次命令，拿到结果，最后有一处报错。",
+    trace: [
+      { k: "think", t: "要查实时的就得打官方接口，别凭印象报名字。" },
+      { k: "tool", t: "shell_exec node -e fetch(api.github.com)" },
+      { k: "res", t: "{\"total_count\":1}", ms: 850 },
+      { k: "think", t: "证书链没过，换个解释器再试。" },
+      { k: "err", t: "UNABLE_TO_VERIFY_LEAF_SIGNATURE" },
+    ],
+  },
+});
+
 // ④b 长回答夹具：3400 字，让「展开全文」真的出现（用户实测：点了没反应）
 appendEvent(join(HOME, "inbox"), {
   v: 1, id: newEventId(), ts: new Date(Date.now() - 30000).toISOString(),

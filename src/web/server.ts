@@ -182,6 +182,7 @@ const json = (res: ServerResponse, code: number, obj: unknown) => {
 
 interface ToolUse { name: string; args: string; result: string; ms: number }
 interface MsgEx extends Msg {
+  trace?: Array<{ k: string; t: string; ms?: number }>;
   tools?: ToolUse[];
   cites?: string[];
   omitted?: number;
@@ -1095,6 +1096,7 @@ export function createWebServer(deps: WebDeps) {
           return {
             ...b, ...(html ? { html } : {}),
             ...(src?.tools ? { tools: src.tools.map(toolCardHtml) } : {}),
+            ...(src?.trace?.length ? { trace: src.trace } : {}),   // 过程要能回看（右栏第四个签）
             ...(src?.cites ? { cites: src.cites } : {}),
             ...(src?.omitted ? { omitted: src.omitted } : {}),
             ...(src?.omittedDocs ? { omittedDocs: src.omittedDocs } : {}),
