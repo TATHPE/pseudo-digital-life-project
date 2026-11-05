@@ -329,6 +329,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
     <span class="cr">›</span>
     <textarea id="nb-say" rows="1" placeholder="说点什么"></textarea>
     <span class="h">Enter 发送 · Shift+Enter 换行</span>
+    <button class="sd" id="nb-stop" hidden>停止</button>
     <button class="sd" id="nb-send">发送</button>
   </div>
 </div>
@@ -343,7 +344,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
 (function(){
   var $ = function(id){ return document.getElementById(id); };
   var H = { 'content-type':'application/json', 'x-jj':'1' };
-  var TL = [], BOARD = false, CUR = 0, TAB = -1, BUSY = false, AV = {};
+  var TL = [], BOARD = false, CUR = 0, TAB = -1, BUSY = false, AV = {}, AC = null;
 
   function esc(s){
     return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
@@ -642,6 +643,8 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
     var text = (ta.value || '').trim();
     if (!text) return;
     BUSY = true; AT_BOTTOM = true; ta.value = ''; ta.style.height = '24px';
+    AC = new AbortController();
+    var stopBtn = $('nb-stop'); if (stopBtn) stopBtn.hidden = false;
     LEAF = []; paintLeaf();
 
     var mine = document.createElement('article');
@@ -657,7 +660,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
     $('nb-log').appendChild(her);
     $('nb-page').scrollTop = $('nb-page').scrollHeight;
 
-    fetch('/api/say', { method:'POST', headers:H, body: JSON.stringify({ text: text }) }).then(function(res){
+    fetch('/api/say', { method:'POST', headers:H, body: JSON.stringify({ text: text }), signal: AC ? AC.signal : undefined }).then(function(res){
       if (!res.ok || !res.body) throw new Error('E_HTTP');
       var rd = res.body.getReader(), dec = new TextDecoder(), buf = '';
       function pump(){
@@ -689,19 +692,28 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
       }
       return pump();
     }).then(function(){
-      BUSY = false;
+      BUSY = false; AC = null;
+      var sb = $('nb-stop'); if (sb) sb.hidden = true;
       go('chat');
       return loadTimeline().then(function(){
         loadState(); loadTabs();
         requestAnimationFrame(function(){ $('nb-page').scrollTop = $('nb-page').scrollHeight; });
       });
     }).catch(function(){
-      BUSY = false;
+      BUSY = false; AC = null;
+      var sb2 = $('nb-stop'); if (sb2) sb2.hidden = true;
       var live = $('nb-live'); if (live) live.textContent = '（这一轮没接上，看右上角状态）';
       tick('发送失败');
     });
   }
   $('nb-send').onclick = send;
+  var stopEl = $('nb-stop');
+  if (stopEl) stopEl.onclick = function(){
+    if (AC) { try { AC.abort(); } catch (e) {} }
+    BUSY = false;
+    stopEl.hidden = true;
+    tick('已停止这一轮');
+  };
   $('nb-say').addEventListener('keydown', function(e){
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
   });
@@ -1201,23 +1213,66 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
         ['采集', esc(String(m.created_at || '').slice(0, 16).replace('T', ' '))],
         ['编号', '#' + esc(m.id)]
       ].map(function(x){ return '<b>' + x[0] + '</b><span>' + x[1] + '</span>'; }).join('');
-      var html = '<div class="nb-sub">' + esc(m.text || '') + '</div>' +
+      var html = '<div class="nb-sub" id="nb-mtext">' + esc(m.text || '') + '</div>' +
+        '<div class="nb-form" id="nb-medit" hidden>' +
+        '<textarea id="nb-mtextarea" class="nb-search" style="min-height:70px;width:100%">' + esc(m.text || '') + '</textarea>' +
+        '<div class="nb-actrow"><button class="nb-btn" id="nb-msave">保存</button>' +
+        '<button class="nb-btn" id="nb-mcancel">取消</button>' +
+        '<span class="nb-empty">改动会留一条事件（human:panel）</span></div></div>' +
         (m.quote ? '<div class="nb-kv"><b>原话</b><span>' + esc(m.quote) + '</span></div>' : '') +
         '<div class="nb-kv">' + kv + '</div>' +
-        '<div><button class="nb-btn danger" id="nb-mforget">忘掉它</button>' +
+        '<div><button class="nb-btn" id="nb-meditbtn">编辑正文</button>' +
+        '<button class="nb-btn" id="nb-msens">改成' + (m.sensitivity === 'shareable' ? '仅本地' : '可出网') + '</button>' +
+        '<button class="nb-btn danger" id="nb-mforget">忘掉它</button>' +
         '<button class="nb-btn" id="nb-mback2">← 回列表</button></div>';
       el.innerHTML = head('记忆 #' + id, '<button class="nb-btn" id="nb-mback3">← 回列表</button>') + wrap(html);
       var b1 = $('nb-mback3'), b2 = $('nb-mback2'), b3 = $('nb-mforget');
       if (b1) b1.onclick = function(){ memView(''); };
       if (b2) b2.onclick = function(){ memView(''); };
+      var eb = $('nb-meditbtn'), ed = $('nb-medit'), cancel = $('nb-mcancel'), save = $('nb-msave');
+      if (eb && ed) eb.onclick = function(){ ed.hidden = !ed.hidden; if (!ed.hidden) { var t = $('nb-mtextarea'); if (t) t.focus(); } };
+      if (cancel && ed) cancel.onclick = function(){ ed.hidden = true; };
+      if (save) save.onclick = function(){
+        var t = $('nb-mtextarea'); if (!t) return;
+        fetch('/api/memories/' + id, { method: 'PUT', headers: H, body: JSON.stringify({ text: t.value.trim() }) })
+          .then(function(r){ return r.json(); }).then(function(j){
+            if (j.ok === false) { tick(j.error || '没保存成'); return; }
+            tick('已改'); memDetail(id);
+          });
+      };
+      var sens = $('nb-msens');
+      if (sens) sens.onclick = function(){
+        var next = m.sensitivity === 'shareable' ? 'local_only' : 'shareable';
+        fetch('/api/memories/' + id, { method: 'PUT', headers: H, body: JSON.stringify({ sensitivity: next }) })
+          .then(function(){ tick('敏感度：' + (next === 'shareable' ? '可出网' : '仅本地')); memDetail(id); });
+      };
       if (b3) b3.onclick = function(){
         fetch('/api/memories/' + id + '/forget', { method: 'POST', headers: H, body: '{}' })
-          .then(function(){ tick('已忘掉 #' + id); memView(''); })
+          .then(function(){ tick('已忘掉 #' + id); memForgotten(id); })
           .catch(function(){ tick('忘不掉，看状态'); });
       };
     }).catch(function(){
       el.innerHTML = head('记忆 #' + id) + wrap('<div class="nb-empty">读取失败。</div>');
     });
+  }
+
+  // 忘掉之后的落点：给一次撤销（调 /api/memories/:id/restore）
+  function memForgotten(id){
+    var el = $('nb-view');
+    el.innerHTML = head('记忆 #' + id, '<button class="nb-btn" id="nb-fback">← 回列表</button>') +
+      wrap('<div class="nb-empty">已忘掉这条。它被标成 deleted（不是物理删除），随时可以撤回来。</div>' +
+      '<div class="nb-actrow"><button class="nb-btn" id="nb-fundo">撤销，恢复这条</button>' +
+      '<button class="nb-btn" id="nb-fback2">← 回列表</button></div>');
+    var b1 = $('nb-fback'), b2 = $('nb-fback2'), b3 = $('nb-fundo');
+    if (b1) b1.onclick = function(){ memView(''); };
+    if (b2) b2.onclick = function(){ memView(''); };
+    if (b3) b3.onclick = function(){
+      fetch('/api/memories/' + id + '/restore', { method: 'POST', headers: H, body: '{}' })
+        .then(function(r){ return r.json(); }).then(function(j){
+          if (j.ok === false) { tick(j.error || '没恢复成'); return; }
+          tick('已恢复 #' + id); memDetail(id);
+        });
+    };
   }
 
   function docsView(){
@@ -1226,11 +1281,33 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
     fetch('/api/docs').then(function(r){ return r.json(); }).then(function(rows){
       if (!Array.isArray(rows)) rows = [];
       var box = $('nb-docs');
-      box.innerHTML = rows.length ? rows.map(function(d){
+      box.innerHTML = '<div class="nb-actrow" style="margin-bottom:10px">' +
+        '<button class="nb-btn" id="nb-updoc">上传一份</button>' +
+        '<span class="nb-empty">.md / .txt 直接吃；PDF 要 Python + markitdown</span>' +
+        '<input type="file" id="nb-upfile" accept=".md,.txt,.pdf,.markdown" style="display:none"></div>' +
+        (rows.length ? rows.map(function(d){
         return '<button class="nb-row" data-doc="' + esc(d.id) + '">' + esc(d.title || d.id) +
           '<span class="m">' + esc(String(d.n_chunks || 0)) + ' 块 · ' +
           (d.sensitivity === 'shareable' ? '可出网' : '仅本地') + '</span></button>';
-      }).join('') : '<div class="nb-empty">还没有摄入任何文档。</div>';
+      }).join('') : '<div class="nb-empty">还没有摄入任何文档。</div>');
+      var up = $('nb-updoc'), upf = $('nb-upfile');
+      if (up && upf) up.onclick = function(){ upf.click(); };
+      if (upf) upf.onchange = function(){
+        var f = upf.files && upf.files[0];
+        if (!f) return;
+        tick('上传 ' + f.name + '…');
+        fetch('/api/ingest/upload?name=' + encodeURIComponent(f.name), {
+          method: 'POST', headers: { 'x-jj': '1', 'content-type': 'application/octet-stream' }, body: f,
+        }).then(function(r){ return r.json(); }).then(function(j){
+          if (!j.ok) { tick(j.error || '上传失败'); return; }
+          tick('写进 sources/ 了，开始摄入…');
+          return fetch('/api/ingest', { method: 'POST', headers: H, body: JSON.stringify({ path: j.path }) })
+            .then(function(r){ return r.json(); }).then(function(r){
+              tick(r.ok ? ('已摄入 ' + f.name) : ('摄入失败：' + (r.error || r.why || '?')));
+              docsView();
+            });
+        }).catch(function(){ tick('上传失败'); });
+      };
       Array.prototype.forEach.call(box.querySelectorAll('[data-doc]'), function(b){
         b.onclick = function(){ docDetail(b.getAttribute('data-doc')); };
       });
