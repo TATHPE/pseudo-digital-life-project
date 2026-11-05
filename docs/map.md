@@ -9,7 +9,7 @@
 | 项 | 数量 |
 |---|---|
 | 源文件（src/**/*.ts） | 116 |
-| 错误码 E_* | 221 |
+| 错误码 E_* | 223 |
 | verbs | 27 |
 | CLI 子命令 | 39 |
 
@@ -33,6 +33,7 @@
 | `E_BAD_IMAGE` | `src/web/server.ts` |
 | `E_BAD_KEY` | `src/web/server.ts` |
 | `E_BAD_LINK` | `src/web/server.ts` |
+| `E_BAD_MODE` | `src/web/server.ts` |
 | `E_BAD_MODEL` | `src/web/server.ts` |
 | `E_BAD_NAME` | `src/plugins.ts` `src/selfupdate.ts` `src/web/server.ts` |
 | `E_BAD_PATH` | `src/gitview.ts` `src/web/server.ts` |
@@ -48,6 +49,7 @@
 | `E_BAD_STEP` | `src/web/server.ts` |
 | `E_BAD_TARGET` | `src/decayparams.ts` |
 | `E_BAD_TEMPLATE` | `src/shell.ts` |
+| `E_BAD_WS` | `src/web/server.ts` |
 | `E_BRIDGE_HTTP_` | `src/bridge.ts` |
 | `E_CALL` | `src/toolsmoke.ts` |
 | `E_CONFIG` | `src/cli/night.ts` `src/transport.ts` `src/web/server.ts` |

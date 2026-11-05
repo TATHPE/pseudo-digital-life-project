@@ -556,6 +556,41 @@ export function createWebServer(deps: WebDeps) {
         } catch (e) { json(res, 500, { error: String((e as Error)?.message ?? e).slice(0, 160) }); }
         return;
       }
+      // ── QQ 接入（OneBot 11）：读写 data/bridge.json + 报桥的运行状态 ──
+      if (req.method === "GET" && url.pathname === "/api/bridge") {
+        try {
+          const b = await import("../bridge.ts");
+          const cfg = b.readBridgeConfig(deps.home);
+          json(res, 200, { config: cfg, state: b.bridgeState(), path: b.configPath(deps.home) });
+        } catch (e) { json(res, 500, { error: String((e as Error)?.message ?? e).slice(0, 160) }); }
+        return;
+      }
+      if (req.method === "PUT" && url.pathname === "/api/bridge") {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
+        try {
+          const body = JSON.parse(await readBody(req)) as Record<string, unknown>;
+          const b = await import("../bridge.ts");
+          const cur = b.readBridgeConfig(deps.home);
+          const str = (v: unknown, d: string) => (typeof v === "string" ? v.trim() : d);
+          const arr = (v: unknown, d: string[]) => (Array.isArray(v) ? v.map((x) => String(x).trim()).filter(Boolean).slice(0, 50) : d);
+          const mode = String(body.mode ?? cur.mode ?? "private");
+          if (!["private", "group", "all"].includes(mode)) { json(res, 400, { error: "E_BAD_MODE", why: "private | group | all" }); return; }
+          const next = {
+            enabled: body.enabled === undefined ? Boolean(cur.enabled) : Boolean(body.enabled),
+            ws: str(body.ws, String(cur.ws ?? "")),
+            accessToken: str(body.accessToken, String(cur.accessToken ?? "")),
+            selfId: str(body.selfId, String(cur.selfId ?? "")),
+            mode: mode as "private" | "group" | "all",
+            allowUsers: arr(body.allowUsers, cur.allowUsers ?? []),
+            allowGroups: arr(body.allowGroups, cur.allowGroups ?? []),
+            prefix: str(body.prefix, String(cur.prefix ?? "")),
+          };
+          if (next.enabled && !/^wss?:\/\//i.test(next.ws)) { json(res, 400, { error: "E_BAD_WS", why: "要 ws:// 或 wss:// 开头" }); return; }
+          writeFileSync(joinDir(deps.home, "bridge.json"), JSON.stringify({ onebot: next }, null, 2) + String.fromCharCode(10));
+          json(res, 200, { ok: true, config: next });
+        } catch (e) { json(res, 500, { error: String((e as Error)?.message ?? e).slice(0, 160) }); }
+        return;
+      }
       // ── 待你处理：提议 + 代码外发，合成一个列表（2026-11-05）──
       // 回复仍然走各自原有的接口（/api/proposals/:id、/api/egress），这里只做汇总。
       if (req.method === "GET" && url.pathname === "/api/approvals") {

@@ -1416,13 +1416,14 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
       fetch('/health').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
       fetch('/api/persona').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
       fetch('/api/avatars').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
+      fetch('/api/bridge').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
       fetch('/api/deploy').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
     ]).then(function(res){
       var c = res[0] || {}, ui = res[1] || {}, m = res[2] || {}, mode = (res[3] || {}).mode || 'chat';
       var host = res[4] || {}, sd = Array.isArray(res[5]) ? res[5] : [];
       var grants = Array.isArray(res[6]) ? res[6] : [];
       var eg = res[7] || {}, health = res[8] || {}, persona = res[9] || {};
-      var av = res[10] || {}, dep = res[11] || {};
+      var av = res[10] || {}, br = res[11] || {}, dep = res[12] || {};
       var locals = m.installed || [];
       var roleModel = function(n){
         var hit = (m.roles || []).filter(function(x){ return x.role === n; })[0];
@@ -1509,6 +1510,24 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
           return '<button class="nb-opt' + (ui.splash === x ? ' on' : '') + '" data-splash="' + x + '">' + label + '</button>';
         }).join('') + '</div>' +
         '<div class="nb-actrow"><span class="nb-empty">点一下就是新的档位，下次打开生效</span></div></div>');
+      html += sec('QQ 接入（OneBot 11）',
+        '<div class="nb-form">' +
+        '<div class="nb-kv"><b>桥</b><span id="cf-bstate">读取中…</span></div>' +
+        field('WebSocket', 'cf-bws', '', 'ws://127.0.0.1:3001') +
+        field('她的 QQ 号', 'cf-bid', '', '填 selfId，用来过滤自己发的、判断有没有 @') +
+        field('Token', 'cf-btoken', '', 'NapCat 里设了才填') +
+        '<div class="nb-opts" id="cf-bmode">' +
+        [['private','只回私聊'],['group','只回群里 @'],['all','两者都回']].map(function(x){
+          return '<button class="nb-opt" data-bmode="' + x[0] + '">' + x[1] + '</button>';
+        }).join('') + '</div>' +
+        field('群白名单', 'cf-bgroups', '', '用逗号分隔群号；空 = 一个群都不回') +
+        field('群里前缀', 'cf-bprefix', '', '不 @ 时用这个开头，如：鲸鲸，') +
+        '<div class="nb-actrow"><button class="nb-btn" id="cf-bsave">保存</button>' +
+        '<button class="nb-btn" id="cf-bon">开启</button>' +
+        '<button class="nb-btn danger" id="cf-boff">关闭</button>' +
+        '<span class="nb-empty" id="cf-bmsg">改完要重启软件才生效（桥跟着 sidecar 起）</span></div>' +
+        '<div class="nb-empty">先装 NapCat 并在它的 WebUI 里开一个 WebSocket 服务器（默认 127.0.0.1:3001），' +
+        '再回来填这里。开启后，私聊她就能收到消息；群里要 @ 她（或在白名单里配群号）。</div></div>');
       html += sec('引导',
         '<div class="nb-actrow"><a class="nb-btn" href="/welcome">重新过一遍引导</a>' +
         '<span class="nb-empty">首页那八步：装 Ollama / 拉模型 / 试运行</span></div>');
@@ -1573,6 +1592,48 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
         fetch('/api/config', { method: 'PUT', headers: H, body: JSON.stringify({ agent: { name: $('cf-name').value.trim() } }) })
           .then(function(r){ return r.json(); }).then(function(j){ msg(j.ok ? '名字已保存' : (j.error || '失败'), !!j.ok); });
       });
+      // ── QQ 接入（OneBot 11）──
+      (function(){
+        var cfgB = (br && br.config) || {};
+        var st = (br && br.state) || {};
+        var setv = function(id, v){ var e = $(id); if (e && v != null) e.value = v; };
+        setv('cf-bws', cfgB.ws || 'ws://127.0.0.1:3001');
+        setv('cf-bid', cfgB.selfId || '');
+        setv('cf-btoken', cfgB.accessToken || '');
+        setv('cf-bgroups', (cfgB.allowGroups || []).join(','));
+        setv('cf-bprefix', cfgB.prefix || '');
+        var curMode = cfgB.mode || 'private';
+        function paintMode(){
+          Array.prototype.forEach.call(box.querySelectorAll('[data-bmode]'), function(x){
+            x.className = 'nb-opt' + (x.getAttribute('data-bmode') === curMode ? ' on' : '');
+          });
+        }
+        paintMode();
+        Array.prototype.forEach.call(box.querySelectorAll('[data-bmode]'), function(b){
+          b.onclick = function(){ curMode = b.getAttribute('data-bmode'); paintMode(); };
+        });
+        var stEl = $('cf-bstate');
+        if (stEl) stEl.textContent = !cfgB.enabled ? '没开' : (st.connected ? '已连上' : (st.running ? '在跑，但没连上' : '开了，但要重启软件才会起'));
+        function save(on){
+          var body = {
+            enabled: on === undefined ? Boolean(cfgB.enabled) : !!on,
+            ws: $('cf-bws') ? $('cf-bws').value.trim() : '',
+            selfId: $('cf-bid') ? $('cf-bid').value.trim() : '',
+            accessToken: $('cf-btoken') ? $('cf-btoken').value.trim() : '',
+            mode: curMode,
+            allowGroups: ($('cf-bgroups') ? $('cf-bgroups').value : '').split(',').map(function(x){ return x.trim(); }).filter(Boolean),
+            prefix: $('cf-bprefix') ? $('cf-bprefix').value.trim() : '',
+          };
+          fetch('/api/bridge', { method: 'PUT', headers: H, body: JSON.stringify(body) })
+            .then(function(r){ return r.json(); }).then(function(j){
+              var m = $('cf-bmsg');
+              if (m) m.textContent = j.ok ? '已保存（重启软件生效）' : (j.why || j.error || '没保存成');
+            });
+        }
+        on('cf-bsave', function(){ save(); });
+        on('cf-bon', function(){ save(true); });
+        on('cf-boff', function(){ save(false); });
+      })();
       // ── 人格六块：点哪个填哪个，保存只存当前这块 ──
       var pFiles = persona.files || {};
       var pCur = (persona.editable && persona.editable[0]) || 'core';

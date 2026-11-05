@@ -116,6 +116,8 @@ export async function startBridge(home: string, o: BridgeOpts = {}): Promise<voi
   const ep = localEndpoint(home);
   if (!ep) { log("找不到本地面板（data/.desk.json）。先启动软件，再跑 bridge。"); return; }
 
+  STATE.running = true;
+  STATE.since = new Date().toISOString();
   const seen = seenSet();
   let backoff = 1000;
   let stop = false;
@@ -132,7 +134,7 @@ export async function startBridge(home: string, o: BridgeOpts = {}): Promise<voi
     const closed = await new Promise<boolean>((resolve) => {
       let opened = false;
       ws.addEventListener("open", () => {
-        opened = true; backoff = 1000;
+        opened = true; backoff = 1000; STATE.connected = true; STATE.lastError = null;
         log("已连上 OneBot：" + url.origin + "（mode=" + (cfg.mode ?? "private") + "）");
       });
       ws.addEventListener("message", (ev: MessageEvent) => {
@@ -155,8 +157,8 @@ export async function startBridge(home: string, o: BridgeOpts = {}): Promise<voi
           } catch (e) { log("回不出去：" + String((e as Error).message).slice(0, 80)); }
         })();
       });
-      ws.addEventListener("error", () => { if (!opened) log("连不上 " + url.origin); resolve(true); });
-      ws.addEventListener("close", () => resolve(true));
+      ws.addEventListener("error", () => { if (!opened) { STATE.lastError = "连不上 " + url.origin; log("连不上 " + url.origin); } resolve(true); });
+      ws.addEventListener("close", () => { STATE.connected = false; resolve(true); });
     });
     if (o.once || stop) break;
     if (closed) {
@@ -167,6 +169,18 @@ export async function startBridge(home: string, o: BridgeOpts = {}): Promise<voi
   }
   log("bridge 已退出");
 }
+
+export interface BridgeState {
+  running: boolean;
+  connected: boolean;
+  since: string | null;
+  lastError: string | null;
+}
+
+const STATE: BridgeState = { running: false, connected: false, since: null, lastError: null };
+
+/** 面板要能说清「桥现在到底连没连上」——不看日志也能知道 */
+export function bridgeState(): BridgeState { return { ...STATE }; }
 
 export function sampleConfig(): string {
   return JSON.stringify({
