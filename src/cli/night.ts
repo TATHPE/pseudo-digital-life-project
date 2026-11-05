@@ -4,7 +4,7 @@
  */
 import { join } from "node:path";
 import { openDb } from "../db.ts";
-import { runNightly } from "../nightly.ts";
+import { runNightly, NUEXTRACT_PROMPT, isNuExtractModel } from "../nightly.ts";
 import { writeAutobiography, listAutobiography } from "../autobio.ts";
 import { ensureTerritory, territoryListing } from "../territory.ts";
 import { loadState, advance, describe } from "../state.ts";
@@ -106,6 +106,7 @@ export async function runNightCli(opts: NightOptions): Promise<number> {
 
   const report = await runNightly({
     db: d.db, inboxDir: opts.inbox, home: opts.home, embedder, extract, complete, now,
+    ...(isNuExtractModel(cfg.roles["extract"]?.model) ? { extractPrompt: NUEXTRACT_PROMPT } : {}),
     scoredBy: `extract:${cfg.roles["extract"]?.model || "?"}`,
     ...(skipReason ? { skipExtract: skipReason } : {}),
     ...(opts.rounds ? { rounds: opts.rounds } : {}),

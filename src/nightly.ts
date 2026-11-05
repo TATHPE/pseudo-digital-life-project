@@ -34,6 +34,8 @@ export interface NightlyDeps {
   embedder: Embedder | null;
   /** 调本地模型做抽取（非流式）。返回模型原始文本 */
   extract: (prompt: string) => Promise<string>;
+  /** 覆盖默认提示词（专用抽取模型要自己的模板；2026-11-05） */
+  extractPrompt?: (transcript: string) => string;
   /**
    * **纯文本**补全（不带工具 schema），只给「她对你的理解」那一层用。
    * 说明：extract 是带工具的抽取器，小模型拿到工具会去调工具而不是回一句话。
@@ -254,6 +256,51 @@ export function normalizeForQuote(s: string): string {
     .replace(/[，。！？、；：“”‘’（）《》【】…—\-.,!?;:'\"()\[\]]/g, "")
     .toLowerCase();
 }
+
+/**
+ * 给「专用抽取模型」（NuExtract 家族）的提示词（2026-11-05）。
+ *
+ * 这类模型的用法和我们不一样：它要的是一张**类型模板**——叶子写
+ * "verbatim-string"（原样抄）/ "string" / 枚举数组，而不是空字符串 + 一堆指令。
+ * 用错了它会给回一个空数组（实测：8 个窗口全 0 条）。
+ */
+export const NUEXTRACT_PROMPT = (transcript: string): string => {
+  const template = {
+    facts: [{
+      kind: ["boundary", "promise", "fact_hard", "preference_hard", "episode", "thought"],
+      layer: ["contract", "narrative"],
+      subject: "string",
+      text: "string",
+      quote: "verbatim-string",
+    }],
+  };
+  return [
+    "Extract information from the input into this JSON template.",
+    "Only use text that appears verbatim in the input. If nothing applies, return an empty facts array.",
+    "",
+    "Template:",
+    JSON.stringify(template, null, 2),
+    "",
+    "Input:",
+    transcript,
+    "",
+    "Return only the filled JSON.",
+  ].join(String.fromCharCode(10));
+};
+
+/** 这个抽取模型是不是「专用抽取模型」（要那种类型模板） */
+export function isNuExtractModel(name: string | undefined): boolean {
+  return /nuextract/i.test(String(name ?? ""));
+}
+/** 枚举字段可能是数组（NuExtract 返回 kind:["boundary",…]）：取第一个非空 */
+function firstOf(v: unknown): string {
+  if (Array.isArray(v)) {
+    for (const x of v) { const t = String(x ?? "").trim(); if (t) return t; }
+    return "";
+  }
+  return String(v ?? "").trim();
+}
+
 /** 宽松解析：容忍 ```json 围栏、前后废话、单条对象 */
 export function parseCandidates(raw: string, cap = 5): Candidate[] {
   const t = raw.replace(/```[a-zA-Z]*/g, "").trim();
@@ -282,9 +329,9 @@ export function parseCandidates(raw: string, cap = 5): Candidate[] {
     const o = item as Record<string, unknown>;
     const text = String(o.text ?? "").trim();
     if (!text || text.length > 200) continue;
-    const layer: Layer = o.layer === "contract" ? "contract" : "narrative";
+    const layer: Layer = firstOf(o.layer) === "contract" ? "contract" : "narrative";
     out.push({
-      kind: String(o.kind ?? (layer === "contract" ? "promise" : "episode")).slice(0, 24),
+      kind: (firstOf(o.kind) || (layer === "contract" ? "promise" : "episode")).slice(0, 24),
       layer,
       subject: String(o.subject ?? "").slice(0, 16),
       text,
@@ -557,7 +604,7 @@ export async function runNightly(deps: NightlyDeps): Promise<NightlyReport> {
         .map((e) => `${e.kind === "utterance" ? "用户" : "鲸鲸"}：${textOf(e)}`)
         .join(String.fromCharCode(10));
       try {
-        const raw = await deps.extract(EXTRACT_PROMPT(transcript));
+        const raw = await deps.extract((deps.extractPrompt ?? EXTRACT_PROMPT)(transcript));
         const got = parseCandidates(raw, cap);
         notes.push(`WINDOW ${i + 1}/${windows.length}: ${win.length} 条 → ${got.length} 条候选`);
         for (const c of got) {
