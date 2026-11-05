@@ -1385,6 +1385,19 @@ ${r.pass}/${r.total} 拦截/放行符合预期`);
       process.exitCode = r.ok ? 0 : 1;
       return;
     }
+    case "bridge": {
+      // OneBot 11 网桥：把 QQ 接进来（2026-11-05）。
+      // --init 写一份带注释的配置；不带参数就开跑。
+      const { startBridge, sampleConfig, configPath } = await import("../bridge.ts");
+      if (has(rest, "--init")) {
+        const p = configPath(HOME);
+        if (existsSync(p)) { console.log("已存在，没覆盖：" + p); }
+        else { writeFileSync(p, sampleConfig()); console.log("已写入 " + p + "，填好 selfId 和 ws 再来"); }
+        return;
+      }
+      await startBridge(HOME);
+      return;
+    }
     case "beat": {
       const { beat, recentIntents } = await import("../heartbeat.ts");
       const d = openDb(dbFile);

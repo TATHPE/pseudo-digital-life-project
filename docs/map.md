@@ -8,10 +8,10 @@
 
 | 项 | 数量 |
 |---|---|
-| 源文件（src/**/*.ts） | 113 |
-| 错误码 E_* | 214 |
+| 源文件（src/**/*.ts） | 115 |
+| 错误码 E_* | 215 |
 | verbs | 27 |
-| CLI 子命令 | 38 |
+| CLI 子命令 | 39 |
 
 ## 错误码 E_*
 
@@ -48,6 +48,7 @@
 | `E_BAD_STEP` | `src/web/server.ts` |
 | `E_BAD_TARGET` | `src/decayparams.ts` |
 | `E_BAD_TEMPLATE` | `src/shell.ts` |
+| `E_BRIDGE_HTTP_` | `src/bridge.ts` |
 | `E_CALL` | `src/toolsmoke.ts` |
 | `E_CONFIG` | `src/cli/night.ts` `src/transport.ts` `src/web/server.ts` |
 | `E_CONFIG_CORRUPT` | `src/startupcheck.ts` |
@@ -266,7 +267,7 @@
 
 ## CLI 子命令
 
-`migrate` · `remember` · `search` · `verify` · `outage` · `serve` · `config` · `models` · `links` · `threads` · `proposal` · `grant` · `standing` · `persona` · `setup` · `capabilities` · `doctor` · `reembed` · `auth` · `usage` · `test` · `night` · `shell` · `ingest` · `docs` · `forget-doc` · `export` · `verify-export` · `import` · `smoke-tools` · `templates` · `redteam` · `verb` · `beat` · `eval` · `decay` · `bench` · `profile`
+`migrate` · `remember` · `search` · `verify` · `outage` · `serve` · `config` · `models` · `links` · `threads` · `proposal` · `grant` · `standing` · `persona` · `setup` · `capabilities` · `doctor` · `reembed` · `auth` · `usage` · `test` · `night` · `shell` · `ingest` · `docs` · `forget-doc` · `export` · `verify-export` · `import` · `smoke-tools` · `templates` · `redteam` · `verb` · `beat` · `eval` · `decay` · `bench` · `profile` · `bridge`
 
 ## 源文件
 
@@ -280,6 +281,7 @@
 | `src/autobio.ts` | 自传（01 §9.1）：一天一条，第一人称，只能引用当日记忆 id。 |
 | `src/autocommit.ts` | 她写文件 → 自动 git commit（2026-11-03）。 |
 | `src/boot.ts` | 断电/停机感知（18 §2） |
+| `src/bridge.ts` | OneBot 11 网桥：连 NapCat（/ LLOneBot / Lagrange）的 WS，收消息 → 问她自己 → 回消息。 |
 | `src/brief.ts` | 情境简报（06 §3 / 17 §2） |
 | `src/budget.ts` | 记账与预算闸（13 §6）：cached_tokens 必须单独记，否则看不出缓存有没有生效 */ |
 | `src/capabilities.ts` | 能力自述（B-0） |
@@ -337,6 +339,7 @@
 | `src/nightly.ts` | 闲时整理（01 §9）：消化 inbox → 抽取 → 冲突消解 → 归并。 |
 | `src/notify.ts` | 回执通道（D-3 的前置，`docs/25 §4`）。 |
 | `src/ollama.ts` | Ollama 探测（C-4）：一次 /api/tags + 两个最小调用探针。 |
+| `src/onebot.ts` | OneBot 11 适配器（2026-11-05）：把 QQ 消息接进来，把她的回话发出去。 |
 | `src/persona.ts` | import { readFileSync, mkdirSync, existsSync, readdirSync } from "node |
 | `src/plugins.ts` | 插件（MCP）与技能的**增删**（2026-11-01，用户："现在只能看，等于借来的手脚是死数据"）。 |
 | `src/policy.ts` | 策略层（04 §4 / 12 §9.2）：唯一有权说"不"的地方。 |
