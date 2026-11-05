@@ -1440,6 +1440,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
         field('key', 'cf-key', '', c.hasKey ? '已有（' + (c.keyFingerprint || '') + '），留空不改' : '粘贴 key') +
         '<div class="nb-actrow"><button class="nb-btn" id="cf-save">保存</button>' +
         '<button class="nb-btn" id="cf-test">测试连接</button>' +
+        '<button class="nb-btn danger" id="cf-clear">清除 key</button>' +
         '<span class="nb-empty" id="cf-msg"></span></div></div>');
       html += sec('本地模型',
         '<div class="nb-form">' +
@@ -1451,16 +1452,25 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
       html += sec('人格',
         '<div class="nb-form">' + field('名字', 'cf-name', (c.agent && c.agent.name) || '', '她叫什么') +
         '<div class="nb-actrow"><button class="nb-btn" id="cf-nsave">保存名字</button>' +
-        '<span class="nb-empty">第 ' + esc(String(gen.index == null ? '—' : gen.index)) + ' 代</span></div></div>');
+        '<span class="nb-empty">第 ' + esc(String(gen.index == null ? '—' : gen.index)) + ' 代</span></div>' +
+        '<div class="nb-opts" id="cf-pfiles">' +
+        (persona.editable || ['core']).map(function(f, i){
+          return '<button class="nb-opt' + (i === 0 ? ' on' : '') + '" data-pfile="' + esc(f) + '">' + esc(f) + '</button>';
+        }).join('') + '</div>' +
+        '<textarea id="cf-ptext" class="nb-search" style="min-height:150px;width:100%;font-family:var(--mono);font-size:12px;line-height:1.7"></textarea>' +
+        '<div class="nb-actrow"><button class="nb-btn" id="cf-psave">保存这块</button>' +
+        '<span class="nb-empty" id="cf-pmsg">改动只向前生效，会开新的一代</span></div></div>');
       html += sec('头像',
         '<div class="nb-form">' +
         '<div class="nb-fld"><span>她</span><div class="nb-actrow">' +
         (av.agent ? '<img class="nb-av" src="' + esc(av.agent.url) + '" alt="">' : '<span class="nb-empty">默认图标</span>') +
         '<button class="nb-btn" data-pick="agent">换一张</button>' +
+        '<button class="nb-btn danger" data-delav="agent">删除</button>' +
         '<input type="file" data-av="agent" accept="image/png,image/jpeg,image/webp" style="display:none"></div></div>' +
         '<div class="nb-fld"><span>你</span><div class="nb-actrow">' +
         (av.user ? '<img class="nb-av" src="' + esc(av.user.url) + '" alt="">' : '<span class="nb-empty">默认图标</span>') +
         '<button class="nb-btn" data-pick="user">换一张</button>' +
+        '<button class="nb-btn danger" data-delav="user">删除</button>' +
         '<input type="file" data-av="user" accept="image/png,image/jpeg,image/webp" style="display:none"></div></div>' +
         '<div class="nb-empty">png / jpeg / webp，≤512KB</div></div>');
       html += sec('主机 · 命令解释器',
@@ -1562,6 +1572,52 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
       on('cf-nsave', function(){
         fetch('/api/config', { method: 'PUT', headers: H, body: JSON.stringify({ agent: { name: $('cf-name').value.trim() } }) })
           .then(function(r){ return r.json(); }).then(function(j){ msg(j.ok ? '名字已保存' : (j.error || '失败'), !!j.ok); });
+      });
+      // ── 人格六块：点哪个填哪个，保存只存当前这块 ──
+      var pFiles = persona.files || {};
+      var pCur = (persona.editable && persona.editable[0]) || 'core';
+      function paintPersona(){
+        var t = $('cf-ptext');
+        if (t) t.value = String(pFiles[pCur] || '');
+        Array.prototype.forEach.call(box.querySelectorAll('[data-pfile]'), function(x){
+          x.className = 'nb-opt' + (x.getAttribute('data-pfile') === pCur ? ' on' : '');
+        });
+      }
+      Array.prototype.forEach.call(box.querySelectorAll('[data-pfile]'), function(b){
+        b.onclick = function(){ pCur = b.getAttribute('data-pfile'); paintPersona(); };
+      });
+      paintPersona();
+      on('cf-psave', function(){
+        var t = $('cf-ptext'); if (!t) return;
+        fetch('/api/persona', { method: 'PUT', headers: H,
+          body: JSON.stringify({ file: pCur, content: t.value, because: '面板里改的' }) })
+          .then(function(r){ return r.json(); }).then(function(j){
+            var msg = $('cf-pmsg');
+            if (msg) msg.textContent = j.ok === false ? (j.error || '没保存成') : ('已保存 ' + pCur);
+          });
+      });
+
+      // ── 清除云端 key（key:null 才是清除；空字符串是「没传」）──
+      on('cf-clear', function(){
+        if (!window.confirm('清除云端 key？清完就只能用本地模型，直到重新填。')) return;
+        fetch('/api/config', { method: 'PUT', headers: H, body: JSON.stringify({ key: null }) })
+          .then(function(r){ return r.json(); }).then(function(j){
+            msg(j.ok ? 'key 已清除' : (j.error || '没清成'), !!j.ok);
+            cfgView();
+          });
+      });
+
+      // ── 删头像 ──
+      Array.prototype.forEach.call(box.querySelectorAll('[data-delav]'), function(b){
+        b.onclick = function(){
+          var role = b.getAttribute('data-delav');
+          if (!window.confirm('删掉这个头像？')) return;
+          fetch('/api/avatar?role=' + role, { method: 'DELETE', headers: H })
+            .then(function(r){ return r.json(); }).then(function(j){
+            tick(j.ok ? '已删除头像' : (j.error || '没删成'));
+            cfgView();
+          });
+        };
       });
       Array.prototype.forEach.call(box.querySelectorAll('[data-splash]'), function(b){
         b.onclick = function(){
