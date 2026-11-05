@@ -24,13 +24,21 @@ export const NOTEBOOK = `<!doctype html>
   --void:#0b0e0b;--ink:#e9f0f2;--dim:#9fb0b3;--dim2:#66757a;
   --line:rgba(233,240,242,.30);--line-dim:rgba(233,240,242,.10);
   --cyan:#0f97a4;--amber:#c9a227;--fade:#8a9698;
+  --ok:#8db580;--warn:#c9a227;--err:#c4554d;
   --mono:ui-monospace,"Cascadia Mono",Consolas,monospace;
-  --sans:"Noto Sans SC","Source Han Sans SC","Microsoft YaHei",system-ui,sans-serif;
+  --sans:"HarmonyOS Sans SC","PingFang SC","Noto Sans SC","Source Han Sans SC","Microsoft YaHei UI","Microsoft YaHei",system-ui,sans-serif;
   --measure:660px;
 }
 *{box-sizing:border-box}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--line-dim);border-radius:0}
+::-webkit-scrollbar-thumb:hover{background:var(--dim2)}
 html,body{height:100%;margin:0}
-body{background:var(--void);color:var(--ink);font:15px/1.85 var(--sans);-webkit-font-smoothing:antialiased}
+body{background:var(--void);color:var(--ink);font:15px/1.85 var(--sans);
+  text-spacing-trim:trim-start;text-autospace:ideograph-alpha ideograph-numeric;
+  line-break:strict;hanging-punctuation:first allow-end last;font-kerning:normal;
+  font-variant-east-asian:normal}
 .nb{height:100vh;display:grid;grid-template-rows:34px minmax(0,1fr)}
 .nb-top{display:flex;align-items:center;gap:16px;padding:0 14px;border-bottom:1px solid var(--line-dim);
   font:11px/1 var(--mono);color:var(--dim);letter-spacing:.04em;white-space:nowrap;overflow:hidden}
@@ -112,13 +120,12 @@ body{background:var(--void);color:var(--ink);font:15px/1.85 var(--sans);-webkit-
 .nb-say p:last-child{margin-bottom:0}
 .nb-say ul,.nb-say ol{margin:.2em 0 .9em;padding-left:1.15em}
 .nb-say li{margin:.3em 0}
-.nb-say code{font:12.5px/1.7 var(--mono);background:rgba(233,240,242,.06);padding:1px 5px}
+.nb-say code{font:12.5px/1.7 var(--mono);background:rgba(233,240,242,.06);padding:1px 5px;border-radius:0}
 .nb-say pre{background:rgba(233,240,242,.05);border:1px solid var(--line-dim);padding:10px;overflow:auto;
   font:12px/1.7 var(--mono);margin:.6em 0}
 .nb-say h1,.nb-say h2,.nb-say h3{font-size:15px;margin:.9em 0 .4em;letter-spacing:.02em}
 .nb-fold{position:relative;max-height:10.8em;overflow:hidden}
-.nb-fold:after{content:"";position:absolute;left:0;right:0;bottom:0;height:3em;
-  background:linear-gradient(to bottom,rgba(11,14,11,0),var(--void))}
+.nb-fold:after{content:"";position:absolute;left:0;right:0;bottom:0;height:1px;background:var(--line-dim)}
 .nb-fold.open{max-height:none}.nb-fold.open:after{display:none}
 .nb-more{margin-top:6px;font:11px/1 var(--mono);color:var(--dim);background:none;border:0;
   border-bottom:1px dashed var(--line);padding:0 0 3px;cursor:pointer;letter-spacing:.04em}
@@ -172,8 +179,7 @@ body{background:var(--void);color:var(--ink);font:15px/1.85 var(--sans);-webkit-
 .nb-empty{font:11px/1.8 var(--mono);color:var(--dim2)}
 
 /* 输入 */
-.nb-composer{position:fixed;left:196px;right:52px;bottom:0;padding:0 24px 14px;
-  background:linear-gradient(to bottom,rgba(11,14,11,0),var(--void) 30%)}
+.nb-composer{position:fixed;left:196px;right:52px;bottom:0;padding:0 24px 14px;background:var(--void)}
 .nb-cin{max-width:calc(var(--measure) + 76px);margin:0 auto;border-top:1px solid var(--line);
   padding:9px 24px 0 76px;display:flex;align-items:flex-end;gap:10px}
 .nb-cin .cr{color:var(--cyan);font:12px/1 var(--mono);padding-bottom:7px}
@@ -190,9 +196,9 @@ body{background:var(--void);color:var(--ink);font:15px/1.85 var(--sans);-webkit-
 
 /* 醋酸片：过程盖在正文上 */
 .nb-leaf{position:fixed;right:64px;bottom:78px;width:360px;max-height:56vh;overflow:auto;z-index:5;
-  background:linear-gradient(180deg,rgba(233,240,242,.10),rgba(233,240,242,.04)),rgba(10,13,12,.92);
-  backdrop-filter:blur(3px) saturate(.6);border:1px solid rgba(233,240,242,.22);
-  box-shadow:-1px 0 0 rgba(233,240,242,.12);padding:18px 12px 12px}
+  background:rgba(14,18,17,.96);
+  backdrop-filter:blur(4px);border:1px solid rgba(233,240,242,.22);
+  padding:18px 12px 12px}
 .nb-leaf[hidden]{display:none}
 .nb-leaf .holes{position:absolute;left:8px;top:8px;display:flex;gap:5px}
 .nb-leaf .holes i{width:4px;height:4px;border:1px solid rgba(233,240,242,.35);border-radius:50%}
