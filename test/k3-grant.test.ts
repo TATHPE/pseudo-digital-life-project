@@ -146,8 +146,10 @@ test("K-3 全权窗口：短 ttl、理由更硬、硬禁名单结构性排除", 
   // 允许：普通命令（删/系统/下载/壳之外）
   assert.equal(checkGrant(home, { argv: ["node", "x.mjs"], cwd: ws, verb: "shell.exec" }, now).ok, true);
   assert.equal(checkGrant(home, { argv: ["git", "status"], cwd: home, verb: "shell.exec" }, now).ok, true, "全权覆盖整个 home");
-  // 硬禁：删除 / 系统 / 下载 / 壳
-  for (const bad of ["rm", "del", "reg", "shutdown", "curl", "powershell", "cmd", "bash"]) {
+  // 2026-11-05：上网不再拦（curl/wget 可以用）
+  assert.equal(checkGrant(home, { argv: ["curl", "https://example.com"], cwd: ws, verb: "shell.exec" }, now).ok, true, "curl 要能跑");
+  // 硬禁：删除 / 系统 / 壳
+  for (const bad of ["rm", "del", "reg", "shutdown", "powershell", "cmd", "bash"]) {
     const d = checkGrant(home, { argv: [bad, "x"], cwd: ws, verb: "shell.exec" }, now);
     assert.equal(d.ok, false, `${bad} 在全权窗口里也必须拒`);
     if (!d.ok) assert.equal(d.code, "E_GRANT_FULL_DENY", `${bad} 要有专门的拒绝码`);

@@ -86,7 +86,7 @@ export const FULL_DENY = new Set([
   "rm", "del", "erase", "rmdir", "rd", "format", "diskpart", "mkfs", "dd",
   "reg", "regedit", "sc", "net", "netsh", "schtasks", "shutdown", "reboot", "logoff",
   "taskkill", "bcdedit", "takeown", "icacls", "cacls", "attrib",
-  "curl", "wget", "certutil", "bitsadmin",
+  // 2026-11-05 用户：限制全撤 —— 上网不再硬禁（curl/wget/bitsadmin/xmllint 等）
   "powershell", "pwsh", "cmd", "bash", "sh", "zsh", "wsl",
 ]);
 /** 解释器：能用「解释器 + 脚本文件」形状跑代码的那些。 */
