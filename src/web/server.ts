@@ -1938,7 +1938,7 @@ export function createWebServer(deps: WebDeps) {
         // 召回 → 简报。云端只收 shareable；local_only 只报个数（13 §10）
         const emb = deps.getEmbedder();
         // 召回装配在 recall.ts 里（隐私闸门所在：只有 shareable 会进简报）
-        const rc = await recallForBrief(deps.db, emb, text, { memK: 6, docK: 4 });
+        const rc = await recallForBrief(deps.db, emb, text, { memK: 6, docK: 4, home: deps.home });
         let omitted = rc.omittedMem;
         const recalled: MemoryLine[] = rc.recalled;
         // 模式：chat（默认，靠记忆召回） / work（带最近几轮历史 + 更宽的预算）

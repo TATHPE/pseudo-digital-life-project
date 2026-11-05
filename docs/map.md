@@ -8,8 +8,8 @@
 
 | 项 | 数量 |
 |---|---|
-| 源文件（src/**/*.ts） | 112 |
-| 错误码 E_* | 212 |
+| 源文件（src/**/*.ts） | 113 |
+| 错误码 E_* | 214 |
 | verbs | 27 |
 | CLI 子命令 | 38 |
 
@@ -191,6 +191,8 @@
 | `E_RECONNECT` | `src/web/server.ts` |
 | `E_RELEASE_CORRUPT` | `src/deploy/slot.ts` |
 | `E_RELEASE_EXISTS` | `src/deploy/slot.ts` |
+| `E_RERANK_HTTP_` | `src/rerank.ts` |
+| `E_RERANK_PARSE` | `src/rerank.ts` |
 | `E_ROLE_MISSING` | `src/provider.ts` |
 | `E_SANDBOX_UNAVAILABLE` | `src/shell.ts` |
 | `E_SCHEMA_MISMATCH` | `src/startupcheck.ts` |
@@ -348,6 +350,7 @@
 | `src/queryrewrite.ts` | 查询改写 / 别名归一（E-10，2026-11-02） |
 | `src/recall.ts` | 召回装配（17 §2 的 P10 槽位该放什么） |
 | `src/reembed.ts` | 重建向量索引（C-2） |
+| `src/rerank.ts` | 选择性重排（2026-11-05，docs/24 的标准：R@1 和 abstain **同时**变好才落地）。 |
 | `src/retrieve.ts` | 两阶段检索（02 §7.1 实测修订 / 12 §9.1） |
 | `src/schema.ts` | M0 schema（02 §4 + 18 §1 的 outage/审计） */ |
 | `src/selfupdate.ts` | 自我更新三件套（2026-11-03）。按 `docs/18 §4.3` 的流程，落到我们能实现的那部分： |

@@ -13,6 +13,7 @@
  * "只报个数"这件事本身是设计的一部分：它知道"我还记得别的，但这里不能说"，
  * 而不是假装那些东西不存在（07 §3 的诚实条款）。
  */
+import { rerank as rerankHits, rerankModeFromConfig } from "./rerank.ts";
 import type { DatabaseSync } from "node:sqlite";
 import type { Embedder } from "./embed.ts";
 import type { MemoryLine } from "./types.ts";
@@ -26,6 +27,10 @@ export interface RecallOpts {
   docK?: number;
   /** 文档块是否参与（有些调用场合不需要） */
   includeDocs?: boolean;
+  /** 数据目录（重排要读 config 里的 ollama 端点） */
+  home?: string;
+  /** 重排模式：默认按配置（ui.rerank，auto） */
+  rerankMode?: "off" | "auto" | "always";
 }
 
 export interface RecallResult {
@@ -45,7 +50,20 @@ export async function recallForBrief(
   const recalled: MemoryLine[] = [];
 
   // ── 记忆 ────────────────────────────────────────────
-  const hits = embedder ? (await search(db, embedder, query, { k: memK })).hits : [];
+  // 先拿一批候选，再决定要不要让本地模型重排（只在模糊/全空时跑，见 src/rerank.ts）
+  let hits = embedder ? (await search(db, embedder, query, { k: memK })).hits : [];
+  // 重排：本地 7B 在候选里挑一条（或说 NONE）。失败/超时一律退回基线，绝不让回答卡住。
+  let rerankedNone = false;
+  if (hits.length >= 1) {
+    const rr = await rerankHits(o.home ?? process.cwd(), query,
+      hits.map((h) => ({ id: h.id, text: h.text, score: h.score })),
+      { mode: o.rerankMode ?? rerankModeFromConfig(o.home ?? process.cwd()) });
+    if (rr.none) { rerankedNone = true; hits = []; }
+    else if (rr.ran) {
+      const byId = new Map(hits.map((h) => [h.id, h]));
+      hits = rr.order.map((x) => byId.get(x.id)!).filter(Boolean);
+    }
+  }
   // 敏感度、层、种类都从库里现取——别猜（契约层在 P10 里也不能被显示成叙事）
   const metaById = new Map<number, { layer: "narrative" | "contract"; kind: string; sensitivity?: string; taint?: string; quote?: string | null }>();
   if (hits.length) {
