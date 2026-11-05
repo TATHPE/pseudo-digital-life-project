@@ -1246,6 +1246,10 @@ function show(v, opts) {
   if (v === "chat") {
     requestAnimationFrame(function () {
       const el = $("#scroll");
+      // 点「现在」= 回到最新（2026-11-04）。这条必须**先于**位置恢复判：
+      // 以前它走的是"恢复离开前的位置"，于是"现在"有时候并不在最新 ——
+      // 而且看起来像偶发（取决于上次离开时是不是贴底）。ui:test 红过一次。
+      if (opts && opts.latest) { el.scrollTop = el.scrollHeight; chatScroll = 0; return; }
       // 指定了哪一天就滚到那一天（这是唯一决定滚动位置的地方）
       if (opts && opts.day) {
         const target = [...document.querySelectorAll("#chat .day")].find(function (e) {
@@ -3140,7 +3144,7 @@ document.addEventListener("click", (e) => {
   if (v === "memlistview") { show("memlistview"); memories(); return; }
   if (v === "docsview") { show("docsview"); docs(); return; }
   if (v === "auditview") { openAudit(); return; }
-  show("chat", t.dataset.day ? { day: t.dataset.day } : undefined);
+  show("chat", t.dataset.day ? { day: t.dataset.day } : (t.closest("#sesslist") ? { latest: true } : undefined));
 });
 $("#p-file").onchange = (e) => loadPersona(e.target.value);
 // 头像框：改完立刻套上（不等服务端），再把选择存住

@@ -8,8 +8,8 @@
 
 | 项 | 数量 |
 |---|---|
-| 源文件（src/**/*.ts） | 110 |
-| 错误码 E_* | 209 |
+| 源文件（src/**/*.ts） | 111 |
+| 错误码 E_* | 211 |
 | verbs | 27 |
 | CLI 子命令 | 38 |
 
@@ -105,6 +105,7 @@
 | `E_GRANT_PATH` | `src/grant.ts` |
 | `E_GRANT_SCOPE` | `src/grant.ts` |
 | `E_GRANT_SECRET` | `src/grant.ts` |
+| `E_HTTP` | `src/web/notebook.ts` |
 | `E_INDEX` | `src/assert.ts` |
 | `E_INSTALL` | `src/selfupdate.ts` |
 | `E_INTERP_BAD_BASIS` | `src/interpret.ts` |
@@ -168,6 +169,7 @@
 | `E_NOT_DIR` | `src/project.ts` |
 | `E_NOT_FILE` | `src/project.ts` |
 | `E_NOT_FOUND` | `src/agentguard.ts` `src/plugins.ts` `src/selfupdate.ts` `src/verbs.ts` `src/web/server.ts` |
+| `E_NOTEBOOK` | `src/web/server.ts` |
 | `E_NOTHING_TO_DO` | `src/web/server.ts` |
 | `E_OLLAMA_DOWN` | `src/cli/jingjing.ts` |
 | `E_ORIGIN` | `src/web/server.ts` |
@@ -386,6 +388,7 @@
 | `src/verbs.ts` | 能力目录（04 §3）：鲸鲸能碰到的东西**只有这张表里的**。 |
 | `src/web/boot.ts` | 开机片头（2026-11-02）。 |
 | `src/web/desk.ts` | 桌面端的**启动令牌**（2026-11-01：软件只有桌面端，不提供浏览器入口）。 |
+| `src/web/notebook.ts` | 第二条壳：工作记录本（2026-11-05） |
 | `src/web/page.ts` | 单页（零前端依赖、零构建）。 |
 | `src/web/server.ts` | 本地 Web 面板（17 §4）：127.0.0.1:7700，零前端依赖，SSE 流式。 |
 | `src/web/splash.ts` | 片头（完整档）：**在 dsh-550c-boot 的 550C 骨架上改出来的那一个**。 |

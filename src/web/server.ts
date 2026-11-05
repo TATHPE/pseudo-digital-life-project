@@ -320,8 +320,17 @@ export function createWebServer(deps: WebDeps) {
       }
     }
     try {
-      // 桌面工作台里的「真数据层」：独立页面，供 iframe 嵌入（Trianon 会吞掉所有按键与点击）
-
+      // 第二条壳：工作记录本（2026-11-05）。旧面板 `/` 一行没动 —— 回退 = 换回这个 URL。
+      if ((req.method === "GET" || req.method === "HEAD") && url.pathname === "/notebook") {
+        try {
+          const { NOTEBOOK } = await import("./notebook.ts");
+          res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+          res.end(req.method === "HEAD" ? undefined : NOTEBOOK);
+        } catch (e) {
+          json(res, 500, { error: "E_NOTEBOOK: " + String((e as Error).message).slice(0, 120) });
+        }
+        return;
+      }
 
       // 首次配置的引导页：分流放在**服务端**，所以桌面壳一行都不用改（窗口仍然加载 /）
       if ((req.method === "GET" || req.method === "HEAD") && (url.pathname === "/" || url.pathname === "/welcome")) {

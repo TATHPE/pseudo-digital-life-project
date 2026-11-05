@@ -213,6 +213,34 @@ test("编码闸：非 UTF-8（GBK）请求体拒收，不写进记忆", async ()
   } finally { srv.close(); }
 });
 
+test("第二条壳 /notebook：取得到、能退回经典面板，且经典面板一行没动（2026-11-05）", async () => {
+  const { srv, base } = await start();
+  try {
+    const nb = await fetch(`${base}/notebook`);
+    assert.equal(nb.status, 200);
+    const html = await nb.text();
+    assert.ok(html.includes('id="nb-log"'), "记录本要有正文区");
+    assert.ok(html.includes('id="nb-board"'), "要有「她收着的」那一页");
+    assert.ok(html.includes('href="/"'), "要能退回经典面板 —— 回退是产品要求");
+    assert.ok(html.includes("nb-leaf"), "过程是那张可以掀起来的页");
+
+    const classic = await (await fetch(`${base}/?skip=1`)).text();
+    assert.ok(classic.includes('id="composer"'), "经典面板还在");
+    assert.ok(classic.includes("卷宗"), "经典面板的结构没被换掉");
+
+    // 内联脚本必须能过 --check（模板字符串那个坑刚栽过一次）
+    const { NOTEBOOK } = await import("../src/web/notebook.ts");
+    const blocks = [...NOTEBOOK.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((x) => x[1]!);
+    assert.ok(blocks.length >= 1, "记录本里应有 <script>");
+    const dir = mkdtempSync(join(tmpdir(), "jj-nb-"));
+    blocks.forEach((js, i) => {
+      const f = join(dir, `nb-${i}.js`);
+      writeFileSync(f, js, "utf8");
+      execFileSync(process.execPath, ["--check", f], { stdio: "pipe" });
+    });
+  } finally { srv.close(); }
+});
+
 test("页面脚本能通过语法检查（模板字符串里的 \n 会被展开成真换行 → 整页 JS 挂掉）", async () => {
   // 页面里有**多段** <script>（开机片头一段 + 主面板一段）—— 贪婪匹配会把中间的 HTML 也吞进来，
   // 所以逐个检查。

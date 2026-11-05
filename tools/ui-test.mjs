@@ -561,6 +561,10 @@ check("点某一天会跳到那一天（不是总回到最新）", await js(`(as
 check("点「现在」回到最新", await js(`(async () => {
   const now = document.querySelector("#sesslist .item[data-view=chat]:not([data-day])");
   if (!now) return "NO_NOW";
+  // 先故意滚到顶 —— 否则这条断言在"本来就贴底"时是白过的（2026-11-04 就是这样飘的）
+  const sc0 = document.getElementById("scroll");
+  sc0.scrollTop = 0;
+  await new Promise((r) => setTimeout(r, 120));
   now.click();
   await new Promise((r) => setTimeout(r, 600));
   const sc = document.getElementById("scroll");
