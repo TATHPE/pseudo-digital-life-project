@@ -9,7 +9,7 @@
 | 项 | 数量 |
 |---|---|
 | 源文件（src/**/*.ts） | 111 |
-| 错误码 E_* | 211 |
+| 错误码 E_* | 212 |
 | verbs | 27 |
 | CLI 子命令 | 38 |
 
@@ -83,6 +83,7 @@
 | `E_EMBED_EMPTY` | `src/retrieve.ts` |
 | `E_EMPTY` | `src/agentguard.ts` `src/ingest.ts` `src/plugins.ts` `src/profile.ts` `src/selfupdate.ts` `src/store.ts` `src/web/server.ts` |
 | `E_EMPTY_EMBEDDING` | `src/embed.ts` |
+| `E_EMPTY_PATCH` | `src/web/server.ts` |
 | `E_ENCODING` | `src/ingest.ts` `src/persona.ts` `src/web/server.ts` |
 | `E_EXISTS` | `src/plugins.ts` `src/verbs.ts` |
 | `E_EXPORT_CORRUPT` | `src/handoff.ts` |

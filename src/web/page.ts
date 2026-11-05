@@ -1021,6 +1021,20 @@ description: 周日晚上把这一周压成三句话。
       </div>
 
       <div class="panelbox">
+        <h2>SHELL · 界面</h2>
+        <p class="hint">两套界面共用同一份数据。<b>经典面板</b>是三列 + 卷宗；<b>记录本</b>按天翻页、页边带时间戳、
+          右边是切口索引。<b>随时能切回来</b>：<code>/classic</code> 永远打开经典面板。</p>
+        <div class="filerow">
+          <select id="shellmode" class="searchbox">
+            <option value="classic">经典面板（三列 / 卷宗）</option>
+            <option value="notebook">记录本（按天 / 页边时间戳 / 切口索引）</option>
+          </select>
+          <a id="shellopen" class="hint" href="/classic" target="_blank" style="text-decoration:underline">打开看看</a>
+          <span id="shellmsg" class="hint"></span>
+        </div>
+      </div>
+
+      <div class="panelbox">
         <h2>SPLASH · 开机片头</h2>
         <p class="hint">每次打开软件先播的一段：黑底白线，先写出项目名，再把本机的真实读数一行行写进去。<b>点一下画面或按 Esc</b> 随时跳过。</p>
         <div class="filerow">
@@ -2432,6 +2446,27 @@ function traceTool(name, args, result, ms) {
   return el;
 }
 
+// ── 界面壳（ui.shell：classic / notebook，2026-11-05）──
+// 两套界面共用同一份数据；这一行只决定「下次打开 / 出哪套」。
+// 回退永远可用：/classic 直接开经典面板，不依赖这个配置。
+async function loadShell() {
+  var sel = document.getElementById('shellmode');
+  if (!sel) return;
+  var u = {};
+  try { u = await (await fetch('/api/ui')).json(); } catch (e) { return; }
+  sel.value = u.shell === 'notebook' ? 'notebook' : 'classic';
+  var open = document.getElementById('shellopen');
+  if (open) open.setAttribute('href', sel.value === 'notebook' ? '/?shell=notebook' : '/classic');
+  sel.onchange = async function () {
+    var msg = document.getElementById('shellmsg');
+    var r = await (await fetch('/api/ui', { method: 'PUT', headers: H,
+      body: JSON.stringify({ shell: sel.value }) })).json();
+    msg.className = r.ok ? 'hint ok' : 'hint err';
+    msg.textContent = r.ok ? '已保存（下次打开生效）' : (r.error || '保存失败');
+    if (r.ok && open) open.setAttribute('href', sel.value === 'notebook' ? '/?shell=notebook' : '/classic');
+  };
+}
+
 // ── 开机片头档位（ui.splash：off / simple / full）──
 async function loadSplash() {
   var sel = document.getElementById('splashmode');
@@ -3134,7 +3169,7 @@ document.addEventListener("click", (e) => {
     sideActive = t;
     for (const b of document.querySelectorAll("#side .item")) b.classList.toggle("on", b === t);
   }
-  if (v === "cfg") { show("cfg"); loadSuper(); loadHost(); loadSplash(); loadMode(); loadConfig().then(() => loadPersona($("#p-file").value)); return; }
+  if (v === "cfg") { show("cfg"); loadSuper(); loadHost(); loadSplash(); loadShell(); loadMode(); loadConfig().then(() => loadPersona($("#p-file").value)); return; }
   if (v === "toolview") { openTool(Number(t.dataset.tool)); return; }
   if (v === "memview") { openMemory(Number(t.dataset.mem)); return; }
   if (v === "docview") { openDoc(t.dataset.doc); return; }

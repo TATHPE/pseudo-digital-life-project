@@ -166,7 +166,7 @@ body{background:var(--void);color:var(--ink);font:15px/1.85 var(--sans);-webkit-
     <span id="nb-counts"></span>
     <span class="sp"></span>
     <span id="nb-usd">今天 $0.000</span><span id="nb-model">—</span>
-    <span><a href="/" style="color:inherit;text-decoration:underline">完整面板</a></span>
+    <span><a href="/classic" style="color:inherit;text-decoration:underline">完整面板</a></span>
   </div>
 
   <div class="nb-main">
@@ -367,15 +367,21 @@ body{background:var(--void);color:var(--ink);font:15px/1.85 var(--sans);-webkit-
           '<button data-no="' + esc(p.id) + '">不用</button></div>' +
           '<div class="lab"><span>她提的 · ' + esc(String(p.createdAt || '').slice(5,16).replace('T',' ')) + '</span><span>等你</span></div></div>';
       });
+      var KIND = { boundary:'边界', promise:'承诺', fact_hard:'事实', fact:'事实',
+        preference_hard:'偏好', preference_soft:'偏好', episode:'经历', thought:'想法',
+        reading:'读来的', anchor:'锚点', contract:'契约', gist:'梗概' };
       mems.forEach(function(m){
         var w = Number(m.weight || 0);
         var fade = w < 0.35 ? ' fade' : '';
-        html += '<div class="nb-spec' + fade + '"><div class="k">' + esc(m.kind || '记忆') + '</div>' +
+        html += '<div class="nb-spec' + fade + '"><div class="k">' + esc(KIND[m.kind] || m.kind || '记忆') + '</div>' +
           '<div class="v">' + esc(m.text) + '</div>' +
-          '<div class="lab"><span>#' + esc(m.id) + ' · ' + esc(m.stage || '') + '</span>' +
-          '<span>鲜度 ' + w.toFixed(2) + '</span></div></div>';
+          '<div class="lab"><span>#' + esc(m.id) + '</span>' +
+          '<span>' + (w >= 0.999 ? '契约 · 不衰减' : '鲜度 ' + w.toFixed(2)) + '</span></div></div>';
       });
-      if (!html) html = '<div class="nb-empty">还没有关于你的事。对她说一句「记住：…」。</div>';
+      if (!props.length) html = '<div class="nb-empty" style="grid-column:1/-1;border:1px dashed var(--line-dim);padding:10px">' +
+        '现在没有等你点头的事。</div>' + html;
+      if (!mems.length && !props.length) html += '<div class="nb-empty" style="grid-column:1/-1">' +
+        '还没有关于你的事。对她说一句「记住：…」。</div>';
       $('nb-grid').innerHTML = html;
       Array.prototype.forEach.call($('nb-grid').querySelectorAll('button[data-ok], button[data-no]'), function(b){
         b.onclick = function(){
@@ -551,6 +557,8 @@ body{background:var(--void);color:var(--ink);font:15px/1.85 var(--sans);-webkit-
 
   // ── 启动 ─────────────────────────────────────
   loadState(); loadTimeline(); loadTabs();
+  // 直接翻到「她收着的」那一页（截图/书签用）
+  if (location.search.indexOf('view=board') >= 0) setTimeout(function(){ Board(true); }, 120);
   setInterval(function(){ loadState(); loadTabs(); }, 20000);
 })();
 </script>

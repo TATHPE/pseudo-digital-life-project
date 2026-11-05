@@ -213,6 +213,38 @@ test("编码闸：非 UTF-8（GBK）请求体拒收，不写进记忆", async ()
   } finally { srv.close(); }
 });
 
+test("界面壳可以切：ui.shell=notebook 时 / 出记录本，/classic 永远出经典面板（2026-11-05）", async () => {
+  const { srv, base } = await start();
+  try {
+    const h = { "content-type": "application/json", "x-jj": "1" };
+    const d0 = await (await fetch(`${base}/api/ui`)).json() as any;
+    assert.equal(d0.shell, "classic", "默认还是经典面板");
+
+    // 非法值要被拒
+    const bad = await fetch(`${base}/api/ui`, { method: "PUT", headers: h, body: JSON.stringify({ shell: "nope" }) });
+    assert.equal(bad.status, 400);
+
+    const put = await fetch(`${base}/api/ui`, { method: "PUT", headers: h, body: JSON.stringify({ shell: "notebook" }) });
+    assert.equal(put.status, 200);
+
+    const d1 = await (await fetch(`${base}/api/ui`)).json() as any;
+    assert.equal(d1.shell, "notebook");
+
+    const root = await (await fetch(`${base}/?skip=1`)).text();
+    assert.ok(root.includes('id="nb-log"'), "配置成记录本之后 / 就是记录本");
+
+    const classic = await (await fetch(`${base}/classic`)).text();
+    assert.ok(classic.includes('id="composer"'), "/classic 永远是经典面板 —— 回退不依赖配置");
+
+    const override = await (await fetch(`${base}/?skip=1&shell=classic`)).text();
+    assert.ok(override.includes('id="composer"'), "?shell=classic 也能临时回退");
+
+    // 只改 shell 不该把 splash 顺手写回默认值
+    const back = await fetch(`${base}/api/ui`, { method: "PUT", headers: h, body: JSON.stringify({ shell: "classic" }) });
+    assert.equal(back.status, 200);
+  } finally { srv.close(); }
+});
+
 test("第二条壳 /notebook：取得到、能退回经典面板，且经典面板一行没动（2026-11-05）", async () => {
   const { srv, base } = await start();
   try {
@@ -221,7 +253,7 @@ test("第二条壳 /notebook：取得到、能退回经典面板，且经典面�
     const html = await nb.text();
     assert.ok(html.includes('id="nb-log"'), "记录本要有正文区");
     assert.ok(html.includes('id="nb-board"'), "要有「她收着的」那一页");
-    assert.ok(html.includes('href="/"'), "要能退回经典面板 —— 回退是产品要求");
+    assert.ok(html.includes('href="/classic"'), "要能退回经典面板 —— 回退是产品要求");
     assert.ok(html.includes("nb-leaf"), "过程是那张可以掀起来的页");
 
     const classic = await (await fetch(`${base}/?skip=1`)).text();

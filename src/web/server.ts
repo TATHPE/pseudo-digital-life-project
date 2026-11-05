@@ -350,7 +350,23 @@ export function createWebServer(deps: WebDeps) {
           return;
         }
       }
-      if ((req.method === "GET" || req.method === "HEAD") && url.pathname === "/") {
+      // 界面壳（2026-11-05）：`ui.shell` 决定 `/` 出哪一套；`/classic` 永远出旧面板。
+      // 回退有三条路，都不改代码：`/classic`、`/?shell=classic`、设置里切回来。
+      const shellCfg = (() => {
+        try {
+          const ui = readFileConfig(deps.home).ui as { shell?: string };
+          return ui.shell === "notebook" ? "notebook" : "classic";
+        } catch { return "classic"; }
+      })();
+      if ((req.method === "GET" || req.method === "HEAD") && url.pathname === "/" &&
+          (url.searchParams.get("shell") ?? shellCfg) === "notebook") {
+        const { NOTEBOOK } = await import("./notebook.ts");
+        res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+        res.end(req.method === "HEAD" ? undefined : NOTEBOOK);
+        return;
+      }
+
+      if ((req.method === "GET" || req.method === "HEAD") && (url.pathname === "/" || url.pathname === "/classic")) {
         // 面板会被频繁改样式：禁止缓存，避免"我改了但你还看旧页面"
         res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
         // 把 sources/ 的**绝对路径**注入页面：用户点了"摄入"却不知道文件该放哪，
@@ -841,20 +857,40 @@ export function createWebServer(deps: WebDeps) {
       // ── 外观偏好（现在只剩开机片头档位；头像框已删 2026-11-01）──
       if (req.method === "GET" && url.pathname === "/api/ui") {
         const boot = await import("../web/boot.ts");
-        json(res, 200, { splash: boot.splashMode(readFileConfig(deps.home).ui), modes: boot.SPLASH_MODES });
+        const ui = (readFileConfig(deps.home).ui ?? {}) as { splash?: string; shell?: string };
+        json(res, 200, {
+          splash: boot.splashMode(ui),
+          modes: boot.SPLASH_MODES,
+          shell: ui.shell === "notebook" ? "notebook" : "classic",
+          shells: ["classic", "notebook"],
+        });
         return;
       }
       if (req.method === "PUT" && url.pathname === "/api/ui") {
         const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
-        const body = JSON.parse(await readBody(req)) as { splash?: string };
+        const body = JSON.parse(await readBody(req)) as { splash?: string; shell?: string };
         const boot = await import("../web/boot.ts");
-        const v = String(body.splash ?? "");
-        if (!(boot.SPLASH_MODES as readonly string[]).includes(v)) {
-          json(res, 400, { error: "E_BAD_SPLASH", why: "只能是 " + boot.SPLASH_MODES.join(" / ") });
-          return;
+        // 两个都能单独改：只传哪个就改哪个（别把另一个顺手写回默认值）
+        const patch: { splash?: string; shell?: "classic" | "notebook" } = {};
+        if (body.splash !== undefined) {
+          const v = String(body.splash ?? "");
+          if (!(boot.SPLASH_MODES as readonly string[]).includes(v)) {
+            json(res, 400, { error: "E_BAD_SPLASH", why: "只能是 " + boot.SPLASH_MODES.join(" / ") });
+            return;
+          }
+          patch.splash = v;
         }
-        writeFileConfig(deps.home, { ui: { splash: v } });
-        json(res, 200, { ok: true, splash: v });
+        if (body.shell !== undefined) {
+          const v = String(body.shell ?? "");
+          if (v !== "classic" && v !== "notebook") {
+            json(res, 400, { error: "E_BAD_SHELL", why: "只能是 classic / notebook" });
+            return;
+          }
+          patch.shell = v;
+        }
+        if (!Object.keys(patch).length) { json(res, 400, { error: "E_EMPTY_PATCH" }); return; }
+        writeFileConfig(deps.home, { ui: patch });
+        json(res, 200, { ok: true, ...patch });
         return;
       }
 
