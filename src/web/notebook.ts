@@ -1211,9 +1211,9 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
     $('nb-view').hidden = home || chat;
     var cb = $('nb-composer'); if (cb) cb.hidden = !chat;
     // 记录页是纯文字：右栏那四个切口是工作台的东西，不该跟着对话流杵在旁边
-    var tb = $('nb-tabs'); if (tb) tb.hidden = home || chat;
-    // 右栏撤掉时，输入区要跟着铺到右边，不然留一条 52px 的空白
-    var railGone = home || chat;
+    // 记录页保留右栏（用户明确要它在对话里；我先前按「记录本也是文字吧」把它撤了，那是猜错了）
+    var tb = $('nb-tabs'); if (tb) tb.hidden = home;
+    var railGone = home;
     var cbx = $('nb-composer'); if (cbx) cbx.style.right = railGone ? '0px' : '52px';
     var tk = document.querySelector('.nb-tick'); if (tk) tk.style.right = railGone ? '0px' : '52px';
     $('nb-board-btn').className = 'nb-go';
