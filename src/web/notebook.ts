@@ -347,7 +347,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
 (function(){
   var $ = function(id){ return document.getElementById(id); };
   var H = { 'content-type':'application/json', 'x-jj':'1' };
-  var TL = [], BOARD = false, CUR = 0, TAB = -1, BUSY = false, AV = {}, AC = null, MEM_OFF = 0;
+  var TL = [], BOARD = false, CUR = 0, TAB = -1, BUSY = false, AV = {}, AC = null, MEM_OFF = 0, CFG_TAB = 0;
 
   function esc(s){
     return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
@@ -1581,6 +1581,8 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
 
   function cfgView(){
     var el = $('nb-view');
+    // 重渲染（改完某节后刷新）要停在原地：不然滚动位置也一起回到顶部
+    var keepScroll = (document.getElementById('nb-page') || {}).scrollTop || 0;
     el.innerHTML = head('设置') + wrap('<div id="nb-cfg"><div class="nb-empty">读取中…</div></div>');
     var chosen = {};
     var SECS = [];
@@ -1588,7 +1590,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
       SECS.push(t);
       var i = SECS.length;
       // 一次只显示一节：设置页有近两千像素高，靠滚动真的会看不见（用户连问两次）
-      return '<div class="nb-secwrap" data-i="' + i + '"' + (i === 1 ? '' : ' hidden') + '>' +
+      return '<div class="nb-secwrap" data-i="' + i + '"' + (i === CFG_TAB + 1 ? '' : ' hidden') + '>' +
         '<div class="nb-sec" id="cf-sec-' + i + '">' + t + '</div>' + inner + '</div>';
     }
     function field(label, id, val, ph){
@@ -1748,12 +1750,14 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
         '<b>降级</b><span>' + (deg.length ? esc(deg.join(' · ')) : '没有') + '</span></div>');
       var box = $('nb-cfg');
       var jump = '<div class="nb-jumpbar">' + SECS.map(function(t, i){
-        return '<button class="nb-jump' + (i === 0 ? ' on' : '') + '" data-i="' + (i + 1) + '">' + esc(t) + '</button>';
+        return '<button class="nb-jump' + (i === CFG_TAB ? ' on' : '') + '" data-i="' + (i + 1) + '">' + esc(t) + '</button>';
       }).join('') + '</div>';
       if (box) box.innerHTML = jump + '<div class="nb-form-wrap">' + html + '</div>';
+      if (keepScroll) { var pg0 = document.getElementById('nb-page'); if (pg0) pg0.scrollTop = keepScroll; }
       Array.prototype.forEach.call(box.querySelectorAll('.nb-jump'), function(b){
         b.onclick = function(){
           var want = b.getAttribute('data-i');
+          CFG_TAB = Number(want) - 1;
           Array.prototype.forEach.call(box.querySelectorAll('.nb-jump'), function(x){ x.className = 'nb-jump'; });
           b.className = 'nb-jump on';
           Array.prototype.forEach.call(box.querySelectorAll('.nb-secwrap'), function(w){
