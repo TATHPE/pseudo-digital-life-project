@@ -303,7 +303,7 @@ function readTurns(deps: WebDeps, sessionId: string): TurnRow[] {
       out.push({ id: e.id, userTs: e.ts, agentTs: null, user: String(p.text ?? ""), agent: "", tools: 0 });
     } else {
       const last = out[out.length - 1];
-      if (last && last.agentTs === null) {
+      if (last) {
         last.agentTs = e.ts;
         last.agent = String(p.text ?? "");
         last.tools = Array.isArray(p.tools) ? p.tools.length : 0;
@@ -647,7 +647,7 @@ export function createWebServer(deps: WebDeps) {
         json(res, 200, { turns: readTurns(deps, id) });
         return;
       }
-      const turnAct = url.pathname.match(/^\/api\/sessions\/([A-Za-z0-9_-]{4,40})\/turns\/([A-Za-z0-9_-]{4,40})\/(undo|retry|audit)$/);
+      const turnAct = url.pathname.match(/^\/api\/sessions\/([A-Za-z0-9_-]{4,40})\/turns\/([A-Za-z0-9_-]{4,40})\/(undo|retry|audit|steer)$/);
       if (req.method === "POST" && turnAct) {
         const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
         const sid = String(turnAct[1]);
@@ -660,6 +660,46 @@ export function createWebServer(deps: WebDeps) {
           // 保留这一轮之前的消息（每轮两条：问 + 答）
           const ok = undoSession(deps.db, sid, idx * 2);
           json(res, 200, { ok });
+          return;
+        }
+        if (what === "steer") {
+          // 真的重答：同一句用户原话 + 一条补充要求，模型重新生成一次，
+          // 新回答作为这一轮的最新答复（readTurns 取最后一条）。
+          const body = JSON.parse(await readBody(req)) as { note?: string };
+          const note = String(body.note ?? "").trim().slice(0, 300);
+          if (!note) { json(res, 400, { error: "E_NO_NOTE" }); return; }
+          const t = turns[idx]!;
+          const emb = deps.getEmbedder();
+          const rc = await recallForBrief(deps.db, emb, t.user, { memK: 4, docK: 0, home: deps.home });
+          const memLines = rc.recalled.filter((m) => m.layer === "contract" || m.source === "memory")
+            .slice(0, 5).map((m) => "- " + String(m.text).slice(0, 120));
+          const persona = loadPersona(deps.home);
+          const system = [
+            persona.core,
+            memLines.length ? "你能确定的事实：" + String.fromCharCode(10) + memLines.join(String.fromCharCode(10)) : "",
+            "这一轮用户要求你换一种说法重答，要求是：" + note,
+            "不要解释你在重答，直接给出新的回答。",
+          ].filter(Boolean).join(String.fromCharCode(10));
+          let out = "";
+          try {
+            if (deps.reply) { for await (const d of deps.reply(system, t.user)) out += d; }
+            else {
+              const gen = deps.getTransport().completeStream("express",
+                [{ role: "system", content: system }, { role: "user", content: t.user }],
+                { containsMemory: true, purpose: "steer", maxTokens: 1200 });
+              for await (const d of gen) out += d;
+            }
+          } catch (e) {
+            json(res, 502, { error: "E_STEER_MODEL", why: String((e as Error)?.message ?? e).slice(0, 160) });
+            return;
+          }
+          const text2 = out.trim();
+          if (!text2) { json(res, 502, { error: "E_STEER_EMPTY" }); return; }
+          appendEvent(deps.inboxDir, {
+            v: 1, id: newEventId(), ts: now().toISOString(), kind: "agent_reply", actor: "agent",
+            payload: { text: text2, session: sid, steerOf: tid },
+          });
+          json(res, 200, { ok: true, text: text2 });
           return;
         }
         if (what === "retry") {

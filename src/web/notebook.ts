@@ -152,6 +152,7 @@ body{background:var(--void);color:var(--ink);font:15px/1.85 var(--sans);
 .nb-jump{font:10px/1 var(--mono);letter-spacing:.06em;color:var(--dim);background:none;
   border:1px solid var(--line-dim);padding:6px 8px;cursor:pointer}
 .nb-jump:hover{color:var(--ink);border-color:var(--line)}
+.nb-jump.on{color:var(--void);background:var(--ink);border-color:var(--ink)}
 .nb-sec{scroll-margin-top:44px}
 .nb-opts{display:flex;flex-wrap:wrap;gap:6px}
 .nb-opt{font:11px/1 var(--mono);color:var(--dim);background:none;border:1px solid var(--line-dim);padding:7px 9px;cursor:pointer}
@@ -1010,6 +1011,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
             '<div class="nb-actrow">' +
             '<button class="nb-btn" data-tundo="' + esc(t.id) + '">撤回这一轮</button>' +
             '<button class="nb-btn" data-tretry="' + esc(t.id) + '">重问</button>' +
+            '<button class="nb-btn" data-tsteer="' + esc(t.id) + '">引导重答</button>' +
             '<button class="nb-btn" data-taudit="' + esc(t.id) + '">这一轮的审计</button>' +
             '</div><div class="nb-audit" id="aud-' + esc(t.id) + '"></div></div>';
         }).join('') : '<div class="nb-empty">还没有轮次。</div>';
@@ -1029,6 +1031,18 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
                 var ta = $('nb-say');
                 if (ta && j.text) { ta.value = j.text; ta.focus(); tick('原话已填回输入框，回车重问'); }
               });
+          };
+        });
+        Array.prototype.forEach.call(box.querySelectorAll('[data-tsteer]'), function(b){
+          b.onclick = function(){
+            var tid = b.getAttribute('data-tsteer');
+            var note = window.prompt('要她怎么重答？（比如：短一点 / 说具体数字 / 别用列表）');
+            if (!note) return;
+            b.textContent = '重答中…';
+            fetch('/api/sessions/' + encodeURIComponent(id) + '/turns/' + tid + '/steer', { method: 'POST', headers: H, body: JSON.stringify({ note: note }) })
+              .then(function(r){ return r.json(); }).then(function(j){
+                if (j.ok) { tick('已重答'); sessDetail(id); } else { tick(j.why || j.error || '没答成'); b.textContent = '引导重答'; }
+              }).catch(function(){ tick('没答成'); b.textContent = '引导重答'; });
           };
         });
         Array.prototype.forEach.call(box.querySelectorAll('[data-taudit]'), function(b){
@@ -1256,7 +1270,10 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
     var SECS = [];
     function sec(t, inner){
       SECS.push(t);
-      return '<div class="nb-sec" id="cf-sec-' + SECS.length + '">' + t + '</div>' + inner;
+      var i = SECS.length;
+      // 一次只显示一节：设置页有近两千像素高，靠滚动真的会看不见（用户连问两次）
+      return '<div class="nb-secwrap" data-i="' + i + '"' + (i === 1 ? '' : ' hidden') + '>' +
+        '<div class="nb-sec" id="cf-sec-' + i + '">' + t + '</div>' + inner + '</div>';
     }
     function field(label, id, val, ph){
       return '<label class="nb-fld"><span>' + label + '</span>' +
@@ -1281,8 +1298,6 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
       fetch('/api/standing').then(function(r){ return r.json(); }).catch(function(){ return []; }),
       fetch('/api/grants').then(function(r){ return r.json(); }).catch(function(){ return []; }),
       fetch('/api/egress').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
-      fetch('/api/skills').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
-      fetch('/api/activity?limit=8').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
       fetch('/health').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
       fetch('/api/persona').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
       fetch('/api/avatars').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
@@ -1374,13 +1389,18 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
         '<b>降级</b><span>' + (deg.length ? esc(deg.join(' · ')) : '没有') + '</span></div>');
       var box = $('nb-cfg');
       var jump = '<div class="nb-jumpbar">' + SECS.map(function(t, i){
-        return '<button class="nb-jump" data-to="cf-sec-' + (i + 1) + '">' + esc(t) + '</button>';
+        return '<button class="nb-jump' + (i === 0 ? ' on' : '') + '" data-i="' + (i + 1) + '">' + esc(t) + '</button>';
       }).join('') + '</div>';
       if (box) box.innerHTML = jump + '<div class="nb-form-wrap">' + html + '</div>';
       Array.prototype.forEach.call(box.querySelectorAll('.nb-jump'), function(b){
         b.onclick = function(){
-          var t = document.getElementById(b.getAttribute('data-to'));
-          if (t) t.scrollIntoView({ block: 'start' });
+          var want = b.getAttribute('data-i');
+          Array.prototype.forEach.call(box.querySelectorAll('.nb-jump'), function(x){ x.className = 'nb-jump'; });
+          b.className = 'nb-jump on';
+          Array.prototype.forEach.call(box.querySelectorAll('.nb-secwrap'), function(w){
+            w.hidden = w.getAttribute('data-i') !== want;
+          });
+          var pg = document.getElementById('nb-page'); if (pg) pg.scrollTop = 0;
         };
       });
       function msg(t, ok){ var e = $('cf-msg'); if (e) { e.textContent = t; e.className = 'hint ' + (ok ? 'ok' : 'err'); } }

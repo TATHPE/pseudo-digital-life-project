@@ -300,6 +300,28 @@ test("日志：执行审计能列出来、能过滤（2026-11-05）", async () =
     assert.equal(f.items.length, 0, "过滤要真的过滤");
   } finally { srv.close(); }
 });
+test("引导重答：带着补充要求重生成一条，并顶替这一轮的显示（2026-11-05）", async () => {
+  const { srv, base } = await start();
+  try {
+    const h = { "content-type": "application/json", "x-jj": "1" };
+    const say = (t: string) => fetch(`${base}/api/say`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: t }) }).then((r) => r.text());
+    await say("第一问");
+    const l = await (await fetch(`${base}/api/sessions`)).json() as any;
+    const id = l.sessions[0].id;
+    const t1 = (await (await fetch(`${base}/api/sessions/${id}/turns`)).json() as any).turns[0];
+
+    const noNote = await fetch(`${base}/api/sessions/${id}/turns/${t1.id}/steer`, { method: "POST", headers: h, body: "{}" });
+    assert.equal(noNote.status, 400, "没给要求要拒");
+
+    const r = await (await fetch(`${base}/api/sessions/${id}/turns/${t1.id}/steer`, { method: "POST", headers: h, body: JSON.stringify({ note: "短一点" }) })).json() as any;
+    assert.equal(r.ok, true);
+    assert.ok(String(r.text).length > 0, "要有新回答");
+
+    const turns = (await (await fetch(`${base}/api/sessions/${id}/turns`)).json() as any).turns;
+    assert.equal(turns.length, 1, "还是一轮（不是新增一轮）");
+    assert.equal(turns[0].agent, r.text, "显示的是重答后的那条");
+  } finally { srv.close(); }
+});
 test("诊断 / 部署 / 导出校验：面板能自己说清状态（2026-11-05）", async () => {
   const { srv, base } = await start();
   try {

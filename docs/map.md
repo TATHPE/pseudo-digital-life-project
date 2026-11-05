@@ -9,7 +9,7 @@
 | 项 | 数量 |
 |---|---|
 | 源文件（src/**/*.ts） | 116 |
-| 错误码 E_* | 218 |
+| 错误码 E_* | 221 |
 | verbs | 27 |
 | CLI 子命令 | 39 |
 
@@ -140,6 +140,7 @@
 | `E_NO_MEMORY` | `src/store.ts` `src/web/server.ts` |
 | `E_NO_MODEL` | `src/cli/night.ts` |
 | `E_NO_NIGHT` | `src/web/server.ts` |
+| `E_NO_NOTE` | `src/web/server.ts` |
 | `E_NO_PATH` | `src/project.ts` `src/web/server.ts` |
 | `E_NO_PREV` | `src/selfupdate.ts` |
 | `E_NO_REASON` | `src/decayparams.ts` |
@@ -211,6 +212,8 @@
 | `E_STANDING_NOTIFY` | `src/standing.ts` |
 | `E_STANDING_TEMPLATE` | `src/cli/jingjing.ts` `src/standing.ts` |
 | `E_STANDING_WHEN` | `src/standing.ts` |
+| `E_STEER_EMPTY` | `src/web/server.ts` |
+| `E_STEER_MODEL` | `src/web/server.ts` |
 | `E_SUPER_KEEP` | `src/grant.ts` `src/verbs.ts` |
 | `E_SUPER_STILL_DENY` | `src/grant.ts` |
 | `E_TAINT_CONTRACT` | `src/store.ts` |
