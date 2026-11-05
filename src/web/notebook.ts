@@ -113,6 +113,12 @@ body{background:var(--void);color:var(--ink);font:15px/1.85 var(--sans);
 .nb-runrow .m{font:10px/1.6 var(--mono);color:var(--dim2);text-align:right}
 .nb-form-wrap{max-width:640px}
 .nb-form{display:grid;gap:8px;padding:6px 0 4px}
+.nb-jumpbar{position:sticky;top:0;z-index:3;display:flex;flex-wrap:wrap;gap:4px;padding:8px 0;
+  background:var(--void);border-bottom:1px solid var(--line-dim);margin-bottom:10px}
+.nb-jump{font:10px/1 var(--mono);letter-spacing:.06em;color:var(--dim);background:none;
+  border:1px solid var(--line-dim);padding:6px 8px;cursor:pointer}
+.nb-jump:hover{color:var(--ink);border-color:var(--line)}
+.nb-sec{scroll-margin-top:44px}
 .nb-opts{display:flex;flex-wrap:wrap;gap:6px}
 .nb-opt{font:11px/1 var(--mono);color:var(--dim);background:none;border:1px solid var(--line-dim);padding:7px 9px;cursor:pointer}
 .nb-opt:hover{border-color:var(--line);color:var(--ink)}
@@ -898,7 +904,11 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
     var el = $('nb-view');
     el.innerHTML = head('设置') + wrap('<div id="nb-cfg"><div class="nb-empty">读取中…</div></div>');
     var chosen = {};
-    function sec(t, inner){ return '<div class="nb-sec">' + t + '</div>' + inner; }
+    var SECS = [];
+    function sec(t, inner){
+      SECS.push(t);
+      return '<div class="nb-sec" id="cf-sec-' + SECS.length + '">' + t + '</div>' + inner;
+    }
     function field(label, id, val, ph){
       return '<label class="nb-fld"><span>' + label + '</span>' +
         '<input id="' + id + '" class="nb-search" value="' + esc(val || '') + '" placeholder="' + esc(ph || '') + '"></label>';
@@ -998,6 +1008,9 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
         '<div class="nb-actrow"><button class="nb-btn" id="cf-ver">校验一个导出目录</button>' +
         '<button class="nb-btn" id="cf-imp">看导入命令</button></div>' +
         '<div class="nb-empty" id="cf-impout"></div>');
+      html += sec('引导',
+        '<div class="nb-actrow"><a class="nb-btn" href="/welcome">重新过一遍引导</a>' +
+        '<span class="nb-empty">首页那八步：装 Ollama / 拉模型 / 试运行</span></div>');
       html += sec('部署状态',
         '<div class="nb-kv">' +
         '<b>版本</b><span>' + esc(dep.version || '—') + '</span>' +
@@ -1009,7 +1022,16 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
         '<b>目录</b><span>' + esc(dep.home || '—') + '</span>' +
         '<b>降级</b><span>' + (deg.length ? esc(deg.join(' · ')) : '没有') + '</span></div>');
       var box = $('nb-cfg');
-      if (box) box.innerHTML = '<div class="nb-form-wrap">' + html + '</div>';
+      var jump = '<div class="nb-jumpbar">' + SECS.map(function(t, i){
+        return '<button class="nb-jump" data-to="cf-sec-' + (i + 1) + '">' + esc(t) + '</button>';
+      }).join('') + '</div>';
+      if (box) box.innerHTML = jump + '<div class="nb-form-wrap">' + html + '</div>';
+      Array.prototype.forEach.call(box.querySelectorAll('.nb-jump'), function(b){
+        b.onclick = function(){
+          var t = document.getElementById(b.getAttribute('data-to'));
+          if (t) t.scrollIntoView({ block: 'start' });
+        };
+      });
       function msg(t, ok){ var e = $('cf-msg'); if (e) { e.textContent = t; e.className = 'hint ' + (ok ? 'ok' : 'err'); } }
       function on(id, fn){ var b = $(id); if (b) b.onclick = fn; }
       Array.prototype.forEach.call(box.querySelectorAll('.nb-opts'), function(g){
