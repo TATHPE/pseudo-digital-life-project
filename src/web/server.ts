@@ -31,7 +31,7 @@ import { reviewQueue, noteReviewed } from "../surface.ts";
 import { openThreads, closeThread } from "../threads.ts";
 import { openGrant, listGrants, revokeGrant, currentPreset, setPreset, PRESETS, type Preset } from "../grant.ts";
 import { egressStatus, allowOnce, allowFor, revokeEgress } from "../egress.ts";
-import { readSession, startSetup, pauseSetup, resumeSetup, undoSetup, detect, SETUP_STEPS, type SetupStep } from "../setup.ts";
+import { readSession, startSetup, skipSetup, pauseSetup, resumeSetup, undoSetup, detect, SETUP_STEPS, type SetupStep } from "../setup.ts";
 import { runStep } from "../setupsteps.ts";
 import { listReceipts, markSeen, unseenCount } from "../notify.ts";
 import { listStanding, disableStanding } from "../standing.ts";
@@ -231,7 +231,8 @@ export function needsWelcome(home: string): boolean {
   try {
     const s = readSession(home);
     if (!s) return true;
-    return s.status !== "done";
+    // 跳过过（「先用着」）就不再拦：那是用户明确的选择，不该每次启动都再问一遍
+    return s.status !== "done" && s.status !== "skipped";
   } catch { return true; }
 }
 
@@ -1839,6 +1840,7 @@ export function createWebServer(deps: WebDeps) {
         const body = JSON.parse(await readBody(req)) as { action?: string; step?: string; confirm?: boolean };
         if (body.action === "start") { json(res, 200, { ok: true, session: startSetup(deps.home) }); return; }
         if (body.action === "pause") { json(res, 200, { ok: true, session: pauseSetup(deps.home) }); return; }
+        if (body.action === "skip") { json(res, 200, { ok: true, session: skipSetup(deps.home) }); return; }
         if (body.action === "resume") { json(res, 200, { ok: true, session: resumeSetup(deps.home) }); return; }
         if (body.action === "run") {
           const step = String(body.step ?? "") as SetupStep;

@@ -23,7 +23,7 @@ export type SetupStep = "detect" | "ollama" | "embed" | "chat" | "api" | "person
 /** 步骤顺序就是文档 §3 的顺序，不能换 */
 export const SETUP_STEPS: SetupStep[] = ["detect", "ollama", "embed", "chat", "api", "persona", "smoke", "first"];
 
-export type SetupStatus = "idle" | "running" | "paused" | "done" | "aborted";
+export type SetupStatus = "idle" | "running" | "paused" | "done" | "aborted" | "skipped";
 
 export interface SetupArtifacts {
   /** 我们 pull 下来的模型（回滚时 ollama rm；**必须记清楚是不是我们 pull 的**） */
@@ -128,6 +128,20 @@ export function completeStep(home: string, step: SetupStep, ok: boolean, note: s
 export function pauseSetup(home: string, now = new Date()): SetupSession {
   const s = readSession(home) ?? startSetup(home, now);
   s.status = "paused";
+  s.updatedAt = now.toISOString();
+  writeSession(home, s);
+  return s;
+}
+
+/**
+ * 用「先用着，回头再配」跳过（2026-11-05）。
+ *
+ * 以前这个按钮只是跳转到 /?skip=1 —— 不记录任何东西，于是下次启动
+ * needsWelcome 仍然为真，引导页每次都要再点一遍（用户实测抱怨）。
+ */
+export function skipSetup(home: string, now = new Date()): SetupSession {
+  const s = readSession(home) ?? startSetup(home, now);
+  s.status = "skipped";
   s.updatedAt = now.toISOString();
   writeSession(home, s);
   return s;

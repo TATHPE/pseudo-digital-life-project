@@ -766,6 +766,9 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
             '</span><span class="m">' + props.length + ' 个提议' +
             ((Array.isArray(eg.pending) && eg.pending.length) ? ' · ' + eg.pending.length + ' 个外发' : '') + '</span></div>' +
         '</div>' +
+        '<div class="nb-actrow" style="margin:10px 0 2px">' +
+        '<button class="nb-btn" id="nb-night">现在整理一次</button>' +
+        '<span class="nb-empty" id="nb-nightmsg">夜里那次整理；手动跑一次不写游标也行</span></div>' +
         '<div class="nb-sec">§ 03 配方</div>' +
         ((sk.skills || []).length ? '<div class="nb-grid2">' + (sk.skills || []).slice(0, 6).map(function(x){
           return '<button class="nb-recipe" data-skill="' + esc(x.id) + '">' +
@@ -783,6 +786,21 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
         '<div class="nb-actrow" style="margin-top:18px">' +
         '<button class="nb-btn" id="nb-gochat">进入记录 · 继续说话</button></div>' +
         '</div>';
+      var nb = $('nb-night');
+      if (nb) nb.onclick = function(){
+        var msg = $('nb-nightmsg');
+        nb.disabled = true;
+        if (msg) msg.textContent = '整理中…（本地模型，可能要几十秒）';
+        fetch('/api/night/run', { method: 'POST', headers: H, body: '{}' })
+          .then(function(r){ return r.json(); }).then(function(j){
+            if (msg) msg.textContent = j.ok ? '整理完了（退出码 ' + j.code + '）' : ('没整理成：' + (j.why || j.error || j.code || '?'));
+            nb.disabled = false;
+            loadHome(); loadState();
+          }).catch(function(){
+            if (msg) msg.textContent = '没整理成（请求失败）';
+            nb.disabled = false;
+          });
+      };
       var gc = $('nb-gochat');
       if (gc) gc.onclick = function(){ go('chat'); };
       Array.prototype.forEach.call(el.querySelectorAll('[data-skill]'), function(b){

@@ -257,7 +257,7 @@ export const WELCOME = [
   "  };",
   "}",
   "",
-  "$('#skip').onclick=function(){location.href='/?skip=1'};",
+  "$('#skip').onclick=async function(){try{await fetch('/api/setup',{method:'POST',headers:{'content-type':'application/json','x-jj':'1'},body:JSON.stringify({action:'skip'})});}catch(e){}location.href='/?skip=1'};",
   "$('#pause').onclick=async function(){",
   "  var r=await api('/api/setup',{method:'POST',headers:H,body:JSON.stringify({action:'pause'})});",
   "  var m=$('#foot-msg');m.className='hint';",
