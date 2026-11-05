@@ -130,7 +130,7 @@ const code = await new Promise<number>((resolve) => {(async () => {
     t.on("close", (c) => res(c ?? 1));
   });
   // 两套页面：主面板（?skip=1 跳过引导）+ 引导页本身。共用同一个夹具与 server。
-  const a = await runOne("tools/ui-test.mjs", `http://127.0.0.1:${PORT}/?skip=1`);
+  const a = await runOne("tools/ui-test-nb.mjs", `http://127.0.0.1:${PORT}/?skip=1`);
   const b = await runOne("tools/welcome-test.mjs", `http://127.0.0.1:${PORT}/welcome`);
   resolve(a || b);
 })();

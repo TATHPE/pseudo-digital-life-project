@@ -21,7 +21,7 @@ const OUT = join(ROOT, "docs", "map.md");
 /** 纪律落点：check 会验证 文件存在 且 该文件里出现过 symbol（不要求覆盖每一条纪律） */
 const INVARIANTS = [
   ["一条执行路径", "src/execute.ts", "export async function execute"],
-  ["没接上 = 没做完", "tools/ui-test.mjs", "check("],
+  ["没接上 = 没做完", "tools/ui-test-nb.mjs", "check("],
   ["闸门先于模型", "src/nightly.ts", "export function isNoise"],
   ["参数有界", "src/decayparams.ts", "RANGES"],
   ["内容只是资料", "src/verbs.ts", "E_NEEDS_EGRESS"],

@@ -56,6 +56,28 @@ body{background:var(--void);color:var(--ink);font:15px/1.85 var(--sans);-webkit-
 .nb-go.warn .n{color:var(--amber)}
 
 .nb-page{min-width:0;overflow:auto;padding:0 0 110px;scroll-behavior:auto}
+.nb-pagehd{display:flex;align-items:baseline;gap:12px;padding:18px 22px 10px;max-width:1100px;margin:0 auto}
+.nb-pagehd h1{font:10px/1 var(--mono);letter-spacing:.18em;color:var(--dim2);margin:0;font-weight:400}
+.nb-pagehd .sp{flex:1}
+.nb-wrap{max-width:1100px;margin:0 auto;padding:0 22px 60px}
+.nb-row{display:block;width:100%;text-align:left;border:0;border-top:1px solid var(--line-dim);
+  background:none;color:var(--ink);padding:11px 4px;cursor:pointer;font:14px/1.6 var(--sans)}
+.nb-row:hover{background:rgba(233,240,242,.03)}
+.nb-row .m{display:block;font:10px/1.7 var(--mono);color:var(--dim2);margin-top:3px}
+.nb-row .tag{font:9px/1 var(--mono);letter-spacing:.1em;color:var(--dim2);margin-right:8px}
+.nb-kv{display:grid;grid-template-columns:96px 1fr;gap:6px 12px;font:11px/1.8 var(--mono);color:var(--dim);margin:10px 0}
+.nb-kv b{color:var(--dim2);font-weight:400}
+.nb-pre{white-space:pre-wrap;word-break:break-word;font:11.5px/1.7 var(--mono);color:var(--dim);
+  border:1px solid var(--line-dim);padding:12px;margin:10px 0;max-height:52vh;overflow:auto}
+.nb-btn{font:10px/1 var(--mono);letter-spacing:.08em;color:var(--ink);background:none;
+  border:1px solid var(--line);padding:7px 10px;cursor:pointer;margin:2px 6px 2px 0}
+.nb-btn:hover{background:var(--ink);color:var(--void)}
+.nb-btn.danger{border-color:#7a3b36;color:#d08a85}
+.nb-btn.danger:hover{background:#7a3b36;color:var(--ink)}
+.nb-search{width:100%;max-width:420px;background:none;border:1px solid var(--line-dim);color:var(--ink);
+  font:13px/1.6 var(--sans);padding:8px 10px;outline:none;margin:0 0 8px}
+.nb-search:focus{border-color:var(--line)}
+.nb-sub{font:13px/1.9 var(--sans);color:var(--ink);border-left:2px solid var(--cyan);padding-left:12px;margin:8px 0}
 .nb-sheet{max-width:calc(var(--measure) + 76px);margin:0 auto;padding:24px 24px 0 8px}
 .nb-e{display:grid;grid-template-columns:64px 1fr;gap:0 12px;position:relative;padding:16px 0 20px;border-top:1px solid var(--line-dim)}
 .nb-e:first-child{border-top:0}
@@ -173,6 +195,12 @@ body{background:var(--void);color:var(--ink);font:15px/1.85 var(--sans);-webkit-
     <nav class="nb-index">
       <h2>记录</h2>
       <div id="nb-days"></div>
+      <h2 style="margin-top:16px">去处</h2>
+      <div class="nb-go" data-v="mem">记忆<span class="n" id="nb-nmem">…</span></div>
+      <div class="nb-go" data-v="docs">文档<span class="n" id="nb-ndocs">…</span></div>
+      <div class="nb-go" data-v="cap">能力</div>
+      <div class="nb-go" data-v="git">校样</div>
+      <div class="nb-go" data-v="cfg">设置</div>
       <div class="nb-grow"></div>
       <div class="nb-go" id="nb-board-btn">她收着的<span class="n" id="nb-about">…</span></div>
       <div class="nb-go" id="nb-gap">还缺<span class="n" id="nb-gapn">…</span></div>
@@ -180,6 +208,7 @@ body{background:var(--void);color:var(--ink);font:15px/1.85 var(--sans);-webkit-
 
     <main class="nb-page" id="nb-page">
       <div id="nb-board" hidden></div>
+      <div id="nb-view" hidden></div>
       <div class="nb-sheet" id="nb-log"></div>
     </main>
 
@@ -242,6 +271,11 @@ body{background:var(--void);color:var(--ink);font:15px/1.85 var(--sans);-webkit-
     }).catch(function(){});
     fetch('/api/memories/summary').then(function(r){ return r.json(); }).then(function(j){
       $('nb-about').textContent = j.about == null ? '…' : j.about;
+      var nm = $('nb-nmem'); if (nm) nm.textContent = j.total == null ? '…' : j.total;
+      fetch('/api/docs').then(function(r){ return r.json(); }).then(function(rows){
+        var nd = $('nb-ndocs');
+        if (nd) nd.textContent = Array.isArray(rows) ? rows.length : '…';
+      }).catch(function(){});
       $('nb-counts').textContent = '关于你 ' + (j.about||0) + ' 条' +
         (j.about7d ? ' · 本周 +' + j.about7d : '') + ' · 断片 ' + (j.outage||0);
     }).catch(function(){});
@@ -555,10 +589,236 @@ body{background:var(--void);color:var(--ink);font:15px/1.85 var(--sans);-webkit-
     this.style.height = 'auto'; this.style.height = Math.min(160, this.scrollHeight) + 'px';
   });
 
+  // ── 去处：记忆 / 文档 / 能力 / 校样 / 设置 ──────────────────
+  var KIND = { boundary:'边界', promise:'承诺', fact_hard:'事实', fact:'事实',
+    preference_hard:'偏好', preference_soft:'偏好', episode:'经历', thought:'想法',
+    reading:'读来的', anchor:'锚点', contract:'契约', gist:'梗概' };
+  var VIEW = 'chat';
+  function head(title, extra){
+    return '<div class="nb-pagehd"><h1>' + esc(title) + '</h1><span class="sp"></span>' +
+      (extra || '') + '</div>';
+  }
+  function wrap(html){ return '<div class="nb-wrap">' + html + '</div>'; }
+  function go(v){
+    VIEW = v;
+    Array.prototype.forEach.call(document.querySelectorAll('.nb-go[data-v]'), function(x){
+      x.className = 'nb-go' + (x.getAttribute('data-v') === v ? ' cur' : '');
+    });
+    var chat = v === 'chat';
+    $('nb-log').hidden = !chat;
+    $('nb-board').hidden = true;
+    $('nb-view').hidden = chat;
+    $('nb-board-btn').className = 'nb-go';
+    var el = $('nb-view');
+    if (chat) { $('nb-page').scrollTop = $('nb-page').scrollHeight; return; }
+    if (v === 'mem') memView('');
+    else if (v === 'docs') docsView();
+    else if (v === 'cap') capView();
+    else if (v === 'git') gitView();
+    else if (v === 'cfg') cfgView();
+    else el.innerHTML = head('？') + wrap('<div class="nb-empty">没有这一页。</div>');
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('.nb-go[data-v]'), function(b){
+    b.onclick = function(){ go(b.getAttribute('data-v')); };
+  });
+
+  function memView(q){
+    var el = $('nb-view');
+    el.innerHTML = head('记忆 · ' + (q ? '搜「' + esc(q) + '」' : '全部')) +
+      wrap('<input class="nb-search" id="nb-mq" placeholder="搜记忆（回车）" value="' + esc(q || '') + '">' +
+        '<div id="nb-mlist"><div class="nb-empty">读取中…</div></div>');
+    var box = $('nb-mq');
+    if (box) {
+      box.onkeydown = function(e){ if (e.key === 'Enter') memView(box.value.trim()); };
+      box.focus();
+    }
+    var url = q ? '/api/memories?q=' + encodeURIComponent(q) : '/api/memories?limit=80';
+    fetch(url).then(function(r){ return r.json(); }).then(function(rows){
+      if (!Array.isArray(rows)) rows = [];
+      var list = $('nb-mlist');
+      list.innerHTML = rows.length ? rows.map(function(m){
+        return '<button class="nb-row" data-mem="' + m.id + '">' +
+          '<span class="tag">' + esc(KIND[m.kind] || m.kind || '') + '</span>' +
+          esc(String(m.text).slice(0, 110)) +
+          '<span class="m">#' + m.id + ' · ' + esc(m.stage) + ' · ' + Number(m.weight).toFixed(2) + '</span></button>';
+      }).join('') : '<div class="nb-empty">没有匹配的记忆。</div>';
+      Array.prototype.forEach.call(list.querySelectorAll('[data-mem]'), function(b){
+        b.onclick = function(){ memDetail(Number(b.getAttribute('data-mem'))); };
+      });
+    }).catch(function(){
+      var list = $('nb-mlist');
+      if (list) list.innerHTML = '<div class="nb-empty">读取失败。</div>';
+    });
+  }
+
+  function memDetail(id){
+    var el = $('nb-view');
+    el.innerHTML = head('记忆 #' + id, '<button class="nb-btn" id="nb-mback">← 回列表</button>') +
+      wrap('<div class="nb-empty">读取中…</div>');
+    var back = $('nb-mback'); if (back) back.onclick = function(){ memView(''); };
+    fetch('/api/memories/' + id).then(function(r){ return r.json(); }).then(function(j){
+      var m = (j && j.memory) || j || {};
+      var kv = [
+        ['种类', (KIND[m.kind] || m.kind || '') + ' / ' + (m.layer === 'contract' ? '契约层（不衰减）' : '叙事层')],
+        ['状态', esc(m.stage) + ' · 权重 ' + Number(m.weight || 0).toFixed(2) + ' · w0 ' + Number(m.w0 || 0).toFixed(2)],
+        ['来源', esc(m.scored_by || '?') + ' / ' + esc(m.source_kind || '?') + ' · ' + (m.sensitivity === 'shareable' ? '可出网' : '仅本地')],
+        ['采集', esc(String(m.created_at || '').slice(0, 16).replace('T', ' '))],
+        ['编号', '#' + esc(m.id)]
+      ].map(function(x){ return '<b>' + x[0] + '</b><span>' + x[1] + '</span>'; }).join('');
+      var html = '<div class="nb-sub">' + esc(m.text || '') + '</div>' +
+        (m.quote ? '<div class="nb-kv"><b>原话</b><span>' + esc(m.quote) + '</span></div>' : '') +
+        '<div class="nb-kv">' + kv + '</div>' +
+        '<div><button class="nb-btn danger" id="nb-mforget">忘掉它</button>' +
+        '<button class="nb-btn" id="nb-mback2">← 回列表</button></div>';
+      el.innerHTML = head('记忆 #' + id, '<button class="nb-btn" id="nb-mback3">← 回列表</button>') + wrap(html);
+      var b1 = $('nb-mback3'), b2 = $('nb-mback2'), b3 = $('nb-mforget');
+      if (b1) b1.onclick = function(){ memView(''); };
+      if (b2) b2.onclick = function(){ memView(''); };
+      if (b3) b3.onclick = function(){
+        fetch('/api/memories/' + id + '/forget', { method: 'POST', headers: H, body: '{}' })
+          .then(function(){ tick('已忘掉 #' + id); memView(''); })
+          .catch(function(){ tick('忘不掉，看状态'); });
+      };
+    }).catch(function(){
+      el.innerHTML = head('记忆 #' + id) + wrap('<div class="nb-empty">读取失败。</div>');
+    });
+  }
+
+  function docsView(){
+    var el = $('nb-view');
+    el.innerHTML = head('文档') + wrap('<div id="nb-docs"><div class="nb-empty">读取中…</div></div>');
+    fetch('/api/docs').then(function(r){ return r.json(); }).then(function(rows){
+      if (!Array.isArray(rows)) rows = [];
+      var box = $('nb-docs');
+      box.innerHTML = rows.length ? rows.map(function(d){
+        return '<button class="nb-row" data-doc="' + esc(d.id) + '">' + esc(d.title || d.id) +
+          '<span class="m">' + esc(String(d.n_chunks || 0)) + ' 块 · ' +
+          (d.sensitivity === 'shareable' ? '可出网' : '仅本地') + '</span></button>';
+      }).join('') : '<div class="nb-empty">还没有摄入任何文档。</div>';
+      Array.prototype.forEach.call(box.querySelectorAll('[data-doc]'), function(b){
+        b.onclick = function(){ docDetail(b.getAttribute('data-doc')); };
+      });
+    }).catch(function(){
+      var box = $('nb-docs'); if (box) box.innerHTML = '<div class="nb-empty">读取失败。</div>';
+    });
+  }
+
+  function docDetail(id){
+    var el = $('nb-view');
+    el.innerHTML = head('文档', '<button class="nb-btn" id="nb-dback">← 回文档</button>') +
+      wrap('<div class="nb-empty">读取中…</div>');
+    var b = $('nb-dback'); if (b) b.onclick = function(){ docsView(); };
+    fetch('/api/docs/' + encodeURIComponent(id)).then(function(r){ return r.json(); }).then(function(j){
+      var doc = (j && j.doc) || {};
+      var chunks = (j && j.chunks) || [];
+      var html = '<div class="nb-kv"><b>标题</b><span>' + esc(doc.title || id) + '</span>' +
+        '<b>块数</b><span>' + esc(String(doc.n_chunks || chunks.length)) + '</span></div>' +
+        chunks.slice(0, 12).map(function(c){
+          return '<div class="nb-row" style="cursor:default"><span class="tag">#' + esc(c.ord) + '</span>' +
+            esc(String(c.heading_path || '')) + '<span class="m">' + esc(String(c.text || '').slice(0, 160)) + '</span></div>';
+        }).join('') +
+        '<div style="margin-top:12px"><button class="nb-btn danger" id="nb-dforget">忘掉这篇</button></div>';
+      el.innerHTML = head('文档', '<button class="nb-btn" id="nb-dback2">← 回文档</button>') + wrap(html);
+      var b2 = $('nb-dback2'), f = $('nb-dforget');
+      if (b2) b2.onclick = function(){ docsView(); };
+      if (f) f.onclick = function(){
+        fetch('/api/docs/' + encodeURIComponent(id) + '/forget', { method: 'POST', headers: H, body: '{}' })
+          .then(function(){ tick('已忘掉这篇文档'); docsView(); });
+      };
+    }).catch(function(){
+      el.innerHTML = head('文档') + wrap('<div class="nb-empty">读取失败。</div>');
+    });
+  }
+
+  function capView(){
+    var el = $('nb-view');
+    el.innerHTML = head('能力') + wrap('<div id="nb-cap"><div class="nb-empty">读取中…</div></div>');
+    fetch('/api/capabilities').then(function(r){ return r.json(); }).then(function(j){
+      var tools = ((j.classes && j.classes.tool) || []);
+      var deg = j.degraded || [];
+      var html = '<div class="nb-kv"><b>工具</b><span>' + tools.length + ' 项</span>' +
+        '<b>降级</b><span>' + (deg.length ? esc(deg.join(' · ')) : '没有') + '</span></div>' +
+        tools.slice(0, 40).map(function(t){
+          return '<div class="nb-row" style="cursor:default"><span class="tag">' + esc(t.tier) + '</span>' +
+            esc(t.name) + '<span class="m">' + esc(String(t.note || '').slice(0, 120)) + '</span></div>';
+        }).join('');
+      var box = $('nb-cap'); if (box) box.innerHTML = html;
+    }).catch(function(){});
+  }
+
+  function gitView(){
+    var el = $('nb-view');
+    function paint(what){
+      el.innerHTML = head('校样 · ' + what,
+        '<button class="nb-btn" data-g="status">status</button>' +
+        '<button class="nb-btn" data-g="diff">diff</button>' +
+        '<button class="nb-btn" data-g="log">log</button>') +
+        wrap('<div class="nb-pre" id="nb-git">读取中…</div>');
+      Array.prototype.forEach.call(el.querySelectorAll('[data-g]'), function(b){
+        b.onclick = function(){ paint(b.getAttribute('data-g')); };
+      });
+      fetch('/api/git?what=' + what).then(function(r){ return r.json(); }).then(function(j){
+        var box = $('nb-git');
+        if (box) box.textContent = (j && j.ok ? '' : '（读不到：' + ((j && j.code) || '?') + '）') + String((j && j.output) || '');
+      }).catch(function(){});
+    }
+    paint('status');
+  }
+
+  function cfgView(){
+    var el = $('nb-view');
+    el.innerHTML = head('设置') + wrap('<div id="nb-cfg"><div class="nb-empty">读取中…</div></div>');
+    var cfg = {}, ui = {}, models = null;
+    Promise.all([
+      fetch('/api/config').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
+      fetch('/api/ui').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
+      fetch('/api/models').then(function(r){ return r.json(); }).catch(function(){ return null; }),
+      fetch('/api/mode').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
+    ]).then(function(res){
+      cfg = res[0] || {}; ui = res[1] || {}; models = res[2]; var mode = (res[3] || {}).mode || 'chat';
+      var locals = (models && (models.installed || models.models)) || [];
+      var html = '<div class="nb-kv">' +
+        '<b>云端</b><span>' + esc(cfg.provider || '?') + ' / ' + esc(cfg.model || '?') + ' · ' +
+        (cfg.hasKey ? '密钥在（' + esc(cfg.keyFingerprint || '') + '）' : '没有密钥') + '</span>' +
+        '<b>本地</b><span>' + (locals.length ? esc(locals.slice(0, 6).join(' · ')) : '没有已拉模型') + '</span>' +
+        '<b>密钥存放</b><span>' + esc(cfg.secretStore || '?') + '</span>' +
+        '</div>' +
+        '<div style="margin:14px 0 6px;font:10px/1 var(--mono);letter-spacing:.14em;color:var(--dim2)">模式</div>' +
+        '<div><button class="nb-btn" data-mode="chat">聊天（靠记忆，不带历史）</button>' +
+        '<button class="nb-btn" data-mode="work">工作（带最近几轮）</button></div>' +
+        '<div style="margin:14px 0 6px;font:10px/1 var(--mono);letter-spacing:.14em;color:var(--dim2)">开机片头</div>' +
+        '<div><select id="nb-splash" class="nb-search" style="max-width:320px">' +
+        '<option value="full">完整（约 7 秒）</option><option value="simple">简易（约 3.6 秒）</option>' +
+        '<option value="off">不播</option></select></div>' +
+        '<div style="margin-top:18px"><a class="nb-btn" href="/welcome" style="text-decoration:none">重新过一遍引导</a></div>' +
+        '<div class="nb-empty" style="margin-top:14px">当前模式：' + esc(mode) + ' · 片头：' + esc(ui.splash || 'full') + '</div>';
+      var box = $('nb-cfg'); if (box) box.innerHTML = html;
+      Array.prototype.forEach.call(box.querySelectorAll('[data-mode]'), function(b){
+        b.onclick = function(){
+          fetch('/api/mode', { method: 'POST', headers: H, body: JSON.stringify({ mode: b.getAttribute('data-mode') }) })
+            .then(function(){ tick('模式：' + b.getAttribute('data-mode')); cfgView(); });
+        };
+      });
+      var sel = $('nb-splash');
+      if (sel) {
+        sel.value = ui.splash || 'full';
+        sel.onchange = function(){
+          fetch('/api/ui', { method: 'PUT', headers: H, body: JSON.stringify({ splash: sel.value }) })
+            .then(function(){ tick('片头：' + sel.value + '（下次打开生效）'); });
+        };
+      }
+    });
+  }
+
   // ── 启动 ─────────────────────────────────────
   loadState(); loadTimeline(); loadTabs();
-  // 直接翻到「她收着的」那一页（截图/书签用）
-  if (location.search.indexOf('view=board') >= 0) setTimeout(function(){ Board(true); }, 120);
+  // 深链接：?view=board|mem|docs|cap|git|cfg（截图、书签、排障都靠它）
+  (function(){
+    var m = /[?&]view=([a-z]+)/.exec(location.search || '');
+    var v = m ? m[1] : '';
+    if (v === 'board') setTimeout(function(){ Board(true); }, 120);
+    else if (['mem','docs','cap','git','cfg'].indexOf(v) >= 0) setTimeout(function(){ go(v); }, 120);
+  })();
   setInterval(function(){ loadState(); loadTabs(); }, 20000);
 })();
 </script>

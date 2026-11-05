@@ -4,7 +4,7 @@
  */
 import { createServer as httpCreateServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { DatabaseSync } from "node:sqlite";
-import { PAGE } from "./page.ts";
+import { whaleSvg } from "./brand.ts";
 import * as deskT from "./desk.ts";
 import { groupTimeline, gapLabel, type Msg } from "./timeline.ts";
 import { appendEvent, newEventId, readEvents } from "../journal.ts";
@@ -279,12 +279,8 @@ export function parseImageDataUrl(dataUrl: string): { buf: Buffer; ext: string; 
 }
 
 export function faviconSvg(): string {
-  const m = PAGE.match(/<symbol id="whale" viewBox="([^"]+)">([\s\S]*?)<\/symbol>/);
-  const vb = m?.[1] ?? "0 0 512 512";
-  const body = m?.[2] ?? "";
-  // 两个都设：path 用的是 currentColor，独立 SVG 里它取决于 color（默认黑）
-  // 标签页图标用黑色：浏览器标签栏大多是浅底，青色在深色栏里反而不显
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vb}" fill="#000" color="#000">${body}</svg>`;
+  // 图标从 brand.ts 来 —— 旧面板从程序里撤下之后，唯一还需要它的地方就是这里
+  return whaleSvg("#000");
 }
 
 
@@ -320,18 +316,6 @@ export function createWebServer(deps: WebDeps) {
       }
     }
     try {
-      // 第二条壳：工作记录本（2026-11-05）。旧面板 `/` 一行没动 —— 回退 = 换回这个 URL。
-      if ((req.method === "GET" || req.method === "HEAD") && url.pathname === "/notebook") {
-        try {
-          const { NOTEBOOK } = await import("./notebook.ts");
-          res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
-          res.end(req.method === "HEAD" ? undefined : NOTEBOOK);
-        } catch (e) {
-          json(res, 500, { error: "E_NOTEBOOK: " + String((e as Error).message).slice(0, 120) });
-        }
-        return;
-      }
-
       // 首次配置的引导页：分流放在**服务端**，所以桌面壳一行都不用改（窗口仍然加载 /）
       if ((req.method === "GET" || req.method === "HEAD") && (url.pathname === "/" || url.pathname === "/welcome")) {
         const forced = url.pathname === "/welcome";
@@ -350,37 +334,15 @@ export function createWebServer(deps: WebDeps) {
           return;
         }
       }
-      // 界面壳（2026-11-05）：`ui.shell` 决定 `/` 出哪一套；`/classic` 永远出旧面板。
-      // 回退有三条路，都不改代码：`/classic`、`/?shell=classic`、设置里切回来。
-      const shellCfg = (() => {
-        try {
-          const ui = readFileConfig(deps.home).ui as { shell?: string };
-          return ui.shell === "notebook" ? "notebook" : "classic";
-        } catch { return "classic"; }
-      })();
-      if ((req.method === "GET" || req.method === "HEAD") && url.pathname === "/" &&
-          (url.searchParams.get("shell") ?? shellCfg) === "notebook") {
-        const { NOTEBOOK } = await import("./notebook.ts");
-        res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
-        res.end(req.method === "HEAD" ? undefined : NOTEBOOK);
-        return;
-      }
 
-      if ((req.method === "GET" || req.method === "HEAD") && (url.pathname === "/" || url.pathname === "/classic")) {
-        // 面板会被频繁改样式：禁止缓存，避免"我改了但你还看旧页面"
-        res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
-        // 把 sources/ 的**绝对路径**注入页面：用户点了"摄入"却不知道文件该放哪，
-        // 只说 "data/sources" 对 Windows 用户没有意义（那是相对仓库根说的）。
-        const sourcesDir = joinDir(deps.home, "sources");
-        const cfgNow = deps.getConfig();
-        const agentName = normalizeAgentName(readFileConfig(deps.home).agent?.name);
-        // 片头档位由**配置**决定（ui.splash：off / simple / full），不再按"配没配完"猜 ——
-        // 那个默认会让配完之后的人永远看不到完整档（用户指出过）。
+      // 界面：2026-11-05 起**只有记录本**。
+      // 旧面板（page.ts）从程序里撤下来了：没有路由、没有开关、没有第二套。
+      // 代码留在仓里备查（用户要求"不删"），要回退去 git history 里找。
+      if ((req.method === "GET" || req.method === "HEAD") && (url.pathname === "/" || url.pathname === "/notebook")) {
+        const { NOTEBOOK } = await import("./notebook.ts");
+        // 片头仍然按配置播（ui.splash：off / simple / full），记录本里留了 <!--BOOT--> 占位
         const bootMod = await import("./boot.ts");
         const splash = bootMod.splashMode(readFileConfig(deps.home).ui);
-        // full  = 550C 骨架上改出来的那份（iframe 隔离，样式互不污染）
-        // simple= 轻量那版（只有项目名逐字写出来）
-        // off   = 不播
         const bootHtml = splash === "off" ? ""
           : splash === "full"
             ? [
@@ -394,13 +356,8 @@ export function createWebServer(deps: WebDeps) {
                 "})();</script>",
               ].join(String.fromCharCode(10))
             : bootMod.bootOverlay(splash);
-        const html = PAGE.split("<!--BOOT-->").join(bootHtml).replace(
-          "window.SOURCES_DIR = null;",
-          "window.SOURCES_DIR = " + JSON.stringify(sourcesDir) + ";" +
-            String.fromCharCode(10) + "window.AGENT_NAME = " + JSON.stringify(agentName) + ";",
-        );
-        void cfgNow;
-        res.end(req.method === "HEAD" ? undefined : html);
+        res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+        res.end(req.method === "HEAD" ? undefined : NOTEBOOK.split("<!--BOOT-->").join(bootHtml));
         return;
       }
       // ── 头像自定义（上传的是图片，不是 SVG：SVG 里能带脚本，直接当图片打开就执行了）──

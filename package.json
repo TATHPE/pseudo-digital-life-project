@@ -15,7 +15,7 @@
     "ui:test": "node tools/ui-fixture.ts",
     "ui:shot": "node tools/ui-shot.mjs",
     "deploy": "node src/cli/deploy.ts",
-    "ui:test:live": "node tools/ui-test.mjs",
+    "ui:test:live": "node tools/ui-test-nb.mjs",
     "docs:sync": "node tools/sync-docs.mjs",
     "map": "node tools/gen-map.mjs",
     "map:check": "node tools/map-check.mjs",
@@ -24,7 +24,8 @@
     "desktop:dev": "cargo tauri dev --manifest-path desktop/src-tauri/Cargo.toml",
     "desktop:build": "cargo tauri build --manifest-path desktop/src-tauri/Cargo.toml",
     "eval:about": "node --experimental-strip-types tools/eval-about.ts",
-    "eval:rank": "node --experimental-strip-types tools/eval-rank.ts"
+    "eval:rank": "node --experimental-strip-types tools/eval-rank.ts",
+    "ui:test:nb": "node tools/ui-test-nb.mjs"
   },
   "dependencies": {
     "casbin": "^5.51.1",

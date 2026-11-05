@@ -82,34 +82,26 @@ test("桌面端令牌：没令牌 403、带 ?k= 放行并种 cookie、/health �
     assert.equal((await fetch(`${base}/health`)).status, 200, "/health 放行（壳探测要用）");
   } finally { srv.close(); }
 });
-test("GET / 分流：没配完给引导页，?skip=1 给主面板；/api/state 给出一句话状态", async () => {
+test("GET / 分流：没配完给引导页；配完了给记录本（2026-11-05 起只有记录本）", async () => {
   const { srv, base } = await start();
   try {
     // 首启引导：新 home 没有 setup-session，/ 必须给引导页（不是先看见一个空对话）
     const welcome = await (await fetch(`${base}/`)).text();
     assert.ok(welcome.includes("第一次见面"), "没配完时 / 应该是引导页");
     assert.ok(welcome.includes("id='dots'"), "引导页要有步骤进度");
-    // 强制引导页（以后从设置里重新打开用）
     assert.ok((await (await fetch(`${base}/welcome`)).text()).includes("第一次见面"), "/welcome 永远给引导页");
 
+    // 配完之后 / 就是记录本 —— 旧的经典面板已经从程序里撤下来了
     const html = await (await fetch(`${base}/?skip=1`)).text();
-    assert.ok(html.includes("<title>Pseudo Digital Life Project</title>"), "跳过引导时给主面板");
-    // FUI 视觉：黑底 + 采样得到的青色 + 角标面板（不是站酷的亮橙站皮肤）
-    assert.ok(html.includes("--void:#0b0e0b"), "底色应是参考图采样的 #0b0e0b");
-    assert.ok(html.includes("--cyan:#0f97a4"), "主色应是采样得到的 #0f97a4");
-    assert.ok(html.includes(".panelbox::before"), "面板要有角标");
-    assert.ok(html.includes("var(--mono)"), "标签用等宽字体");
-    assert.ok(!html.includes("--accent:#ff5a2c"), "不要站酷的橙色主色");
-    // 布局：侧栏 + 主列（对齐 pi-web 的排列）
-    assert.ok(html.includes("grid-template-areas"), "应有侧栏布局");
-    assert.ok(html.includes('id="side"'), "要有左栏");
-    // 左栏现在的三段：她 / 今天 / 去处（改过两次，钉新结构别再钉旧文案）
-    assert.ok(html.includes("今 天") && html.includes("去 处"), "左栏要有「今天 / 去处」两段");
-    assert.ok(html.includes('data-view="memlistview"') && html.includes('data-view="cfg"'), "去处要有入口行");
-    // 可视化：markdown 渲染；工具调用不再进会话栏（2026-11-01：过程在右栏）
-    assert.ok(html.includes("tracebox"), "右栏要有「过程」区");
-    assert.ok(!html.includes("details class='tool'"), "会话栏不该再插工具卡");
-    assert.ok(html.includes("pre.code"), "代码块要有样式");
+    assert.ok(html.includes("<title>鲸鲸 · 记录本</title>"), "跳过引导时给记录本");
+    assert.ok(html.includes('id="nb-log"'), "记录本要有正文区");
+    assert.ok(html.includes("--void:#0b0e0b"), "底色不变");
+    assert.ok(html.includes("--cyan:#0f97a4"), "青色不变");
+    assert.ok(!html.includes('id="composer"'), "经典面板不该再出现");
+
+    // 旧路由撤掉：/classic 不存在了
+    assert.equal((await fetch(`${base}/classic`)).status, 404, "旧面板路由已撤");
+
     const st = await (await fetch(`${base}/api/state`)).json() as any;
     assert.match(st.line, /醒着/);
     assert.equal(st.lastSeenAt, null, "还没聊过");
@@ -213,54 +205,20 @@ test("编码闸：非 UTF-8（GBK）请求体拒收，不写进记忆", async ()
   } finally { srv.close(); }
 });
 
-test("界面壳可以切：ui.shell=notebook 时 / 出记录本，/classic 永远出经典面板（2026-11-05）", async () => {
+test("记录本是唯一界面：/ 与 /notebook 同页，旧面板路由已撤（2026-11-05）", async () => {
   const { srv, base } = await start();
   try {
-    const h = { "content-type": "application/json", "x-jj": "1" };
-    const d0 = await (await fetch(`${base}/api/ui`)).json() as any;
-    assert.equal(d0.shell, "classic", "默认还是经典面板");
+    const a = await (await fetch(`${base}/?skip=1`)).text();
+    const b = await (await fetch(`${base}/notebook`)).text();
+    assert.equal(a, b, "/ 和 /notebook 是同一页");
 
-    // 非法值要被拒
-    const bad = await fetch(`${base}/api/ui`, { method: "PUT", headers: h, body: JSON.stringify({ shell: "nope" }) });
-    assert.equal(bad.status, 400);
+    for (const marker of ['id="nb-log"', 'id="nb-board"', 'id="nb-view"', "nb-leaf"]) {
+      assert.ok(a.includes(marker), "记录本缺：" + marker);
+    }
+    assert.equal((await fetch(`${base}/classic`)).status, 404, "/classic 已撤");
+    assert.equal((await fetch(`${base}/?shell=classic&skip=1`)).status, 200, "参数不再改变界面");
 
-    const put = await fetch(`${base}/api/ui`, { method: "PUT", headers: h, body: JSON.stringify({ shell: "notebook" }) });
-    assert.equal(put.status, 200);
-
-    const d1 = await (await fetch(`${base}/api/ui`)).json() as any;
-    assert.equal(d1.shell, "notebook");
-
-    const root = await (await fetch(`${base}/?skip=1`)).text();
-    assert.ok(root.includes('id="nb-log"'), "配置成记录本之后 / 就是记录本");
-
-    const classic = await (await fetch(`${base}/classic`)).text();
-    assert.ok(classic.includes('id="composer"'), "/classic 永远是经典面板 —— 回退不依赖配置");
-
-    const override = await (await fetch(`${base}/?skip=1&shell=classic`)).text();
-    assert.ok(override.includes('id="composer"'), "?shell=classic 也能临时回退");
-
-    // 只改 shell 不该把 splash 顺手写回默认值
-    const back = await fetch(`${base}/api/ui`, { method: "PUT", headers: h, body: JSON.stringify({ shell: "classic" }) });
-    assert.equal(back.status, 200);
-  } finally { srv.close(); }
-});
-
-test("第二条壳 /notebook：取得到、能退回经典面板，且经典面板一行没动（2026-11-05）", async () => {
-  const { srv, base } = await start();
-  try {
-    const nb = await fetch(`${base}/notebook`);
-    assert.equal(nb.status, 200);
-    const html = await nb.text();
-    assert.ok(html.includes('id="nb-log"'), "记录本要有正文区");
-    assert.ok(html.includes('id="nb-board"'), "要有「她收着的」那一页");
-    assert.ok(html.includes('href="/classic"'), "要能退回经典面板 —— 回退是产品要求");
-    assert.ok(html.includes("nb-leaf"), "过程是那张可以掀起来的页");
-
-    const classic = await (await fetch(`${base}/?skip=1`)).text();
-    assert.ok(classic.includes('id="composer"'), "经典面板还在");
-    assert.ok(classic.includes("卷宗"), "经典面板的结构没被换掉");
-
-    // 内联脚本必须能过 --check（模板字符串那个坑刚栽过一次）
+    // 内联脚本必须能过 --check（模板字符串的坑栽过）
     const { NOTEBOOK } = await import("../src/web/notebook.ts");
     const blocks = [...NOTEBOOK.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((x) => x[1]!);
     assert.ok(blocks.length >= 1, "记录本里应有 <script>");

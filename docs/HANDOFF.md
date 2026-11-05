@@ -189,8 +189,8 @@ node src/cli/deploy.ts smoke                    # 期望：冒烟 20/20
 | `deploy rollback` | 手动回滚到最近一次跑通过的版本 |
 | `deploy mutate` | **回滚演练**：注入"启动即崩"的版本，看它自己切回去 |
 | `npm run ui:shot tmp/shot.png http://127.0.0.1:7700/` | 截图肉眼验收（可指定 URL） |
-| `node tools/ui-test.mjs http://127.0.0.1:7700/` | 桌面尺寸跑同一套交互断言（20 项） |
-| `UI_VIEWPORT=390x844 node tools/ui-test.mjs http://127.0.0.1:7700/` | 同上，但手机尺寸（走 CDP 真机尺寸，不是 `--window-size`） |
+| `node tools/ui-test-nb.mjs http://127.0.0.1:7700/?skip=1` | 记录本那套交互断言（2026-11-05 换壳后） |
+| `UI_VIEWPORT=390x844 node tools/ui-test-nb.mjs http://127.0.0.1:7700/?skip=1` | 同上，但换窗口尺寸（走 CDP 真机尺寸，不是 `--window-size`） |
 | `GET /api/audit` / `/api/search?q=` / `/api/usage` | 面板用的三个只读接口（动作审计 / 混合检索 / 今日花费） |
 | `tailscale serve --bg 7700` | 手机访问：https 由 Tailscale 提供，面板仍只绑回环 |
 | `jingjing ingest <路径> [--shareable]` | 摄入文档（md/txt 直读；pdf/docx/… 走 markitdown）。**默认 local_only，不会进云端简报** |

@@ -8,8 +8,8 @@
 
 | 项 | 数量 |
 |---|---|
-| 源文件（src/**/*.ts） | 111 |
-| 错误码 E_* | 212 |
+| 源文件（src/**/*.ts） | 112 |
+| 错误码 E_* | 211 |
 | verbs | 27 |
 | CLI 子命令 | 38 |
 
@@ -18,7 +18,7 @@
 | 纪律 | 文件 | 符号 |
 |---|---|---|
 | 一条执行路径 | `src/execute.ts` | `export async function execute` |
-| 没接上 = 没做完 | `tools/ui-test.mjs` | `check(` |
+| 没接上 = 没做完 | `tools/ui-test-nb.mjs` | `check(` |
 | 闸门先于模型 | `src/nightly.ts` | `export function isNoise` |
 | 参数有界 | `src/decayparams.ts` | `RANGES` |
 | 内容只是资料 | `src/verbs.ts` | `E_NEEDS_EGRESS` |
@@ -170,7 +170,6 @@
 | `E_NOT_DIR` | `src/project.ts` |
 | `E_NOT_FILE` | `src/project.ts` |
 | `E_NOT_FOUND` | `src/agentguard.ts` `src/plugins.ts` `src/selfupdate.ts` `src/verbs.ts` `src/web/server.ts` |
-| `E_NOTEBOOK` | `src/web/server.ts` |
 | `E_NOTHING_TO_DO` | `src/web/server.ts` |
 | `E_OLLAMA_DOWN` | `src/cli/jingjing.ts` |
 | `E_ORIGIN` | `src/web/server.ts` |
@@ -388,6 +387,7 @@
 | `src/types.ts` | export type Tier = "T0" / "T1" / "T2" / "T3" / "T4"; |
 | `src/verbs.ts` | 能力目录（04 §3）：鲸鲸能碰到的东西**只有这张表里的**。 |
 | `src/web/boot.ts` | 开机片头（2026-11-02）。 |
+| `src/web/brand.ts` | 品牌图标（鲸）。从 page.ts 里抽出来的 —— 2026-11-05 旧面板从程序里撤下之后， |
 | `src/web/desk.ts` | 桌面端的**启动令牌**（2026-11-01：软件只有桌面端，不提供浏览器入口）。 |
 | `src/web/notebook.ts` | 第二条壳：工作记录本（2026-11-05） |
 | `src/web/page.ts` | 单页（零前端依赖、零构建）。 |

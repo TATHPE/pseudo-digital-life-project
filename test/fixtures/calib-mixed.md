@@ -44,7 +44,7 @@ docker compose -f docker/compose.yaml up -d  # 容器里跑（数据卷 ./data�
 node src/cli/jingjing.ts usage        # 今日花费与按角色/模型拆分
 node src/cli/jingjing.ts serve 7700   # 本地面板 http://127.0.0.1:7700
 npm run ui:test                       # headless Edge 真点真发（CDP），48 项断言
-UI_VIEWPORT=390x844 node tools/ui-test.mjs http://127.0.0.1:7700/   # 手机尺寸同一套断言
+UI_VIEWPORT=390x844 node tools/ui-test-nb.mjs http://127.0.0.1:7700/?skip=1   # 同一套断言，换尺寸
 npm run ui:shot tmp/shot.png          # 截一张图肉眼验收
 npm run docs:sync                     # 把上层文档仓单向同步进 docs/（产物别手改）
 node src/cli/brief-demo.ts --full     # M1.1：第 1 轮 vs 第 100 轮简报
