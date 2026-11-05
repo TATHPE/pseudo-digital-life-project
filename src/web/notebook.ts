@@ -110,6 +110,26 @@ body{background:var(--void);color:var(--ink);font:15px/1.85 var(--sans);
 .nb-gapq{border-top:1px solid var(--line-dim);padding:12px 2px}
 .nb-gapt{font:14px/1.7 var(--sans);color:var(--ink)}
 .nb-gapt .m{display:block;font:10px/1.6 var(--mono);color:var(--dim2);margin-top:2px}
+.nb-grid2{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:6px}
+.nb-recipe{display:block;text-align:left;border:1px solid var(--line-dim);background:none;color:var(--ink);padding:10px 11px;cursor:pointer}
+.nb-recipe:hover{border-color:var(--line);background:rgba(233,240,242,.04)}
+.nb-recipe .n{display:block;font:12.5px/1.4 var(--sans)}
+.nb-recipe .d{display:block;font:10px/1.5 var(--mono);color:var(--dim2);margin-top:4px}
+.nb-actline{display:flex;gap:10px;align-items:baseline;padding:5px 2px;border-bottom:1px solid var(--line-dim);cursor:pointer;font:12px/1.6 var(--sans)}
+.nb-actline:hover{background:rgba(233,240,242,.03)}
+.nb-actline .t{font:10px/1.6 var(--mono);color:var(--dim2);flex:none}
+.nb-actline .w{font:9px/1.6 var(--mono);color:var(--dim);flex:none}
+.nb-actline .x{color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nb-pal{position:fixed;inset:0;z-index:50;background:rgba(5,7,6,.9);display:flex;align-items:flex-start;justify-content:center;padding-top:12vh}
+.nb-pal[hidden]{display:none}
+.nb-palbox{width:min(620px,92vw);border:1px solid var(--line);background:var(--void)}
+.nb-palin{width:100%;background:none;border:0;border-bottom:1px solid var(--line-dim);color:var(--ink);font:14px/1.6 var(--sans);padding:12px 14px;outline:none}
+#nb-palist{max-height:46vh;overflow:auto}
+.nb-palrow{display:flex;gap:10px;align-items:baseline;padding:8px 14px;cursor:pointer;border-bottom:1px solid var(--line-dim)}
+.nb-palrow.on{background:var(--ink);color:var(--void)}
+.nb-palrow .k{font:9px/1 var(--mono);letter-spacing:.12em;color:var(--dim2);flex:none;width:44px}
+.nb-palrow.on .k{color:rgba(11,14,11,.6)}
+.nb-palrow .v{font:12.5px/1.5 var(--sans);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .nb-run{border-top:1px solid var(--line-dim);margin-bottom:6px}
 .nb-runrow{display:grid;grid-template-columns:84px 1fr auto;gap:12px;align-items:baseline;padding:9px 2px;border-bottom:1px solid var(--line-dim);font:12.5px/1.6 var(--sans)}
 .nb-runrow .k{font:9.5px/1.6 var(--mono);letter-spacing:.12em;color:var(--dim2)}
@@ -282,6 +302,12 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
 </div>
 
 <div class="nb-tick"><div id="nb-tickmsg"></div></div>
+<div class="nb-pal" id="nb-pal" hidden>
+  <div class="nb-palbox">
+    <input id="nb-palq" class="nb-palin" placeholder="搜会话 / 记忆 / 文档 / 页面　⌘K 或 Ctrl+K 打开，Esc 关掉" autocomplete="off">
+    <div id="nb-palist"></div>
+  </div>
+</div>
 <div class="nb-composer" id="nb-composer">
   <div class="nb-cin">
     <span class="cr">›</span>
@@ -671,10 +697,13 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
       fetch('/api/usage').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
       fetch('/api/night/due').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
       fetch('/api/egress').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
+      fetch('/api/skills').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
+      fetch('/api/activity?limit=8').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
     ]).then(function(res){
       var st = res[0] || {}, sum = res[1] || {}, props = Array.isArray(res[2]) ? res[2] : [];
       var dors = res[3] || {}, health = res[4] || {};
       var use = res[5] || {}, night = res[6] || {}, eg = res[7] || {};
+      var sk = res[8] || {}, act = res[9] || {};
       var ctx = dors.context || {};
       var deg = health.degraded || [];
       var d = new Date();
@@ -723,11 +752,35 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
             '</span><span class="m">' + props.length + ' 个提议' +
             ((Array.isArray(eg.pending) && eg.pending.length) ? ' · ' + eg.pending.length + ' 个外发' : '') + '</span></div>' +
         '</div>' +
+        '<div class="nb-sec">§ 03 配方</div>' +
+        ((sk.skills || []).length ? '<div class="nb-grid2">' + (sk.skills || []).slice(0, 6).map(function(x){
+          return '<button class="nb-recipe" data-skill="' + esc(x.id) + '">' +
+            '<span class="n">' + esc(x.name || x.id) + '</span>' +
+            '<span class="d">' + esc(String(x.description || '').slice(0, 60)) + '</span></button>';
+        }).join('') + '</div>' : '<div class="nb-empty">还没有技能。把 SKILL.md 放进 data/skills 就会出现在这里。</div>') +
+        '<div class="nb-sec">§ 04 活动</div>' +
+        ((act.items || []).length ? (act.items || []).map(function(x){
+          var mine = x.role === 'user';
+          return '<div class="nb-actline"' + (x.session ? ' data-sess="' + esc(x.session) + '"' : '') + '>' +
+            '<span class="t">' + esc(String(x.ts || '').slice(5, 16).replace('T', ' ')) + '</span>' +
+            '<span class="w">' + (mine ? '你' : '她') + '</span>' +
+            '<span class="x">' + esc(String(x.text || '').slice(0, 60)) + '</span></div>';
+        }).join('') : '<div class="nb-empty">还没有动静。</div>') +
         '<div class="nb-actrow" style="margin-top:18px">' +
         '<button class="nb-btn" id="nb-gochat">进入记录 · 继续说话</button></div>' +
         '</div>';
       var gc = $('nb-gochat');
       if (gc) gc.onclick = function(){ go('chat'); };
+      Array.prototype.forEach.call(el.querySelectorAll('[data-skill]'), function(b){
+        b.onclick = function(){
+          go('chat');
+          var ta = $('nb-say');
+          if (ta) { ta.value = '/' + b.getAttribute('data-skill') + ' '; ta.focus(); }
+        };
+      });
+      Array.prototype.forEach.call(el.querySelectorAll('[data-sess]'), function(b){
+        b.onclick = function(){ sessDetail(b.getAttribute('data-sess')); };
+      });
       Array.prototype.forEach.call(el.querySelectorAll('[data-home]'), function(b){
         b.onclick = function(){
           var w = b.getAttribute('data-home');
@@ -1131,6 +1184,8 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
       fetch('/api/standing').then(function(r){ return r.json(); }).catch(function(){ return []; }),
       fetch('/api/grants').then(function(r){ return r.json(); }).catch(function(){ return []; }),
       fetch('/api/egress').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
+      fetch('/api/skills').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
+      fetch('/api/activity?limit=8').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
       fetch('/health').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
       fetch('/api/persona').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
       fetch('/api/avatars').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
@@ -1320,6 +1375,78 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
     });
   }
 
+  // ── ⌘K 命令面板（2026-11-05）：会话 / 记忆 / 文档 / 页面 一起搜 ──
+  var PAL = [], PALI = 0, PAL_TIMER = 0;
+  var PAGES = [
+    { k: '页面', v: '工作台', go: 'home' },
+    { k: '页面', v: '记录（对话）', go: 'chat' },
+    { k: '页面', v: '会话', go: 'sess' },
+    { k: '页面', v: '待你处理', go: 'approvals' },
+    { k: '页面', v: '记忆', go: 'mem' },
+    { k: '页面', v: '文档', go: 'docs' },
+    { k: '页面', v: '能力', go: 'cap' },
+    { k: '页面', v: '校样', go: 'git' },
+    { k: '页面', v: '设置', go: 'cfg' },
+    { k: '页面', v: '还缺', go: 'gap' },
+  ];
+  function palPaint(){
+    var box = $('nb-palist');
+    if (!box) return;
+    box.innerHTML = PAL.length ? PAL.map(function(x, i){
+      return '<div class="nb-palrow' + (i === PALI ? ' on' : '') + '" data-i="' + i + '">' +
+        '<span class="k">' + esc(x.k) + '</span><span class="v">' + esc(x.v) + '</span></div>';
+    }).join('') : '<div class="nb-palrow"><span class="k">—</span><span class="v">没有匹配</span></div>';
+    Array.prototype.forEach.call(box.querySelectorAll('[data-i]'), function(b){
+      b.onclick = function(){ palPick(Number(b.getAttribute('data-i'))); };
+    });
+  }
+  function palPick(i){
+    var it = PAL[i];
+    if (!it) return;
+    palClose();
+    if (it.go) { go(it.go); return; }
+    if (it.sess) { go('sess'); sessDetail(it.sess); return; }
+    if (it.mem) { go('mem'); memDetail(it.mem); return; }
+  }
+  function palOpen(){
+    var p = $('nb-pal'); if (!p) return;
+    p.hidden = false; PAL = PAGES.slice(); PALI = 0; palPaint();
+    var q = $('nb-palq'); if (q) { q.value = ''; q.focus(); }
+  }
+  function palClose(){ var p = $('nb-pal'); if (p) p.hidden = true; }
+  function palSearch(q){
+    if (!q) { PAL = PAGES.slice(); PALI = 0; palPaint(); return; }
+    var lower = q.toLowerCase();
+    var local = PAGES.filter(function(x){ return x.v.toLowerCase().indexOf(lower) >= 0; });
+    fetch('/api/sessions?limit=50').then(function(r){ return r.json(); }).then(function(j){
+      var ss = ((j && j.sessions) || []).filter(function(x){ return String(x.title || '').toLowerCase().indexOf(lower) >= 0; })
+        .slice(0, 5).map(function(x){ return { k: '会话', v: x.title || x.id, sess: x.id }; });
+      PAL = local.concat(ss); PALI = 0; palPaint();
+    }).catch(function(){ PAL = local; PALI = 0; palPaint(); });
+    fetch('/api/search?q=' + encodeURIComponent(q)).then(function(r){ return r.json(); }).then(function(j){
+      var ms = ((j && j.mem) || []).slice(0, 5).map(function(m){ return { k: '记忆', v: String(m.text || '').slice(0, 60), mem: m.id }; });
+      var ds = ((j && j.docs) || []).slice(0, 4).map(function(d){ return { k: '文档', v: String(d.text || '').slice(0, 60) }; });
+      PAL = PAL.concat(ms, ds); palPaint();
+    }).catch(function(){});
+  }
+  document.addEventListener('keydown', function(e){
+    if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); palOpen(); return; }
+    var p = $('nb-pal');
+    if (!p || p.hidden) return;
+    if (e.key === 'Escape') { e.preventDefault(); palClose(); return; }
+    if (e.key === 'ArrowDown') { e.preventDefault(); PALI = Math.min(PAL.length - 1, PALI + 1); palPaint(); return; }
+    if (e.key === 'ArrowUp') { e.preventDefault(); PALI = Math.max(0, PALI - 1); palPaint(); return; }
+    if (e.key === 'Enter') { e.preventDefault(); palPick(PALI); return; }
+  });
+  var palQ = $('nb-palq');
+  if (palQ) palQ.addEventListener('input', function(){
+    clearTimeout(PAL_TIMER);
+    var v = palQ.value.trim();
+    PAL_TIMER = setTimeout(function(){ palSearch(v); }, 180);
+  });
+  var palBg = $('nb-pal');
+  if (palBg) palBg.addEventListener('click', function(e){ if (e.target === palBg) palClose(); });
+
   // ── 启动 ─────────────────────────────────────
   loadState(); loadTimeline(); loadTabs(); loadHome();
   // 深链接：?view=home|chat|board|mem|docs|cap|git|gap|cfg（截图、书签、排障都靠它）
@@ -1330,6 +1457,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
     if (v === 'chat') { go('chat'); return; }
     if (['mem','docs','cap','git','cfg','gap','sess','approvals'].indexOf(v) >= 0) { setTimeout(function(){ go(v); }, 120); return; }
     go('home');
+    if (location.search.indexOf("pal=1") >= 0) setTimeout(palOpen, 200);
   })();
   setInterval(function(){ loadState(); loadTabs(); }, 20000);
 })();

@@ -503,6 +503,31 @@ export function createWebServer(deps: WebDeps) {
         setTimeout(() => process.exit(0), 60);
         return;
       }
+      // ── 活动：跨会话的最近几条（2026-11-05）──
+      if (req.method === "GET" && url.pathname === "/api/activity") {
+        try {
+          const limit = Math.min(30, Math.max(1, Number(url.searchParams.get("limit") ?? 8)));
+          const { events } = readEvents(deps.inboxDir);
+          const titles = new Map<string, string>();
+          const rows = events
+            .filter((e) => e.kind === "utterance" || e.kind === "agent_reply")
+            .map((e) => {
+              const p = (e.payload ?? {}) as { text?: string; session?: string };
+              return { ts: e.ts, role: e.kind === "utterance" ? "user" : "agent", text: String(p.text ?? ""), session: String(p.session ?? "") };
+            })
+            .filter((r) => r.text.trim())
+            .sort((a, b) => b.ts.localeCompare(a.ts))
+            .slice(0, limit);
+          for (const r of rows) {
+            if (!r.session || titles.has(r.session)) continue;
+            titles.set(r.session, getSession(deps.db, r.session)?.title ?? "");
+          }
+          json(res, 200, {
+            items: rows.map((r) => ({ ...r, text: r.text.slice(0, 120), title: titles.get(r.session) ?? "" })),
+          });
+        } catch (e) { json(res, 500, { error: String((e as Error)?.message ?? e).slice(0, 160) }); }
+        return;
+      }
       // ── 待你处理：提议 + 代码外发，合成一个列表（2026-11-05）──
       // 回复仍然走各自原有的接口（/api/proposals/:id、/api/egress），这里只做汇总。
       if (req.method === "GET" && url.pathname === "/api/approvals") {
