@@ -4,7 +4,7 @@
  */
 import { join } from "node:path";
 import { openDb } from "../db.ts";
-import { runNightly, NUEXTRACT_PROMPT, isNuExtractModel } from "../nightly.ts";
+import { runNightly, NUEXTRACT_PROMPT, isNuExtractModel, SCORE_PROMPT, parseScore } from "../nightly.ts";
 import { writeAutobiography, listAutobiography } from "../autobio.ts";
 import { ensureTerritory, territoryListing } from "../territory.ts";
 import { loadState, advance, describe } from "../state.ts";
@@ -29,6 +29,11 @@ export interface NightOptions {
   /** E-7：同一批事件重复巩固几轮（1..5） */
   rounds?: number;
   now?: Date;
+}
+
+/** 打分会话要一次 key（和抽取同样的取法） */
+function keysForScore(): Record<string, string> {
+  return {};
 }
 
 export async function runNightCli(opts: NightOptions): Promise<number> {
@@ -105,6 +110,19 @@ export async function runNightCli(opts: NightOptions): Promise<number> {
   };
 
   const report = await runNightly({
+    // 打分闸门（2026-11-05）：抽取之前先问一句「这段值不值得记」。
+    // 用同一个本地模型，但**不带工具**（只要一个数字）；失败就当值得，不丢对话。
+    score: async (transcript: string): Promise<number> => {
+      try {
+        let out = "";
+        for await (const ev of createChatTransport(routerFrom(cfg.roles as never), { apiKeys: keysForScore() }).chat(
+          "extract", [{ role: "user", content: SCORE_PROMPT(transcript) }],
+          { containsMemory: true, purpose: "nightly-score", maxTokens: 8, temperature: 0 },
+        )) { if (ev.type === "delta") out += ev.text; }
+        return parseScore(out);
+      } catch { return 10; }
+    },
+    scoreThreshold: Number(process.env.JJ_SCORE_THRESHOLD ?? 3),
     db: d.db, inboxDir: opts.inbox, home: opts.home, embedder, extract, complete, now,
     ...(isNuExtractModel(cfg.roles["extract"]?.model) ? { extractPrompt: NUEXTRACT_PROMPT } : {}),
     scoredBy: `extract:${cfg.roles["extract"]?.model || "?"}`,

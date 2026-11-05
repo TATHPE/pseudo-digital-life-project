@@ -37,6 +37,13 @@ export interface NightlyDeps {
   /** 覆盖默认提示词（专用抽取模型要自己的模板；2026-11-05） */
   extractPrompt?: (transcript: string) => string;
   /**
+   * 「这段值不值得记」打分（0-10）。给了就在抽取**之前**先问一句，低于阈值整窗跳过 ——
+   * 省的是最贵的那次抽取调用，挡的是系统操作/一次性状态这类噪声。
+   */
+  score?: (transcript: string) => Promise<number>;
+  /** 打分阈值（默认 3）：≥ 才抽 */
+  scoreThreshold?: number;
+  /**
    * **纯文本**补全（不带工具 schema），只给「她对你的理解」那一层用。
    * 说明：extract 是带工具的抽取器，小模型拿到工具会去调工具而不是回一句话。
    */
@@ -301,6 +308,31 @@ function firstOf(v: unknown): string {
   return String(v ?? "").trim();
 }
 
+
+/**
+ * 「这段值不值得记」的判分提示（2026-11-05）。
+ *
+ * 只问一件事：这段对话里有没有**关于这个人**、三个月后还用得上的事。
+ * 输出一个 0-10 的整数，别的都不要 —— 它只用来决定「要不要花那一次抽取」。
+ */
+export const SCORE_PROMPT = (transcript: string): string => [
+  "下面是一段对话。判断：里面有没有**关于这个人**、三个月后还用得上的事？",
+  "（比如：称呼与边界、承诺与日期、过敏忌口、家人、住哪、做什么工作、稳定偏好、有重量的经历。）",
+  "系统操作（跑命令/改代码/日志/端口/测试结果）、关于助手自己的配置与用量、一次性的当前状态（几点、多少条、文件在哪）、",
+  "寒暄，都**不算**。",
+  "",
+  "只输出一个 0-10 的整数：0 = 完全没有；10 = 全是这类事。不要解释。",
+  "",
+  "对话：",
+  transcript,
+].join(String.fromCharCode(10));
+
+/** 从「只回一个数字」的输出里抠出 0-10；抠不出就当 0（宁可漏抽，不许空烧一次抽取） */
+export function parseScore(raw: string): number {
+  const m = String(raw ?? "").match(/\d{1,2}/);
+  if (!m) return 0;
+  return Math.max(0, Math.min(10, Number(m[0])));
+}
 /** 宽松解析：容忍 ```json 围栏、前后废话、单条对象 */
 export function parseCandidates(raw: string, cap = 5): Candidate[] {
   const t = raw.replace(/```[a-zA-Z]*/g, "").trim();
@@ -599,10 +631,23 @@ export async function runNightly(deps: NightlyDeps): Promise<NightlyReport> {
 
     const windows = segmentEvents(usable, deps.windowSize ?? 20);
     let cands: Candidate[] = [];
+    let skippedByScore = 0;
     for (const [i, win] of windows.entries()) {
       const transcript = win
         .map((e) => `${e.kind === "utterance" ? "用户" : "鲸鲸"}：${textOf(e)}`)
         .join(String.fromCharCode(10));
+      // 打分闸门（2026-11-05）：先问「这段值不值得记」，不值得就整窗跳过（省掉最贵的一次抽取）
+      if (deps.score) {
+        let sc = 0;
+        try { sc = await deps.score(transcript); } catch { sc = 10; }   // 打分失败就当值得，别丢对话
+        const th = deps.scoreThreshold ?? 3;
+        if (sc < th) {
+          notes.push(`WINDOW ${i + 1}/${windows.length}: 打分 ${sc} < ${th}，整窗跳过`);
+          skippedByScore++;
+          continue;
+        }
+        notes.push(`WINDOW ${i + 1}/${windows.length}: 打分 ${sc}`);
+      }
       try {
         const raw = await deps.extract((deps.extractPrompt ?? EXTRACT_PROMPT)(transcript));
         const got = parseCandidates(raw, cap);
