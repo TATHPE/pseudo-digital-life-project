@@ -1239,8 +1239,9 @@ export function createWebServer(deps: WebDeps) {
       if (req.method === "GET" && url.pathname === "/api/profile/gaps") {
         try {
           const { openGaps, GAPS } = await import("../profile.ts");
-          const gaps = openGaps(deps.db, 3);
-          json(res, 200, { gaps, answered: GAPS.length - openGaps(deps.db, 99).length, total: GAPS.length });
+          // 面板要能把六道题一条条答完，所以给全量
+          const gaps = openGaps(deps.db, 99);
+          json(res, 200, { gaps, answered: GAPS.length - gaps.length, total: GAPS.length });
         } catch { json(res, 200, { gaps: [], answered: 0, total: 0 }); }
         return;
       }

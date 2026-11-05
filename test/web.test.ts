@@ -1025,11 +1025,11 @@ test("缺口会进对话：一次 /api/say 之后记下「问过了」，免得�
   } finally { srv.close(); }
 });
 
-test("缺口卡：GET 问三件、POST 答一句就落库，再问就少一件（2026-11-04）", async () => {
+test("缺口卡：GET 给全部没答的题、POST 答一句就落库，再问就少一件（2026-11-05 起给全量）", async () => {
   const { srv, base, dir } = await start();
   try {
     const g1 = await (await fetch(`${base}/api/profile/gaps`)).json() as any;
-    assert.equal(g1.gaps.length, 3);
+    assert.equal(g1.gaps.length, 6, "没答过的六道题一次给全（面板要能一条条答完）");
     assert.equal(g1.total, 6);
 
     const r = await fetch(`${base}/api/profile/answer`, {
@@ -1042,7 +1042,7 @@ test("缺口卡：GET 问三件、POST 答一句就落库，再问就少一件�
     const g2 = await (await fetch(`${base}/api/profile/gaps`)).json() as any;
     assert.equal(g2.answered, 1, "答过的题要记成已答");
     assert.ok(!g2.gaps.some((x: any) => x.key === "称呼"), "答过的题不该再问");
-    assert.equal(g2.gaps.length, 3, "还有 5 件没答，仍然先问三件");
+    assert.equal(g2.gaps.length, 5, "答掉一件，剩五件");
 
     const { DatabaseSync } = await import("node:sqlite");
     const db = new DatabaseSync(join(dir, "m.db"), { readOnly: true });

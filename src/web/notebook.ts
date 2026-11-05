@@ -106,6 +106,9 @@ body{background:var(--void);color:var(--ink);font:15px/1.85 var(--sans);
 .nb-search{width:100%;max-width:420px;background:none;border:1px solid var(--line-dim);color:var(--ink);
   font:13px/1.6 var(--sans);padding:8px 10px;outline:none;margin:0 0 8px}
 .nb-search:focus{border-color:var(--line)}
+.nb-gapq{border-top:1px solid var(--line-dim);padding:12px 2px}
+.nb-gapt{font:14px/1.7 var(--sans);color:var(--ink)}
+.nb-gapt .m{display:block;font:10px/1.6 var(--mono);color:var(--dim2);margin-top:2px}
 .nb-run{border-top:1px solid var(--line-dim);margin-bottom:6px}
 .nb-runrow{display:grid;grid-template-columns:84px 1fr auto;gap:12px;align-items:baseline;padding:9px 2px;border-bottom:1px solid var(--line-dim);font:12.5px/1.6 var(--sans)}
 .nb-runrow .k{font:9.5px/1.6 var(--mono);letter-spacing:.12em;color:var(--dim2)}
@@ -484,6 +487,8 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
     });
   }
   $('nb-board-btn').onclick = function(){ Board(!BOARD); if (!BOARD) renderLog(); };
+  var gapBtn = $('nb-gap');
+  if (gapBtn) gapBtn.onclick = function(){ go('gap'); };
 
   // ── 切口索引 ──────────────────────────────────
   function loadTabs(){
@@ -723,6 +728,46 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
       });
     }).catch(function(){});
   }
+  // ── 还缺：她还没弄明白的六件事（答完就写成契约，不会衰减）──────
+  function gapView(){
+    var el = $('nb-view');
+    el.innerHTML = head('还缺', '<button class="nb-btn" id="nb-gback">← 回记录</button>') +
+      wrap('<div id="nb-gaps"><div class="nb-empty">读取中…</div></div>');
+    var back = $('nb-gback'); if (back) back.onclick = function(){ go('chat'); };
+    fetch('/api/profile/gaps').then(function(r){ return r.json(); }).then(function(j){
+      var gaps = (j && j.gaps) || [];
+      var done = Number((j && j.answered) || 0), total = Number((j && j.total) || gaps.length);
+      var box = $('nb-gaps');
+      if (!gaps.length) {
+        box.innerHTML = '<div class="nb-empty">六道题都答完了（' + done + ' / ' + total + '）。</div>';
+        return;
+      }
+      box.innerHTML = '<div class="nb-empty">已答 ' + done + ' / ' + total + '。答完的会直接写成契约（不衰减）。</div>' +
+        gaps.map(function(g, i){
+          var id = 'gapin-' + i;
+          return '<div class="nb-gapq">' +
+            '<div class="nb-gapt">' + esc(g.question) +
+            '<span class="m">' + esc(g.why || '') + '</span></div>' +
+            '<div class="nb-actrow"><input class="nb-search" id="' + id + '" placeholder="写一句就行" data-k="' + esc(g.key) + '">' +
+            '<button class="nb-btn" data-save="' + id + '">记住</button></div></div>';
+        }).join('');
+      Array.prototype.forEach.call(box.querySelectorAll('[data-save]'), function(b){
+        b.onclick = function(){
+          var inp = $(b.getAttribute('data-save'));
+          if (!inp || !inp.value.trim()) return;
+          fetch('/api/profile/answer', { method: 'POST', headers: H,
+            body: JSON.stringify({ key: inp.getAttribute('data-k'), text: inp.value.trim() }) })
+            .then(function(r){ return r.json(); }).then(function(r){
+              if (r.ok) { tick('记下了'); gapView(); loadState(); }
+              else tick(r.why || r.error || '没记上');
+            });
+        };
+      });
+    }).catch(function(){
+      var box = $('nb-gaps'); if (box) box.innerHTML = '<div class="nb-empty">读取失败。</div>';
+    });
+  }
+
   // ── 去处：记忆 / 文档 / 能力 / 校样 / 设置 ──────────────────
   var KIND = { boundary:'边界', promise:'承诺', fact_hard:'事实', fact:'事实',
     preference_hard:'偏好', preference_soft:'偏好', episode:'经历', thought:'想法',
@@ -751,6 +796,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
     else if (v === 'cap') capView();
     else if (v === 'git') gitView();
     else if (v === 'cfg') cfgView();
+    else if (v === 'gap') gapView();
     else el.innerHTML = head('？') + wrap('<div class="nb-empty">没有这一页。</div>');
   }
   Array.prototype.forEach.call(document.querySelectorAll('.nb-go[data-v]'), function(b){
@@ -1128,7 +1174,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
     var m = /[?&]view=([a-z]+)/.exec(location.search || '');
     var v = m ? m[1] : '';
     if (v === 'board') setTimeout(function(){ Board(true); }, 120);
-    else if (['mem','docs','cap','git','cfg'].indexOf(v) >= 0) setTimeout(function(){ go(v); }, 120);
+    else if (['mem','docs','cap','git','cfg','gap'].indexOf(v) >= 0) setTimeout(function(){ go(v); }, 120);
   })();
   setInterval(function(){ loadState(); loadTabs(); }, 20000);
 })();
