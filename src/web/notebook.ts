@@ -181,6 +181,11 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
 .nb-tr.think{color:var(--dim)}
 .nb-tr.res{color:var(--dim2)}
 .nb-tr.err{color:#e06c6c}
+/* 她写的 markdown 表格（榜单、对照表） */
+.md-table{border-collapse:collapse;margin:10px 0;font:12px/1.6 var(--mono)}
+.md-table th,.md-table td{border:1px solid var(--line-dim);padding:6px 9px;text-align:left;vertical-align:top}
+.md-table th{color:var(--dim);font-weight:400;letter-spacing:.06em;background:rgba(233,240,242,.03)}
+.md-table tr:hover td{background:rgba(233,240,242,.02)}
 .nb-gav{display:block;width:22px;height:22px;object-fit:cover;margin:0 0 5px auto;border:1px solid var(--line-dim);opacity:.85}
 .nb-e.me .g .w{color:var(--amber)}
 .nb-e .b{min-width:0}
@@ -265,19 +270,6 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
 .nb-tick div{max-width:calc(var(--measure) + 76px);margin:0 auto;font:10px/1.4 var(--mono);color:var(--dim2);
   padding-left:76px;text-align:right}
 
-/* 醋酸片：过程盖在正文上 */
-.nb-leaf{position:fixed;right:64px;bottom:120px;width:340px;max-height:42vh;overflow:auto;z-index:5;
-  background:rgba(14,18,17,.96);
-  backdrop-filter:blur(4px);border:1px solid rgba(233,240,242,.22);
-  padding:18px 12px 12px}
-.nb-leaf[hidden]{display:none}
-.nb-leaf .holes{position:absolute;left:8px;top:8px;display:flex;gap:5px}
-.nb-leaf .holes i{width:4px;height:4px;border:1px solid rgba(233,240,242,.35);border-radius:50%}
-.nb-leaf h4{font:9px/1 var(--mono);letter-spacing:.16em;color:var(--dim);margin:0 0 9px;font-weight:400}
-.nb-leaf .ln{font:11px/1.8 var(--mono);color:var(--ink);word-break:break-word}
-.nb-leaf .ln b{color:var(--dim2);font-weight:400}
-.nb-leaf .x{position:absolute;right:6px;top:6px;font:9px/1 var(--mono);color:var(--dim);background:none;
-  border:1px solid var(--line-dim);padding:4px 6px;cursor:pointer}
 </style></head>
 <body>
 <!--BOOT-->
@@ -345,11 +337,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
     <button class="sd" id="nb-send">发送</button>
   </div>
 </div>
-<div class="nb-leaf" id="nb-leaf" hidden>
-  <div class="holes"><i></i><i></i></div>
-  <button class="x" id="nb-leafx">×</button>
-  <h4>过程 · 掀起来的这一页</h4>
-  <div id="nb-leaflines"></div>
+
 </div>
 
 <script>
@@ -641,6 +629,27 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
     return steps;
   }
 
+  // 推理是逐 token 流进来的：每来一个字就新起一条，面板上就是「想 我 / 想 搜 / 想 一下」
+  // 一垛碎字。这里按「连续同类就接上」合并，遇到别的动作才换行。
+  function thinkAppend(list, kind, text, max){
+    var t = String(text || '');
+    if (!t) return;
+    var last = list.length ? list[list.length - 1] : null;
+    if (last && last.k === kind) {
+      var joined = String(last.t || '') + t;
+      last.t = joined.length > max ? joined.slice(0, max) + '…' : joined;
+      return;
+    }
+    list.push({ k: kind, t: t.length > max ? t.slice(0, max) + '…' : t });
+  }
+
+  // 工具行：服务端给的 args 已经是人话（且常常自带名字），别再前缀一遍
+  function toolLine(ev){
+    var n = String(ev.name || '');
+    var a = String(ev.args || '').trim();
+    if (!a) return n;
+    return a.indexOf(n) === 0 ? a : (n + ' ' + a);
+  }
   function paintTrace(){
     var box = $('nb-trace');
     if (!box) return;
@@ -705,23 +714,6 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
     b.onclick = function(){ showTab(Number(b.getAttribute('data-t'))); };
   });
 
-  // ── 醋酸片（过程）─────────────────────────────
-  var LEAF = [];
-  function leafAdd(kind, text){
-    LEAF.push({ k: kind, t: String(text || '').slice(0, 400) });
-    if (LEAF.length > 40) LEAF.shift();
-    paintLeaf();
-  }
-  function paintLeaf(){
-    if (!LEAF.length) { $('nb-leaf').hidden = true; return; }
-    $('nb-leaf').hidden = false;
-    $('nb-leaflines').innerHTML = LEAF.map(function(x){
-      return '<div class="ln"><b>' + esc(x.k) + '</b> ' + esc(x.t) + '</div>';
-    }).join('');
-    $('nb-leaf').scrollTop = $('nb-leaf').scrollHeight;
-  }
-  $('nb-leafx').onclick = function(){ LEAF = []; paintLeaf(); };
-
   // ── 发一句话 ──────────────────────────────────
   function send(){
     if (BUSY) return;
@@ -731,7 +723,6 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
     BUSY = true; AT_BOTTOM = true; ta.value = ''; ta.style.height = '24px';
     AC = new AbortController();
     var stopBtn = $('nb-stop'); if (stopBtn) stopBtn.hidden = false;
-    LEAF = []; paintLeaf();
     TRACE = [];
     if (TAB === 4) paintTrace();
 
@@ -768,12 +759,10 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
               var live = $('nb-live'); if (live) live.textContent += ev.text;
               $('nb-page').scrollTop = $('nb-page').scrollHeight;
             } else if (ev.type === 'think') {
-              leafAdd('想', ev.text);
-              TRACE.push({ k: 'think', t: ev.text });
+              thinkAppend(TRACE, 'think', ev.text, 2000);
               if (TAB === 4) paintTrace();
             } else if (ev.type === 'tool') {
-              leafAdd('用', ev.name + ' ' + String(ev.args || '').slice(0, 80));
-              TRACE.push({ k: 'tool', t: ev.name + ' ' + String(ev.args || '').slice(0, 300) });
+              TRACE.push({ k: 'tool', t: toolLine(ev).slice(0, 300) });
               if (TAB === 4) paintTrace();
             } else if (ev.type === 'tool_result') {
               TRACE.push({ k: 'res', t: String(ev.result || '').slice(0, 1200), ms: ev.ms });
@@ -794,7 +783,6 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
     }).then(function(){
       BUSY = false; AC = null;
       var sb = $('nb-stop'); if (sb) sb.hidden = true;
-      LEAF = []; paintLeaf();
     TRACE = [];
     if (TAB === 4) paintTrace();   // 过程片收起来：它常驻会一直盖着正文
       go('chat');

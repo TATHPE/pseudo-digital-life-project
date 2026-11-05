@@ -102,6 +102,14 @@ if (hasFold) {
   })()`));
 } else skip("展开全文", "库里没有超长回答");
 
+// ②c 她写的 markdown 表格要变成真表格（以前原样显示一排竖线）
+check("表格渲染成 <table>，不是一排竖线", await js(`(() => {
+  const t = document.querySelector('#nb-log .md-table');
+  if (!t) return false;
+  const txt = document.querySelector('#nb-log').textContent || '';
+  return t.querySelectorAll('th').length >= 2 && t.querySelectorAll('td').length >= 2 && !txt.includes('|---|');
+})()`));
+
 // ③ 切口签能开合
 check("点切口签能展开面板", await js(`(async () => {
   const t = document.querySelector('.nb-tab[data-t="3"]');

@@ -49,6 +49,18 @@ export function renderMarkdown(src: string): string {
 
     if (!line.trim()) { closeList(); i++; continue; }
 
+    // 表格（2026-11-05）：她常把榜单写成 markdown 表格，之前只会原样显示一排竖线。
+    if (line.trim().startsWith("|") && i + 1 < lines.length && /^\s*\|?[\s:|-]+\|[\s:|-]*$/.test(lines[i + 1] ?? "")) {
+      closeList();
+      const cells = (row: string): string[] => row.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+      const head = cells(line);
+      i += 2;
+      const body: string[][] = [];
+      while (i < lines.length && (lines[i] ?? "").trim().startsWith("|")) { body.push(cells(lines[i] ?? "")); i++; }
+      out.push('<table class="md-table"><thead><tr>' + head.map((c) => `<th>${inline(c)}</th>`).join("") + "</tr></thead><tbody>" +
+        body.map((r) => "<tr>" + r.map((c) => `<td>${inline(c)}</td>`).join("") + "</tr>").join("") + "</tbody></table>");
+      continue;
+    }
     const h = line.match(/^(#{1,4})\s+(.*)$/);
     if (h) { closeList(); const n = h[1]!.length; out.push(`<h${n}>${inline(h[2] ?? "")}</h${n}>`); i++; continue; }
 

@@ -352,7 +352,8 @@ test("记录本是唯一界面：/ 与 /notebook 同页，旧面板路由已撤�
     const b = await (await fetch(`${base}/notebook`)).text();
     assert.equal(a, b, "/ 和 /notebook 是同一页");
 
-    for (const marker of ['id="nb-log"', 'id="nb-board"', 'id="nb-view"', "nb-leaf"]) {
+    // nb-leaf（过程浮层）2026-11-05 撤了：它 position:fixed 全局盖在正文上，过程只在右栏 IV 里看
+    for (const marker of ['id="nb-log"', 'id="nb-board"', 'id="nb-view"', 'id="nb-t4"']) {
       assert.ok(a.includes(marker), "记录本缺：" + marker);
     }
     assert.equal((await fetch(`${base}/classic`)).status, 404, "/classic 已撤");
@@ -1025,7 +1026,7 @@ test("每一轮的过程要留档：右栏第四个签能看当前这一轮，�
   assert.ok(NOTEBOOK.includes('data-t="4"'), "右栏要有第四个签");
   assert.ok(NOTEBOOK.includes("id=\"nb-trace\""), "要点开就能画过程");
   assert.ok(NOTEBOOK.includes("function groupTrace("), "要按步分组");
-  assert.ok(NOTEBOOK.includes("TRACE.push({ k: 'think'"), "思考要进过程");
+  assert.ok(NOTEBOOK.includes("thinkAppend(TRACE, 'think'"), "思考要进过程（逐 token 的片段要合并成一条，不能一垛碎字）");
   assert.ok(NOTEBOOK.includes("TRACE.push({ k: 'tool'"), "工具要进过程");
   assert.ok(NOTEBOOK.includes("TRACE.push({ k: 'res'"), "结果要进过程");
   assert.ok(NOTEBOOK.includes("TRACE.push({ k: 'err'"), "错误要进过程");

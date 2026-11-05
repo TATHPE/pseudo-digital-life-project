@@ -105,6 +105,18 @@ appendEvent(join(HOME, "inbox"), {
   },
 });
 
+// ④c 表格夹具：她的回答里带 markdown 表格（以前会原样显示一排竖线）
+appendEvent(join(HOME, "inbox"), {
+  v: 1, id: newEventId(), ts: new Date(Date.now() - 40000).toISOString(),
+  kind: "agent_reply", actor: "agent",
+  payload: { text: [
+    "| 仓库 | star | 它是什么 |",
+    "|---|---|---|",
+    "| TencentCloud/Agent-Memory | 30.5k | 团队级记忆中枢 |",
+    "| MemoriLabs/Memori | 17.4k | agent 原生记忆设施 |",
+  ].join(String.fromCharCode(10)) },
+});
+
 // ④b 长回答夹具：3400 字，让「展开全文」真的出现（用户实测：点了没反应）
 appendEvent(join(HOME, "inbox"), {
   v: 1, id: newEventId(), ts: new Date(Date.now() - 30000).toISOString(),

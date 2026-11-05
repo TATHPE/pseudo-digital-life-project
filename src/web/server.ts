@@ -2423,6 +2423,15 @@ export function createWebServer(deps: WebDeps) {
         // 典型场景：工具被授权闸门拦下，她说完"我要去查"就停了（用户看到的就是回答不完整）。
         let answerChars = 0;
         let curStep = -1;
+        // 推理是**逐 token** 流进来的：以前每个 token 都 push 一条 trace，
+        // 存下来就是几百条「想 我 / 想 搜 / 想 一下 …」—— 面板上根本没法读（用户截图就是这个）。
+        // 现在先把它们攒起来，遇到动手/结果/报错/收尾再落成一条。
+        let thinkBuf = "";
+        const flushThink = () => {
+          const t = thinkBuf.trim();
+          thinkBuf = "";
+          if (t) trace.push({ k: "think", t: t.slice(0, 2000) });
+        };
         // 最后一次工具调用时的正文长度。done 时若正文没再增长 → 她做完/卡住，但没给结论。
         let lastToolAt = 0;
         const used: ToolUse[] = [];
@@ -2453,8 +2462,9 @@ export function createWebServer(deps: WebDeps) {
                 full += ev.text; answerChars += ev.text.length; send({ type: "delta", text: ev.text, step: ev.step });
               }
               else if (ev.type === "notice") { trace.push({ k: "think", t: ev.text }); send({ type: "notice", text: ev.text }); }
-              else if (ev.type === "think") { answerChars -= ev.text.length; trace.push({ k: "think", t: ev.text }); send({ type: "think", text: ev.text }); }
+              else if (ev.type === "think") { answerChars -= ev.text.length; thinkBuf += ev.text; send({ type: "think", text: ev.text }); }
               else if (ev.type === "tool") {
+                flushThink();
                 // 参数不原文上屏：翻译成一句人话（学自 Coopanion 的 pet-status）。
                 // 路径只留文件名、正文/密钥/笔记一个字都不显示。
                 const h = toolHuman(ev.name, ev.args);
@@ -2462,13 +2472,15 @@ export function createWebServer(deps: WebDeps) {
                 send({ type: "tool", id: ev.id, name: ev.name, args: h });
               }
               else if (ev.type === "tool_result") {
+                flushThink();
                 used.push({ name: ev.name, args: "", result: ev.result, ms: ev.ms });
                 trace.push({ k: "res", t: ev.result.slice(0, 1200), ms: ev.ms });
                 send({ type: "tool_result", id: ev.id, name: ev.name, result: ev.result.slice(0, 1500), ms: ev.ms });
                 lastToolAt = full.length;
               }
-              else if (ev.type === "error") { trace.push({ k: "err", t: ev.message }); send({ type: "error", message: ev.message }); }
+              else if (ev.type === "error") { flushThink(); trace.push({ k: "err", t: ev.message }); send({ type: "error", message: ev.message }); }
               else if (ev.type === "done") {
+                flushThink();
                 // 一点结论都没有：要么工具被拦、要么光想了没做、要么到步数上限。
                 // 静默结束是这里最糟的选项 —— 用户看到的是「说了一句就没了」。
                 if (used.length > 0 && full.length === lastToolAt) {
