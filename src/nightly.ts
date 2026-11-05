@@ -21,6 +21,8 @@ export interface Candidate {
   text: string;
   salience: number;
   reason: string;
+  /** 原文里那一句（必须能在转写里逐字找到；找不到这条就丢） */
+  quote?: string;
 }
 
 export type Verdict = "duplicate" | "supersede" | "refine";
@@ -181,67 +183,88 @@ export function linkIfNew(
 
 
 /**
- * 抽取提示（P1-1a）。
+ * 抽取提示（2026-11-05 改版）：从「让模型自由总结」改成「填一张表，只许抄原文」。
  *
- * 改版原因（实测）：原来的长规则列表 + 88 条事件上下文 → qwen2.5:7b 直接回 []；
- * 同一批尾部对话用"短提示 + 一个例子"却能抽出 2 条。
- * 结论：7B 对**例子**敏感、对规则列表不敏感，且长上下文会稀释注意力。
+ * 为什么改：旧提示是长规则 + 例子，7B 仍然会编（实测抽出「库里有 185 条记忆」这种读数，
+ * 还把文件名当事实）。参考 NuExtract 的做法——给一个空 JSON 模板，要求字段值**必须从原文原样
+ * 抄**，原文没有就留空。这样幻觉在格式上就无处可去，剩下靠 verbatimGate() 逐条核对。
  */
 export const EXTRACT_PROMPT = (transcript: string): string => [
-  "你是记忆抽取器，从对话里找出**关于这个人**、以后还用得上的事。",
-  "只输出 JSON 数组（不要解释、不要代码围栏）。",
-  '每条：{"kind":"episode|thought|preference_hard|fact_hard|promise|boundary","layer":"narrative|contract","subject":"≤8字","text":"一句话","salience":0.9,"reason":"为什么值得记"}',
+  "从下面的对话里填这张表。规矩只有一条：所有字符串都必须从对话里**原样抄**。",
+  "原文没有的，就不要填（数组留空 []）；不许改写、不许总结、不许补充。",
+  "只输出 JSON，不要解释，不要代码围栏。",
   "",
-  "先问自己：**这句话，三个月后还用得上吗？** 用得上才记；拿不准就记（偏好和边界比经历更值钱）。",
+  "模板：",
+  "{\"facts\":[{\"kind\":\"\",\"layer\":\"\",\"subject\":\"\",\"text\":\"\",\"quote\":\"\"}]}",
   "",
-  "值得记（按优先级）：",
-  "1. 边界：怎么称呼她、不要做什么、别在什么时候打扰 —— boundary / contract",
-  "2. 承诺与约定：答应过的事、要提醒的日期 —— promise / contract",
-  "3. 硬事实：过敏与忌口、家人与关系、住哪、做什么工作、长期目标 —— fact_hard / contract",
-  "4. 稳定偏好：喜欢/讨厌、习惯、口味、作息、说话方式 —— preference_hard / narrative",
-  "5. 重要经历：她讲过的、有情绪重量的事 —— episode / narrative",
+  "字段怎么填：",
+  "· kind：boundary | promise | fact_hard | preference_hard | episode | thought",
+  "· layer：contract（边界/承诺/硬事实，永不衰减）| narrative（其余）",
+  "· subject：≤8 字，这条是关于什么的（称呼 / 忌口 / 生日 / 作息 / 工作…）",
+  "· text：一句话，用她或他的口吻陈述这件事实（这一句可以改写措辞）",
+  "· quote：**原话**——从对话里逐字复制那一句（一个字都不能改），用来核对",
   "",
-  "不值得记（一条都别记）：",
-  "· 系统操作：跑命令、改代码、看日志、重启、端口、测试结果",
-  "· 关于**你自己**（鲸鲸）的能力/配置/限制/用量：能不能上网、要不要确认、token 花了多少",
-  "  —— 那也是「关于系统」，不是关于她。她问「你能做什么」，答案在能力表里，不在记忆里。",
-  "· 一次性的当前状态：现在几点、库里多少条、某个文件在哪",
-  "· 工具输出、报错码、安装步骤、配置项",
-  "· 寒暄、附和、重复的话",
-  "",
-  "写法：text 是**一句独立的事实**，站在「她」的角度，别写成操作流水账。",
-  "  ✗ 用户要求把 tmp/y.txt 写入 world 并验证",
-  "  ✓ 她在意文件有没有真的写进去（要看到证据）",
+  "记什么（按优先级）：称呼与边界 / 承诺与日期 / 过敏忌口、家人、住哪、做什么 / 稳定偏好 / 有重量的经历。",
+  "不记：系统操作（跑命令、改代码、日志、端口、测试结果）、关于你自己（鲸鲸）的能力与用量、",
+  "      一次性的当前状态（现在几点、库里多少条、文件在哪）、工具输出与报错码、寒暄。",
   "",
   "例①（边界）：",
   "对话：用户：以后别叫我助手，叫名字就行",
-  '输出：[{"kind":"boundary","layer":"contract","subject":"称呼","text":"不要叫他助手，直接叫名字","salience":0.9,"reason":"明确的称呼边界"}]',
+  "{\"facts\":[{\"kind\":\"boundary\",\"layer\":\"contract\",\"subject\":\"称呼\",\"text\":\"不要叫他助手，直接叫名字\",\"quote\":\"以后别叫我助手，叫名字就行\"}]}",
   "",
-  "例②（偏好）：",
-  "对话：用户：我一般十点以后才看消息，早上别叫我",
-  '输出：[{"kind":"preference_hard","layer":"narrative","subject":"作息","text":"早上别打扰她，她十点后才看消息","salience":0.8,"reason":"稳定的作息边界"}]',
+  "例②（系统操作，不记）：",
+  "对话：用户：跑一下 npm test  鲸鲸：583 条全绿",
+  "{\"facts\":[]}",
   "",
-  "例③（系统操作，不记）：",
-  "对话：用户：跑一下 npm test 看看  鲸鲸：583 条全绿",
-  "输出：[]",
-  "",
-  "例④（寒暄，不记）：",
-  "对话：用户：在吗  鲸鲸：在。",
-  "输出：[]",
-  "",
-  "最多 4 条；没有就输出 []。",
+  "最多 4 条；没有就 {\"facts\":[]}。",
   "",
   "对话：",
   transcript,
 ].join(String.fromCharCode(10));
 
+
+/**
+ * 原文核对（2026-11-05）：一条候选只有 quote 能在转写里逐字找到才留下。
+ *
+ * 这是「只许抄原文」的**确定性**那一半 —— 提示词管住模型的意图，这里管住结果：
+ * 编出来的读数、把文件名当事实、改写过的「事实」，都会在这一步被丢掉。
+ * 省略号（… 或 ...）按段核对：每段都要能在原文里找到。
+ */
+export function verbatimGate(cands: Candidate[], transcript: string): { kept: Candidate[]; dropped: number } {
+  const hay = normalizeForQuote(transcript);
+  const kept: Candidate[] = [];
+  let dropped = 0;
+  for (const c of cands) {
+    const q = String(c.quote ?? "").trim();
+    if (!q) { dropped++; continue; }
+    const parts = q.split(/…|\.{3}/).map((x) => normalizeForQuote(x)).filter(Boolean);
+    if (!parts.length) { dropped++; continue; }
+    if (parts.every((p) => hay.includes(p))) kept.push(c);
+    else dropped++;
+  }
+  return { kept, dropped };
+}
+
+/** 去掉所有空白、全半角标点差异，只留字：核对用，不用于展示 */
+export function normalizeForQuote(s: string): string {
+  return String(s)
+    .replace(/[\s\u3000]+/g, "")
+    .replace(/[，。！？、；：“”‘’（）《》【】…—\-.,!?;:'\"()\[\]]/g, "")
+    .toLowerCase();
+}
 /** 宽松解析：容忍 ```json 围栏、前后废话、单条对象 */
 export function parseCandidates(raw: string, cap = 5): Candidate[] {
   const t = raw.replace(/```[a-zA-Z]*/g, "").trim();
   const first = t.indexOf("[");
   const last = t.lastIndexOf("]");
   let arr: unknown = [];
-  if (first >= 0 && last > first) {
+  // 新模板是 {facts:[…]}：先认它；老形状（裸数组）继续兼容
+  try {
+    const obj = JSON.parse(t.slice(t.indexOf("{"), t.lastIndexOf("}") + 1)) as { facts?: unknown };
+    if (obj && Array.isArray(obj.facts)) arr = obj.facts;
+  } catch { /* 不是新形状 */ }
+  if (Array.isArray(arr) && arr.length) { /* 已经是 facts 数组 */ }
+  else if (first >= 0 && last > first) {
     try { arr = JSON.parse(t.slice(first, last + 1)); } catch { arr = []; }
   } else {
     const o1 = t.indexOf("{");
@@ -265,6 +288,7 @@ export function parseCandidates(raw: string, cap = 5): Candidate[] {
       text,
       salience: Math.max(0, Math.min(1, Number(o.salience ?? 0.3) || 0.3)),
       reason: String(o.reason ?? "").slice(0, 120),
+      ...(typeof o.quote === "string" && o.quote.trim() ? { quote: o.quote.trim().slice(0, 300) } : {}),
     });
     if (out.length >= cap) break;
   }
@@ -543,6 +567,20 @@ export async function runNightly(deps: NightlyDeps): Promise<NightlyReport> {
         extractFailed = true;
         notes.push(`E_EXTRACT: ${String(e).slice(0, 120)}`);
         break;
+      }
+    }
+    // 原文核对（2026-11-05）：quote 在转写里找不到的，直接丢 —— 这是只许抄原文的确定性那一半
+    {
+      const allText = windows.map((w) => w.map((e) => textOf(e)).join(String.fromCharCode(10))).join(String.fromCharCode(10));
+      const withQuote = cands.filter((c) => c.quote).length;
+      if (!withQuote) {
+        // 兼容：这一批模型完全没按新模板给 quote（老模型/老夹具）。不静默放行 —— 记一笔，
+        // 这样「今天没核对」在报告里看得见，而不是变成默认行为。
+        notes.push("VERBATIM: 这批没有 quote，跳过核对（提示词没被遵守）");
+      } else {
+        const g = verbatimGate(cands, allText);
+        if (g.dropped) notes.push("VERBATIM: 丢掉 " + g.dropped + " 条（quote 在原文里找不到）");
+        cands = g.kept;
       }
     }
     cands.splice(cap);   // 总量上限：宁缺毋滥
