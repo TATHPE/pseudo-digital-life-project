@@ -205,6 +205,36 @@ test("编码闸：非 UTF-8（GBK）请求体拒收，不写进记忆", async ()
   } finally { srv.close(); }
 });
 
+test("会话：一问一答挂在同一个 session 上，关掉之后开新的（2026-11-05）", async () => {
+  const { srv, base } = await start();
+  try {
+    const say = async (t: string) => {
+      const r = await fetch(`${base}/api/say`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: t }) });
+      return await r.text();
+    };
+    await say("第一句");
+    await say("第二句");
+
+    const l1 = await (await fetch(`${base}/api/sessions`)).json() as any;
+    assert.equal(l1.sessions.length, 1, "连续两句是同一次会话");
+    const s1 = l1.sessions[0];
+    assert.equal(s1.title, "第一句", "标题取第一句");
+    assert.equal(s1.msgs, 4, "两问两答");
+
+    const detail = await (await fetch(`${base}/api/sessions/${s1.id}`)).json() as any;
+    assert.equal(detail.messages.length, 4);
+    assert.equal(detail.messages[0].role, "user");
+    assert.equal(detail.messages[0].text, "第一句");
+
+    const c = await fetch(`${base}/api/sessions/${s1.id}/close`, { method: "POST", headers: { "content-type": "application/json", "x-jj": "1" }, body: "{}" });
+    assert.equal((await c.json() as any).ok, true);
+
+    await say("第三句");
+    const l2 = await (await fetch(`${base}/api/sessions`)).json() as any;
+    assert.equal(l2.sessions.length, 2, "关掉之后是新的一次");
+    assert.equal(l2.sessions.filter((x: any) => x.status === "closed").length, 1);
+  } finally { srv.close(); }
+});
 test("诊断 / 部署 / 导出校验：面板能自己说清状态（2026-11-05）", async () => {
   const { srv, base } = await start();
   try {

@@ -8,8 +8,8 @@
 
 | 项 | 数量 |
 |---|---|
-| 源文件（src/**/*.ts） | 115 |
-| 错误码 E_* | 215 |
+| 源文件（src/**/*.ts） | 116 |
+| 错误码 E_* | 216 |
 | verbs | 27 |
 | CLI 子命令 | 39 |
 
@@ -147,6 +147,7 @@
 | `E_NO_ROLE` | `src/cli/jingjing.ts` |
 | `E_NO_RULE` | `src/policy.ts` |
 | `E_NO_SERVER` | `src/mcphub.ts` |
+| `E_NO_SESSION` | `src/web/server.ts` |
 | `E_NO_SHELL` | `src/verbs.ts` |
 | `E_NO_SKILL` | `src/skills.ts` |
 | `E_NO_TARGET` | `src/cli/deploy.ts` |
@@ -357,6 +358,7 @@
 | `src/retrieve.ts` | 两阶段检索（02 §7.1 实测修订 / 12 §9.1） |
 | `src/schema.ts` | M0 schema（02 §4 + 18 §1 的 outage/审计） */ |
 | `src/selfupdate.ts` | 自我更新三件套（2026-11-03）。按 `docs/18 §4.3` 的流程，落到我们能实现的那部分： |
+| `src/sessions.ts` | 会话对象（2026-11-05）：把「一串消息」变成「一次可指认的对话」。 |
 | `src/setup.ts` | 首次配置事务（H-4）。 |
 | `src/setupsteps.ts` | 引导步骤的执行（H-4 的第 2–4 步）。 |
 | `src/shell.ts` | T3 受限命令执行（04 §5.2 模板 / §4.1 一次性令牌 / §6 宿主层） |

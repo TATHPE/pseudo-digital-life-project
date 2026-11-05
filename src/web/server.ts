@@ -8,6 +8,7 @@ import { whaleSvg } from "./brand.ts";
 import * as deskT from "./desk.ts";
 import { groupTimeline, gapLabel, type Msg } from "./timeline.ts";
 import { appendEvent, newEventId, readEvents } from "../journal.ts";
+import { openSession, touchSession, closeSession, listSessions, getSession, titleFrom } from "../sessions.ts";
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { search, searchDocs } from "../retrieve.ts";
 import { buildBrief } from "../brief.ts";
@@ -291,6 +292,8 @@ export function createWebServer(deps: WebDeps) {
   // 存储本身无状态，进程内复用即可（clear/set 会自己让解密缓存失效）。
   let secretStore: ReturnType<typeof createStore> | null = null;
   const secrets = () => (secretStore ??= createStore(joinDir(deps.home, "secrets")));
+  // 正在流式回答的会话 → 打断函数（interrupt 用；进程内存，重启即空）
+  const activeSays = new Map<string, () => void>();
 
   return httpCreateServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
@@ -498,6 +501,45 @@ export function createWebServer(deps: WebDeps) {
         json(res, 200, { ok: true, bye: true });
         // 先把响应发出去，再退（否则壳那边拿到的是连接被重置）
         setTimeout(() => process.exit(0), 60);
+        return;
+      }
+      // ── 会话：一次可指认的对话（2026-11-05）──
+      if (req.method === "GET" && url.pathname === "/api/sessions") {
+        try { json(res, 200, { sessions: listSessions(deps.db, Number(url.searchParams.get("limit") ?? 30)) }); }
+        catch (e) { json(res, 500, { error: String((e as Error)?.message ?? e).slice(0, 160) }); }
+        return;
+      }
+      const sessGet = url.pathname.match(/^\/api\/sessions\/([A-Za-z0-9_-]{4,40})$/);
+      if (req.method === "GET" && sessGet) {
+        const id = String(sessGet[1]);
+        const row = getSession(deps.db, id);
+        if (!row) { json(res, 404, { error: "E_NO_SESSION" }); return; }
+        const { events } = readEvents(deps.inboxDir);
+        const msgs = events
+          .filter((e) => (e.kind === "utterance" || e.kind === "agent_reply") &&
+            String(((e.payload ?? {}) as { session?: string }).session ?? "") === id)
+          .map((e) => {
+            const p = (e.payload ?? {}) as { text?: string };
+            return { role: e.kind === "utterance" ? "user" : "agent", text: String(p.text ?? ""), ts: e.ts };
+          });
+        json(res, 200, { session: row, messages: msgs });
+        return;
+      }
+      const sessAct = url.pathname.match(/^\/api\/sessions\/([A-Za-z0-9_-]{4,40})\/(close|rename|interrupt)$/);
+      if (req.method === "POST" && sessAct) {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
+        const id = String(sessAct[1]);
+        const what = String(sessAct[2]);
+        if (what === "close") { json(res, 200, { ok: closeSession(deps.db, id, now()) }); return; }
+        if (what === "rename") {
+          const body = JSON.parse(await readBody(req)) as { title?: string };
+          touchSession(deps.db, id, { title: String(body.title ?? "") });
+          json(res, 200, { ok: true });
+          return;
+        }
+        const abort = activeSays.get(id);
+        if (abort) { abort(); json(res, 200, { ok: true, interrupted: true }); }
+        else json(res, 200, { ok: true, interrupted: false });
         return;
       }
       if (req.method === "GET" && url.pathname === "/health") {
@@ -1934,7 +1976,13 @@ export function createWebServer(deps: WebDeps) {
         }
 
         const ts = now().toISOString();
-        appendEvent(deps.inboxDir, { v: 1, id: newEventId(), ts, kind: "utterance", actor: "user", payload: { text } });
+        // 会话对象：这一轮挂在哪个 session 上（4 小时内的连续对话算同一次）
+        let sess: { id: string; title: string } = { id: "", title: "" };
+        try {
+          sess = openSession(deps.db, now(), { title: titleFrom(text) });
+          if (!sess.title) touchSession(deps.db, sess.id, { title: titleFrom(text) });
+        } catch { /* 会话记账失败不影响对话 */ }
+        appendEvent(deps.inboxDir, { v: 1, id: newEventId(), ts, kind: "utterance", actor: "user", payload: { text, session: sess.id } });
 
         // 当场记住（2026-11-04）：明确的记性请求不排队等夜里那一次批处理。
         // 纯规则、不看模型（认不出就交给夜间整理）—— 误记比漏记贵。
@@ -2075,6 +2123,11 @@ export function createWebServer(deps: WebDeps) {
         // 用户点“停止”/关页面时浏览器会断开；服务端必须跟着停，否则只是“看不见”，token 照烧
         let aborted = false;
         res.on("close", () => { aborted = true; });
+        // 会话可被打断：登记一个停止函数，POST /api/sessions/:id/interrupt 调它
+        if (sess.id) {
+          activeSays.set(sess.id, () => { aborted = true; try { res.end(); } catch { /* 已断开 */ } });
+          res.on("close", () => { activeSays.delete(sess.id); });
+        }
         send({
           type: "brief", tokens: brief.tokens, prefix: brief.prefixHash, confidence: brief.confidence,
           omitted, omittedDocs: rc.omittedDocs, recall: recalled.length,
@@ -2182,13 +2235,14 @@ export function createWebServer(deps: WebDeps) {
           appendEvent(deps.inboxDir, {
             v: 1, id: newEventId(), ts: now().toISOString(), kind: "agent_reply", actor: "agent",
             payload: {
-              text: full, tools: used,
+              text: full, session: sess.id, tools: used,
               ...(trace.length ? { trace } : {}),
               ...(recalled.length ? { cites: recalled.map((r) => r.id) } : {}),
               ...(omitted ? { omitted } : {}),
               ...(rc.omittedDocs ? { omittedDocs: rc.omittedDocs } : {}),
             },
           });
+          try { touchSession(deps.db, sess.id, { status: "idle", bump: true }); touchSession(deps.db, sess.id, { bump: true }); } catch { /* ignore */ }
         }
         // 再巩固（J-1）：只有**真的进了装配块**的才算"被想起"（不是被检索到）。
         // 之前 reconsolidate() 全库零调用 → recall_count 永远 0 → "想一次就更牢"从没生效。

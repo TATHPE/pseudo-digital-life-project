@@ -250,6 +250,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
       <h2>记录</h2>
       <div id="nb-days"></div>
       <h2 style="margin-top:16px">去处</h2>
+      <div class="nb-go" data-v="sess">会话<span class="n" id="nb-nsess">…</span></div>
       <div class="nb-go" data-v="mem">记忆<span class="n" id="nb-nmem">…</span></div>
       <div class="nb-go" data-v="docs">文档<span class="n" id="nb-ndocs">…</span></div>
       <div class="nb-go" data-v="cap">能力</div>
@@ -327,6 +328,9 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
     fetch('/api/memories/summary').then(function(r){ return r.json(); }).then(function(j){
       $('nb-about').textContent = j.about == null ? '…' : j.about;
       var nm = $('nb-nmem'); if (nm) nm.textContent = j.total == null ? '…' : j.total;
+      fetch('/api/sessions?limit=50').then(function(r){ return r.json(); }).then(function(x){
+        var ns = $('nb-nsess'); if (ns) ns.textContent = String(((x && x.sessions) || []).length);
+      }).catch(function(){});
       fetch('/api/docs').then(function(r){ return r.json(); }).then(function(rows){
         var nd = $('nb-ndocs');
         if (nd) nd.textContent = Array.isArray(rows) ? rows.length : '…';
@@ -773,6 +777,52 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
     });
   }
 
+  // ── 会话：一次可指认的对话（2026-11-05）────────────────────────
+  function sessView(){
+    var el = $('nb-view');
+    el.innerHTML = head('会话') + wrap('<div id="nb-sess"><div class="nb-empty">读取中…</div></div>');
+    fetch('/api/sessions').then(function(r){ return r.json(); }).then(function(j){
+      var rows = (j && j.sessions) || [];
+      var box = $('nb-sess');
+      if (!rows.length) { box.innerHTML = '<div class="nb-empty">还没有会话。去「记录」说一句就有第一次了。</div>'; return; }
+      box.innerHTML = rows.map(function(x){
+        var t = String(x.title || '（没起标题）');
+        return '<button class="nb-row" data-sess="' + esc(x.id) + '">' + esc(t) +
+          '<span class="m">' + esc(String(x.updated_at).slice(5, 16).replace('T', ' ')) +
+          ' · ' + Number(x.msgs || 0) + ' 条 · ' + esc(x.status) + '</span></button>';
+      }).join('');
+      Array.prototype.forEach.call(box.querySelectorAll('[data-sess]'), function(b){
+        b.onclick = function(){ sessDetail(b.getAttribute('data-sess')); };
+      });
+    }).catch(function(){
+      var box = $('nb-sess'); if (box) box.innerHTML = '<div class="nb-empty">读取失败。</div>';
+    });
+  }
+
+  function sessDetail(id){
+    var el = $('nb-view');
+    el.innerHTML = head('会话', '<button class="nb-btn" id="nb-sback">← 回会话</button>') +
+      wrap('<div id="nb-sdetail"><div class="nb-empty">读取中…</div></div>');
+    var back = $('nb-sback'); if (back) back.onclick = function(){ sessView(); };
+    fetch('/api/sessions/' + encodeURIComponent(id)).then(function(r){ return r.json(); }).then(function(j){
+      var msgs = (j && j.messages) || [];
+      var meta = (j && j.session) || {};
+      var rows = msgs.length ? msgs.map(function(m){
+        var mine = m.role === 'user';
+        return '<div class="nb-e ' + (mine ? 'me' : 'her') + '" style="border-top:1px solid var(--line-dim)">' +
+          '<div class="g">' + esc(String(m.ts || '').slice(11, 16)) +
+          '<span class="w">' + (mine ? '你' : '她') + '</span></div>' +
+          '<div class="b"><div class="nb-say"><div>' + esc(String(m.text || '').slice(0, 1200)) + '</div></div></div></div>';
+      }).join('') : '<div class="nb-empty">这次会话没有留下消息。</div>';
+      var head2 = '<div class="nb-kv"><b>开始</b><span>' + esc(String(meta.created_at || '').slice(0, 16).replace('T', ' ')) + '</span>' +
+        '<b>状态</b><span>' + esc(meta.status || '—') + '</span>' +
+        '<b>条数</b><span>' + Number(meta.msgs || 0) + '</span></div>';
+      $('nb-sdetail').innerHTML = head2 + rows;
+    }).catch(function(){
+      var box = $('nb-sdetail'); if (box) box.innerHTML = '<div class="nb-empty">读取失败。</div>';
+    });
+  }
+
   // ── 去处：记忆 / 文档 / 能力 / 校样 / 设置 ──────────────────
   var KIND = { boundary:'边界', promise:'承诺', fact_hard:'事实', fact:'事实',
     preference_hard:'偏好', preference_soft:'偏好', episode:'经历', thought:'想法',
@@ -807,6 +857,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
     else if (v === 'git') gitView();
     else if (v === 'cfg') cfgView();
     else if (v === 'gap') gapView();
+    else if (v === 'sess') sessView();
     else el.innerHTML = head('？') + wrap('<div class="nb-empty">没有这一页。</div>');
   }
   Array.prototype.forEach.call(document.querySelectorAll('.nb-go[data-v]'), function(b){
@@ -1185,7 +1236,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
     var v = m ? m[1] : '';
     if (v === 'board') { go('home'); setTimeout(function(){ Board(true); }, 120); return; }
     if (v === 'chat') { go('chat'); return; }
-    if (['mem','docs','cap','git','cfg','gap'].indexOf(v) >= 0) { setTimeout(function(){ go(v); }, 120); return; }
+    if (['mem','docs','cap','git','cfg','gap','sess'].indexOf(v) >= 0) { setTimeout(function(){ go(v); }, 120); return; }
     go('home');
   })();
   setInterval(function(){ loadState(); loadTabs(); }, 20000);
