@@ -172,6 +172,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
 .nb-e:first-child{border-top:0}
 .nb-e .g{text-align:right;font:10px/1.7 var(--mono);color:var(--dim2);padding-top:5px}
 .nb-e .g .w{display:block;color:var(--dim);letter-spacing:.06em}
+.nb-gav{display:block;width:22px;height:22px;object-fit:cover;margin:0 0 5px auto;border:1px solid var(--line-dim);opacity:.85}
 .nb-e.me .g .w{color:var(--amber)}
 .nb-e .b{min-width:0}
 .nb-say{border-left:2px solid var(--cyan);padding:2px 0 2px 14px}
@@ -284,6 +285,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
       <h2>记录</h2>
       <div id="nb-days"></div>
       <h2 style="margin-top:16px">去处</h2>
+      <div class="nb-go" data-v="home">工作台</div>
       <div class="nb-go" data-v="sess">会话<span class="n" id="nb-nsess">…</span></div>
       <div class="nb-go" data-v="mem">记忆<span class="n" id="nb-nmem">…</span></div>
       <div class="nb-go" data-v="docs">文档<span class="n" id="nb-ndocs">…</span></div>
@@ -341,7 +343,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
 (function(){
   var $ = function(id){ return document.getElementById(id); };
   var H = { 'content-type':'application/json', 'x-jj':'1' };
-  var TL = [], BOARD = false, CUR = 0, TAB = -1, BUSY = false;
+  var TL = [], BOARD = false, CUR = 0, TAB = -1, BUSY = false, AV = {};
 
   function esc(s){
     return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
@@ -434,6 +436,12 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
     return out;
   }
 
+  function loadAvatars(){
+    fetch('/api/avatars').then(function(r){ return r.json(); }).then(function(j){
+      AV = j || {};
+      if (TL.length && $('nb-log')) renderLog();
+    }).catch(function(){});
+  }
   function renderLog(){
     var html = '', n = 0;
     TL.forEach(function(b){
@@ -445,7 +453,12 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
       var long = String(b.text || '').length > 420;
       var id = 'f' + (CUR++);
       html += '<article class="nb-e ' + (mine ? 'me' : 'her') + '">' +
-        '<div class="g">' + hhmm(b.ts) + '<span class="w">' + (mine ? '你' : '她') + '</span></div>' +
+        '<div class="g">' +
+        (function(){
+          var av = mine ? AV.user : AV.agent;
+          return av && av.url ? '<img class="nb-gav" src="' + esc(av.url) + '" alt="">' : '';
+        })() +
+        hhmm(b.ts) + '<span class="w">' + (mine ? '你' : '她') + '</span></div>' +
         '<div class="b"><div class="nb-say"><div class="' + (long ? 'nb-fold' : '') + '" id="' + id + '">' +
         body + '</div></div>' +
         (evChips(b).length ? '<div class="nb-ev">' + evChips(b).map(function(t){ return '<span>' + esc(t) + '</span>'; }).join('') + '</div>' : '') +
@@ -1366,10 +1379,12 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
         '<div class="nb-form">' +
         '<div class="nb-fld"><span>她</span><div class="nb-actrow">' +
         (av.agent ? '<img class="nb-av" src="' + esc(av.agent.url) + '" alt="">' : '<span class="nb-empty">默认图标</span>') +
-        '<label class="nb-btn">换一张<input type="file" data-av="agent" accept="image/png,image/jpeg,image/webp" style="display:none"></label></div></div>' +
+        '<button class="nb-btn" data-pick="agent">换一张</button>' +
+        '<input type="file" data-av="agent" accept="image/png,image/jpeg,image/webp" style="display:none"></div></div>' +
         '<div class="nb-fld"><span>你</span><div class="nb-actrow">' +
         (av.user ? '<img class="nb-av" src="' + esc(av.user.url) + '" alt="">' : '<span class="nb-empty">默认图标</span>') +
-        '<label class="nb-btn">换一张<input type="file" data-av="user" accept="image/png,image/jpeg,image/webp" style="display:none"></label></div></div>' +
+        '<button class="nb-btn" data-pick="user">换一张</button>' +
+        '<input type="file" data-av="user" accept="image/png,image/jpeg,image/webp" style="display:none"></div></div>' +
         '<div class="nb-empty">png / jpeg / webp，≤512KB</div></div>');
       html += sec('主机 · 命令解释器',
         '<div class="nb-form">' + optRow('shell', ['auto', 'powershell', 'pwsh', 'gitbash'], host.wanted || 'auto', '用哪个') +
@@ -1399,6 +1414,14 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
         '<div class="nb-actrow"><button class="nb-btn" id="cf-ver">校验一个导出目录</button>' +
         '<button class="nb-btn" id="cf-imp">看导入命令</button></div>' +
         '<div class="nb-empty" id="cf-impout"></div>');
+      html += sec('开机片头',
+        '<div class="nb-form">' +
+        '<div class="nb-opts" id="cf-splash">' +
+        ['full','simple','off'].map(function(x){
+          var label = x === 'full' ? '完整（约 7 秒）' : x === 'simple' ? '简易（约 3.6 秒）' : '不播';
+          return '<button class="nb-opt' + (ui.splash === x ? ' on' : '') + '" data-splash="' + x + '">' + label + '</button>';
+        }).join('') + '</div>' +
+        '<div class="nb-actrow"><span class="nb-empty">点一下就是新的档位，下次打开生效</span></div></div>');
       html += sec('引导',
         '<div class="nb-actrow"><a class="nb-btn" href="/welcome">重新过一遍引导</a>' +
         '<span class="nb-empty">首页那八步：装 Ollama / 拉模型 / 试运行</span></div>');
@@ -1463,9 +1486,28 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
         fetch('/api/config', { method: 'PUT', headers: H, body: JSON.stringify({ agent: { name: $('cf-name').value.trim() } }) })
           .then(function(r){ return r.json(); }).then(function(j){ msg(j.ok ? '名字已保存' : (j.error || '失败'), !!j.ok); });
       });
+      Array.prototype.forEach.call(box.querySelectorAll('[data-splash]'), function(b){
+        b.onclick = function(){
+          var v = b.getAttribute('data-splash');
+          fetch('/api/ui', { method: 'PUT', headers: H, body: JSON.stringify({ splash: v }) })
+            .then(function(r){ return r.json(); }).then(function(j){
+              if (!j.ok) { tick(j.error || '没保存成'); return; }
+              Array.prototype.forEach.call(box.querySelectorAll('[data-splash]'), function(x){ x.className = 'nb-opt'; });
+              b.className = 'nb-opt on';
+              tick('片头：' + (v === 'off' ? '不播' : v) + '（下次打开生效）');
+            });
+        };
+      });
       on('cf-hsave', function(){
         fetch('/api/host', { method: 'PUT', headers: H, body: JSON.stringify({ shell: chosen.shell }) })
           .then(function(r){ return r.json(); }).then(function(j){ msg(j.ok ? '解释器已保存' : (j.error || '失败'), !!j.ok); });
+      });
+      // 「换一张」按钮 → 触发隐藏的 file input（WebView 里 label 包 input 有时不弹框）
+      Array.prototype.forEach.call(box.querySelectorAll('[data-pick]'), function(b){
+        b.onclick = function(){
+          var inp = box.querySelector('input[data-av="' + b.getAttribute('data-pick') + '"]');
+          if (inp) inp.click();
+        };
       });
       Array.prototype.forEach.call(box.querySelectorAll('input[data-av]'), function(inp){
         inp.onchange = function(){
@@ -1590,7 +1632,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
   if (palBg) palBg.addEventListener('click', function(e){ if (e.target === palBg) palClose(); });
 
   // ── 启动 ─────────────────────────────────────
-  loadState(); loadTimeline(); loadTabs(); loadHome();
+  loadState(); loadTimeline(); loadTabs(); loadHome(); loadAvatars();
   // 深链接：?view=home|chat|board|mem|docs|cap|git|gap|cfg（截图、书签、排障都靠它）
   (function(){
     var m = /[?&]view=([a-z]+)/.exec(location.search || '');
