@@ -147,6 +147,9 @@ impl Sidecar {
             let pid = c.id();
             #[cfg(windows)]
             {
+                // 先礼：调一次 /api/shutdown，让它把 data/.desk.json 清掉再退。
+                // 原来直接 /T /F，node 的 exit 钩子来不及跑 —— 令牌文件就留在磁盘上（2026-11-05）。
+                let _ = settle_shutdown(&self.port, &self.token());
                 let _ = Command::new("taskkill")
                     .args(["/PID", &pid.to_string(), "/T", "/F"])
                     .stdout(Stdio::null())
@@ -160,6 +163,25 @@ impl Sidecar {
             let _ = c.wait();
         }
     }
+}
+
+/// 叫它自己退：POST /api/shutdown，最多等 1.5 秒。失败就返回 false，调用方还有强杀兜底。
+#[cfg(windows)]
+fn settle_shutdown(port: &u16, token: &str) -> bool {
+    use std::io::{Read, Write};
+    use std::net::TcpStream;
+    let addr = format!("127.0.0.1:{}", port);
+    let mut s = match TcpStream::connect_timeout(&addr.parse().unwrap(), Duration::from_millis(400)) {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+    let _ = s.set_read_timeout(Some(Duration::from_millis(1200)));
+    let req = format!("POST /api/shutdown?k={} HTTP/1.1\r\nHost: 127.0.0.1\r\nx-jj: 1\r\ncontent-length: 0\r\nconnection: close\r\n\r\n", token);
+    if s.write_all(req.as_bytes()).is_err() { return false; }
+    let mut buf = [0u8; 64];
+    let _ = s.read(&mut buf);
+    std::thread::sleep(Duration::from_millis(600));
+    true
 }
 
 /// 端口能连上就算活（不做 HTTP 解析：壳不该理解 `/health` 的业务含义）

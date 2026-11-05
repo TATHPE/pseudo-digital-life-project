@@ -489,6 +489,17 @@ export function createWebServer(deps: WebDeps) {
         return;
       }
       // 健康检查（19 §7.3 / compose healthcheck）：只回答“能不能服务”，不做重活（不跑 quick_check）
+      // 体面退出（2026-11-05）：壳关窗时先打这里，把 data/.desk.json 清掉再退。
+      // 原来直接 taskkill /F，node 的 exit 钩子来不及跑，令牌文件就留在磁盘上。
+      if (req.method === "POST" && url.pathname === "/api/shutdown") {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
+        const deskT2 = await import("./desk.ts");
+        deskT2.clearDeskRuntime(deps.home);
+        json(res, 200, { ok: true, bye: true });
+        // 先把响应发出去，再退（否则壳那边拿到的是连接被重置）
+        setTimeout(() => process.exit(0), 60);
+        return;
+      }
       if (req.method === "GET" && url.pathname === "/health") {
         const dep = readStateSafe(deps.home);
         const degraded: string[] = [];

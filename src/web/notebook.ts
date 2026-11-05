@@ -267,7 +267,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
       <div class="nb-sheet" id="nb-log"></div>
     </main>
 
-    <aside class="nb-tabs">
+    <aside class="nb-tabs" id="nb-tabs">
       <div class="nb-rail">
         <button class="nb-tab" data-t="0" id="nb-t0">0<span class="c" id="nb-c0">0</span></button>
         <button class="nb-tab" data-t="1" id="nb-t1">I<span class="c" id="nb-c1">0</span></button>
@@ -280,7 +280,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
 </div>
 
 <div class="nb-tick"><div id="nb-tickmsg"></div></div>
-<div class="nb-composer">
+<div class="nb-composer" id="nb-composer">
   <div class="nb-cin">
     <span class="cr">›</span>
     <textarea id="nb-say" rows="1" placeholder="说点什么"></textarea>
@@ -367,6 +367,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
     Array.prototype.forEach.call($('nb-days').querySelectorAll('.nb-day'), function(el){
       el.onclick = function(){
         Board(false);
+        go('chat');
         Array.prototype.forEach.call($('nb-days').querySelectorAll('.nb-day'), function(x){ x.classList.remove('on'); });
         el.classList.add('on');
         var lab = el.getAttribute('data-jump');
@@ -631,6 +632,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
       return pump();
     }).then(function(){
       BUSY = false;
+      go('chat');
       return loadTimeline().then(function(){
         loadState(); loadTabs();
         requestAnimationFrame(function(){ $('nb-page').scrollTop = $('nb-page').scrollHeight; });
@@ -716,8 +718,11 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
             '</span><span class="m">' + props.length + ' 个提议' +
             ((Array.isArray(eg.pending) && eg.pending.length) ? ' · ' + eg.pending.length + ' 个外发' : '') + '</span></div>' +
         '</div>' +
-        '<div class="nb-sec">§ 03 记录</div>' +
+        '<div class="nb-actrow" style="margin-top:18px">' +
+        '<button class="nb-btn" id="nb-gochat">进入记录 · 继续说话</button></div>' +
         '</div>';
+      var gc = $('nb-gochat');
+      if (gc) gc.onclick = function(){ go('chat'); };
       Array.prototype.forEach.call(el.querySelectorAll('[data-home]'), function(b){
         b.onclick = function(){
           var w = b.getAttribute('data-home');
@@ -772,7 +777,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
   var KIND = { boundary:'边界', promise:'承诺', fact_hard:'事实', fact:'事实',
     preference_hard:'偏好', preference_soft:'偏好', episode:'经历', thought:'想法',
     reading:'读来的', anchor:'锚点', contract:'契约', gist:'梗概' };
-  var VIEW = 'chat', AT_BOTTOM = false;
+  var VIEW = 'home', AT_BOTTOM = false;
   function head(title, extra){
     return '<div class="nb-pagehd"><h1>' + esc(title) + '</h1><span class="sp"></span>' +
       (extra || '') + '</div>';
@@ -783,14 +788,19 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
     Array.prototype.forEach.call(document.querySelectorAll('.nb-go[data-v]'), function(x){
       x.className = 'nb-go' + (x.getAttribute('data-v') === v ? ' cur' : '');
     });
+    var home = v === 'home';
     var chat = v === 'chat';
-    showHome(chat);
+    // 三块面一次只露一块：工作台 / 记录（对话） / 其余（记忆/文档/设置…）
+    showHome(home);
     $('nb-log').hidden = !chat;
     $('nb-board').hidden = true;
-    $('nb-view').hidden = chat;
+    $('nb-view').hidden = home || chat;
+    var cb = $('nb-composer'); if (cb) cb.hidden = !chat;
+    var tb = $('nb-tabs'); if (tb) tb.hidden = home;
     $('nb-board-btn').className = 'nb-go';
     var el = $('nb-view');
-    if (chat) { $('nb-page').scrollTop = $('nb-page').scrollHeight; return; }
+    if (home) { $('nb-page').scrollTop = 0; return; }
+    if (chat) { AT_BOTTOM = true; $('nb-page').scrollTop = $('nb-page').scrollHeight; return; }
     if (v === 'mem') memView('');
     else if (v === 'docs') docsView();
     else if (v === 'cap') capView();
@@ -1169,12 +1179,14 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
 
   // ── 启动 ─────────────────────────────────────
   loadState(); loadTimeline(); loadTabs(); loadHome();
-  // 深链接：?view=board|mem|docs|cap|git|cfg（截图、书签、排障都靠它）
+  // 深链接：?view=home|chat|board|mem|docs|cap|git|gap|cfg（截图、书签、排障都靠它）
   (function(){
     var m = /[?&]view=([a-z]+)/.exec(location.search || '');
     var v = m ? m[1] : '';
-    if (v === 'board') setTimeout(function(){ Board(true); }, 120);
-    else if (['mem','docs','cap','git','cfg','gap'].indexOf(v) >= 0) setTimeout(function(){ go(v); }, 120);
+    if (v === 'board') { go('home'); setTimeout(function(){ Board(true); }, 120); return; }
+    if (v === 'chat') { go('chat'); return; }
+    if (['mem','docs','cap','git','cfg','gap'].indexOf(v) >= 0) { setTimeout(function(){ go(v); }, 120); return; }
+    go('home');
   })();
   setInterval(function(){ loadState(); loadTabs(); }, 20000);
 })();
