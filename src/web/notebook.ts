@@ -258,7 +258,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
   padding-left:76px;text-align:right}
 
 /* 醋酸片：过程盖在正文上 */
-.nb-leaf{position:fixed;right:64px;bottom:78px;width:360px;max-height:56vh;overflow:auto;z-index:5;
+.nb-leaf{position:fixed;right:64px;bottom:120px;width:340px;max-height:42vh;overflow:auto;z-index:5;
   background:rgba(14,18,17,.96);
   backdrop-filter:blur(4px);border:1px solid rgba(233,240,242,.22);
   padding:18px 12px 12px}
@@ -701,7 +701,9 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
             if (line.indexOf('data: ') !== 0) return;
             var ev;
             try { ev = JSON.parse(line.slice(6)); } catch(e){ return; }
-            if (ev.type === 'delta') {
+            if (ev.type === 'reset') {
+              var lv = $('nb-live'); if (lv) lv.textContent = '';
+            } else if (ev.type === 'delta') {
               var live = $('nb-live'); if (live) live.textContent += ev.text;
               $('nb-page').scrollTop = $('nb-page').scrollHeight;
             } else if (ev.type === 'think') {
@@ -721,6 +723,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
     }).then(function(){
       BUSY = false; AC = null;
       var sb = $('nb-stop'); if (sb) sb.hidden = true;
+      LEAF = []; paintLeaf();   // 过程片收起来：它常驻会一直盖着正文
       go('chat');
       return loadTimeline().then(function(){
         loadState(); loadTabs();

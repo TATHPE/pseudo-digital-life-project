@@ -2399,6 +2399,7 @@ export function createWebServer(deps: WebDeps) {
         // 真正的回答字数（delta 总量 - 被判为过程的量）。为 0 说明这一轮只说了过程、没结论，
         // 典型场景：工具被授权闸门拦下，她说完"我要去查"就停了（用户看到的就是回答不完整）。
         let answerChars = 0;
+        let curStep = -1;
         // 最后一次工具调用时的正文长度。done 时若正文没再增长 → 她做完/卡住，但没给结论。
         let lastToolAt = 0;
         const used: ToolUse[] = [];
@@ -2419,7 +2420,15 @@ export function createWebServer(deps: WebDeps) {
             const agent = runAgent({ chat, tools: deps.tools!, maxSteps: steps }, brief.text, text);
             for await (const ev of agent) {
               if (aborted) break;
-              if (ev.type === "delta") { full += ev.text; answerChars += ev.text.length; send({ type: "delta", text: ev.text, step: ev.step }); }
+              if (ev.type === "delta") {
+                // 换步了：模型常常「先给一段，再推翻重说」。以前两段会拼在一起，
+                // 用户看到的就是同一句话出现两遍。现在新步开口就把旧的这段丢掉，并让面板清屏。
+                if (typeof ev.step === "number" && ev.step !== curStep && answerChars > 0) {
+                  full = ""; answerChars = 0; send({ type: "reset", step: ev.step });
+                }
+                if (typeof ev.step === "number") curStep = ev.step;
+                full += ev.text; answerChars += ev.text.length; send({ type: "delta", text: ev.text, step: ev.step });
+              }
               else if (ev.type === "notice") { trace.push({ k: "think", t: ev.text }); send({ type: "notice", text: ev.text }); }
               else if (ev.type === "think") { answerChars -= ev.text.length; trace.push({ k: "think", t: ev.text }); send({ type: "think", text: ev.text }); }
               else if (ev.type === "tool") {
