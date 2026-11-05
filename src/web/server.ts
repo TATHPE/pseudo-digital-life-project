@@ -587,7 +587,12 @@ export function createWebServer(deps: WebDeps) {
           };
           if (next.enabled && !/^wss?:\/\//i.test(next.ws)) { json(res, 400, { error: "E_BAD_WS", why: "要 ws:// 或 wss:// 开头" }); return; }
           writeFileSync(joinDir(deps.home, "bridge.json"), JSON.stringify({ onebot: next }, null, 2) + String.fromCharCode(10));
-          json(res, 200, { ok: true, config: next });
+          // 保存即生效：开了就当场起，关了当场停（不用重启软件）
+          try {
+            if (next.enabled) void b.startBridge(deps.home, { log: (x) => console.log("[bridge] " + x) });
+            else if (b.bridgeState().running) b.stopBridge();
+          } catch { /* 起不来不影响保存 */ }
+          json(res, 200, { ok: true, config: next, state: b.bridgeState() });
         } catch (e) { json(res, 500, { error: String((e as Error)?.message ?? e).slice(0, 160) }); }
         return;
       }

@@ -118,6 +118,8 @@ export async function startBridge(home: string, o: BridgeOpts = {}): Promise<voi
 
   STATE.running = true;
   STATE.since = new Date().toISOString();
+  if (STATE.running && !STOP) { log("bridge 已经在跑了"); return; }
+  STOP = false;
   const seen = seenSet();
   let backoff = 1000;
   let stop = false;
@@ -129,8 +131,9 @@ export async function startBridge(home: string, o: BridgeOpts = {}): Promise<voi
   if (cfg.accessToken) url.searchParams.set("access_token", String(cfg.accessToken));
   const selfId = String(cfg.selfId ?? "");
 
-  while (!stop) {
+  while (!stop && !STOP) {
     const ws = o.socketFactory ? o.socketFactory(url.toString()) : new WebSocket(url.toString());
+    CURRENT = ws;
     const closed = await new Promise<boolean>((resolve) => {
       let opened = false;
       ws.addEventListener("open", () => {
@@ -158,10 +161,11 @@ export async function startBridge(home: string, o: BridgeOpts = {}): Promise<voi
         })();
       });
       ws.addEventListener("error", () => { if (!opened) { STATE.lastError = "连不上 " + url.origin; log("连不上 " + url.origin); } resolve(true); });
-      ws.addEventListener("close", () => { STATE.connected = false; resolve(true); });
+      ws.addEventListener("close", () => { STATE.connected = false; CURRENT = null; resolve(true); });
     });
     if (o.once || stop) break;
     if (closed) {
+      if (!STATE.connected) STATE.lastError = STATE.lastError || ("没连上 " + url.origin);
       log("断线，" + Math.round(backoff / 1000) + " 秒后重连");
       await new Promise((r) => setTimeout(r, backoff));
       backoff = Math.min(backoff * 2, 30_000);
@@ -178,6 +182,17 @@ export interface BridgeState {
 }
 
 const STATE: BridgeState = { running: false, connected: false, since: null, lastError: null };
+let CURRENT: WebSocket | null = null;
+let STOP = false;
+
+/** 停掉（面板上关掉开关时用；不用重启软件） */
+export function stopBridge(): void {
+  STOP = true;
+  try { CURRENT?.close(); } catch { /* 已经断了 */ }
+  CURRENT = null;
+  STATE.running = false;
+  STATE.connected = false;
+}
 
 /** 面板要能说清「桥现在到底连没连上」——不看日志也能知道 */
 export function bridgeState(): BridgeState { return { ...STATE }; }

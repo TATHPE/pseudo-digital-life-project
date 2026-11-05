@@ -1525,7 +1525,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
         '<div class="nb-actrow"><button class="nb-btn" id="cf-bsave">保存</button>' +
         '<button class="nb-btn" id="cf-bon">开启</button>' +
         '<button class="nb-btn danger" id="cf-boff">关闭</button>' +
-        '<span class="nb-empty" id="cf-bmsg">改完要重启软件才生效（桥跟着 sidecar 起）</span></div>' +
+        '<span class="nb-empty" id="cf-bmsg">保存即生效；软件下次启动会自动接着跑</span></div>' +
         '<div class="nb-empty">先装 NapCat 并在它的 WebUI 里开一个 WebSocket 服务器（默认 127.0.0.1:3001），' +
         '再回来填这里。开启后，私聊她就能收到消息；群里要 @ 她（或在白名单里配群号）。</div></div>');
       html += sec('引导',
@@ -1627,7 +1627,8 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
           fetch('/api/bridge', { method: 'PUT', headers: H, body: JSON.stringify(body) })
             .then(function(r){ return r.json(); }).then(function(j){
               var m = $('cf-bmsg');
-              if (m) m.textContent = j.ok ? '已保存（重启软件生效）' : (j.why || j.error || '没保存成');
+              if (m) m.textContent = j.ok ? ('已保存' + (j.state ? ('·桥：' + (j.state.connected ? '已连上' : j.state.running ? '在跑，没连上' : '没起')) : '')) : (j.why || j.error || '没保存成');
+              if (j.ok) setTimeout(cfgView, 600);
             });
         }
         on('cf-bsave', function(){ save(); });
