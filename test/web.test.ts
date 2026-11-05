@@ -286,6 +286,20 @@ test("轮次：一问一答配成一轮，能单独撤回（2026-11-05）", asyn
     assert.ok(Array.isArray(au.audit), "审计是一个数组（这一轮没执行就是空）");
   } finally { srv.close(); }
 });
+test("日志：执行审计能列出来、能过滤（2026-11-05）", async () => {
+  const { srv, base } = await start();
+  try {
+    const r = await (await fetch(`${base}/api/logs?limit=5`)).json() as any;
+    assert.ok(Array.isArray(r.items), "items 是数组");
+    assert.ok(r.items.length <= 5, "limit 要生效");
+    for (const it of r.items) {
+      assert.ok(typeof it.ts === "string" && it.ts.length > 10, "每行要有时间");
+      assert.ok(typeof it.verb === "string", "每行要有 verb");
+    }
+    const f = await (await fetch(`${base}/api/logs?q=zzz-no-such-verb`)).json() as any;
+    assert.equal(f.items.length, 0, "过滤要真的过滤");
+  } finally { srv.close(); }
+});
 test("诊断 / 部署 / 导出校验：面板能自己说清状态（2026-11-05）", async () => {
   const { srv, base } = await start();
   try {

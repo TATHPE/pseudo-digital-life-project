@@ -617,6 +617,29 @@ export function createWebServer(deps: WebDeps) {
         json(res, 200, { session: row, messages: shown, tools });
         return;
       }
+      // ── 日志：执行层的审计（2026-11-05）。按时间倒序，可按 verb/decision 过滤 ──
+      if (req.method === "GET" && url.pathname === "/api/logs") {
+        try {
+          const limit = Math.min(300, Math.max(1, Number(url.searchParams.get("limit") ?? 100)));
+          const q = String(url.searchParams.get("q") ?? "").trim();
+          const rows = deps.db.prepare(
+            "SELECT ts,verb,tier,decision,exit_code,duration_ms,argv_json,deny_reason,capability FROM exec_audit ORDER BY ts DESC LIMIT ?",
+          ).all(limit) as Array<Record<string, unknown>>;
+          const items = rows.map((r) => ({
+            ts: String(r.ts ?? ""),
+            verb: String(r.verb ?? ""),
+            tier: r.tier == null ? null : Number(r.tier),
+            decision: String(r.decision ?? ""),
+            exit: r.exit_code == null ? null : Number(r.exit_code),
+            ms: r.duration_ms == null ? null : Number(r.duration_ms),
+            argv: String(r.argv_json ?? "").slice(0, 400),
+            why: r.deny_reason == null ? null : String(r.deny_reason).slice(0, 200),
+            capability: r.capability == null ? null : String(r.capability),
+          })).filter((x) => !q || (x.verb + " " + x.argv + " " + x.decision).toLowerCase().includes(q.toLowerCase()));
+          json(res, 200, { items, count: items.length });
+        } catch (e) { json(res, 500, { error: String((e as Error)?.message ?? e).slice(0, 160) }); }
+        return;
+      }
       // ── 轮次：一问一答 = 一轮（2026-11-05）。能单独撤回、重问、看这一轮的审计 ──
       const turnList = url.pathname.match(/^\/api\/sessions\/([A-Za-z0-9_-]{4,40})\/turns$/);
       if (req.method === "GET" && turnList) {

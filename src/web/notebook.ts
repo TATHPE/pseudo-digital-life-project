@@ -106,6 +106,14 @@ body{background:var(--void);color:var(--ink);font:15px/1.85 var(--sans);
 .nb-search{width:100%;max-width:420px;background:none;border:1px solid var(--line-dim);color:var(--ink);
   font:13px/1.6 var(--sans);padding:8px 10px;outline:none;margin:0 0 8px}
 .nb-search:focus{border-color:var(--line)}
+.nb-logrow{display:grid;grid-template-columns:118px 140px 64px 120px 1fr;gap:8px;align-items:baseline;padding:6px 2px;
+  border-bottom:1px solid var(--line-dim);font:11px/1.6 var(--mono);color:var(--dim)}
+.nb-logrow .t{color:var(--dim2)}
+.nb-logrow .v{color:var(--ink)}
+.nb-logrow .d.ok{color:var(--dim)}
+.nb-logrow .d.bad{color:var(--amber)}
+.nb-logrow .x{color:var(--dim2);white-space:nowrap}
+.nb-logrow .a{color:var(--dim2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .nb-turn{border-top:1px solid var(--line-dim);padding:12px 2px}
 .nb-audit{font:11px/1.7 var(--mono);color:var(--dim);margin-top:6px}
 .nb-appr{border-top:1px solid var(--line-dim);padding:12px 2px}
@@ -277,6 +285,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
       <div class="nb-go" data-v="mem">记忆<span class="n" id="nb-nmem">…</span></div>
       <div class="nb-go" data-v="docs">文档<span class="n" id="nb-ndocs">…</span></div>
       <div class="nb-go" data-v="cap">能力</div>
+      <div class="nb-go" data-v="logs">日志</div>
       <div class="nb-go" data-v="git">校样</div>
       <div class="nb-go" data-v="cfg">设置</div>
       <div class="nb-grow"></div>
@@ -885,6 +894,36 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
     paint();
   }
 
+  // ── 日志：执行层审计（2026-11-05）────────────────────────────
+  function logsView(){
+    var el = $('nb-view');
+    el.innerHTML = head('日志', '<input class="nb-search" id="nb-logq" placeholder="过滤 verb / 参数 / 决定" style="max-width:260px;margin:0">') +
+      wrap('<div id="nb-logs"><div class="nb-empty">读取中…</div></div>');
+    function paint(q){
+      fetch('/api/logs?limit=200' + (q ? '&q=' + encodeURIComponent(q) : '')).then(function(r){ return r.json(); }).then(function(j){
+        var items = (j && j.items) || [];
+        var box = $('nb-logs');
+        if (!items.length) { box.innerHTML = '<div class="nb-empty">还没有执行记录。' + (q ? '（过滤条件下）' : '') + '</div>'; return; }
+        box.innerHTML = items.map(function(x){
+          var ok = x.decision === 'allow' || x.decision === 'allowed';
+          return '<div class="nb-logrow" data-i="' + esc(JSON.stringify(x).slice(0, 0)) + '">' +
+            '<span class="t">' + esc(String(x.ts || '').slice(5, 19).replace('T', ' ')) + '</span>' +
+            '<span class="v">' + esc(x.verb) + '</span>' +
+            '<span class="d ' + (ok ? 'ok' : 'bad') + '">' + esc(x.decision || '') + '</span>' +
+            '<span class="x">' + (x.exit == null ? '' : 'exit ' + x.exit) + (x.ms == null ? '' : ' · ' + x.ms + 'ms') + '</span>' +
+            '<span class="a">' + esc(String(x.argv || '').slice(0, 70)) + '</span>' +
+            '</div>' +
+            (x.why ? '<div class="nb-audit">拒因：' + esc(x.why) + '</div>' : '');
+        }).join('');
+      }).catch(function(){
+        var box = $('nb-logs'); if (box) box.innerHTML = '<div class="nb-empty">读取失败。</div>';
+      });
+    }
+    var q = $('nb-logq');
+    if (q) q.onkeydown = function(e){ if (e.key === 'Enter') paint(q.value.trim()); };
+    paint('');
+  }
+
   // ── 会话：一次可指认的对话（2026-11-05）────────────────────────
   function sessView(){
     var el = $('nb-view');
@@ -1055,6 +1094,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
     if (v === 'mem') memView('');
     else if (v === 'docs') docsView();
     else if (v === 'cap') capView();
+    else if (v === 'logs') logsView();
     else if (v === 'git') gitView();
     else if (v === 'cfg') cfgView();
     else if (v === 'gap') gapView();
@@ -1512,7 +1552,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
     var v = m ? m[1] : '';
     if (v === 'board') { go('home'); setTimeout(function(){ Board(true); }, 120); return; }
     if (v === 'chat') { go('chat'); return; }
-    if (['mem','docs','cap','git','cfg','gap','sess','approvals'].indexOf(v) >= 0) { setTimeout(function(){ go(v); }, 120); return; }
+    if (['mem','docs','cap','git','cfg','gap','sess','approvals','logs'].indexOf(v) >= 0) { setTimeout(function(){ go(v); }, 120); return; }
     go('home');
     if (location.search.indexOf("pal=1") >= 0) setTimeout(palOpen, 200);
   })();
