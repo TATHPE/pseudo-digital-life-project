@@ -9,7 +9,7 @@
 | 项 | 数量 |
 |---|---|
 | 源文件（src/**/*.ts） | 112 |
-| 错误码 E_* | 211 |
+| 错误码 E_* | 212 |
 | verbs | 27 |
 | CLI 子命令 | 38 |
 
@@ -125,6 +125,7 @@
 | `E_NO_COMMAND` | `src/plugins.ts` |
 | `E_NO_CONVERTER` | `src/ingest.ts` |
 | `E_NO_DB` | `src/cli/jingjing.ts` `src/verbs.ts` |
+| `E_NO_DIR` | `src/web/server.ts` |
 | `E_NO_DOC` | `src/web/page.ts` `src/web/server.ts` |
 | `E_NO_DRAFT` | `src/interview.ts` `src/web/server.ts` |
 | `E_NO_EMBED_MODEL` | `src/cli/jingjing.ts` |

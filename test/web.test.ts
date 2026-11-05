@@ -205,6 +205,28 @@ test("编码闸：非 UTF-8（GBK）请求体拒收，不写进记忆", async ()
   } finally { srv.close(); }
 });
 
+test("诊断 / 部署 / 导出校验：面板能自己说清状态（2026-11-05）", async () => {
+  const { srv, base } = await start();
+  try {
+    const dep = await (await fetch(`${base}/api/deploy`)).json() as any;
+    for (const k of ["version", "mode", "home", "node", "uptimeS", "dbBytes"]) {
+      assert.ok(dep[k] !== undefined, "deploy 缺字段：" + k);
+    }
+    assert.match(String(dep.node), /^v[0-9]+/);
+    assert.ok(dep.fingerprint && dep.fingerprint.schema, "要有 schema 指纹");
+
+    const doc = await (await fetch(`${base}/api/doctor`)).json() as any;
+    assert.ok(Array.isArray(doc.checks) && doc.checks.length >= 3, "体检要有几项");
+    assert.ok(doc.checks.every((c: any) => typeof c.ok === "boolean" && c.name), "每项要有 ok + name");
+
+    const ver = await fetch(`${base}/api/export/verify`);
+    assert.equal(ver.status, 400, "没有 dir 参数要 400");
+
+    const av = await (await fetch(`${base}/api/avatars`)).json() as any;
+    assert.ok("agent" in av && "user" in av, "头像接口给两个角色");
+  } finally { srv.close(); }
+});
+
 test("记录本是唯一界面：/ 与 /notebook 同页，旧面板路由已撤（2026-11-05）", async () => {
   const { srv, base } = await start();
   try {

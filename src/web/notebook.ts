@@ -113,6 +113,12 @@ body{background:var(--void);color:var(--ink);font:15px/1.85 var(--sans);
 .nb-runrow .m{font:10px/1.6 var(--mono);color:var(--dim2);text-align:right}
 .nb-form-wrap{max-width:640px}
 .nb-form{display:grid;gap:8px;padding:6px 0 4px}
+.nb-opts{display:flex;flex-wrap:wrap;gap:6px}
+.nb-opt{font:11px/1 var(--mono);color:var(--dim);background:none;border:1px solid var(--line-dim);padding:7px 9px;cursor:pointer}
+.nb-opt:hover{border-color:var(--line);color:var(--ink)}
+.nb-opt.on{color:var(--void);background:var(--ink);border-color:var(--ink)}
+.nb-av{width:26px;height:26px;object-fit:cover;border:1px solid var(--line-dim);image-rendering:auto}
+label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
 .nb-fld{display:grid;grid-template-columns:76px 1fr;gap:10px;align-items:center}
 .nb-fld span{font:9.5px/1 var(--mono);letter-spacing:.12em;color:var(--dim2)}
 .nb-fld .nb-search{margin:0}
@@ -891,12 +897,21 @@ body{background:var(--void);color:var(--ink);font:15px/1.85 var(--sans);
   function cfgView(){
     var el = $('nb-view');
     el.innerHTML = head('设置') + wrap('<div id="nb-cfg"><div class="nb-empty">读取中…</div></div>');
-    function sec(t, inner){
-      return '<div class="nb-sec">' + t + '</div>' + inner;
-    }
+    var chosen = {};
+    function sec(t, inner){ return '<div class="nb-sec">' + t + '</div>' + inner; }
     function field(label, id, val, ph){
       return '<label class="nb-fld"><span>' + label + '</span>' +
         '<input id="' + id + '" class="nb-search" value="' + esc(val || '') + '" placeholder="' + esc(ph || '') + '"></label>';
+    }
+    // 原生 <select> 的弹层由系统画，暗色主题下仍然是白底灰字（用户截图就是这个）。
+    // 所以这里一律用自己画的一排按钮，配色可控。
+    function optRow(k, opts, cur, label){
+      var hit = opts.filter(function(x){ return cur && String(x).indexOf(cur) === 0; })[0] || opts[0] || '';
+      chosen[k] = chosen[k] || hit;
+      return '<div class="nb-fld"><span>' + label + '</span><div class="nb-opts" data-k="' + k + '">' +
+        opts.map(function(x){
+          return '<button class="nb-opt' + (x === chosen[k] ? ' on' : '') + '" data-v="' + esc(x) + '">' + esc(x) + '</button>';
+        }).join('') + '</div></div>';
     }
     Promise.all([
       fetch('/api/config').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
@@ -909,14 +924,17 @@ body{background:var(--void);color:var(--ink);font:15px/1.85 var(--sans);
       fetch('/api/egress').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
       fetch('/health').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
       fetch('/api/persona').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
+      fetch('/api/avatars').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
+      fetch('/api/deploy').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
     ]).then(function(res){
       var c = res[0] || {}, ui = res[1] || {}, m = res[2] || {}, mode = (res[3] || {}).mode || 'chat';
       var host = res[4] || {}, sd = Array.isArray(res[5]) ? res[5] : [];
       var grants = Array.isArray(res[6]) ? res[6] : [];
       var eg = res[7] || {}, health = res[8] || {}, persona = res[9] || {};
-      var locals = m.installed || m.models || m.names || [];
-      var roleModel = function(name){
-        var hit = (m.roles || []).filter(function(x){ return x.role === name; })[0];
+      var av = res[10] || {}, dep = res[11] || {};
+      var locals = m.installed || [];
+      var roleModel = function(n){
+        var hit = (m.roles || []).filter(function(x){ return x.role === n; })[0];
         return hit ? String(hit.model) : '';
       };
       var curEmbed = roleModel('embed'), curChat = roleModel('route') || roleModel('default');
@@ -934,27 +952,26 @@ body{background:var(--void);color:var(--ink);font:15px/1.85 var(--sans);
         '<span class="nb-empty" id="cf-msg"></span></div></div>');
       html += sec('本地模型',
         '<div class="nb-form">' +
-        '<label class="nb-fld"><span>embed</span><select id="cf-embed" class="nb-search">' +
-        (locals.length ? '' : '<option value="">（没有已拉模型）</option>') +
-        locals.map(function(x){ return '<option value="' + esc(x) + '"' + (curEmbed && String(x).indexOf(curEmbed) === 0 ? ' selected' : '') + '>' + esc(x) + '</option>'; }).join('') +
-        '</select></label>' +
-        '<label class="nb-fld"><span>chat</span><select id="cf-chat" class="nb-search">' +
-        (locals.length ? '' : '<option value="">（没有已拉模型）</option>') +
-        locals.map(function(x){ return '<option value="' + esc(x) + '"' + (curChat && String(x).indexOf(curChat) === 0 ? ' selected' : '') + '>' + esc(x) + '</option>'; }).join('') +
-        '</select></label>' +
+        (locals.length ? optRow('embed', locals, curEmbed, 'embed') + optRow('chat', locals, curChat, 'chat')
+          : '<div class="nb-empty">没有已拉模型</div>') +
         '<div class="nb-actrow"><button class="nb-btn" id="cf-msave">保存模型</button>' +
-        '<span class="nb-empty">端点 ' + esc(m.endpoint || '—') + ' · ' + (m.online ? '在线' : '离线') + '</span></div></div>');
+        '<span class="nb-empty">端点 ' + esc(m.endpoint || '—') + ' · ' + (m.online ? '在线' : '离线') +
+        ' · 索引 ' + esc((m.index && m.index.current) || '—') + '</span></div></div>');
       html += sec('人格',
         '<div class="nb-form">' + field('名字', 'cf-name', (c.agent && c.agent.name) || '', '她叫什么') +
         '<div class="nb-actrow"><button class="nb-btn" id="cf-nsave">保存名字</button>' +
-        '<span class="nb-empty">第 ' + esc(String(gen.index == null ? '—' : gen.index)) + ' 代' +
-        (gen.reason ? ' · ' + esc(String(gen.reason).slice(0, 40)) : '') + '</span></div></div>');
+        '<span class="nb-empty">第 ' + esc(String(gen.index == null ? '—' : gen.index)) + ' 代</span></div></div>');
+      html += sec('头像',
+        '<div class="nb-form">' +
+        '<div class="nb-fld"><span>她</span><div class="nb-actrow">' +
+        (av.agent ? '<img class="nb-av" src="' + esc(av.agent.url) + '" alt="">' : '<span class="nb-empty">默认图标</span>') +
+        '<label class="nb-btn">换一张<input type="file" data-av="agent" accept="image/png,image/jpeg,image/webp" style="display:none"></label></div></div>' +
+        '<div class="nb-fld"><span>你</span><div class="nb-actrow">' +
+        (av.user ? '<img class="nb-av" src="' + esc(av.user.url) + '" alt="">' : '<span class="nb-empty">默认图标</span>') +
+        '<label class="nb-btn">换一张<input type="file" data-av="user" accept="image/png,image/jpeg,image/webp" style="display:none"></label></div></div>' +
+        '<div class="nb-empty">png / jpeg / webp，≤512KB</div></div>');
       html += sec('主机 · 命令解释器',
-        '<div class="nb-form"><label class="nb-fld"><span>用哪个</span>' +
-        '<select id="cf-shell" class="nb-search">' +
-        ['auto', 'powershell', 'pwsh', 'gitbash'].map(function(x){
-          return '<option value="' + x + '"' + (x === (host.wanted || 'auto') ? ' selected' : '') + '>' + x + '</option>';
-        }).join('') + '</select></label>' +
+        '<div class="nb-form">' + optRow('shell', ['auto', 'powershell', 'pwsh', 'gitbash'], host.wanted || 'auto', '用哪个') +
         '<div class="nb-actrow"><button class="nb-btn" id="cf-hsave">保存</button>' +
         '<span class="nb-empty">当前 ' + esc((host.active && host.active.label) || '—') + '</span></div></div>');
       html += sec('常驻指令', sd.length ? sd.map(function(x){
@@ -964,25 +981,45 @@ body{background:var(--void);color:var(--ink);font:15px/1.85 var(--sans);
       }).join('') : '<div class="nb-empty">没有常驻指令。</div>');
       html += sec('限制',
         '<div class="nb-runrow"><span class="k">档位</span><span class="v">全开（full）</span>' +
-        '<span class="m">2026-11-05：限制全部撤掉，等软件能用了再谈</span></div>' +
+        '<span class="m">限制全部撤掉，等软件能用了再谈</span></div>' +
         '<div class="nb-runrow"><span class="k">授权窗口</span><span class="v">' + grants.length + ' 个</span>' +
         '<span class="m">启动自动开，不会逐次问你</span></div>' +
         '<div class="nb-runrow"><span class="k">代码外发</span><span class="v">开</span>' +
         '<span class="m">每次仍写审计</span></div>' +
         '<div class="nb-runrow"><span class="k">超级权限</span><span class="v">关</span>' +
-        '<span class="m">只影响「改记忆库本体/人格」这一档，需要时手动开</span></div>');
-      html += sec('状态',
-        '<div class="nb-kv"><b>模式</b><span>' + esc(mode) + '</span>' +
-        '<b>片头</b><span>' + esc(ui.splash || 'full') + '</span>' +
-        '<b>降级</b><span>' + (deg.length ? esc(deg.join(' · ')) : '没有') + '</span>' +
-        '<b>数据库</b><span>' + esc(String(health.db || health.size || '—')) + '</span></div>');
+        '<span class="m">只影响「改记忆库本体/人格」这一档</span></div>');
+      html += sec('诊断',
+        '<div class="nb-actrow"><button class="nb-btn" id="cf-doc">跑一遍体检</button>' +
+        '<span class="nb-empty">按项看，红的会列出来</span></div>' +
+        '<div id="cf-docout"></div>');
       html += sec('导出 / 导入',
-        '<div class="nb-empty">目前没有页面入口，用命令：<br>' +
-        'node src/cli/jingjing.ts export &lt;目录&gt;　·　node src/cli/jingjing.ts import &lt;目录&gt;</div>');
+        '<div class="nb-actrow"><button class="nb-btn" id="cf-exp">导出一份快照</button>' +
+        '<span class="nb-empty" id="cf-expmsg">不带 secrets/tokens/snapshots</span></div>' +
+        '<div class="nb-actrow"><button class="nb-btn" id="cf-ver">校验一个导出目录</button>' +
+        '<button class="nb-btn" id="cf-imp">看导入命令</button></div>' +
+        '<div class="nb-empty" id="cf-impout"></div>');
+      html += sec('部署状态',
+        '<div class="nb-kv">' +
+        '<b>版本</b><span>' + esc(dep.version || '—') + '</span>' +
+        '<b>模式</b><span>' + esc(dep.mode || '—') + '</span></div>' +
+        '<div class="nb-kv">' +
+        '<b>Node</b><span>' + esc(dep.node || '—') + '</span>' +
+        '<b>已运行</b><span>' + esc(String(Math.round((dep.uptimeS || 0) / 60))) + ' 分钟</span>' +
+        '<b>数据库</b><span>' + esc((Number(dep.dbBytes || 0) / 1048576).toFixed(1)) + ' MB</span>' +
+        '<b>目录</b><span>' + esc(dep.home || '—') + '</span>' +
+        '<b>降级</b><span>' + (deg.length ? esc(deg.join(' · ')) : '没有') + '</span></div>');
       var box = $('nb-cfg');
       if (box) box.innerHTML = '<div class="nb-form-wrap">' + html + '</div>';
-      function msg(t, ok){ var e = $('cf-msg'); if (e) { e.textContent = t; e.className = ok ? 'hint ok' : 'hint err'; } }
+      function msg(t, ok){ var e = $('cf-msg'); if (e) { e.textContent = t; e.className = 'hint ' + (ok ? 'ok' : 'err'); } }
       function on(id, fn){ var b = $(id); if (b) b.onclick = fn; }
+      Array.prototype.forEach.call(box.querySelectorAll('.nb-opts'), function(g){
+        g.onclick = function(e){
+          var b = e.target;
+          if (!b || b.className.indexOf('nb-opt') < 0) return;
+          chosen[g.getAttribute('data-k')] = b.getAttribute('data-v');
+          Array.prototype.forEach.call(g.children, function(x){ x.className = 'nb-opt' + (x === b ? ' on' : ''); });
+        };
+      });
       on('cf-save', function(){
         var b = { provider: $('cf-prov').value.trim(), model: $('cf-model').value.trim() };
         if ($('cf-base').value.trim()) b.baseUrl = $('cf-base').value.trim();
@@ -999,8 +1036,8 @@ body{background:var(--void);color:var(--ink);font:15px/1.85 var(--sans);
       });
       on('cf-msave', function(){
         var b = {};
-        if ($('cf-embed').value) b.embed = $('cf-embed').value;
-        if ($('cf-chat').value) b.default = $('cf-chat').value;
+        if (chosen.embed) b.embed = chosen.embed;
+        if (chosen.chat) b.default = chosen.chat;
         fetch('/api/models', { method: 'PUT', headers: H, body: JSON.stringify(b) })
           .then(function(r){ return r.json(); }).then(function(j){ msg(j.ok ? '模型已保存' : (j.error || '失败'), !!j.ok); });
       });
@@ -1009,8 +1046,49 @@ body{background:var(--void);color:var(--ink);font:15px/1.85 var(--sans);
           .then(function(r){ return r.json(); }).then(function(j){ msg(j.ok ? '名字已保存' : (j.error || '失败'), !!j.ok); });
       });
       on('cf-hsave', function(){
-        fetch('/api/host', { method: 'PUT', headers: H, body: JSON.stringify({ shell: $('cf-shell').value }) })
+        fetch('/api/host', { method: 'PUT', headers: H, body: JSON.stringify({ shell: chosen.shell }) })
           .then(function(r){ return r.json(); }).then(function(j){ msg(j.ok ? '解释器已保存' : (j.error || '失败'), !!j.ok); });
+      });
+      Array.prototype.forEach.call(box.querySelectorAll('input[data-av]'), function(inp){
+        inp.onchange = function(){
+          var f = inp.files && inp.files[0]; if (!f) return;
+          var rd = new FileReader();
+          rd.onload = function(){
+            fetch('/api/avatar', { method: 'POST', headers: H, body: JSON.stringify({ role: inp.getAttribute('data-av'), dataUrl: rd.result }) })
+              .then(function(r){ return r.json(); }).then(function(j){ tick(j.ok ? '头像已换' : (j.error || '换不了')); cfgView(); });
+          };
+          rd.readAsDataURL(f);
+        };
+      });
+      on('cf-doc', function(){
+        var out = $('cf-docout'); if (out) out.innerHTML = '<div class="nb-empty">在跑…</div>';
+        fetch('/api/doctor').then(function(r){ return r.json(); }).then(function(j){
+          var rows = (j && j.checks) || [];
+          out.innerHTML = rows.map(function(x){
+            return '<div class="nb-runrow"><span class="k">' + (x.ok ? '✅' : '❌') + ' ' + esc(x.name) + '</span>' +
+              '<span class="v">' + esc(String(x.detail || '').slice(0, 80)) + '</span><span></span></div>';
+          }).join('') || '<div class="nb-empty">没有检查项</div>';
+        });
+      });
+      on('cf-exp', function(){
+        var out = $('cf-expmsg'); if (out) out.textContent = '导出中…';
+        fetch('/api/export', { method: 'POST', headers: H, body: '{}' })
+          .then(function(r){ return r.json(); }).then(function(j){
+            if (out) out.textContent = j.ok ? ('已导出 ' + j.files + ' 个文件 / ' + (j.bytes / 1048576).toFixed(1) + ' MB → ' + j.outDir) : (j.error || '失败');
+          });
+      });
+      on('cf-ver', function(){
+        var out = $('cf-impout'); if (out) out.textContent = '给一个导出目录（绝对路径）';
+        var d = window.prompt('导出目录的绝对路径');
+        if (!d) return;
+        fetch('/api/export/verify?dir=' + encodeURIComponent(d))
+          .then(function(r){ return r.json(); }).then(function(j){
+            if (out) out.textContent = j.ok ? ('校验通过 · ' + j.files + ' 个文件') : ('有问题：' + (j.problems || []).join('；'));
+          });
+      });
+      on('cf-imp', function(){
+        var out = $('cf-impout');
+        if (out) out.textContent = 'node src/cli/jingjing.ts import <导出目录>　（导入会换掉整个 home，面板里不做）';
       });
       Array.prototype.forEach.call(box.querySelectorAll('[data-off]'), function(b){
         b.onclick = function(){

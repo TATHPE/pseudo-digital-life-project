@@ -1007,6 +1007,54 @@ export function createWebServer(deps: WebDeps) {
         return;
       }
 
+      // ── 诊断 / 部署 / 导出：面板要能自己说清楚「现在什么状态」──
+      if (req.method === "GET" && url.pathname === "/api/doctor") {
+        try {
+          const { doctor } = await import("../doctor.ts");
+          const rep = await doctor({ db: deps.db, home: deps.home });
+          json(res, 200, rep);
+        } catch (e) { json(res, 500, { error: String((e as Error)?.message ?? e).slice(0, 200) }); }
+        return;
+      }
+      if (req.method === "GET" && url.pathname === "/api/deploy") {
+        try {
+          const { coreFpFromHome } = await import("../deploy/fingerprint.ts");
+          const pkgPath = joinDir(process.cwd(), "package.json");
+          let version = "?";
+          try { version = (JSON.parse(readFileSync(pkgPath, "utf8")) as { version?: string }).version ?? "?"; } catch { /* dev 下没有也正常 */ }
+          let dbBytes = 0;
+          try { dbBytes = statSync(joinDir(deps.home, "memory.db")).size; } catch { /* 新装还没建库 */ }
+          json(res, 200, {
+            version,
+            mode: deps.deskToken ? "desktop" : "dev",
+            home: deps.home,
+            node: process.version,
+            uptimeS: Math.round(process.uptime()),
+            dbBytes,
+            fingerprint: coreFpFromHome(deps.home),
+          });
+        } catch (e) { json(res, 500, { error: String((e as Error)?.message ?? e).slice(0, 200) }); }
+        return;
+      }
+      if (req.method === "POST" && url.pathname === "/api/export") {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
+        try {
+          const { exportHome, defaultExportDir } = await import("../handoff.ts");
+          const r = exportHome(deps.home, defaultExportDir(deps.home));
+          json(res, 200, { ...r, ok: true });
+        } catch (e) { json(res, 500, { error: String((e as Error)?.message ?? e).slice(0, 200) }); }
+        return;
+      }
+      if (req.method === "GET" && url.pathname === "/api/export/verify") {
+        const dir = String(url.searchParams.get("dir") ?? "");
+        if (!dir) { json(res, 400, { error: "E_NO_DIR" }); return; }
+        try {
+          const { verifyExport } = await import("../handoff.ts");
+          const v = verifyExport(dir);
+          json(res, 200, { ok: v.ok, files: v.manifest ? Object.keys(v.manifest.files).length : 0, counts: v.manifest?.counts ?? null, problems: v.problems.slice(0, 10) });
+        } catch (e) { json(res, 500, { error: String((e as Error)?.message ?? e).slice(0, 200) }); }
+        return;
+      }
       if (req.method === "GET" && url.pathname === "/api/capabilities") {
         const cfgNow = deps.getConfig();
         const pf = lastPreflight(cfgNow.ollama);          // 只读缓存，不在这里探头
