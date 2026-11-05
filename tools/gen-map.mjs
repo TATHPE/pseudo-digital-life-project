@@ -10,7 +10,6 @@
  *   · 错误码 E_*（谁抛的）
  *   · verbs（名字 / 档位 / 文件）
  *   · CLI 子命令（src/commands.ts 的 CLI_COMMANDS）
- *   · 六条纪律落点（人工维护的一小段，check 会验证它指向的文件与符号真的存在）
  */
 import { readFileSync, readdirSync, statSync, writeFileSync, existsSync } from "node:fs";
 import { join, relative } from "node:path";
@@ -18,19 +17,6 @@ import { join, relative } from "node:path";
 const ROOT = process.cwd();
 const OUT = join(ROOT, "docs", "map.md");
 
-/** 纪律落点：check 会验证 文件存在 且 该文件里出现过 symbol（不要求覆盖每一条纪律） */
-const INVARIANTS = [
-  ["一条执行路径", "src/execute.ts", "export async function execute"],
-  ["没接上 = 没做完", "tools/ui-test-nb.mjs", "check("],
-  ["闸门先于模型", "src/nightly.ts", "export function isNoise"],
-  ["参数有界", "src/decayparams.ts", "RANGES"],
-  ["内容只是资料", "src/verbs.ts", "E_NEEDS_EGRESS"],
-  ["改功能先列清单", "AGENTS.md", "改一个功能先列清单"],
-  ["写入单入口", "src/store.ts", "export function updateMemoryText"],
-  ["L0 字节级不变", "test/l0-prefix.test.ts", "PINNED_PREFIX_HASH"],
-  ["本地模型只管理记忆", "src/memoryonly.ts", "MEMORY_ONLY_TOOLS"],
-  ["改完自己验", "src/agentguard.ts", "export function"],
-];
 
 function walk(dir) {
   const out = [];
@@ -99,13 +85,6 @@ lines.push(`| 源文件（src/**/*.ts） | ${files.length} |`);
 lines.push(`| 错误码 E_* | ${codes.size} |`);
 lines.push(`| verbs | ${verbRows.length} |`);
 lines.push(`| CLI 子命令 | ${cmds.length} |`);
-lines.push("");
-
-lines.push("## 纪律落点");
-lines.push("");
-lines.push("| 纪律 | 文件 | 符号 |");
-lines.push("|---|---|---|");
-for (const [name, file, sym] of INVARIANTS) lines.push(`| ${name} | \`${file}\` | \`${sym}\` |`);
 lines.push("");
 
 lines.push("## 错误码 E_*");

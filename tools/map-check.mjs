@@ -75,20 +75,6 @@ if (onlyMap.length === 0 && onlyDisk.length === 0) {
   );
 }
 
-// ── ③ 六条纪律落点 ────────────────────────────────────
-const invRows = [...after.matchAll(/^\| ([^|]+) \| `([^`]+)` \| `([^`]+)` \|$/gm)];
-if (!invRows.length) fails.push("地图里没有「六条纪律落点」表");
-for (const m of invRows) {
-  const [, name, file, sym] = m;
-  const p = join(ROOT, file);
-  if (!existsSync(p)) { fails.push(`纪律「${name.trim()}」指向的文件不存在：${file}`); continue; }
-  if (!readFileSync(p, "utf8").includes(sym)) {
-    fails.push(`纪律「${name.trim()}」说的符号在 ${file} 里找不到：${sym}`);
-  }
-}
-if (!fails.length) ok.push(`纪律落点全部可指（${invRows.length} 条）`);
-
-
 // ── ④ 写入单入口 ────────────────────────────────────────
 // 记忆的**正文类**写入只允许一个口：多一条路 = 同一个 bug 修两遍（我们踩过：
 // normalized_key 漏写、quote 只在一条路上有、pre-image 忘了记）。

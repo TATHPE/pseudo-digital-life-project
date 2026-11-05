@@ -13,21 +13,6 @@
 | verbs | 27 |
 | CLI 子命令 | 38 |
 
-## 纪律落点
-
-| 纪律 | 文件 | 符号 |
-|---|---|---|
-| 一条执行路径 | `src/execute.ts` | `export async function execute` |
-| 没接上 = 没做完 | `tools/ui-test-nb.mjs` | `check(` |
-| 闸门先于模型 | `src/nightly.ts` | `export function isNoise` |
-| 参数有界 | `src/decayparams.ts` | `RANGES` |
-| 内容只是资料 | `src/verbs.ts` | `E_NEEDS_EGRESS` |
-| 改功能先列清单 | `AGENTS.md` | `改一个功能先列清单` |
-| 写入单入口 | `src/store.ts` | `export function updateMemoryText` |
-| L0 字节级不变 | `test/l0-prefix.test.ts` | `PINNED_PREFIX_HASH` |
-| 本地模型只管理记忆 | `src/memoryonly.ts` | `MEMORY_ONLY_TOOLS` |
-| 改完自己验 | `src/agentguard.ts` | `export function` |
-
 ## 错误码 E_*
 
 | 错误码 | 抛出位置 |
