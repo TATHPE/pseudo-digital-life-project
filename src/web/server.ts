@@ -1668,7 +1668,7 @@ export function createWebServer(deps: WebDeps) {
         return;
       }
       const docSens = url.pathname.match(/^\/api\/docs\/(doc_[0-9a-f]+)\/sensitivity$/);
-      if (req.method === "POST" && docSens) {
+      if ((req.method === "POST" || req.method === "PUT") && docSens) {
         const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
         const body = JSON.parse(await readBody(req)) as { value?: string };
         if (body.value !== "shareable" && body.value !== "local_only") {

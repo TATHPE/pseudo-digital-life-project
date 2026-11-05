@@ -172,6 +172,8 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
 .nb-e:first-child{border-top:0}
 .nb-e .g{text-align:right;font:10px/1.7 var(--mono);color:var(--dim2);padding-top:5px}
 .nb-e .g .w{display:block;color:var(--dim);letter-spacing:.06em}
+.nb-modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.62);z-index:40}
+.nb-modal{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:41;width:min(560px,92vw);max-height:80vh;overflow:auto;background:var(--void);border:1px solid var(--line);padding:16px 18px}
 .nb-gav{display:block;width:22px;height:22px;object-fit:cover;margin:0 0 5px auto;border:1px solid var(--line-dim);opacity:.85}
 .nb-e.me .g .w{color:var(--amber)}
 .nb-e .b{min-width:0}
@@ -1356,9 +1358,13 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
         '<span class="nb-empty">.md / .txt 直接吃；PDF 要 Python + markitdown</span>' +
         '<input type="file" id="nb-upfile" accept=".md,.txt,.pdf,.markdown" style="display:none"></div>' +
         (rows.length ? rows.map(function(d){
-        return '<button class="nb-row" data-doc="' + esc(d.id) + '">' + esc(d.title || d.id) +
+        return '<div class="nb-row" style="cursor:default">' +
+          '<button class="nb-btn" data-doc="' + esc(d.id) + '" style="border:0;background:none;color:inherit;text-align:left;flex:1">' +
+          esc(d.title || d.id) + '</button>' +
           '<span class="m">' + esc(String(d.n_chunks || 0)) + ' 块 · ' +
-          (d.sensitivity === 'shareable' ? '可出网' : '仅本地') + '</span></button>';
+          (d.sensitivity === 'shareable' ? '可出网' : '仅本地') + '</span>' +
+          '<button class="nb-btn" data-docsens="' + esc(d.id) + '">改' + (d.sensitivity === 'shareable' ? '仅本地' : '可出网') + '</button>' +
+          '<button class="nb-btn danger" data-docdel="' + esc(d.id) + '">忘掉</button></div>';
       }).join('') : '<div class="nb-empty">还没有摄入任何文档。</div>');
       var up = $('nb-updoc'), upf = $('nb-upfile');
       if (up && upf) up.onclick = function(){ upf.click(); };
@@ -1378,6 +1384,28 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
             });
         }).catch(function(){ tick('上传失败'); });
       };
+      Array.prototype.forEach.call(box.querySelectorAll('[data-docsens]'), function(b){
+        b.onclick = function(){
+          var id = b.getAttribute('data-docsens');
+          var to = b.textContent.indexOf('可出网') >= 0 ? 'shareable' : 'local_only';
+          fetch('/api/docs/' + id + '/sensitivity', { method: 'PUT', headers: H, body: JSON.stringify({ value: to }) })
+            .then(function(r){ return r.json(); }).then(function(j){
+              tick(j.ok === false ? (j.error || '没改成') : ('改成' + (to === 'shareable' ? '可出网' : '仅本地')));
+              docsView();
+            });
+        };
+      });
+      Array.prototype.forEach.call(box.querySelectorAll('[data-docdel]'), function(b){
+        b.onclick = function(){
+          var id = b.getAttribute('data-docdel');
+          if (!window.confirm('忘掉这份文档？（会从检索里去掉）')) return;
+          fetch('/api/docs/' + id + '/forget', { method: 'POST', headers: H, body: '{}' })
+            .then(function(r){ return r.json(); }).then(function(j){
+              tick(j.ok === false ? (j.error || '没删成') : '已忘掉');
+              docsView();
+            });
+        };
+      });
       Array.prototype.forEach.call(box.querySelectorAll('[data-doc]'), function(b){
         b.onclick = function(){ docDetail(b.getAttribute('data-doc')); };
       });
@@ -1514,6 +1542,43 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
     paint('status');
   }
 
+  // 模型一览（旧面板有 modelpicker）：装了什么、多大、给哪个角色用、测一句
+  function modelPicker(){
+    var box = $('nb-modals');
+    if (!box) {
+      box = document.createElement('div');
+      box.id = 'nb-modals';
+      document.body.appendChild(box);
+    }
+    box.innerHTML = '<div class="nb-modal-bg" id="nb-mdbg"></div>' +
+      '<div class="nb-modal"><div class="nb-sec" style="margin-top:0">已装的模型</div>' +
+      '<div id="nb-mdlist"><div class="nb-empty">读取中…</div></div>' +
+      '<div class="nb-actrow" style="margin-top:10px">' +
+      '<button class="nb-btn" id="nb-mdtest">测一句</button>' +
+      '<span class="nb-empty" id="nb-mdmsg"></span>' +
+      '<button class="nb-btn" id="nb-mdclose">关上</button></div></div>';
+    $('nb-mdclose').onclick = function(){ box.innerHTML = ''; };
+    $('nb-mdbg').onclick = function(){ box.innerHTML = ''; };
+    fetch('/api/models').then(function(r){ return r.json(); }).then(function(j){
+      var list = j.installed || [];
+      var roles = j.roles || {};
+      var used = (Array.isArray(roles) ? roles : []).map(function(r){ return r.role + ' → ' + r.model + (r.installed ? '' : '（没装）'); });
+      var html = used.length ? '<div class="nb-kv"><b>角色</b><span>' + esc(used.join(' · ')) + '</span></div>' : '';
+      html += list.length ? list.map(function(m){
+        return '<div class="nb-row" style="cursor:default"><span class="tag">model</span>' + esc(m) +
+          '<span class="m">' + (String(m).indexOf('bge') === 0 ? '向量' : '对话/抽取') + '</span></div>';
+      }).join('') : '<div class="nb-empty">本机 ollama 里没看到模型。</div>';
+      $('nb-mdlist').innerHTML = html;
+    }).catch(function(){ $('nb-mdlist').innerHTML = '<div class="nb-empty">读不到模型列表。</div>'; });
+    var t = $('nb-mdtest'); if (t) t.onclick = function(){
+      $('nb-mdmsg').textContent = '测中…';
+      fetch('/api/test-cloud', { method: 'POST', headers: H, body: '{}' })
+        .then(function(r){ return r.json(); }).then(function(j){
+          $('nb-mdmsg').textContent = j.ok ? ('通：' + String(j.text || '').slice(0, 40)) : ('不通：' + (j.error || j.why || '?'));
+        }).catch(function(){ $('nb-mdmsg').textContent = '不通（请求失败）'; });
+    };
+  }
+
   function cfgView(){
     var el = $('nb-view');
     el.innerHTML = head('设置') + wrap('<div id="nb-cfg"><div class="nb-empty">读取中…</div></div>');
@@ -1597,6 +1662,10 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
         '<textarea id="cf-ptext" class="nb-search" style="min-height:150px;width:100%;font-family:var(--mono);font-size:12px;line-height:1.7"></textarea>' +
         '<div class="nb-actrow"><button class="nb-btn" id="cf-psave">保存这块</button>' +
         '<span class="nb-empty" id="cf-pmsg">改动只向前生效，会开新的一代</span></div></div>');
+      html += sec('模型一览',
+        '<div class="nb-form"><div class="nb-actrow">' +
+        '<button class="nb-btn" id="cf-mpick">看看装了哪些模型</button>' +
+        '<span class="nb-empty">装了什么 / 多大 / 给哪个角色用 / 测一句</span></div></div>');
       html += sec('头像',
         '<div class="nb-form">' +
         '<div class="nb-fld"><span>她</span><div class="nb-actrow">' +
@@ -1728,6 +1797,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
         fetch('/api/config', { method: 'PUT', headers: H, body: JSON.stringify({ agent: { name: $('cf-name').value.trim() } }) })
           .then(function(r){ return r.json(); }).then(function(j){ msg(j.ok ? '名字已保存' : (j.error || '失败'), !!j.ok); });
       });
+      on('cf-mpick', modelPicker);
       // ── QQ 接入（OneBot 11）──
       (function(){
         var cfgB = (br && br.config) || {};
