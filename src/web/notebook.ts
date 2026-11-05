@@ -190,7 +190,8 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
 .nb-fold{position:relative;max-height:10.8em;overflow:hidden}
 .nb-fold:after{content:"";position:absolute;left:0;right:0;bottom:0;height:1px;background:var(--line-dim)}
 .nb-fold.open{max-height:none}.nb-fold.open:after{display:none}
-.nb-more{margin-top:6px;font:11px/1 var(--mono);color:var(--dim);background:none;border:0;
+.nb-more{margin:8px 0 2px;font:11px/1 var(--mono);color:var(--ink);background:none;border:1px solid var(--line);
+  padding:5px 9px;cursor:pointer;
   border-bottom:1px dashed var(--line);padding:0 0 3px;cursor:pointer;letter-spacing:.04em}
 .nb-more:hover{color:var(--ink);border-bottom-color:var(--ink)}
 .nb-ev{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
@@ -478,7 +479,8 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
       n++;
       var mine = b.role === 'user';
       var body = b.html || esc(b.text).split(String.fromCharCode(10)).join('<br>');
-      var long = String(b.text || '').length > 420;
+      // 他的回答经常带表格，一刀切在中间就是「答不完整」。只有特别长的才折（3000 字以上）
+      var long = String(b.text || '').length > 3000;
       var id = 'f' + (CUR++);
       html += '<article class="nb-e ' + (mine ? 'me' : 'her') + '">' +
         '<div class="g">' +
@@ -497,9 +499,10 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
         var fold = holder.querySelector('#' + id);
         var btn = document.createElement('button');
         btn.className = 'nb-more';
-        btn.textContent = '展开全文 · 还有 ' + Math.max(1, Math.round((String(b.text).length - 300) / 60)) + ' 行';
+        btn.textContent = '展开全文（约 ' + String(b.text || '').length + ' 字，还有 ' + Math.max(1, Math.round((String(b.text || '').length - 700) / 60)) + ' 行）';
         btn.onclick = function(){ fold.classList.add('open'); btn.remove(); };
-        fold.parentNode.parentNode.appendChild(btn);
+        // 插到正文下面、证据条上面（以前 appendChild 到 .b 末尾，会被证据条挤到更下面）
+        fold.parentNode.parentNode.insertBefore(btn, fold.parentNode.nextSibling);
         html = holder.innerHTML;
       }
     });
