@@ -6,7 +6,7 @@
 ## 1. 怎么跑
 
 ```bash
-npm run check        # tsc + 全部测试
+npm run check        # tsc + 全部测试（失败的用例会自动重跑两次；重跑通过会标 FLAKY 并列出文件名）
 npm run ui:test      # headless Edge 真点真发：记录本 + 首启引导页
 npm run desktop:dev  # 桌面壳（Tauri；自己起 sidecar）
 
