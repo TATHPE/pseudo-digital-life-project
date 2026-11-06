@@ -76,7 +76,9 @@ export async function rerank(
   const list = hits.map((h, i) => i + 1 + ". " + String(h.text).slice(0, 160)).join(String.fromCharCode(10));
   const prompt = [
     "你是检索重排器。下面是问题与候选记忆。",
-    "只输出一个编号（1 到 " + hits.length + "）；如果候选里没有能回答这条问题的，只输出 NONE。",
+    "只输出一个编号（1 到 " + hits.length + "）；真的没有相关的，才输出 NONE。",
+    "注意：问题可能说得很含糊（「上周说的那个」「我妈生日那事」「之前定的规范」）——",
+    "只要候选里有一条在讲同一件事，就选它，不要因为问法含糊而说 NONE。",
     "不要解释，不要标点，不要别的话。",
     "",
     "问题：" + query,

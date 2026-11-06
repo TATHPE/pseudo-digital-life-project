@@ -25,7 +25,8 @@
     "desktop:build": "cargo tauri build --manifest-path desktop/src-tauri/Cargo.toml",
     "eval:about": "node --experimental-strip-types tools/eval-about.ts",
     "eval:rank": "node --experimental-strip-types tools/eval-rank.ts",
-    "ui:test:nb": "node tools/ui-test-nb.mjs"
+    "ui:test:nb": "node tools/ui-test-nb.mjs",
+    "eval:hard": "node tools/eval-hard2.ts"
   },
   "dependencies": {
     "casbin": "^5.51.1",

@@ -1,0 +1,20 @@
+{"id":"r-cat","group":"rewrite","q":"我家那只猫叫啥来着","anyOf":["年糕"]}
+{"id":"r-cake","group":"rewrite","q":"我妈生日那事儿你还记得吗","anyOf":["蛋糕"]}
+{"id":"r-ui","group":"rewrite","q":"界面当初定的什么风格","anyOf":["圆角","黑底"]}
+{"id":"r-city","group":"rewrite","q":"我住哪个城市","anyOf":["杭州"]}
+{"id":"r-time","group":"rewrite","q":"我平时什么时候才看消息","anyOf":["十点"]}
+{"id":"r-proto","group":"rewrite","q":"QQ 那个接入用的是什么协议","anyOf":["OneBot"]}
+{"id":"n-allergy","group":"negation","q":"我有什么不能吃的","anyOf":["花生"]}
+{"id":"n-call","group":"negation","q":"我讨厌你怎么称呼我","anyOf":["助手","名字"]}
+{"id":"n-ui","group":"negation","q":"界面上我不想要什么","anyOf":["圆角"]}
+{"id":"n-quiet","group":"negation","q":"什么时候别来打扰我","anyOf":["十点","早上"]}
+{"id":"a-height","group":"abstain","q":"我多高","expectEmpty":true}
+{"id":"a-car","group":"abstain","q":"我开什么车","expectEmpty":true}
+{"id":"a-college","group":"abstain","q":"我大学在哪读的","expectEmpty":true}
+{"id":"a-daughter","group":"abstain","q":"我女儿叫什么","expectEmpty":true}
+{"id":"m-model","group":"mixed","q":"鲸鲸 跑在什么模型上","anyOf":["Ollama","7B"]}
+{"id":"m-build","group":"mixed","q":"零构建具体指什么","anyOf":["无圆角","零构建","黑底"]}
+{"id":"m-verbatim","group":"mixed","q":"为什么抽取只许抄原文","anyOf":["只许抄原文","会编"]}
+{"id":"t-birthday","group":"time","q":"上周说的那个生日提醒还算数吗","anyOf":["蛋糕"]}
+{"id":"t-spec","group":"time","q":"前几天定的界面规范是什么","anyOf":["圆角","黑底"]}
+{"id":"t-allergy","group":"time","q":"昨天提到的过敏是什么","anyOf":["花生"]}

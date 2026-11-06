@@ -1,0 +1,16 @@
+{"id":1,"layer":"contract","kind":"boundary","text":"不要叫用户助手，直接叫名字"}
+{"id":2,"layer":"contract","kind":"promise","text":"下周三生日提醒：提前给妈妈买蛋糕"}
+{"id":3,"layer":"contract","kind":"fact_hard","text":"可以主动上网：能用命令行（curl / wget）取网页和接口"}
+{"id":4,"layer":"contract","kind":"boundary","text":"对话中先预告要做什么再执行，除非对方要求直接给结果"}
+{"id":5,"layer":"narrative","kind":"episode","text":"用户在做一个本地长期记忆的 AI 伙伴项目（鲸鲸），跑在 Ollama 上"}
+{"id":6,"layer":"narrative","kind":"preference_hard","text":"用户偏好黑底白字、无圆角、零构建的界面"}
+{"id":7,"layer":"narrative","kind":"preference_hard","text":"用户觉得 7B 模型做抽取会编，要求只许抄原文"}
+{"id":8,"layer":"narrative","kind":"preference_hard","text":"用户要求步数用完时先给结论，不要留半句话"}
+{"id":9,"layer":"narrative","kind":"fact_hard","text":"用户对花生过敏"}
+{"id":10,"layer":"narrative","kind":"fact_hard","text":"用户住在杭州"}
+{"id":11,"layer":"narrative","kind":"preference_hard","text":"用户一般晚上十点以后才看消息，早上别打扰"}
+{"id":12,"layer":"narrative","kind":"fact_hard","text":"用户养了一只叫年糕的猫"}
+{"id":13,"layer":"narrative","kind":"fact_hard","text":"用户的生日是 3 月 14 日"}
+{"id":14,"layer":"narrative","kind":"episode","text":"用户在做 QQ 机器人接入，用的是 OneBot 11 协议"}
+{"id":15,"layer":"narrative","kind":"episode","text":"用户把 qwen2.5 7B 用在本机做记忆抽取和重排，7B 只做这两件事"}
+{"id":16,"layer":"narrative","kind":"episode","text":"用户要求夜间整理在失败时不要把游标推进，宁可重跑"}
