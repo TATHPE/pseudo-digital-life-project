@@ -16,11 +16,12 @@
  * 这是 H-7（按次授权）的临时形态，等 K-3 的 grant 上线后换成按次。
  */
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { isAbsolute, join, normalize, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, normalize, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { realpathish } from "./verbs.ts";
 
 /** 可读的根（相对项目根）。第二条是文档仓（`D:/LLM/docs`），因为它不在 jingjing/ 里 */
-export const PROJECT_ROOTS = ["jingjing", "docs"] as const;
+export const PROJECT_ROOTS = [".", "docs"] as const;   // 仓库自身 + 它的 docs/（原来写 jingjing，是因为项目根在老布局的上一层）
 
 /** 路径里出现这些片段就拒（相对项目根的小写比较） */
 const DENY_SEGMENTS = ["data", "node_modules", ".git", ".venv", "secrets", "tokens", "pending", "exports"];
@@ -31,19 +32,23 @@ const MAX_BYTES = 64 * 1024;
 
 export interface ProjectFile { path: string; text: string; bytes: number; truncated: boolean }
 
-/** 项目的两个根：`D:/LLM`（含 docs/ 与 jingjing/）。可用 JJ_PROJECT_HOME 覆盖。 */
+/** 项目根：默认取仓库自身（src/..），不再写死 D:/LLM；可用 JJ_PROJECT_HOME 覆盖。 */
 export function projectHome(env: Record<string, string | undefined> = process.env): string {
-  return normalize(env.JJ_PROJECT_HOME ?? "D:/LLM");
+  if (env.JJ_PROJECT_HOME) return normalize(env.JJ_PROJECT_HOME);
+  return normalize(join(dirname(fileURLToPath(import.meta.url)), ".."));
 }
 
 function roots(env?: Record<string, string | undefined>): string[] {
   const h = projectHome(env);
-  return PROJECT_ROOTS.map((r) => join(h, r)).filter((p) => existsSync(p));
+  return PROJECT_ROOTS.map((r) => (r === "." ? h : join(h, r))).filter((p) => existsSync(p));
 }
 
 /** 相对项目根的写法（`jingjing/src/recall.ts` / `docs/22-….md`），也接受只写 `src/…` */
 export function resolveProjectPath(p: string, env?: Record<string, string | undefined>): string {
-  const raw = String(p ?? "").trim();
+  let raw = String(p ?? "").trim();
+  // 兼容旧写法「<仓库名>/src/x.ts」：现在的根就是仓库本身（2026-11-06）
+  const repoName = basename(projectHome(env));
+  if (repoName && raw.toLowerCase().startsWith(repoName.toLowerCase() + "/")) raw = raw.slice(repoName.length + 1);
   if (!raw) throw new Error("E_NO_PATH");
   if (isAbsolute(raw)) throw new Error("E_ABSOLUTE_PATH: 用相对项目根的路径（如 jingjing/src/recall.ts）");
 

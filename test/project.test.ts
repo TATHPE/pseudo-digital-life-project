@@ -6,18 +6,18 @@ import { join } from "node:path";
 import { readProjectFile, listProject, searchProject } from "../src/project.ts";
 import { verbs } from "../src/verbs.ts";
 
-/** 造一个假项目：jingjing/{src,data/secrets,.git,node_modules,.env} + docs/ */
+/** 造一个假项目：仓库本身就是根 → {src,data/secrets,.git,node_modules,.env} + docs/ */
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), "jj-proj-"));
   const mk = (p: string) => mkdirSync(join(root, p), { recursive: true });
   const wr = (p: string, s: string) => { mk(p.split("/").slice(0, -1).join("/")); writeFileSync(join(root, p), s); };
-  mk("jingjing/src"); mk("jingjing/test");
-  wr("jingjing/src/recall.ts", "export function recallForBrief(x) {\n  return x; // 注释里有 secret\n}\n");
-  wr("jingjing/test/a.test.ts", "recallForBrief(1);\n");
-  wr("jingjing/data/secrets/deepseek.secret", "CIPHERTEXT");
-  wr("jingjing/.env", "DEEPSEEK_KEY=sk-x");
-  wr("jingjing/.git/config", "[core]");
-  wr("jingjing/node_modules/m/index.js", "module.exports=1");
+  mk("src"); mk("jingjing/test");
+  wr("src/recall.ts", "export function recallForBrief(x) {\n  return x; // 注释里有 secret\n}\n");
+  wr("test/a.test.ts", "recallForBrief(1);\n");
+  wr("data/secrets/deepseek.secret", "CIPHERTEXT");
+  wr(".env", "DEEPSEEK_KEY=sk-x");
+  wr(".git/config", "[core]");
+  wr("node_modules/m/index.js", "module.exports=1");
   wr("docs/22-x.md", "# 文档\n");
   const env = { JJ_PROJECT_HOME: root, JJ_PROJECT_EGRESS: "1" } as Record<string, string>;
   return { root, env };
@@ -27,9 +27,9 @@ test("K-1 读项目：能在 jingjing/ 与 docs/ 下读，行区间生效", () =
   const { env } = fixture();
   const a = readProjectFile("src/recall.ts", { env });
   assert.match(a.text, /recallForBrief/);
-  assert.equal(a.path, "jingjing/src/recall.ts");
-  const b = readProjectFile("jingjing/src/recall.ts", { env });
-  assert.equal(b.path, "jingjing/src/recall.ts", "带根名与不带根名都能解析");
+  assert.equal(a.path, "src/recall.ts");
+  const b = readProjectFile("src/recall.ts", { env });
+  assert.equal(b.path, "src/recall.ts", "带仓库名前缀与不带都能解析");
   const one = readProjectFile("src/recall.ts", { from: 1, to: 1, env });
   assert.equal(one.text.split(String.fromCharCode(10)).length, 1, "from/to 只给那一行");
   assert.match(readProjectFile("docs/22-x.md", { env }).text, /文档/);
@@ -46,14 +46,14 @@ test("K-1 边界：密钥/.env/.git/node_modules 一律 E_PATH_DENIED；根外 E
     assert.throws(() => readProjectFile(p, { env }), /E_PATH_DENIED/, `${p} 必须被拒`);
   }
   assert.throws(() => readProjectFile("../../Windows/win.ini", { env }), /E_OUT_OF_PROJECT/);
-  assert.throws(() => readProjectFile("jingjing/src/../data/secrets/x.secret", { env }), /E_PATH_DENIED/, "路径里的 .. 也要展开后再判");
+  assert.throws(() => readProjectFile("src/../data/secrets/x.secret", { env }), /E_PATH_DENIED/, "路径里的 .. 也要展开后再判");
 });
 
 test("K-1 列表：.git/ .venv/ data/ 不出现在输出里", () => {
   const { env } = fixture();
-  const rows = listProject("jingjing", env);
+  const rows = listProject(".", env);
   const names = rows.map((r) => r.path);
-  assert.ok(names.includes("jingjing/src"), "正常目录要在");
+  assert.ok(names.includes("src"), "正常目录要在");
   assert.ok(!names.some((n) => /\/\.git$|\/data$|node_modules$/.test(n)), `不该出现：${names.join(",")}`);
 });
 

@@ -1,5 +1,4 @@
-工具（常驻 4 个，紧凑 schema）：
-search(query,k=8) 只读召回｜remember(text,layer,kind) 写一条记忆｜cite(id,offset?,limit?) 取原文｜act(tool,args) 调用目录里的工具
+工具（名字与分级由能力表生成，不要手写）：
+常驻：记忆的查与写、文件的读与写、项目只读、文档检索；执行类（shell / script）是 T3，只有拿到授权窗口才放行。
 
-目录（只给名字，需要时 act("tools.enable:<name>")）：
-doc.read · doc.tables · net.fetch · msg.notify · calendar.add · shell.run(T3)
+用法：需要时先看目录，再按名字调用；拿不准就先问，不要猜参数。

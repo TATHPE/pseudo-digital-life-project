@@ -7,10 +7,12 @@ import { join } from "node:path";
 const MD = readFileSync("AGENTS.md", "utf8");
 
 test("A-3 AGENTS.md 指向的文档都在（路径漂了就红）", () => {
-  const refs = [...MD.matchAll(/`\.\.\/([^`]+\.md)`/g)].map((m) => m[1]);
+  // 文档现在就在仓库里（docs/…）；也兼容本机布局的 ../docs/…
+  const refs = [...MD.matchAll(/`((?:\.\.\/)?(?:docs\/)[^`]+\.md)`/g)].map((m) => m[1]);
   assert.ok(refs.length >= 8, "至少要指向核心文档");
   for (const r of refs) {
-    assert.ok(existsSync(join("..", r!)), `AGENTS.md 指向的 ${r} 不存在`);
+    // 仓库自带 docs/：先找仓库内，再退回本机布局（../docs）
+    assert.ok(existsSync(join(".", r!)) || existsSync(join("..", r!)), `AGENTS.md 指向的 ${r} 不存在`);
   }
 });
 
