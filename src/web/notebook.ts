@@ -424,6 +424,17 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
 .nb-jump:last-child{border-right:1px solid var(--line-dim)}
 .nb-jump.on{background:var(--ink);color:var(--void);border-color:var(--ink)}
 .nb-tab{letter-spacing:.16em}
+
+/* 日志行：列宽自适应，长 verb 省略而不是压到下一列 */
+.nb-logrow{grid-template-columns:104px minmax(110px,190px) 70px 92px minmax(0,1fr);gap:10px}
+.nb-logrow .v{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nb-logrow .d{white-space:nowrap}
+/* 拒因单独一行，缩进对齐，不挤在行列里 */
+.nb-audit{padding-left:114px;font-size:10px;color:var(--dim2)}
+/* 切口签：单行横向滚动，不折行 */
+.nb-jumpbar{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;padding:8px 0 6px}
+.nb-jump{flex:0 0 auto;white-space:nowrap}
+.nb-jumpbar::-webkit-scrollbar{height:6px}
 </style></head>
 <body>
 <!--BOOT-->
