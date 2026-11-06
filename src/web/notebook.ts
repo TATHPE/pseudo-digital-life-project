@@ -30,13 +30,15 @@ export const NOTEBOOK = `<!doctype html>
   color-scheme:dark;
   --void:#0b0e0b;--ink:#e9f0f2;--dim:#9fb0b3;--dim2:#66757a;
   --line:rgba(233,240,242,.30);--line-dim:rgba(233,240,242,.10);
-  --cyan:#0f97a4;--amber:#c9a227;--fade:#8a9698;
+  --cyan:#0f7c74;--amber:#8a6d1f;--fade:#8f9799;
   /* 叠加层：深色底上是白雾，浅色底上要反过来，否则一片隐形 */
   --tint1:rgba(233,240,242,.015);--tint2:rgba(233,240,242,.03);--tint3:rgba(233,240,242,.05);
-  --ok:#8db580;--warn:#c9a227;--err:#c4554d;
+  --ok:#3f7a3a;--warn:#8a6d1f;--err:#a8423a;
   --mono:ui-monospace,"Cascadia Mono",Consolas,monospace;
   --sans:"HarmonyOS Sans SC","PingFang SC","Noto Sans SC","Source Han Sans SC","Microsoft YaHei UI","Microsoft YaHei",system-ui,sans-serif;
-  --measure:660px;
+  /* 版式基准：两套完全一致，按 Hermes 来（2026-11-06） */
+  --measure:1120px;  /* 容器宽 */
+  --prose:720px;     /* 正文列：约 50 字/行 */
   --rail:248px;   /* 左栏宽度：两套主题一致（2026-11-06 用户要求） */
 }
 /* ── 主题（2026-11-06）─────────────────────────────────────
@@ -52,16 +54,12 @@ export const NOTEBOOK = `<!doctype html>
   --ok:#3f7a3a;--warn:#8a6d1f;--err:#a8423a;
   --mono:ui-monospace,"Cascadia Mono",Consolas,monospace;
   --sans:"Inter","HarmonyOS Sans SC","PingFang SC","Noto Sans SC",system-ui,sans-serif;
-  --measure:1120px;   /* 容器宽 */
-  --prose:720px;      /* 正文列:容器再宽,一行也别超过 ~50 字 */
   --lh:1.75;
   /* 浅色底上的叠加层是**墨雾**，不是白雾 */
   --tint1:rgba(23,25,26,.02);--tint2:rgba(23,25,26,.035);--tint3:rgba(23,25,26,.06);
 }
-[data-theme="hermes"] body{font-size:12.5px;line-height:1.75}
 /* 版式差异：左栏 248（Hermes 的 sidebar 宽） */
 /* 正文别跟着容器一起变宽：容器 1120 / 正文 720 */
-[data-theme="hermes"] .nb-say,[data-theme="hermes"] .nb-e .b{max-width:var(--prose)}
 [data-theme="hermes"] .nb-greet{font-size:22px;font-weight:600;letter-spacing:-.01em}
 [data-theme="hermes"] .nb-sec{letter-spacing:.18em}
 [data-theme="hermes"] .nb-e .g .w{letter-spacing:.1em}
@@ -85,7 +83,8 @@ export const NOTEBOOK = `<!doctype html>
 .nb-e .g{font-size:9.5px;line-height:1.6;letter-spacing:.06em;color:var(--dim2)}
 .nb-e .g .w{font-size:9px;letter-spacing:.18em;text-transform:uppercase}
 /* 她的回话：左边一条细线（青），用户那条用墨 */
-.nb-say{border-left:1px solid var(--cyan);padding-left:12px}
+.nb-say{max-width:var(--prose);border-left:1px solid var(--cyan);padding-left:12px}
+.nb-e .b{max-width:var(--prose)}
 .nb-e.me .nb-say{border-left-color:var(--line)}
 /* 证据条：只有边框的小标签 */
 .nb-ev span{border:1px solid var(--line-dim);background:none;
@@ -137,7 +136,7 @@ export const NOTEBOOK = `<!doctype html>
 ::-webkit-scrollbar-thumb{background:var(--line-dim);border-radius:0}
 ::-webkit-scrollbar-thumb:hover{background:var(--dim2)}
 html,body{height:100%;margin:0}
-body{background:var(--void);color:var(--ink);font:15px/1.85 var(--sans);
+body{background:var(--void);color:var(--ink);font:12.5px/1.75 var(--sans);
   text-spacing-trim:trim-start;text-autospace:ideograph-alpha ideograph-numeric;
   line-break:strict;hanging-punctuation:first allow-end last;font-kerning:normal;
   font-variant-east-asian:normal}

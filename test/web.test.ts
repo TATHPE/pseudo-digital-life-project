@@ -93,7 +93,8 @@ test("GET / 分流：没配完给引导页；配完了给记录本（2026-11-05 
     assert.ok(html.includes("<title>鲸鲸 · 记录本</title>"), "跳过引导时给记录本");
     assert.ok(html.includes('id="nb-log"'), "记录本要有正文区");
     assert.ok(html.includes("--void:#0b0e0b"), "底色不变");
-    assert.ok(html.includes("--cyan:#0f97a4"), "青色不变");
+    // 强调色按 Hermes 统一（2026-11-06）：两套主题同一个青
+    assert.ok(html.includes("--cyan:#0f7c74"), "青色（Hermes）不变");
     assert.ok(!html.includes('id="composer"'), "经典面板不该再出现");
 
     // 旧路由撤掉：/classic 不存在了

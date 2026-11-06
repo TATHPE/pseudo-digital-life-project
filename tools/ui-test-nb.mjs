@@ -83,7 +83,8 @@ if (entries > 0) {
   check("她的话是青色左边线", await js(`(() => {
     const her = document.querySelector('#nb-log .nb-e.her .nb-say');
     if (!her) return true;   // 库里只有用户消息时不算错
-    return getComputedStyle(her).borderLeftColor.includes('15, 151, 164');
+    // Hermes 的青是 #0f7c74 = rgb(15, 124, 116)（2026-11-06 两套统一）
+    return getComputedStyle(her).borderLeftColor.includes('15, 124, 116');
   })()`));
 } else skip("每条有页边时间戳", "空库");
 
@@ -303,14 +304,15 @@ const themeSwitch = await js(`(async () => {
   const bg = getComputedStyle(document.body).backgroundColor;
   return {
     attr: document.documentElement.getAttribute('data-theme'),
-    before, after: getComputedStyle(document.body).fontSize,
+    before, after: getComputedStyle(document.body).fontSize, // 统一后两套同值，仅留作记录
     bg, saved: ui.theme,
   };
 })()`);
 if (themeSwitch && themeSwitch.why) check("主题能切", false, themeSwitch.why);
 else check(
   "主题能切（立刻生效 + 存进配置）",
-  !!themeSwitch && themeSwitch.attr === 'hermes' && themeSwitch.saved === 'hermes' && themeSwitch.after !== themeSwitch.before && /24[0-9]|25[0-9]/.test(themeSwitch.bg),
+  // 两套字号已统一（都 12.5），所以不再比字号 —— 比底色翻白 + 存进配置 + 属性
+  !!themeSwitch && themeSwitch.attr === 'hermes' && themeSwitch.saved === 'hermes' && /24[0-9]|25[0-9]/.test(themeSwitch.bg),
   themeSwitch ? (`${themeSwitch.before} → ${themeSwitch.after} · 存 ${themeSwitch.saved}`) : "?",
 );
 
