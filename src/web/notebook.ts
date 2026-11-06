@@ -28,7 +28,7 @@ export const NOTEBOOK = `<!doctype html>
 <style>
 :root{
   color-scheme:dark;
-  --void:#0b0e0b;--ink:#e9f0f2;--dim:#9fb0b3;--dim2:#66757a;
+  --void:#0b0e0b;--ink:#f2f7f8;--dim:#b9c6c9;--dim2:#7d8b8f;
   --line:rgba(233,240,242,.30);--line-dim:rgba(233,240,242,.10);
   --cyan:#0f7c74;--amber:#8a6d1f;--fade:#8f9799;
   /* 叠加层：深色底上是白雾，浅色底上要反过来，否则一片隐形 */
@@ -48,7 +48,7 @@ export const NOTEBOOK = `<!doctype html>
 [data-theme="hermes"]{
   color-scheme:light;
   /* 纸白 + 墨黑：Hermes 是浅色底，不是深色底换个灰 */
-  --void:#fbfbf9;--ink:#17191a;--dim:#5b6367;--dim2:#8b9296;
+  --void:#fbfbf9;--ink:#0a0b0c;--dim:#33393c;--dim2:#5a6165;
   --line:rgba(23,25,26,.22);--line-dim:rgba(23,25,26,.09);
   --cyan:#0f7c74;--amber:#8a6d1f;--fade:#6f777a;
   --ok:#3f7a3a;--warn:#8a6d1f;--err:#a8423a;
@@ -126,6 +126,7 @@ export const NOTEBOOK = `<!doctype html>
 .nb-btn:hover{background:var(--ink);color:var(--void);border-color:var(--ink)}
 /* 活动行：更密、时间戳等宽 */
 .nb-actline{border-top:1px solid var(--line-dim)}
+
 
 
 *{box-sizing:border-box}
@@ -384,6 +385,45 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
 .nb-tick div{max-width:calc(var(--measure) + 76px);margin:0 auto;font:10px/1.4 var(--mono);color:var(--dim2);
   padding-left:76px;text-align:right}
 
+/* 其余页面：与对话页/工作台同一套语汇（2026-11-06 用户：其他界面也按这个来） */
+/* 页头：等宽大写小标签 + 一条细线 */
+.nb-pagehd{padding:18px 22px 10px}
+.nb-pagehd h1{font-size:9.5px;letter-spacing:.22em;text-transform:uppercase}
+/* 列表行：12.5px、细线、悬停只说一点 */
+.nb-row{font-size:12.5px;line-height:1.75;padding:10px 4px}
+.nb-row:hover{background:var(--tint1)}
+.nb-row .m{font-size:9.5px;letter-spacing:.05em;margin-top:2px}
+.nb-row .tag{font-size:9px;letter-spacing:.16em;text-transform:uppercase}
+/* 搜索框：只留一条底线，像在纸上写 */
+.nb-search{max-width:100%;border:0;border-bottom:1px solid var(--line);font-size:12.5px;padding:7px 2px}
+.nb-search:focus{border-bottom-color:var(--ink)}
+/* 表单：等宽小标签 + 底线输入 */
+.nb-fld{grid-template-columns:88px 1fr}
+.nb-fld label,.nb-form label{font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim2)}
+.nb-form input,.nb-form textarea,.nb-form select{border:0;border-bottom:1px solid var(--line-dim);
+  background:none;color:var(--ink);font-size:12.5px;padding:6px 2px}
+.nb-form input:focus,.nb-form textarea:focus{border-bottom-color:var(--ink);outline:none}
+/* 右栏切口签：选中反色 */
+.nb-tab{font-size:9.5px;letter-spacing:.14em}
+/* 跳转条 */
+.nb-jump{font-size:9.5px;letter-spacing:.12em;border-color:var(--line-dim)}
+/* 弹窗：只有细线，没有阴影 */
+.nb-modal{border-color:var(--line)}
+/* 引用块 / 追踪 / 审计：等宽小字，行高收紧 */
+.nb-sub{border-left-width:1px;padding-left:12px;font-size:12.5px}
+.nb-audit,.nb-tr{font-size:10.5px;line-height:1.75}
+/* 日志行：更密 */
+.nb-logrow{font-size:10.5px;padding:5px 2px}
+/* 卡片 */
+.nb-card{padding:12px 14px}
+/* 空状态 */
+.nb-empty{font-size:11.5px}
+/* 切口签 / 跳转条：分段细线，选中反色（设置页那排太挤，靠这个立住） */
+.nb-jumpbar{gap:0;border-bottom:1px solid var(--line)}
+.nb-jump{border:1px solid var(--line-dim);border-right:0;padding:7px 9px;color:var(--dim)}
+.nb-jump:last-child{border-right:1px solid var(--line-dim)}
+.nb-jump.on{background:var(--ink);color:var(--void);border-color:var(--ink)}
+.nb-tab{letter-spacing:.16em}
 </style></head>
 <body>
 <!--BOOT-->
