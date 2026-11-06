@@ -196,21 +196,29 @@ check("校样页能打开", await js(`(async () => {
 })()`));
 
 // ⑥e 回到最新：滚上去要露出按钮，点一下回到底；点侧栏「今天」也该落到最新
+// 注意：这一段之前跑过记忆/文档/设置/校样，得先回记录页（按钮只在记录页出现）
 const latest = await js(`(async () => {
+  const openChat = async () => {
+    const d = [...document.querySelectorAll('#nb-days .nb-day')].find((x) => x.textContent.indexOf('今天') >= 0);
+    if (d) d.click();
+    await new Promise((r) => setTimeout(r, 500));
+  };
+  await openChat();
   const p = document.getElementById('nb-page');
   const b = document.getElementById('nb-latest');
   if (!p || !b) return { why: 'no-btn' };
+
   p.scrollTop = 0;
   await new Promise((r) => setTimeout(r, 300));
   const shown = !b.hidden;
+
   b.click();
   await new Promise((r) => setTimeout(r, 400));
   const atBottom = p.scrollHeight - (p.scrollTop + p.clientHeight) < 40;
   const hiddenAfter = b.hidden;
-  // 点侧栏「今天」也要落到最新，而不是当天最上面
+
   p.scrollTop = 0;
-  const day = [...document.querySelectorAll('#nb-days .nb-day')].find((x) => x.textContent.indexOf('今天') >= 0);
-  if (day) { day.click(); await new Promise((r) => setTimeout(r, 500)); }
+  await openChat();
   const todayAtBottom = p.scrollHeight - (p.scrollTop + p.clientHeight) < 40;
   return { shown, atBottom, hiddenAfter, todayAtBottom };
 })()`);
