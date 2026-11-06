@@ -1,4 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
+import { DIM } from "./embed.ts";
 import { createRequire } from "node:module";
 import { MIGRATION_001, SCHEMA_VERSION } from "./schema.ts";
 
@@ -24,14 +25,14 @@ export function openDb(path: string): Db {
   // 40k 行基准里，这两条把 FTS 排序从 12 ms 稳到 3–10 ms（i/o 抖动变小）
   try { db.exec("PRAGMA mmap_size=268435456; PRAGMA cache_size=-40000;"); } catch { /* 平台不支持则忽略 */ }
   if (vecLoaded) {
-    try { db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS vec_memories USING vec0(memory_id INTEGER PRIMARY KEY, embedding FLOAT[512])`); } catch { vecLoaded = false; }
+    try { db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS vec_memories USING vec0(memory_id INTEGER PRIMARY KEY, embedding FLOAT[${DIM}])`); } catch { vecLoaded = false; }
   }
   // 启动时自检一次向量表（不是读旧标记，而是**现在试一下**）：
   // `meta.vec_error` 以前只写不删 —— 一次历史失败会让 `/health` 和 `capabilities`
   // 永远报 `vec-index-broken`。写入探针用负 id，插完立刻删。
   if (vecLoaded) {
     try {
-      const probe = new Float32Array(512);
+      const probe = new Float32Array(DIM);
       db.prepare("INSERT OR REPLACE INTO vec_memories(memory_id,embedding) VALUES(?,?)").run(BigInt(-1), new Uint8Array(probe.buffer));
       db.prepare("DELETE FROM vec_memories WHERE memory_id=?").run(BigInt(-1));
       db.prepare("DELETE FROM meta WHERE key='vec_error'").run();

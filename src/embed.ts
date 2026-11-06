@@ -4,7 +4,10 @@
  */
 import { createHash } from "node:crypto";
 
-export const DIM = 512;
+// 2026-11-06：维度可配（默认 512 保持现状）。bge-m3 原生 1024 维，我们早期截到 512；
+// 想验证「截断丢了多少」就设 JJ_EMBED_DIM=1024 重建向量再跑同一批用例。
+// 注意：vec_memories 的维度在建表时写死，换维度必须换一个库（或重建表）。
+export const DIM = Number(process.env.JJ_EMBED_DIM ?? 512);
 
 export type EmbedProvider = "ollama" | "fake";
 
