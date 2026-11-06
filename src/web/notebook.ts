@@ -258,6 +258,11 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
   border:1px solid var(--line-dim);padding:4px 8px;cursor:pointer;margin-right:8px}
 .nb-modechip:hover{color:var(--ink);border-color:var(--line)}
 .nb-modechip.on{color:var(--void);background:var(--ink);border-color:var(--ink)}
+/* 回到最新：滚上去了才出现，点一下回到底 */
+.nb-latest{position:fixed;right:74px;bottom:96px;z-index:6;font:10px/1 var(--mono);letter-spacing:.08em;
+  color:var(--void);background:var(--ink);border:1px solid var(--ink);padding:7px 11px;cursor:pointer}
+.nb-latest:hover{opacity:.85}
+.nb-latest[hidden]{display:none}
 .nb-gav{display:block;width:22px;height:22px;object-fit:cover;margin:0 0 5px auto;border:1px solid var(--line-dim);opacity:.85}
 .nb-e.me .g .w{color:var(--amber)}
 .nb-e .b{min-width:0}
@@ -396,6 +401,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
 </div>
 
 <div class="nb-tick"><div id="nb-tickmsg"></div></div>
+<button class="nb-latest" id="nb-latest" hidden>回到最新 ↓</button>
 <div class="nb-pal" id="nb-pal" hidden>
   <div class="nb-palbox">
     <input id="nb-palq" class="nb-palin" placeholder="搜会话 / 记忆 / 文档 / 页面　⌘K 或 Ctrl+K 打开，Esc 关掉" autocomplete="off">

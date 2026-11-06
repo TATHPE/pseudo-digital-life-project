@@ -195,6 +195,32 @@ check("校样页能打开", await js(`(async () => {
   return !!el && (el.textContent || '').length > 3;
 })()`));
 
+// ⑥e 回到最新：滚上去要露出按钮，点一下回到底；点侧栏「今天」也该落到最新
+const latest = await js(`(async () => {
+  const p = document.getElementById('nb-page');
+  const b = document.getElementById('nb-latest');
+  if (!p || !b) return { why: 'no-btn' };
+  p.scrollTop = 0;
+  await new Promise((r) => setTimeout(r, 300));
+  const shown = !b.hidden;
+  b.click();
+  await new Promise((r) => setTimeout(r, 400));
+  const atBottom = p.scrollHeight - (p.scrollTop + p.clientHeight) < 40;
+  const hiddenAfter = b.hidden;
+  // 点侧栏「今天」也要落到最新，而不是当天最上面
+  p.scrollTop = 0;
+  const day = [...document.querySelectorAll('#nb-days .nb-day')].find((x) => x.textContent.indexOf('今天') >= 0);
+  if (day) { day.click(); await new Promise((r) => setTimeout(r, 500)); }
+  const todayAtBottom = p.scrollHeight - (p.scrollTop + p.clientHeight) < 40;
+  return { shown, atBottom, hiddenAfter, todayAtBottom };
+})()`);
+if (latest && latest.why) check("回到最新按钮", false, latest.why);
+else {
+  check("滚上去露出「回到最新」", latest && latest.shown === true, JSON.stringify(latest));
+  check("点它回到底（按钮随即隐藏）", latest && latest.atBottom === true && latest.hiddenAfter === true, JSON.stringify(latest));
+  check("点侧栏「今天」落到最新一条", latest && latest.todayAtBottom === true, JSON.stringify(latest));
+}
+
 // ⑥ 她收着的
 check("「她收着的」能翻出来", await js(`(async () => {
   const b = document.getElementById('nb-board-btn');

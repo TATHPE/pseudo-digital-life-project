@@ -133,6 +133,11 @@
           // 今天用日期前缀匹配（标记是「11 月 5 日 周四」，不是 2026-11-05）
           if (lab === todayLabel ? dl.indexOf(md) >= 0 : dl === lab) { target = marks[i]; break; }
         }
+        // 今天点进去要看的是**最新一条**，不是当天最上面（用户：每次点今天都跳到顶）
+        if (lab === todayLabel) {
+          $('nb-page').scrollTop = $('nb-page').scrollHeight;
+          return;
+        }
         if (target) target.scrollIntoView({ block: 'start' });
         else $('nb-page').scrollTop = 0;
       };
@@ -206,6 +211,7 @@
     });
     requestAnimationFrame(function(){
       $('nb-page').scrollTop = AT_BOTTOM ? $('nb-page').scrollHeight : 0;
+      updateLatest();
     });
   }
 
@@ -396,6 +402,19 @@
   });
 
   // ── 发一句话 ──────────────────────────────────
+  // 回到最新：离底超过 200px 就露出来（用户：老面板有这条，记录本没有）
+  function updateLatest(){
+    var p = $('nb-page'), b = $('nb-latest');
+    if (!p || !b) return;
+    b.hidden = (p.scrollHeight - (p.scrollTop + p.clientHeight)) < 200;
+  }
+  (function(){
+    var p = $('nb-page'), b = $('nb-latest');
+    if (p) p.addEventListener('scroll', updateLatest);
+    // 直接跳：长对话有 5 万像素，平滑滚要好几秒，用户点它就是想到那儿
+    if (b) b.onclick = function(){ p.scrollTop = p.scrollHeight; updateLatest(); };
+  })();
+
   function send(){
     if (BUSY) return;
     var ta = $('nb-say');
