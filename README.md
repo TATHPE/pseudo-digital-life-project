@@ -7,6 +7,8 @@
 [![node](https://img.shields.io/badge/node-%E2%89%A524-brightgreen.svg)](https://nodejs.org)
 [![release](https://img.shields.io/github/v/release/TATHPE/pseudo-digital-life-project)](https://github.com/TATHPE/pseudo-digital-life-project/releases/latest)
 
+**中文** · [English](README.en.md)
+
 ![记录本（深色）](docs/images/chat-dark.png)
 
 ## 它是什么
