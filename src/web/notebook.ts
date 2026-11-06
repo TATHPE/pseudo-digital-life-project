@@ -74,6 +74,34 @@ export const NOTEBOOK = `<!doctype html>
 /* 滚动条：浅色底上用墨色滑块 */
 [data-theme="hermes"] ::-webkit-scrollbar-thumb{background:rgba(23,25,26,.18)}
 [data-theme="hermes"] ::-webkit-scrollbar-thumb:hover{background:rgba(23,25,26,.32)}
+/* hermes：对话页 —— 页边等宽小字、细线分隔、证据条只留边框、代码块浅底 */
+[data-theme="hermes"] .nb-sheet{padding-top:20px}
+/* 每条之间就是一条细线，不加间距以外的装饰 */
+[data-theme="hermes"] .nb-e{border-top:1px solid var(--line-dim);padding:18px 0 22px}
+[data-theme="hermes"] .nb-e .g{font-size:9.5px;line-height:1.6;letter-spacing:.06em;color:var(--dim2)}
+[data-theme="hermes"] .nb-e .g .w{font-size:9px;letter-spacing:.18em;text-transform:uppercase}
+/* 她的回话：左边一条细线（青），用户那条用墨 */
+[data-theme="hermes"] .nb-say{border-left:1px solid var(--cyan);padding-left:12px}
+[data-theme="hermes"] .nb-e.me .nb-say{border-left-color:var(--line)}
+/* 证据条：只有边框的小标签 */
+[data-theme="hermes"] .nb-ev span{border:1px solid var(--line-dim);background:none;
+  font-size:9.5px;letter-spacing:.06em;padding:2px 6px}
+/* 日期分隔：等宽大写 + 细线 */
+[data-theme="hermes"] .nb-daymark{font-size:9.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--dim)}
+/* 代码：一行一行像清单 */
+[data-theme="hermes"] .nb-say pre{background:var(--tint1);border:1px solid var(--line-dim);font-size:11.5px}
+[data-theme="hermes"] .nb-say code{background:var(--tint2);font-size:11.5px}
+/* 折叠按钮 */
+[data-theme="hermes"] .nb-more{border-color:var(--line);font-size:10px;letter-spacing:.08em}
+/* 输入区：一条底线 + 等宽提示 */
+[data-theme="hermes"] .nb-cin{border-top:1px solid var(--line)}
+[data-theme="hermes"] .nb-cin .h{font-size:9.5px;letter-spacing:.08em;color:var(--dim2)}
+[data-theme="hermes"] .nb-cin .sd{border-color:var(--line);font-size:10.5px}
+[data-theme="hermes"] .nb-cin .sd:hover{background:var(--ink);color:var(--void)}
+/* 空状态与提示 */
+[data-theme="hermes"] .nb-empty{font-size:11.5px;color:var(--dim2)}
+/* 页边头像：方形，细边 */
+[data-theme="hermes"] .nb-gav{border:1px solid var(--line-dim);opacity:1}
 /* hermes：工作台的可视化 —— 细线 + 等宽小标签 + 密读数，不加底色 */
 [data-theme="hermes"] .nb-cards{gap:0;border:1px solid var(--line);border-right:0}
 [data-theme="hermes"] .nb-card2{border:0;border-right:1px solid var(--line);padding:14px 16px;background:none}
