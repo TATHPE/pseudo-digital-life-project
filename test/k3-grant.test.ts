@@ -51,7 +51,10 @@ test("K-3 判定：命令/目录/路径/元字符/密钥，任何一条不过就
   assert.equal(checkGrant(home, { argv: ["curl", "http://x"], cwd: ws }, now).ok, false, "命令不在白名单");
   assert.equal(checkGrant(home, { argv: ["node", "a.mjs"], cwd: home }, now).ok, false, "cwd 在窗口外");
   assert.equal(checkGrant(home, { argv: ["node", "../../etc/passwd"], cwd: ws }, now).ok, false, "不许 ..");
-  assert.equal(checkGrant(home, { argv: ["node", "a.mjs", "&&", "rm", "-rf", "/"], cwd: ws }, now).ok, false, "不许串联");
+  // 2026-11-06：不再按元字符拒 —— argv 是数组直传，不经 shell，`&&` 只是参数内容。
+  // 危险的是**可执行**那部分，而 rm 自己就在硬禁名单里。
+  assert.equal(checkGrant(home, { argv: ["node", "a.mjs", "&&", "rm", "-rf", "/"], cwd: ws }, now).ok, true, "元字符不再拒绝");
+  assert.equal(checkGrant(home, { argv: ["rm", "-rf", "/"], cwd: ws }, now).ok, false, "但 rm 本身照旧拒");
   assert.equal(checkGrant(home, { argv: ["node", "a.mjs", "--apiKey=sk-abcdefghijk"], cwd: ws }, now).ok, false, "不许带密钥");
 
   // 过期即失效
@@ -149,13 +152,15 @@ test("K-3 全权窗口：短 ttl、理由更硬、硬禁名单结构性排除", 
   // 2026-11-05：上网不再拦（curl/wget 可以用）
   assert.equal(checkGrant(home, { argv: ["curl", "https://example.com"], cwd: ws, verb: "shell.exec" }, now).ok, true, "curl 要能跑");
   // 硬禁：删除 / 系统 / 壳
-  for (const bad of ["rm", "del", "reg", "shutdown", "powershell", "cmd", "bash"]) {
+  // 2026-11-06：解释器（powershell/cmd/bash）已移出硬禁名单，其余不可逆的照旧
+  for (const bad of ["rm", "del", "reg", "shutdown", "format"]) {
     const d = checkGrant(home, { argv: [bad, "x"], cwd: ws, verb: "shell.exec" }, now);
     assert.equal(d.ok, false, `${bad} 在全权窗口里也必须拒`);
     if (!d.ok) assert.equal(d.code, "E_GRANT_FULL_DENY", `${bad} 要有专门的拒绝码`);
   }
-  // 内联求值一律拒（两种窗口都拒）
-  assert.equal(checkGrant(home, { argv: ["node", "-e", "1"], cwd: ws, verb: "shell.exec" }, now).ok, false);
+  // 2026-11-06：内联求值放开（写文件再跑是等价能力，禁它只多花步骤）
+  assert.equal(checkGrant(home, { argv: ["node", "-e", "1"], cwd: ws, verb: "shell.exec" }, now).ok, true, "node -e 要能跑");
+  assert.equal(checkGrant(home, { argv: ["powershell", "-Command", "Write-Output hi"], cwd: ws, verb: "shell.exec" }, now).ok, true, "powershell -Command 要能跑");
   // 不许跑出 home
   assert.equal(checkGrant(home, { argv: ["node", "C:/Windows/x.mjs"], cwd: ws, verb: "shell.exec" }, now).ok, false);
   revokeAll(home);

@@ -9,7 +9,7 @@
 | 项 | 数量 |
 |---|---|
 | 源文件（src/**/*.ts） | 115 |
-| 错误码 E_* | 223 |
+| 错误码 E_* | 221 |
 | verbs | 27 |
 | CLI 子命令 | 39 |
 
@@ -87,8 +87,6 @@
 | `E_GRANT_BECAUSE` | `src/grant.ts` |
 | `E_GRANT_COMMAND` | `src/grant.ts` |
 | `E_GRANT_FULL_DENY` | `src/grant.ts` |
-| `E_GRANT_INLINE_EVAL` | `src/grant.ts` |
-| `E_GRANT_META` | `src/grant.ts` |
 | `E_GRANT_NEEDS_FULL` | `src/grant.ts` `src/verbs.ts` |
 | `E_GRANT_NO_MATCH` | `src/grant.ts` |
 | `E_GRANT_PATH` | `src/grant.ts` |

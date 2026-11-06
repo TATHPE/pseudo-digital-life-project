@@ -87,7 +87,8 @@ export const FULL_DENY = new Set([
   "reg", "regedit", "sc", "net", "netsh", "schtasks", "shutdown", "reboot", "logoff",
   "taskkill", "bcdedit", "takeown", "icacls", "cacls", "attrib",
   // 2026-11-05 用户：限制全撤 —— 上网不再硬禁（curl/wget/bitsadmin/xmllint 等）
-  "powershell", "pwsh", "cmd", "bash", "sh", "zsh", "wsl",
+  // 2026-11-06 用户：解释器也不再硬禁。她能 fs.write 一个 .ps1 再 script.run 跑，
+  // 等价能力本来就开着 —— 禁 powershell -Command 只让她多走两步、多烧 token，安全边界一步没变。
 ]);
 /** 解释器：能用「解释器 + 脚本文件」形状跑代码的那些。 */
 const INTERPRETERS = new Set([
@@ -329,22 +330,21 @@ export function checkGrant(
   // 超级权限：**先判定** —— 下面几条检查在 super 下要放开，顺序错了等于没放开。
   const SUPER = superEnabled(home);
 
-  // 元字符：普通窗口不许「看起来能串联」的命令。**super 下跳过** ——
-  // argv 是数组直传（不经 shell，不会真的串联），而 super 本来就允许任意命令；
-  // 不跳过的话 Get-ChildItem | Select-Object 这种 PowerShell 管道会被挡在门外。
+  // 2026-11-06：删掉元字符检查。
+  // 我们跑命令是 **argv 数组直传、不经过 shell** —— `;` `&` `|` 只是普通参数内容，
+  // 不会串联任何东西。这条检查照着「拼 shell 字符串」的威胁模型写的，对我们纯误伤，
+  // 现实中只挡住过 Get-ChildItem | Select-Object 这种正常管道。
+  // 密钥字样照旧拒：审计会把 argv 落进 exec_audit，明文 key 不能进审计。
   for (const a of argv) {
-    if (!SUPER && /[;&|`$\n\r]/.test(a)) return { ok: false, code: "E_GRANT_META", why: `命令里含 shell 元字符：${a.slice(0, 40)}` };
     // 密钥字样两种窗口都拒：审计会把 argv 存进 exec_audit，明文 key 不能进审计
     if (/key|token|secret|password|passwd/i.test(a) && a.length > 8) {
       return { ok: false, code: "E_GRANT_SECRET", why: "命令里疑似带密钥/令牌，授权窗口不接这种" };
     }
   }
 
-  // 内联求值：普通窗口拒（命令必须落在能读的文件上），super 放开（否则 node -e 都用不了）
-  const inlineAt = argv.findIndex((a) => INLINE_EVAL.test(a));
-  if (inlineAt > 0 && !SUPER) {
-    return { ok: false, code: "E_GRANT_INLINE_EVAL", why: `不许内联求值（${argv[inlineAt]}）：把代码写进文件再跑，才留得下痕迹` };
-  }
+  // 2026-11-06：内联求值（-Command / -c / -e）也放开。
+  // 理由同上：写文件再跑是等价能力，禁内联只增加步骤与 token，不增加安全。
+  // 留痕靠的是 exec_audit（argv + 退出码 + 时长），不是靠「必须落文件」。
 
   const wantFull = req.verb === "shell.exec";
   // ── 超级权限：绕过窗口，但**不绕过**兜底本身 ──
@@ -373,12 +373,8 @@ export function checkGrant(
 
     // 完全权限窗口：任意命令（除硬禁名单）+ 整个 home；但**普通窗口不因此变宽**
     if (g.full) {
-      // 解释器跑**脚本文件**（script.run）是另一回事：
-      // 默认解释器就是 PowerShell，而它在 FULL_DENY 里 —— 不解开这一条，
-      // "默认 PowerShell" 与 "能跑脚本" 就永远矛盾（实测 E_GRANT_FULL_DENY）。
-      // 只放行「解释器 + home 内的脚本文件」这一种形状；powershell -Command 仍然拒。
-      const interpreterRun = Boolean(req.asInterpreter) && INTERPRETERS.has(bin) && scriptFileArg(home, argv) !== null;
-      if (FULL_DENY.has(bin) && !interpreterRun) { sawFullDeny = bin; continue; }
+      // 2026-11-06：解释器已不在 FULL_DENY 里，这条「解释器+脚本文件」的例外不再需要。
+      if (FULL_DENY.has(bin)) { sawFullDeny = bin; continue; }
       if (!insideHome(home, req.cwd)) continue;
       const badPath = argv.slice(1).filter((a) => {
         if (!looksLikePath(a)) return false;

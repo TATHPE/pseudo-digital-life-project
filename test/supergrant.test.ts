@@ -107,9 +107,9 @@ test("权限的两个硬矛盾（2026-11-03）：默认解释器能跑脚本、�
     const ok = checkGrant(home, { argv: ["powershell", "-NoProfile", "-File", script], cwd: home, verb: "script.run", asInterpreter: true });
     assert.equal(ok.ok, true, "script.run 用默认解释器跑 home 内的脚本，必须放行");
 
-    // 但 shell.exec 直接传 -Command 仍然拒（那是绕过闸门）
-    const bad = checkGrant(home, { argv: ["powershell", "-NoProfile", "-Command", "whoami"], cwd: home, verb: "shell.exec" });
-    assert.equal(bad.ok, false, "powershell -Command 必须仍然拒");
+    // 2026-11-06：-Command 也放开了（写文件再跑是等价能力，禁它只多花步骤）
+    const inlineOk = checkGrant(home, { argv: ["powershell", "-NoProfile", "-Command", "whoami"], cwd: home, verb: "shell.exec" });
+    assert.equal(inlineOk.ok, true, "powershell -Command 现在能跑（审计照留）");
 
     // 脚本在 home 外也拒
     const out = checkGrant(home, { argv: ["powershell", "-File", "C:/Windows/System32/evil.ps1"], cwd: home, verb: "script.run", asInterpreter: true });
