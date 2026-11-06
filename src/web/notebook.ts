@@ -51,8 +51,8 @@ export const NOTEBOOK = `<!doctype html>
   --ok:#3f7a3a;--warn:#8a6d1f;--err:#a8423a;
   --mono:ui-monospace,"Cascadia Mono",Consolas,monospace;
   --sans:"Inter","HarmonyOS Sans SC","PingFang SC","Noto Sans SC",system-ui,sans-serif;
-  --measure:720px;    /* 容器宽 = 正文列宽：整列一条线，不再"宽容器套窄正文" */
-  --prose:720px;      /* 正文列：与容器同宽，约 50 字/行 */
+  --measure:1120px;   /* 容器宽 */
+  --prose:720px;      /* 正文列:容器再宽,一行也别超过 ~50 字 */
   --lh:1.75;
   /* 浅色底上的叠加层是**墨雾**，不是白雾 */
   --tint1:rgba(23,25,26,.02);--tint2:rgba(23,25,26,.035);--tint3:rgba(23,25,26,.06);
@@ -76,46 +76,6 @@ export const NOTEBOOK = `<!doctype html>
 /* 滚动条：浅色底上用墨色滑块 */
 [data-theme="hermes"] ::-webkit-scrollbar-thumb{background:rgba(23,25,26,.18)}
 [data-theme="hermes"] ::-webkit-scrollbar-thumb:hover{background:rgba(23,25,26,.32)}
-/* ── hermes：把「其他」也做成 Hermes 的样子 ─────────────────
-   语汇：1px 细线、无填色、等宽小标签（大写 + 字距）、留白按 8 的倍数。
-   全部限定在 [data-theme=hermes]，深色主题一行不受影响。 */
-/* 顶栏：等宽小字 + 一条实线 */
-[data-theme="hermes"] .nb-top{font-size:10.5px;letter-spacing:.12em;padding:0 16px;height:34px}
-[data-theme="hermes"] .nb-top b{font-weight:600}
-/* 左栏：条目更松，选中用 2px 墨线，不用色块 */
-[data-theme="hermes"] .nb-index h2{font-size:9.5px;letter-spacing:.2em;margin:0 0 8px 18px}
-[data-theme="hermes"] .nb-day{padding:8px 18px;font-size:12.5px}
-[data-theme="hermes"] .nb-day.on{background:none;border-left-color:var(--ink)}
-[data-theme="hermes"] .nb-go{padding:7px 18px;font-size:12.5px;border-top:0}
-/* 分区标题：细线在上，等宽小标签 */
-[data-theme="hermes"] .nb-sec{border-top:1px solid var(--line-dim);padding-top:10px;margin:26px 0 10px;
-  font-size:9.5px;letter-spacing:.22em}
-/* 卡片：只有细线，没有底 */
-[data-theme="hermes"] .nb-card2,[data-theme="hermes"] .nb-card,[data-theme="hermes"] .nb-recipe{
-  border:1px solid var(--line);background:none;padding:12px 14px}
-[data-theme="hermes"] .nb-card2:hover,[data-theme="hermes"] .nb-recipe:hover{background:var(--tint1);border-color:var(--ink)}
-/* 按钮与选项：细线 + 悬停反色 */
-[data-theme="hermes"] .nb-btn,[data-theme="hermes"] .nb-opt,[data-theme="hermes"] .nb-jump{
-  border:1px solid var(--line);font-size:10.5px;letter-spacing:.08em;padding:6px 10px}
-[data-theme="hermes"] .nb-btn:hover,[data-theme="hermes"] .nb-opt:hover,[data-theme="hermes"] .nb-jump:hover{
-  background:var(--ink);color:var(--void);border-color:var(--ink)}
-[data-theme="hermes"] .nb-opt.on,[data-theme="hermes"] .nb-jump.on{background:var(--ink);color:var(--void)}
-/* 输入：只留一条底线，像在纸上写 */
-[data-theme="hermes"] .nb-cin{border-top:1px solid var(--line)}
-[data-theme="hermes"] .nb-cin textarea{font-size:12.5px}
-/* 表格：更密、表头等宽大写 */
-[data-theme="hermes"] .md-table{font-size:11.5px;line-height:1.55}
-[data-theme="hermes"] .md-table th{font:10px/1.4 var(--mono);letter-spacing:.14em;text-transform:uppercase;
-  border-bottom:1px solid var(--line)}
-[data-theme="hermes"] .md-table td{border-bottom:1px solid var(--line-dim)}
-/* 证据条 / 引用：只有边框 */
-[data-theme="hermes"] .nb-ev span{border-color:var(--line-dim);color:var(--dim)}
-/* 页边时间戳与"你/她"：更淡、更小 */
-[data-theme="hermes"] .nb-e .g{font-size:9.5px}
-/* 右栏：白底上切口签要能看清 */
-[data-theme="hermes"] .nb-tab{border-left:2px solid transparent;font-size:10.5px}
-[data-theme="hermes"] .nb-tab.on{background:var(--ink);color:var(--void)}
-[data-theme="hermes"] .nb-panel{border-left:1px solid var(--line-dim)}
 
 *{box-sizing:border-box}
 /* hidden 要真的藏住：.nb-tabs 有 display:flex，会盖过 UA 的 [hidden]{display:none} */
