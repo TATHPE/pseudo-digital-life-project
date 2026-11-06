@@ -207,7 +207,7 @@ export function sampleConfig(): string {
       mode: "private",
       allowUsers: [],
       allowGroups: [],
-      prefix: "鲸鲸，",
+      prefix: "",   // 模板不写死人名：起名之后再填（旧值"鲸鲸，"是预置人格名）
     },
   }, null, 2) + NL;
 }

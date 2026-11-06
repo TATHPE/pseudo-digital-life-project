@@ -358,7 +358,7 @@ export function createWebServer(deps: WebDeps) {
           "<!doctype html><html lang='zh-CN'><meta charset='utf-8'><title>从这里打不开</title>" +
           "<body style='background:#0b0e0b;color:#e9f0f2;font:14px/1.8 ui-monospace,Consolas,monospace;padding:48px'>" +
           "<p><b>" + normalizeAgentName(readFileConfig(deps.home).agent?.name) + " 是桌面应用。</b></p>" +
-          "<p>这一页不能从浏览器直接打开 —— 从桌面上的鲸鲸图标启动，它会带着自己的一次性令牌加载界面。</p>" +
+          "<p>这一页不能从浏览器直接打开 —— 从桌面上的 Pseudo Digital Life Project 图标启动，它会带着自己的一次性令牌加载界面。</p>" +
           "<p style='color:#9fb0b3'>（排障用：令牌在 data/.desk.json，每次启动重新生成。）</p>" +
           "</body></html>",
         );
@@ -433,8 +433,10 @@ export function createWebServer(deps: WebDeps) {
         res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
         // 主题在服务端就写进 <html>：否则首屏会是默认主题，闪一下再变（2026-11-06）
         const themeAttr = readFileConfig(deps.home).ui?.theme === "hermes" ? ' data-theme="hermes"' : "";
+        const agentName = normalizeAgentName(readFileConfig(deps.home).agent?.name);
         const page = NOTEBOOK
           .replace('<html lang="zh-CN">', '<html lang="zh-CN"' + themeAttr + '>')
+          .split("{{AGENT}}").join(agentName)
           .split("<!--BOOT-->").join(bootHtml);
         res.end(req.method === "HEAD" ? undefined : page);
         return;

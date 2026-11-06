@@ -216,7 +216,7 @@ export const EXTRACT_PROMPT = (transcript: string): string => [
   "· quote：**原话**——从对话里逐字复制那一句（一个字都不能改），用来核对",
   "",
   "记什么（按优先级）：称呼与边界 / 承诺与日期 / 过敏忌口、家人、住哪、做什么 / 稳定偏好 / 有重量的经历。",
-  "不记：系统操作（跑命令、改代码、日志、端口、测试结果）、关于你自己（鲸鲸）的能力与用量、",
+  "不记：系统操作（跑命令、改代码、日志、端口、测试结果）、关于你自己（她自己）的能力与用量、",
   "      一次性的当前状态（现在几点、库里多少条、文件在哪）、工具输出与报错码、寒暄。",
   "",
   "例①（边界）：",
@@ -224,7 +224,7 @@ export const EXTRACT_PROMPT = (transcript: string): string => [
   "{\"facts\":[{\"kind\":\"boundary\",\"layer\":\"contract\",\"subject\":\"称呼\",\"text\":\"不要叫他助手，直接叫名字\",\"quote\":\"以后别叫我助手，叫名字就行\"}]}",
   "",
   "例②（系统操作，不记）：",
-  "对话：用户：跑一下 npm test  鲸鲸：583 条全绿",
+  "对话：用户：跑一下 npm test  她：583 条全绿",
   "{\"facts\":[]}",
   "",
   "最多 4 条；没有就 {\"facts\":[]}。",
@@ -634,7 +634,7 @@ export async function runNightly(deps: NightlyDeps): Promise<NightlyReport> {
     let skippedByScore = 0;
     for (const [i, win] of windows.entries()) {
       const transcript = win
-        .map((e) => `${e.kind === "utterance" ? "用户" : "鲸鲸"}：${textOf(e)}`)
+        .map((e) => `${e.kind === "utterance" ? "用户" : "她"}：${textOf(e)}`)
         .join(String.fromCharCode(10));
       // 打分闸门（2026-11-05）：先问「这段值不值得记」，不值得就整窗跳过（省掉最贵的一次抽取）
       if (deps.score) {

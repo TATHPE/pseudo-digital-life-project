@@ -404,7 +404,7 @@ async function main(): Promise<void> {
           const real = typeof addr === "object" && addr ? addr.port : port;
           if (deskToken) writeDeskRuntime(HOME, { port: real, token: deskToken, pid: process.pid });
         } catch { /* 写不了就只在日志里说 */ }
-        console.log(`鲸鲸面板: http://${bind === "0.0.0.0" ? "127.0.0.1" : bind}:${port}  (store=${store.kind}, express=${cfg.roles.express!.provider}/${cfg.roles.express!.model})`);
+        console.log(`Pseudo Digital Life Project: http://${bind === "0.0.0.0" ? "127.0.0.1" : bind}:${port}  (store=${store.kind}, express=${cfg.roles.express!.provider}/${cfg.roles.express!.model})`);
         if (release) { try { markHealthy(HOME, release); } catch { /* 单槽模式 */ } }
         // QQ 桥：bridge.json 里 enabled=true 就跟着面板一起起（关窗即退，不用另开终端）
         void import("../bridge.ts").then((m) => {
