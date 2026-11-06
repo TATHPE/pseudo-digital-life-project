@@ -10,6 +10,7 @@ node_modules/
 .last-reset
 
 desktop/src-tauri/target/
+desktop/target-nsis/
 desktop/src-tauri/gen/
 # 调试用：curl 把页面落盘做检查时的副本
 pan.tmp.*
