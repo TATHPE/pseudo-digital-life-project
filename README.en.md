@@ -103,8 +103,7 @@ Design documents (Chinese) live in `docs/`:
 | Capability tiers T0–T4, permissions | [`docs/04-执行层与权限分级.md`](docs/04-执行层与权限分级.md) |
 | UI and context trade-offs | [`docs/17-界面与上下文.md`](docs/17-界面与上下文.md) |
 | Benchmarks: what we can and cannot claim | [`docs/24-基准与口径.md`](docs/24-基准与口径.md) |
-| What to do next | [`docs/22-待办与技术债.md`](docs/22-待办与技术债.md) |
-| Code map / status / pitfalls | [`AGENTS.md`](AGENTS.md), [`docs/HANDOFF.md`](docs/HANDOFF.md) |
+| Code map (one line per file) | [`AGENTS.md`](AGENTS.md) |
 
 ## Development
 

@@ -103,8 +103,7 @@ SQLite：memories + chunks + FTS5 + 向量
 | 能力分级 T0–T4、权限与审计 | [`docs/04-执行层与权限分级.md`](docs/04-执行层与权限分级.md) |
 | 界面与上下文的取舍 | [`docs/17-界面与上下文.md`](docs/17-界面与上下文.md) |
 | 基准与口径（能跟谁比、不能跟谁比） | [`docs/24-基准与口径.md`](docs/24-基准与口径.md) |
-| 下一件事做什么 | [`docs/22-待办与技术债.md`](docs/22-待办与技术债.md) |
-| 代码地图 / 现状 / 踩过的坑 | [`AGENTS.md`](AGENTS.md)、[`docs/HANDOFF.md`](docs/HANDOFF.md) |
+| 代码地图（一行一个文件） | [`AGENTS.md`](AGENTS.md) |
 
 ## 开发
 

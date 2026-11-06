@@ -1,15 +1,31 @@
 /**
- * H-2 ①：把设计文档同步进代码仓（`docs/`）。
+ * H-2 ①：把**对外**的设计文档同步进代码仓（`docs/`）。
  *
- * 为什么要有这一步：设计文档本来住在上层的文档仓（`D:/LLM/docs`），
- * 但别人 clone 代码仓时看不到它们 —— 而 `project.read` 的白名单里明明有 `docs/`，
- * 结果就是"能力表里写着自己能读 docs，实际那个目录不存在"。
+ * 为什么只同步一部分（2026-11-06 用户定）：仓库是公开的，
+ * 交接文档（HANDOFF）、待办（22）、计划（19）与决策记录属于**内部笔记**，
+ * 里面有本机路径、用户名、没做完的判断 —— 不该跟着代码一起公开。
  *
- * 做法：**单向生成**。文档仓是唯一真源，这里是产物；每个文件顶部写清"别在这儿改"。
- * 这样既不会两份手改打架，clone 下来也能读到全部设计口径。
+ * 做法：**单向生成 + 白名单**。文档仓仍是唯一真源；这里只挑 PUBLIC 里的。
+ * 每个文件顶部写清"别在这儿改"，但**不再写死 D:/LLM 的具体路径**。
  */
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
+
+/** 公开的设计文档：只放"讲设计"的，不放"讲进度/决策/交接"的 */
+export const PUBLIC = [
+  "0-定义-数字生命.md",
+  "01-记忆动力学.md",
+  "02-存储与索引层.md",
+  "04-执行层与权限分级.md",
+  "11-技能与插件兼容.md",
+  "13-模型与API配置方案.md",
+  "17-界面与上下文.md",
+  "18-断电与自我更新.md",
+  "21-语言与技术栈选择.md",
+  "23-发布-桌面端-首次配置.md",
+  "24-基准与口径.md",
+  "25-常驻指令-设计记录.md",
+];
 
 const ROOT = process.cwd();
 const SRC = join(ROOT, "..", "docs");
@@ -24,17 +40,21 @@ mkdirSync(DST, { recursive: true });
 const header = (name) =>
   [
     "<!-- 自动生成，别在这个文件里改 -->",
-    "<!-- 真源：" + "D:/LLM/docs/" + name + "（改完跑 npm run docs:sync） -->",
+    "<!-- 真源：文档仓的 " + name + "（改完跑 npm run docs:sync） -->",
     "",
   ].join(String.fromCharCode(10));
 
-const files = readdirSync(SRC).filter((f) => f.endsWith(".md")).sort();
+const have = new Set(readdirSync(SRC).filter((f) => f.endsWith(".md")));
+const files = PUBLIC.filter((f) => have.has(f));
+const missing = PUBLIC.filter((f) => !have.has(f));
+if (missing.length) console.error("上层文档仓缺这些（已跳过）：" + missing.join(" "));
+
 let n = 0;
 const index = [
   "# 设计文档（同步副本）",
   "",
-  "> 这些文件由 `npm run docs:sync` 从**上层文档仓**生成，**不要在这里改**（会被覆盖）。",
-  "> 改法：在文档仓改完，回到代码仓跑 `npm run docs:sync`。",
+  "> 这些文件由 `npm run docs:sync` 从文档仓按**白名单**生成，不要在这里改（会被覆盖）。",
+  "> 只同步「讲设计」的文档；交接、待办、计划、决策记录属于内部笔记，不在本仓。",
   "",
   "| 文件 | 大小 |",
   "|---|---|",
@@ -48,12 +68,15 @@ for (const f of files) {
   n++;
 }
 
-// HANDOFF 一起带上：它是"接手这个项目先读什么"
-const handoff = join(ROOT, "..", "HANDOFF.md");
-if (existsSync(handoff)) {
-  copyFileSync(handoff, join(DST, "HANDOFF.md"));
-  index.push("| [HANDOFF.md](HANDOFF.md) | 上手清单（同样由上层仓同步） |");
-  n++;
+// 以前同步过、现在不在白名单里的：从仓库里删掉（否则它们会一直留在公开仓）
+const stale = readdirSync(DST).filter(
+  (f) => f.endsWith(".md") && !["README.md", "map.md", ...PUBLIC].includes(f),
+);
+for (const f of stale) {
+  try {
+    unlinkSync(join(DST, f));
+    console.log("移出公开仓：" + f);
+  } catch { /* 删不掉就算了 */ }
 }
 
 index.push("", "共 " + n + " 个文件。");
