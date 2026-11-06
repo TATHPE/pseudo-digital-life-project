@@ -1502,7 +1502,8 @@
       html += sec('主机 · 命令解释器',
         '<div class="nb-form">' + optRow('shell', ['auto', 'powershell', 'pwsh', 'gitbash'], host.wanted || 'auto', '用哪个') +
         '<div class="nb-actrow"><button class="nb-btn" id="cf-hsave">保存</button>' +
-        '<span class="nb-empty">当前 ' + esc((host.active && host.active.label) || '—') + '</span></div></div>');
+        '<span class="nb-empty">当前 <b id="cf-hnow">' + esc((host.active && host.active.label) || '—') + '</b>' +
+        '<span id="cf-hmsg"></span></span></div></div>');
       html += sec('常驻指令', sd.length ? sd.map(function(x){
         return '<div class="nb-runrow"><span class="k">' + esc(x.when || '') + '</span>' +
           '<span class="v">' + esc(x.because || x.id) + '</span>' +
@@ -1562,6 +1563,15 @@
         '<span class="nb-empty" id="cf-bmsg">保存即生效；软件下次启动会自动接着跑</span></div>' +
         '<div class="nb-empty">先装 NapCat 并在它的 WebUI 里开一个 WebSocket 服务器（默认 127.0.0.1:3001），' +
         '再回来填这里。开启后，私聊她就能收到消息；群里要 @ 她（或在白名单里配群号）。</div></div>');
+      html += sec('工作区域',
+        '<div class="nb-kv"><b>当前数据目录</b><span id="cf-where-home">读取中…</span></div>' +
+        '<div class="nb-fld"><label>换到</label><input id="cf-where" placeholder="D:\\Pseudo Digital Life Project"></div>' +
+        '<div class="nb-actrow"><button class="nb-btn" id="cf-where-go">改到这里</button>' +
+        '<label class="nb-empty" style="display:inline-flex;gap:6px;align-items:center"><input type="checkbox" id="cf-where-move" style="width:auto">把现有数据一起复制过去</label>' +
+        '<span class="nb-empty" id="cf-where-msg">改完重启一次生效</span></div>' +
+        '<div class="nb-actrow" style="margin-top:10px"><button class="nb-btn danger" id="cf-wipe">清空重来</button>' +
+        '<span class="nb-empty">先自动备份，再清掉记忆与人格，回到引导</span></div>');
+
       html += sec('引导',
         '<div class="nb-kv"><b>当前状态</b><span id="cf-setupst">读取中…</span></div>' +
         '<div class="nb-actrow"><a class="nb-btn" href="/welcome">继续配置</a>' +
@@ -1751,6 +1761,39 @@
             });
         };
       });
+      // 工作区域：读当前目录 → 改（可选搬数据）→ 清空重来
+      fetch('/api/where').then(function(r){ return r.json(); }).then(function(j){
+        var h = $('cf-where-home');
+        if (h) h.textContent = (j && j.home) || '—';
+        var i = $('cf-where');
+        if (i && j && j.root) i.value = j.root;
+      }).catch(function(){ var h = $('cf-where-home'); if (h) h.textContent = '读不到'; });
+      on('cf-where-go', function(){
+        var i = $('cf-where'), m = $('cf-where-msg'), mv = $('cf-where-move');
+        if (!i || !m) return;
+        var root = String(i.value || '').trim();
+        if (!root) { m.textContent = '先填一个目录'; return; }
+        m.textContent = '正在处理…';
+        fetch('/api/where', { method: 'PUT', headers: H, body: JSON.stringify({ root: root, move: !!(mv && mv.checked) }) })
+          .then(function(r){ return r.json(); })
+          .then(function(j){
+            if (!j || j.error) { m.textContent = (j && (j.why || j.error)) || '没改成'; return; }
+            var n = j.moved && j.moved.files ? ('，复制了 ' + j.moved.files + ' 个文件') : '';
+            m.textContent = '已改到 ' + j.root + n + ' —— 重启后生效';
+          }).catch(function(){ m.textContent = '没改成'; });
+      });
+      on('cf-wipe', function(){
+        var m = $('cf-where-msg');
+        var word = window.prompt('这会清掉全部记忆与人格（会先自动备份）。确认请输入：清空');
+        if (word !== '清空') { if (m) m.textContent = '没清（确认词不对）'; return; }
+        fetch('/api/reset', { method: 'POST', headers: H, body: JSON.stringify({ action: 'wipe', confirm: word }) })
+          .then(function(r){ return r.json(); })
+          .then(function(j){
+            if (!j || j.error) { if (m) m.textContent = (j && (j.why || j.error)) || '没清成'; return; }
+            if (m) m.textContent = '已清空，备份在 ' + j.backup + ' —— 重启后走引导';
+          }).catch(function(){ if (m) m.textContent = '没清成'; });
+      });
+
       // 超级权限：读 → 切 → 再读（后端 /api/super 早就有，只是界面没入口）
       var superOn = false;
       function paintSuper(on, why){
@@ -1790,7 +1833,18 @@
 
       on('cf-hsave', function(){
         fetch('/api/host', { method: 'PUT', headers: H, body: JSON.stringify({ shell: chosen.shell }) })
-          .then(function(r){ return r.json(); }).then(function(j){ msg(j.ok ? '解释器已保存' : (j.error || '失败'), !!j.ok); });
+          .then(function(r){ return r.json(); })
+          .then(function(j){
+            if (!j || j.ok === false || j.error) { msg(j && (j.error || j.why) ? (j.why || j.error) : '保存失败', false); return; }
+            // 保存后**立刻回读并就地重绘**，不用再刷新页面（2026-11-06 用户实测）
+            return fetch('/api/host').then(function(r){ return r.json(); }).then(function(h){
+              var now = document.getElementById('cf-hnow');
+              if (now && h && h.active) now.textContent = h.active.label || h.active.kind || '—';
+              var m = document.getElementById('cf-hmsg');
+              if (m) m.textContent = h && h.fellBack ? ('（回退原因：' + (h.reason || '不满足条件') + '）') : '';
+              msg(h && h.fellBack ? '已保存，但回退了' : '解释器已保存并生效', true);
+            });
+          }).catch(function(){ msg('保存失败', false); });
       });
       // 「换一张」按钮 → 触发隐藏的 file input（WebView 里 label 包 input 有时不弹框）
       Array.prototype.forEach.call(box.querySelectorAll('[data-pick]'), function(b){

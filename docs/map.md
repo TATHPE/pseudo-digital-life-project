@@ -8,8 +8,8 @@
 
 | 项 | 数量 |
 |---|---|
-| 源文件（src/**/*.ts） | 115 |
-| 错误码 E_* | 222 |
+| 源文件（src/**/*.ts） | 116 |
+| 错误码 E_* | 231 |
 | verbs | 27 |
 | CLI 子命令 | 39 |
 
@@ -23,6 +23,7 @@
 | `E_AGENDA_FULL` | `src/agenda.ts` |
 | `E_AGENDA_NO_SOURCE` | `src/agenda.ts` |
 | `E_ALREADY` | `src/profile.ts` |
+| `E_BACKUP_FAILED` | `src/web/server.ts` |
 | `E_BAD_ACTION` | `src/web/server.ts` |
 | `E_BAD_ARG` | `src/plugins.ts` |
 | `E_BAD_ARG_VALUE` | `src/toolsmoke.ts` |
@@ -58,6 +59,7 @@
 | `E_CONTROL_CHAR` | `src/persona.ts` |
 | `E_CONVERT` | `src/ingest.ts` |
 | `E_COOLDOWN` | `src/transport.ts` |
+| `E_COPY_SHORT` | `src/datadir.ts` |
 | `E_CORE_PROTECTED` | `src/verbs.ts` |
 | `E_CSRF` | `src/web/server.ts` |
 | `E_DECAY_PARAM` | `src/startupcheck.ts` |
@@ -65,12 +67,13 @@
 | `E_DEPLOY_FROZEN` | `src/deploy/watchdog.ts` |
 | `E_DEPLOY_NO_REASON` | `src/deploy/slot.ts` |
 | `E_DEPLOY_STATE` | `src/deploy/slot.ts` |
+| `E_DEST_NOT_EMPTY` | `src/datadir.ts` |
 | `E_DISABLED` | `src/shell.ts` |
 | `E_EMBED` | `src/embed.ts` `src/ingest.ts` `src/reembed.ts` |
 | `E_EMBED_COUNT` | `src/transport.ts` |
 | `E_EMBED_DOWN` | `src/retrieve.ts` |
 | `E_EMBED_EMPTY` | `src/retrieve.ts` |
-| `E_EMPTY` | `src/agentguard.ts` `src/ingest.ts` `src/plugins.ts` `src/profile.ts` `src/selfupdate.ts` `src/store.ts` `src/web/server.ts` |
+| `E_EMPTY` | `src/agentguard.ts` `src/datadir.ts` `src/ingest.ts` `src/plugins.ts` `src/profile.ts` `src/selfupdate.ts` `src/store.ts` `src/web/server.ts` |
 | `E_EMPTY_EMBEDDING` | `src/embed.ts` |
 | `E_EMPTY_PATCH` | `src/web/server.ts` |
 | `E_ENCODING` | `src/ingest.ts` `src/persona.ts` `src/web/server.ts` |
@@ -111,6 +114,8 @@
 | `E_MISSING` | `src/assert.ts` |
 | `E_MISSING_ARG` | `src/toolsmoke.ts` |
 | `E_MODEL` | `src/autobio.ts` `src/eval.ts` `src/provider.ts` `src/transport.ts` |
+| `E_MOVE_FAILED` | `src/web/server.ts` |
+| `E_NEED_CONFIRM` | `src/web/server.ts` |
 | `E_NEED_WHY` | `src/selfupdate.ts` |
 | `E_NEEDS_CONFIRM` | `src/confirm.ts` `src/execute.ts` `src/posture.ts` |
 | `E_NEEDS_EGRESS` | `src/egress.ts` `src/posture.ts` `src/project.ts` `src/supergrant.ts` `src/verbs.ts` |
@@ -156,7 +161,9 @@
 | `E_NO_TEMPLATE` | `src/shell.ts` |
 | `E_NO_TRASH` | `src/verbs.ts` |
 | `E_NO_TURN` | `src/web/server.ts` |
+| `E_NO_WHERE_FILE` | `src/datadir.ts` |
 | `E_NOT_A_REPO` | `src/gitview.ts` |
+| `E_NOT_ABS` | `src/datadir.ts` |
 | `E_NOT_DELETED` | `src/web/server.ts` |
 | `E_NOT_DIR` | `src/project.ts` |
 | `E_NOT_FILE` | `src/project.ts` |
@@ -200,6 +207,7 @@
 | `E_RERANK_HTTP_` | `src/rerank.ts` |
 | `E_RERANK_PARSE` | `src/rerank.ts` |
 | `E_ROLE_MISSING` | `src/provider.ts` |
+| `E_ROOT_DIR` | `src/datadir.ts` |
 | `E_SANDBOX_UNAVAILABLE` | `src/shell.ts` |
 | `E_SCHEMA_MISMATCH` | `src/startupcheck.ts` |
 | `E_SETUP_BUSY` | `src/web/server.ts` |
@@ -237,6 +245,7 @@
 | `E_UNSUPPORTED_CONTENT` | `src/mcp.ts` |
 | `E_UPLOAD` | `src/web/server.ts` |
 | `E_VERB` | `src/agentguard.ts` `src/execute.ts` |
+| `E_WIPE_MARK_FAILED` | `src/web/server.ts` |
 | `E_WRITE` | `src/reembed.ts` |
 | `E_WRONG_TOOL` | `src/toolsmoke.ts` |
 
@@ -305,6 +314,7 @@
 | `src/confirm.ts` | 待确认清单（04 §4.1 的"人那一侧"） |
 | `src/cooldown.ts` | 云端失败冷却（D-2） |
 | `src/coreguard.ts` | 记忆核心的**结构性保护**（用户 2026-10-31 定的边界）： |
+| `src/datadir.ts` | 工作区域（数据放哪）：2026-11-06。 |
 | `src/db.ts` | import { DatabaseSync } from "node:sqlite"; |
 | `src/decay.ts` | 记忆动力学（01 §4/§5）——全项目唯一"写完之后不用改"的模块。 |
 | `src/decayparams.ts` | 衰减参数的可调边界（E-4） |

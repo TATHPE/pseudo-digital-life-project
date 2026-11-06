@@ -206,6 +206,15 @@ async function main(): Promise<void> {
     case "serve": {
       const port = Number(rest[0] ?? 7700);
       const cfg = defaultConfig();
+      // 上次点了「清空重来」：**必须在 openDb 之前**动手（开着库删不掉）
+      {
+        const { applyPendingWipe } = await import("../datadir.ts");
+        const w = applyPendingWipe(HOME);
+        if (w.applied) {
+          console.log(`[reset] 已清空：${w.removed.join(" ") || "（没有要清的）"}` + (w.backup ? ` · 备份 ${w.backup}` : ""));
+          if (w.failed.length) console.log(`[reset] 没清掉：${w.failed.join(" ")}（下次启动再试）`);
+        }
+      }
       const d = openDb(dbFile);
       const boot = markStart(HOME);
       // A/B 双槽（18 §4.3）：先应用 active 版本的载荷，再记一次「我要启动了」。

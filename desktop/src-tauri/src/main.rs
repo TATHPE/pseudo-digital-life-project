@@ -65,6 +65,64 @@ fn project_root_hint() -> Option<std::path::PathBuf> {
     None
 }
 
+/// 工作区域指针：`%APPDATA%\<identifier>\where.json`（`{"dataRoot":"D:\\..."}`）。
+/// 用户可以在设置里改；没有这个文件时，安装态默认给它一个**非 C 盘**的位置。
+fn where_file(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
+    Some(app.path().app_data_dir().ok()?.join("where.json"))
+}
+
+/// 默认工作区域：产品名目录，放第一个非系统盘（有 D: 就 D:，否则 AppData）。
+/// 名字用**产品名**，不用人格名（鲸鲸只是预置人格，2026-11-06 用户纠正）。
+fn default_data_root() -> std::path::PathBuf {
+    let name = "Pseudo Digital Life Project";
+    for letter in ["D", "E", "F", "G"] {
+        let root = std::path::PathBuf::from(format!("{}:\\", letter));
+        if root.is_dir() {
+            return root.join(name);
+        }
+    }
+    std::path::PathBuf::from(name)
+}
+
+fn custom_data_root(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
+    let raw = std::fs::read_to_string(where_file(app)?).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    let p = v.get("dataRoot")?.as_str()?.trim().to_string();
+    if p.is_empty() { return None; }
+    let dir = std::path::PathBuf::from(&p);
+    if dir.is_dir() { Some(dir) } else { None }
+}
+
+/// AppData 下的数据目录（老行为，作兜底）
+fn app_data_data(app: &tauri::AppHandle) -> std::path::PathBuf {
+    app.path().app_data_dir()
+        .map(|d| d.join("data"))
+        .unwrap_or_else(|_| std::env::current_dir().unwrap())
+}
+
+/// 安装态的数据目录：用户选过 → 用它；没选过 → 自动落到非系统盘，并写 where.json。
+fn install_home(app: &tauri::AppHandle) -> std::path::PathBuf {
+    if let Some(root) = custom_data_root(app) {
+        let d = root.join("data");
+        let _ = std::fs::create_dir_all(&d);
+        return d;
+    }
+    let def = default_data_root();
+    let on_c = def.to_string_lossy().to_uppercase().starts_with("C:");
+    if on_c {
+        return app_data_data(app);   // 只有 C 盘的机器别在 C 根造目录
+    }
+    if let Some(w) = where_file(app) {
+        if let Some(dir) = w.parent() { let _ = std::fs::create_dir_all(dir); }
+        let json = serde_json::json!({ "dataRoot": def.to_string_lossy() }).to_string();
+        let _ = std::fs::write(&w, json);
+    }
+    let d = def.join("data");
+    let _ = std::fs::create_dir_all(&d);
+    d
+}
+
+
 fn show_boot_error(app: &tauri::AppHandle, err: &str, home: &std::path::Path) {
     let log = home.join("logs").join("serve.log");
     let text = format!(
@@ -110,19 +168,21 @@ pub fn run() {
                 std::env::set_var("JJ_PROJECT_ROOT", root);
                 if let Some(n) = bundled_node(app.handle()) { std::env::set_var("JJ_NODE", n); }
             }
-            let home = std::env::var("JJ_HOME").map(std::path::PathBuf::from).unwrap_or_else(|_| {
-                // 安装态：永远用 AppData 下的独立目录（干净安装 → 会走新手引导）
-                if bundled.is_some() {
-                    return app.path().app_data_dir().map(|d| d.join("data")).unwrap_or_else(|_| std::env::current_dir().unwrap());
+            // where.json 交给 Node 侧读写（设置里换工作区域）
+            if let Some(w) = where_file(app.handle()) { std::env::set_var("JJ_WHERE_FILE", w); }
+            let home = match std::env::var("JJ_HOME") {
+                Ok(p) => std::path::PathBuf::from(p),
+                Err(_) => {
+                    if bundled.is_some() {
+                        install_home(app.handle())
+                    } else if let Some(root) = project_root_hint() {
+                        let d = root.join("data");
+                        if d.exists() { d } else { app_data_data(app.handle()) }
+                    } else {
+                        app_data_data(app.handle())
+                    }
                 }
-                // 开发/测试期：项目根下的 data/（就是你聊过的那份）
-                if let Some(root) = project_root_hint() {
-                    let d = root.join("data");
-                    if d.exists() { return d; }
-                }
-                // 安装之后：系统给的应用数据目录
-                app.path().app_data_dir().map(|d| d.join("data")).unwrap_or_else(|_| std::env::current_dir().unwrap())
-            });
+            };
             // 1) 拉起 sidecar：开发时 `node src/cli/jingjing.ts serve 7700`
             // 先把密钥解出来（DPAPI 在壳里做，Node 不用起 PowerShell → 不会再闪黑框）
             let secrets = dpapi::read_all(&home);

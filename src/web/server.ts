@@ -1208,6 +1208,56 @@ export function createWebServer(deps: WebDeps) {
         return;
       }
 
+      // ── 工作区域：数据放哪（2026-11-06 用户：不能全在 C 盘）──
+      if (req.method === "GET" && url.pathname === "/api/where") {
+        const dd = await import("../datadir.ts");
+        const root = dd.readRoot();
+        json(res, 200, {
+          root: root ?? dd.defaultRoot(),
+          home: deps.home,
+          custom: Boolean(root),
+          defaultRoot: dd.defaultRoot(),
+          hasPointer: Boolean(dd.whereFilePath()),
+        });
+        return;
+      }
+      if (req.method === "PUT" && url.pathname === "/api/where") {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
+        const dd = await import("../datadir.ts");
+        const body = JSON.parse(await readBody(req)) as { root?: string; move?: boolean };
+        const v = dd.validRoot(String(body.root ?? ""));
+        if (!v.ok) { json(res, 400, { error: v.why }); return; }
+        // 搬迁是可选的：默认不搬（安全），搬的时候先复制、核对文件数
+        let report = null as null | { ok: boolean; files: number; why?: string; to: string };
+        if (body.move) {
+          const m = dd.moveData(deps.home, v.root);
+          report = { ok: m.ok, files: m.files, to: m.to, ...(m.why ? { why: m.why } : {}) };
+          if (!m.ok) { json(res, 500, { error: m.why ?? "E_MOVE_FAILED", moved: report }); return; }
+        }
+        try { dd.writeRoot(v.root); } catch (e) { json(res, 400, { error: String((e as Error).message) }); return; }
+        json(res, 200, { ok: true, root: v.root, moved: report, needsRestart: true });
+        return;
+      }
+
+      // ── 清空重来：先备份 → 写标记 → 下次启动在 openDb 之前真删（2026-11-06）──
+      if (req.method === "POST" && url.pathname === "/api/reset") {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
+        const body = JSON.parse(await readBody(req)) as { action?: string; confirm?: string };
+        if (body.action !== "wipe") { json(res, 400, { error: "E_BAD_ACTION", why: "只支持 wipe" }); return; }
+        if (String(body.confirm ?? "") !== "清空") { json(res, 400, { error: "E_NEED_CONFIRM", why: "确认词要写「清空」" }); return; }
+        const dd = await import("../datadir.ts");
+        const ts = now().toISOString().replace(/[:.]/g, "-");
+        const backup = join(dirname(deps.home), "backup-" + ts);
+        try {
+          const { cpSync } = await import("node:fs");
+          cpSync(deps.home, backup, { recursive: true });
+        } catch (e) { json(res, 500, { error: "E_BACKUP_FAILED", why: String((e as Error).message) }); return; }
+        try { dd.markWipe(deps.home, backup); }
+        catch (e) { json(res, 500, { error: "E_WIPE_MARK_FAILED", why: String((e as Error).message), backup }); return; }
+        json(res, 200, { ok: true, backup, needsRestart: true });
+        return;
+      }
+
       // ── 宿主层：跑脚本用哪个解释器（默认 PowerShell；Git Bash 让用户自己配）──
       if (req.method === "GET" && url.pathname === "/api/host") {
         const h = await import("../host.ts");
