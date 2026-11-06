@@ -22,6 +22,17 @@
     } catch(e){ return ''; }
   }
 
+  // 面包屑：现在的「在哪」。分两段，末段加粗。
+  var CRUMB = { home: '工作台', chat: '记录', sess: '会话', mem: '记忆', docs: '文档', cap: '能力',
+    logs: '日志', files: '文件', git: '校样', cfg: '设置', gap: '还缺', approvals: '待你处理', board: '她收着的' };
+  function setCrumb(v, extra){
+    var el = $('nb-crumb');
+    if (!el) return;
+    var a = CRUMB[v] || '记录本';
+    var b = extra ? String(extra) : '';
+    el.innerHTML = b ? (esc(a) + '<i>/</i><b>' + esc(b) + '</b>') : ('<b>' + esc(a) + '</b>');
+  }
+
   // ── 主题 ──────────────────────────────────────
   // ledger（默认，黑白紧凑）/ hermes（中性灰、宽版式）。只改 <html data-theme>，
   // 结构、数据、接口都不动；服务端也会把它写进首屏，避免闪一下。
@@ -406,7 +417,8 @@
   function updateLatest(){
     var p = $('nb-page'), b = $('nb-latest');
     if (!p || !b) return;
-    b.hidden = (p.scrollHeight - (p.scrollTop + p.clientHeight)) < 200;
+    // 只在记录页露出来：别的页面上它没有意义（还会浮在空白上）
+    b.hidden = (typeof VIEW !== "undefined" && VIEW !== "chat") || (p.scrollHeight - (p.scrollTop + p.clientHeight)) < 200;
   }
   (function(){
     var p = $('nb-page'), b = $('nb-latest');
@@ -992,6 +1004,8 @@
     });
     var home = v === 'home';
     var chat = v === 'chat';
+    setCrumb(home ? 'home' : chat ? 'chat' : v);
+    updateLatest();
     // 三块面一次只露一块：工作台 / 记录（对话） / 其余（记忆/文档/设置…）
     showHome(home);
     $('nb-log').hidden = !chat;

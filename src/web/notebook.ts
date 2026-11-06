@@ -146,6 +146,9 @@ body{background:var(--void);color:var(--ink);font:15px/1.85 var(--sans);
   font:11px/1 var(--mono);color:var(--dim);letter-spacing:.04em;white-space:nowrap;overflow:hidden}
 .nb-top b{color:var(--ink);font-weight:600}
 .nb-top .sp{flex:1}
+.nb-crumb{font:10.5px/1 var(--mono);letter-spacing:.12em;color:var(--dim)}
+.nb-crumb b{color:var(--ink);font-weight:500;letter-spacing:.12em}
+.nb-crumb i{color:var(--dim2);font-style:normal;margin:0 6px}
 .nb-dot{width:5px;height:5px;background:var(--cyan);border-radius:50%;display:inline-block;margin-right:7px;vertical-align:1px}
 .nb-main{display:grid;grid-template-columns:var(--rail) minmax(0,1fr) auto;min-height:0}
 
@@ -187,10 +190,11 @@ body{background:var(--void);color:var(--ink);font:15px/1.85 var(--sans);
 .nb-hc.bad .v{color:var(--amber)}
 .nb-sec{display:flex;align-items:baseline;gap:10px;margin:22px 0 6px;font:9.5px/1 var(--mono);letter-spacing:.2em;color:var(--dim2)}
 .nb-sec:after{content:"";flex:1;height:1px;background:var(--line-dim)}
-.nb-pagehd{display:flex;align-items:baseline;gap:12px;padding:18px 22px 10px;max-width:1100px;margin:0 auto}
+.nb-pagehd{display:flex;align-items:baseline;gap:12px;padding:18px 22px 10px;max-width:calc(var(--measure) + 76px);margin:0 auto}
 .nb-pagehd h1{font:10px/1 var(--mono);letter-spacing:.18em;color:var(--dim2);margin:0;font-weight:400}
 .nb-pagehd .sp{flex:1}
-.nb-wrap{max-width:1100px;margin:0 auto;padding:0 22px 60px}
+/* 视图页（记忆/文档/设置…）与对话列同宽同位置，不再一个 1100 一个 720 */
+.nb-wrap{max-width:calc(var(--measure) + 76px);margin:0 auto;padding:0 22px 60px}
 .nb-row{display:block;width:100%;text-align:left;border:0;border-top:1px solid var(--line-dim);
   background:none;color:var(--ink);padding:11px 4px;cursor:pointer;font:14px/1.6 var(--sans)}
 .nb-row:hover{background:var(--tint2)}
@@ -391,7 +395,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
     <span class="sp"></span>
     <button class="nb-modechip" id="nb-modechip" title="聊天：只靠记忆召回；工作：带上最近几轮 + 更宽的预算">聊天</button>
     <span id="nb-usd">今天 $0.000</span><span id="nb-model">—</span>
-    <span id="nb-shell">记录本</span>
+    <span id="nb-crumb" class="nb-crumb">记录本</span>
   </div>
 
   <div class="nb-main">
