@@ -2444,6 +2444,10 @@ export function createWebServer(deps: WebDeps) {
         // 典型场景：工具被授权闸门拦下，她说完"我要去查"就停了（用户看到的就是回答不完整）。
         let answerChars = 0;
         let curStep = -1;
+        // 换步时不要无条件丢掉前面的正文（会把完整答案扔掉，用户看到的就是「答一半」）。
+        // 记下**最长的一段**，最后哪段长用哪段。
+        let bestFull = "";
+        let hitCap = false;
         // 推理是**逐 token** 流进来的：以前每个 token 都 push 一条 trace，
         // 存下来就是几百条「想 我 / 想 搜 / 想 一下 …」—— 面板上根本没法读（用户截图就是这个）。
         // 现在先把它们攒起来，遇到动手/结果/报错/收尾再落成一条。
@@ -2469,7 +2473,10 @@ export function createWebServer(deps: WebDeps) {
             let supOn = false;
             try { supOn = (await import("../supergrant.ts")).superEnabled(deps.home); } catch { /* 当作没开 */ }
             // 工作模式：步数与单轮输出都放宽（连着干活要能多走几步、少被截断）
-            const steps = mode === "work" ? (supOn ? 24 : 20) : (supOn ? 16 : 12);
+            // 步数是**预算**不是墙：20 步做不完多仓库调研（实测就在第 20 步被砍）。
+            // 真要防的只有两件事：无限循环和无限花钱 —— 所以保留上限、但放宽，并允许 env 覆盖。
+            const envSteps = Number(process.env.JJ_MAX_STEPS ?? 0);
+            const steps = envSteps > 0 ? Math.min(120, envSteps) : (mode === "work" ? (supOn ? 60 : 45) : (supOn ? 30 : 24));
             const agent = runAgent({ chat, tools: deps.tools!, maxSteps: steps }, brief.text, text);
             for await (const ev of agent) {
               if (aborted) break;
@@ -2477,7 +2484,10 @@ export function createWebServer(deps: WebDeps) {
                 // 换步了：模型常常「先给一段，再推翻重说」。以前两段会拼在一起，
                 // 用户看到的就是同一句话出现两遍。现在新步开口就把旧的这段丢掉，并让面板清屏。
                 if (typeof ev.step === "number" && ev.step !== curStep && answerChars > 0) {
-                  full = ""; answerChars = 0; send({ type: "reset", step: ev.step });
+                  if (full.length > bestFull.length) bestFull = full;
+                  full = ""; answerChars = 0;
+                  send({ type: "reset", step: ev.step });
+                  if (bestFull) send({ type: "delta", text: bestFull, step: ev.step });
                 }
                 if (typeof ev.step === "number") curStep = ev.step;
                 full += ev.text; answerChars += ev.text.length; send({ type: "delta", text: ev.text, step: ev.step });
@@ -2499,7 +2509,17 @@ export function createWebServer(deps: WebDeps) {
                 send({ type: "tool_result", id: ev.id, name: ev.name, result: ev.result.slice(0, 1500), ms: ev.ms });
                 lastToolAt = full.length;
               }
-              else if (ev.type === "error") { flushThink(); trace.push({ k: "err", t: ev.message }); send({ type: "error", message: ev.message }); }
+              else if (ev.type === "error") {
+                flushThink();
+                if (String(ev.message).includes("E_MAX_STEPS")) {
+                  hitCap = true;
+                  trace.push({ k: "err", t: ev.message });
+                  send({ type: "notice", text: "步数预算用完了 —— 我先把手上的结果收成结论，不再继续查。" });
+                } else {
+                  trace.push({ k: "err", t: ev.message });
+                  send({ type: "error", message: ev.message });
+                }
+              }
               else if (ev.type === "done") {
                 flushThink();
                 // 一点结论都没有：要么工具被拦、要么光想了没做、要么到步数上限。
@@ -2543,6 +2563,38 @@ export function createWebServer(deps: WebDeps) {
             : raw.slice(0, 200);
           send({ type: "error", message: msg });
         }
+        // 撞上限时：先用手上的结果收尾，别让用户看到半句话。
+        if (hitCap) {
+          try {
+            const digest = trace.slice(-40).map((t) => (t.k === "res" ? "结果：" : t.k === "tool" ? "动作：" : t.k === "err" ? "报错：" : "想：") + String(t.t).slice(0, 200)).join(String.fromCharCode(10));
+            const wrapPrompt = [
+              "你刚才在替用户干活，但步数预算用完了，不能再调工具。",
+              "下面是你已经做过/查到的事。用 3–5 句给出**现在的结论**：查到了什么、还差什么、下一步该做什么。",
+              "不要道歉，不要重复过程，不要编没有的数据。",
+              "",
+              digest.slice(0, 4000),
+            ].join(String.fromCharCode(10));
+            let wrap = "";
+            for await (const d of deps.getTransport().completeStream("express",
+              [{ role: "system", content: wrapPrompt }, { role: "user", content: text }],
+              { containsMemory: false, purpose: "wrap-up", maxTokens: 700, temperature: 0.3 })) {
+              if (aborted) break;
+              wrap += d;
+            }
+            wrap = wrap.trim();
+            if (wrap) {
+              if (full.trim()) full = full.trim() + String.fromCharCode(10, 10);
+              full += wrap;
+              answerChars += wrap.length;
+              send({ type: "reset" });
+              send({ type: "delta", text: full });
+              trace.push({ k: "think", t: "步数用完，做了收尾总结" });
+            }
+          } catch { /* 收尾失败就保持原样，至少不丢已经说出的部分 */ }
+        }
+        // 哪段长用哪段：最后一步往往只是「以上」这种碎片，丢掉完整的那段才是问题。
+        if (bestFull.length > full.length) full = bestFull;
+
         // 正文只留结论：<think> 之类明写的推理拆到过程里（面板右栏第四个签）
         if (full) {
           const sp = splitThink(full);

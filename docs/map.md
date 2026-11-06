@@ -103,7 +103,7 @@
 | `E_INTERP_UNGROUNDED` | `src/interpretnight.ts` |
 | `E_IS_DIR` | `src/verbs.ts` |
 | `E_JSON` | `src/web/server.ts` |
-| `E_MAX_STEPS` | `src/agent.ts` |
+| `E_MAX_STEPS` | `src/agent.ts` `src/web/server.ts` |
 | `E_MCP` | `src/mcp.ts` |
 | `E_MCP_CLOSED` | `src/mcp.ts` |
 | `E_MCP_EXIT` | `src/mcp.ts` |

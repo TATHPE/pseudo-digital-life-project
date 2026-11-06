@@ -177,5 +177,6 @@ export async function* runAgent(deps: AgentDeps, system: string, user: string): 
     for (const n of nudges) messages.push({ role: "user", content: n });
     yield { type: "phase", step, note: `第 ${step} 轮工具完成，继续` };
   }
+  // 撞上限不是「出错」，是「预算用完了」：上层据此做收尾，而不是硬截断。
   yield { type: "error", message: `E_MAX_STEPS: 超过 ${maxSteps} 轮，停止（避免空转）` };
 }
