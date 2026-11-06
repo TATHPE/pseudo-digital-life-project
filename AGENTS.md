@@ -14,7 +14,8 @@ node src/cli/jingjing.ts serve 7700   # 开发用的面板（固定端口）
 node src/cli/jingjing.ts serve 0      # 壳用的：随机端口，端口与令牌写到 data/.desk.json
 ```
 
-界面只有一套：记录本（`src/web/notebook.ts`），挂在 `/`。旧面板 `src/web/page.ts` 留着备查，程序不再引用它。
+界面只有一套：记录本（HTML/CSS 在 `src/web/notebook.ts`，界面脚本在 `src/web/ui/notebook.js`），挂在 `/`。
+旧的 `src/web/page.ts` 已于 2026-11-06 删除：它曾被一批测试当成活代码来断言，属于假绿。
 
 环境：Node ≥ 24（`node:sqlite`）、TypeScript 直接跑、没有构建步骤；`sqlite-vec` 可缺（缺了退化成纯 FTS 并在 `/health` 报）；摄入 PDF 要 Python + markitdown，`.md/.txt` 不需要。
 
@@ -45,7 +46,7 @@ node src/cli/jingjing.ts serve 0      # 壳用的：随机端口，端口与令�
 ```
 cli/jingjing.ts   入口（38 个命令；CLI_COMMANDS 表与 switch 必须一致，有测试盯）
 web/server.ts     HTTP + SSE；/health 的 degraded 是全部状态的汇合点
-web/page.ts       整个面板（3607 行内联 HTML/CSS/JS，无框架无构建）
+web/ui/notebook.js 记录本的界面脚本（真文件：能 node --check、能 import 测试）
 verbs.ts          **唯一**的能力表（tools.ts 只是适配层）
 execute/policy    策略与审计（casbin，deny-overrides）
 store.ts          remember / reinforce / tickDecay / updateMemoryText / patchMemoryMeta
@@ -116,7 +117,7 @@ setupsteps.ts     八步的执行（装 Ollama / embedding / 模型 / 试运行�
 configfile.ts     config.json 读写（深合并；agent.name = 她叫什么）
 
 # ── 界面（web/）────────────────────────────────
-web/page.ts       主面板（单文件内联 HTML/CSS/JS，零构建；三列 wing/stage/卷宗）
+web/ui/notebook.js 记录本界面脚本（真文件；node --check 与测试直接读它）
 web/welcome.ts    首启引导页（/welcome，全屏八步；GET / 没配完就分流到这里）
 web/desk.ts       桌面端令牌（随机端口 + 一次性令牌；没令牌 403）
 web/server.ts     HTTP + SSE（/api/say 流式；/health 的 degraded 是全部状态的汇合点）

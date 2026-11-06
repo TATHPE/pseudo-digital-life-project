@@ -15,12 +15,10 @@ const TMP = join(ROOT, "tmp", "icon-build");
 mkdirSync(TMP, { recursive: true });
 mkdirSync(ICONS, { recursive: true });
 
-const PAGE = readFileSync(join(ROOT, "src", "web", "page.ts"), "utf8");
-const m = PAGE.match(/<symbol id="whale" viewBox="([^"]+)">([\s\S]*?)<\/symbol>/);
-if (!m) throw new Error("在 page.ts 里找不到 #whale symbol");
-const body = m[2];
-const pathMatch = body.match(/d="([^"]+)"/);
-if (!pathMatch) throw new Error("whale symbol 里没有 path d=");
+// 2026-11-06：旧面板（page.ts）删了，图标改为直接读品牌模块里的常量
+const { WHALE_BODY } = await import("../src/web/brand.ts");
+const pathMatch = WHALE_BODY.match(/d="([^"]+)"/);
+if (!pathMatch) throw new Error("brand.ts 里没有 path d=");
 const d = pathMatch[1];
 
 // 白底圆角方块 + 深色鲸尾。留 18% 内边距（图标太满在小尺寸下会糊）。

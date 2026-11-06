@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { bootOverlay, PROJECT_NAME, SPLASH_MODES, splashMode } from "../src/web/boot.ts";
-import { PAGE } from "../src/web/page.ts";
+import { NOTEBOOK } from "../src/web/notebook.ts";
 import { WELCOME } from "../src/web/welcome.ts";
 
 test("开机片头：两块页面都有，而且整段 ≤3.6s 会自己收尾", () => {
@@ -10,7 +10,7 @@ test("开机片头：两块页面都有，而且整段 ≤3.6s 会自己收尾",
   assert.ok(b.includes("pointerdown"), "点一下要能跳过");
   assert.ok(b.includes("Escape"), "Esc 要能跳过");
   assert.match(b, /setTimeout\(off,slow\?1600:3600\)/, "自动收尾：正常 3.6s / 降级 1.6s");
-  assert.ok(PAGE.includes("<!--BOOT-->"), "主面板留了片头占位（档位由 server 决定）");
+  assert.ok(NOTEBOOK.includes("<!--BOOT-->"), "记录本留了片头占位（档位由 server 决定）");
   assert.ok(String(WELCOME).includes("<!--BOOT-->"), "首启引导页也要播（那是第一屏）");
 });
 

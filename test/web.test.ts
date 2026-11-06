@@ -10,8 +10,7 @@ import { createWebServer, looksMojibake, writeGuarded } from "../src/web/server.
 import { execute } from "../src/execute.ts";
 import { ingestFile } from "../src/ingest.ts";
 import { loadPolicy } from "../src/policy.ts";
-import { PAGE } from "../src/web/page.ts";
-import { NOTEBOOK } from "../src/web/notebook.ts";
+import { NOTEBOOK, NB_JS } from "../src/web/notebook.ts";
 import { groupTimeline, gapLabel } from "../src/web/timeline.ts";
 import { expenseLine } from "../src/web/state.ts";
 import type { AddressInfo } from "node:net";
@@ -52,10 +51,7 @@ async function start() {
   return { srv, port, base: `http://127.0.0.1:${port}`, dir };
 }
 
-test("页面里没有「新对话」——重置人格的入口不该存在", () => {
-  assert.ok(!PAGE.includes("新对话"));
-  assert.ok(PAGE.includes("记忆"));
-});
+
 
 test("桌面端令牌：没令牌 403、带 ?k= 放行并种 cookie、/health 不需要令牌", async () => {
   const dir = tmp();
@@ -359,41 +355,20 @@ test("记录本是唯一界面：/ 与 /notebook 同页，旧面板路由已撤�
     assert.equal((await fetch(`${base}/classic`)).status, 404, "/classic 已撤");
     assert.equal((await fetch(`${base}/?shell=classic&skip=1`)).status, 200, "参数不再改变界面");
 
-    // 内联脚本必须能过 --check（模板字符串的坑栽过）
-    const { NOTEBOOK } = await import("../src/web/notebook.ts");
-    const blocks = [...NOTEBOOK.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((x) => x[1]!);
-    assert.ok(blocks.length >= 1, "记录本里应有 <script>");
-    const dir = mkdtempSync(join(tmpdir(), "jj-nb-"));
-    blocks.forEach((js, i) => {
-      const f = join(dir, `nb-${i}.js`);
-      writeFileSync(f, js, "utf8");
-      execFileSync(process.execPath, ["--check", f], { stdio: "pipe" });
-    });
+    // 界面脚本现在是真文件（2026-11-06 从模板字符串里抽出来的）——
+    // 以前只能把字符串抠出来再 --check，改一次带走一片函数。
+    execFileSync(process.execPath, ["--check", join(process.cwd(), "src/web/ui/notebook.js")], { stdio: "pipe" });
+    const html = await (await fetch(`${base}/?skip=1`)).text();
+    assert.ok(html.includes('/ui/notebook.js'), "页面要引用外部脚本");
+    const js = await fetch(`${base}/ui/notebook.js`);
+    assert.equal(js.status, 200, "脚本要能取到");
+    assert.ok((js.headers.get("content-type") || "").includes("javascript"), "类型要对");
+    assert.ok((await js.text()).includes("function paintTrace"), "取到的应该是真脚本");
+    assert.equal((await fetch(`${base}/ui/../server.ts`)).status, 404, "不许穿路径");
   } finally { srv.close(); }
 });
 
-test("页面脚本能通过语法检查（模板字符串里的 \n 会被展开成真换行 → 整页 JS 挂掉）", async () => {
-  // 页面里有**多段** <script>（开机片头一段 + 主面板一段）—— 贪婪匹配会把中间的 HTML 也吞进来，
-  // 所以逐个检查。
-  const blocks = [...PAGE.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((x) => x[1]!);
-  assert.ok(blocks.length >= 1, "页面里应有 <script>");
-  const dir = mkdtempSync(join(tmpdir(), "jj-js-"));
-  blocks.forEach((js, i) => {
-    const f = join(dir, `page-${i}.js`);
-    writeFileSync(f, js, "utf8");
-    execFileSync(process.execPath, ["--check", f], { stdio: "pipe" });
-  });
-  const js = blocks[blocks.length - 1]!;
-  // 额外断言：字符串字面量里不能出现裸换行（上面 --check 会抓，这里给个更直白的提示）
-  // 不用正则（转义在模板里会被吃）：直接查 split 的参数里有没有真换行
-  const at = js.indexOf('buf.split("');
-  if (at >= 0) {
-    const seg = js.slice(at, js.indexOf(String.fromCharCode(34, 41), at) + 2);
-    const nl = String.fromCharCode(10), cr = String.fromCharCode(13);
-    assert.ok(seg.indexOf(nl) < 0 && seg.indexOf(cr) < 0,
-      "split 的参数里出现了真换行（应该写 String.fromCharCode(10)）");
-  }
-});
+
 
 // ── 设置：API 与人格（用面板配置，而不是让人去改文件）─────────
 test("CSRF：写操作没有 x-jj 头 → 403；带了对的来源 → 放行", async () => {
@@ -479,16 +454,7 @@ test("配置：GET 不回显 key，只给指纹；PUT 写 key 后 hasKey 变 tru
   } finally { srv.close(); }
 });
 
-test("图标：鲸鱼 symbol 在页面里，品牌不再用「鲸鲸」文字，也不再有 JJ-OS", () => {
-  assert.ok(PAGE.includes('<symbol id="whale"'), "要有一个可复用的鲸鱼 symbol");
-  assert.ok(!PAGE.includes("JJ-OS"), "JJ-OS 这个文字要删掉（标题/角标/品牌）");
-  assert.ok(!PAGE.includes('<span class="brand">鲸鲸'), "品牌位应该是图标，不是文字");
-  // 品牌位的可读名字用**她的名字**（默认预置人格「鲸鲸」，用户可改），所以断言钉的是标记
-  assert.ok(PAGE.includes("data-agent-aria"), "图标要有可读名字（读 her name，不是写死鲸鲸）");
-  // 消息行头像：鲸鱼图标 + USER，不再出现「鲸」字头像
-  assert.ok(!PAGE.includes("\"<div class='av'>鲸</div>"), "头像框里的「鲸」字要被图标替掉");
-  assert.ok(PAGE.includes("href='#whale'"), "消息行头像用同一个 symbol");
-});
+
 
 
 
@@ -629,17 +595,7 @@ test("文档：/api/docs 列出摄入的文档，点开能看到块，忘掉后�
 });
 
 
-test("页面 head：不再有 PWA 元信息（2026-11-01：只有桌面端）", () => {
-  // 用户定：软件只有桌面端，不提供浏览器入口 —— 所以 manifest / sw / apple 图标一概不留。
-  assert.ok(!PAGE.includes("manifest.webmanifest"), "不该再有 manifest 链接");
-  assert.ok(!PAGE.includes("navigator.serviceWorker"), "不该再注册 service worker");
-  assert.ok(!PAGE.includes("apple-touch-icon"), "不该再有 apple 图标");
-  // 这四样跟 PWA 无关，是"桌面窗口也可能很窄"的基本盘，保留
-  assert.ok(PAGE.includes('name="viewport"'), "要有 viewport");
-  assert.ok(PAGE.includes('name="theme-color"'), "要有 theme-color（窗口标题栏底色）");
-  assert.ok(PAGE.includes("viewport-fit=cover"), "安全区还是要自己控");
-  assert.ok(PAGE.includes("env(safe-area-inset-bottom)"), "手势条会压住输入框");
-});
+
 
 test("写操作守卫：同源放行（Tailscale/手机），跨站仍然 403", async () => {
   // 同源：Origin 的 host 与 Host 头一致 → 这是“页面自己发的”，必须放行，
@@ -658,29 +614,7 @@ test("写操作守卫：同源放行（Tailscale/手机），跨站仍然 403", 
   assert.equal(writeGuarded(noCsrf).ok, false);
 });
 
-test("面板 UX 契约：P0/P1 的入口都在页面里（防止以后被改没）", () => {
-  // P0：证据链 / 审计 / 版本 / 工具默认折叠
-  assert.ok(PAGE.includes('data-cite'), "引用要变成可点元素");
-  assert.ok(PAGE.includes("recallHtml"), "召回行渲染函数要在");
-  assert.ok(PAGE.includes('id="auditlist"') && PAGE.includes('id="auditview"'), "动作审计入口");
-  // 版本/冻结/降级现在进仪表带（原来那个 chip 已并入读数格）
-  assert.ok(!PAGE.includes("details class='tool' open"), "工具卡不该默认展开");
-  // P1：摄入 / 停止 / 搜索 / 记忆纠错 / 角标 / 测连接 / 用量
-  assert.ok(PAGE.includes('id="dlg-path"') && PAGE.includes('id="dlg-go"'), "面板内摄入");
-  assert.ok(PAGE.includes('id="stop"') && PAGE.includes("AbortController"), "能停止生成");
-  assert.ok(PAGE.includes('id="q"') && PAGE.includes("/api/search"), "搜索");
-  assert.ok(PAGE.includes('id="mv-edit"') && PAGE.includes('id="mv-save"'), "记忆可纠错");
-  assert.ok(PAGE.includes('id="pendbadge"'), "待确认角标");
-  assert.ok(PAGE.includes('id="c-test"'), "测试连接");
-  assert.ok(PAGE.includes('id="c-usage"') && PAGE.includes("/api/usage"), "今日花费");
-  // P2：多行输入 / 回到最新 / 快捷键 / 时间戳无秒
-  assert.match(PAGE, /<textarea id="m"/, "输入框应可多行");
-  assert.ok(PAGE.includes('id="jump"'), "回到最新");
-  assert.ok(PAGE.includes('e.key.toLowerCase() === "k"'), "Ctrl+K 搜索");
-  assert.ok(!PAGE.includes("p(d.getSeconds())"), "时间戳不该带秒");
-  // [hidden] 必须压过类里的 display（角标曾经因此永远显示）
-  assert.ok(PAGE.includes("[hidden] { display:none !important; }"));
-});
+
 
 test("接口：/api/audit 只回字段不泄漏，/api/search 空查询直接返回", async () => {
   const { srv, base } = await start();
@@ -700,18 +634,7 @@ test("接口：/api/audit 只回字段不泄漏，/api/search 空查询直接返
   } finally { srv.close(); }
 });
 
-test("favicon：静态 /icon.svg 里的 viewBox 必须是符号自己的（之前写死 24×24 导致标签页空白）", async () => {
-  const { srv, base } = await start();
-  try {
-    const svg = await (await fetch(`${base}/icon.svg`)).text();
-    assert.match(svg, /viewBox="0 0 512 512"/, "viewBox 必须和 symbol 一致");
-    assert.ok(svg.includes("M453.004"), "要真的是那条鲸尾路径");
-    assert.match(svg, /color="#000"/, "currentColor 需要 color 才有颜色（标签页用黑色）");
-    assert.match(svg, /^<svg xmlns=/, "必须是独立 SVG 文档");
-    assert.ok(PAGE.includes('rel="icon" type="image/svg+xml" href="/icon.svg"'), "head 里要有静态图标链接");
-    assert.ok(!PAGE.includes("function favicon()"), "不要再靠运行时拼 data URI");
-  } finally { srv.close(); }
-});
+
 
 test("头像：上传验收文件头（伪造 mime 也不行），SVG 一律拒，删除后回落默认", async () => {
   const dir = tmp();
@@ -773,86 +696,13 @@ test("头像：上传验收文件头（伪造 mime 也不行），SVG 一律拒�
   } finally { srv.close(); }
 });
 
-test("面板：头像可换 / 三个分区可折叠 / 气泡两侧不同", () => {
-  assert.ok(PAGE.includes('id="up-agent"') && PAGE.includes('id="up-user"'), "两侧头像都要能换");
-  assert.ok(PAGE.includes('id="rm-agent"'), "要能恢复默认");
-  assert.ok(PAGE.includes("/api/avatar"), "走头像接口");
-  // 记忆/文档/动作已经从侧栏收成独立一屏，侧栏不再有它们的折叠块；
-  // 现在能折叠的是：左栏的工具，和卷宗里那几块（等你点头 / 上下文）。
-  for (const k of ["prop", "egr", "rcp", "thread", "surf"]) {
-    assert.ok(PAGE.includes(`data-sec="${k}"`), `${k} 分区要可折叠`);
-    assert.ok(PAGE.includes(`data-tog="${k}"`));
-  }
-  assert.ok(PAGE.includes('id="foldtools"'), "工具也要能折");
-  // 左栏只留「去处」入口行：列表本体必须在中栏（不然又变成一列滚 2.9 屏）
-  const sideEnd = PAGE.indexOf("</aside>");
-  for (const id of ["memlist", "doclist", "auditlist"]) {
-    assert.ok(PAGE.indexOf('id="' + id + '"') > sideEnd, id + " 不该还留在左栏里");
-  }
-  // 两侧气泡底色不同（不然长消息看着像没有气泡）
-  assert.ok(PAGE.includes(".row.user .body { background:rgba(38,28,14,.92)"), "用户气泡要有自己的底色");
-  // 只写 margin-left:auto 是空操作（inline-block 不吃 auto 边距）—— 必须配 width:fit-content
-  const userBody = PAGE.slice(PAGE.indexOf(".row.user .body {"), PAGE.indexOf(".row.user .body {") + 260);
-  assert.ok(userBody.includes("margin-left:auto"), "用户气泡要 auto 左边距");
-  assert.ok(userBody.includes("width:fit-content"), "否则 auto 边距不起作用，气泡会贴在左边");
-  assert.ok(userBody.includes("display:block"), "inline-block 上的 auto 边距无效");
-});
 
-test("写着“点开看全部”的东西必须真的是按钮（不是 hint 文案）", () => {
-  // 这条是踩过的坑：文案让用户去点，但它是个 <div class=hint>，根本点不动。
-  // 左栏现在只留入口行，列表本体在中栏；入口行必须是 button + data-view。
-  // 首次配置不再是侧栏入口：引导是首启自动弹的（/welcome）
-  for (const v of ["memlistview", "docsview", "auditview", "cfg"]) {
-    const re = new RegExp('<button class="item"[^>]*data-view="' + v + '"');
-    assert.ok(re.test(PAGE), "左栏入口 " + v + " 必须是 button + data-view");
-  }
-  assert.ok(!PAGE.includes("条近况，点开看全部"), "那句点不动的纯文案已删掉");
-  assert.ok(!PAGE.includes("查看全部"), "摘要式“查看全部”已随左栏列表一起删掉（列表本体就在那一屏）");
-});
 
-test("仪表带与 ticker：8 个读数格 + 分段条 + 底部状态带（数字必须来自接口）", async () => {
-  const { srv, base } = await start();
-  try {
-    // 读数格的存在性
-    for (const id of ["ro-mem", "ro-act", "ro-doc", "ro-chunks", "ro-energy", "ro-usd", "ro-rel", "ro-up"]) {
-      assert.ok(PAGE.includes(`id="${id}"`), `缺读数格 ${id}`);
-    }
-    assert.ok(PAGE.includes('class="segs" id="ro-segs"'), "能量要有分段刻度条");
-    assert.ok(PAGE.includes('id="ticker"'), "底部 ticker");
 
-    // 数字来源：这些接口都必须真的在服务
-    const s = await (await fetch(`${base}/api/state`)).json() as any;
-    assert.ok(Array.isArray(s.memories), "MEM/ACT 来自 /api/state");
-    const u = await (await fetch(`${base}/api/usage`)).json() as any;
-    assert.equal(typeof u.todayUsd, "number", "TODAY 来自 /api/usage");
-    const docs = await (await fetch(`${base}/api/docs`)).json() as any[];
-    assert.ok(Array.isArray(docs), "DOCS/CHUNKS 来自 /api/docs");
-    const h = await (await fetch(`${base}/health`)).json() as any;
-    assert.ok("release" in h && "uptimeS" in h, "RELEASE/UPTIME 来自 /health");
 
-    // 只有桌面端（2026-11-01）：不再有窄屏媒体查询，仪表带与 ticker 恒定显示
-    assert.ok(!PAGE.includes("max-width: 860px"), "手机端那套媒体查询已删");
-    assert.ok(!PAGE.includes('id="menu"'), "手机抽屉的 ≡ 按钮已删");
-  } finally { srv.close(); }
-});
 
-test("配色铁律：全站只有鲸鲸气泡用青色，其余是黑底+白边框+粗白字", () => {
-  // var(--cyan) 只允许出现在一处：.body（鲸鲸的回话）
-  const uses = PAGE.match(/var\(--cyan\)/g) ?? [];
-  assert.equal(uses.length, 1, `var(--cyan) 出现在 ${uses.length} 处，只允许 1 处`);
-  // 按规则块取，不按字面串取：之前钉的是 `.body { background:rgba(13,31,34`，
-  // 只因为我在 .body 里加了个 min-width 就误报（钉错了东西）
-  const bi = PAGE.indexOf(".body {");
-  const bodyRule = PAGE.slice(bi, PAGE.indexOf("}", bi));
-  assert.ok(bi >= 0 && bodyRule.includes("var(--cyan)"), "那一处必须是鲸鲸气泡的左边框");
-  // 硬编码的青色 rgba 也不许再出现（除了色板定义本身）
-  const hard = (PAGE.match(/rgba\(15,151,164/g) ?? []).length;
-  assert.equal(hard, 0, `还有 ${hard} 处硬编码青色`);
-  // 结构用白：读数标签/读数/侧栏条目/按钮都必须是加粗白字
-  assert.ok(PAGE.includes("color:var(--ink); font-weight:700;") || PAGE.includes("font-weight:700"), "要有加粗白字");
-  assert.ok(PAGE.includes(".ro-l { font:8px/1 var(--mono); letter-spacing:.22em; color:var(--ink); font-weight:700;"));
-  assert.ok(PAGE.includes("input, select, textarea { width:100%; color:var(--fg); font:inherit; background:#000;"));
-});
+
+
 
 test("面板摄入：候选列表只列未摄入的，编码不对不装成 E_NOT_FOUND", async () => {
   const dir = tmp();
@@ -894,26 +744,7 @@ test("面板摄入：候选列表只列未摄入的，编码不对不装成 E_NO
   } finally { srv.close(); }
 });
 
-test("没 key 时说真话：本地兜底要有 notice，banner 不能写「仅本地推理」", () => {
-  // 2026-11-01：本地模型**不参与对话**（用户定），所以没有「本地兜底」这回事。
-  // 没 key 就该明说不可用 —— 不要标成"本地回答"，也不要假装能答。
-  assert.ok(PAGE.includes("对话不可用") || PAGE.includes("unavailable"), "没 key 要明说不可用");
-  assert.ok(!PAGE.includes("仅本地推理，云端不会回答"), "那句是假的：没 key 时聊天直接 401");
-  assert.ok(!PAGE.includes("本地那个小模型在硬撑"), "本地兜底已经删了（2026-10-31 用户定），这句也删");
-  // 两个「路径」必须能区分：一个是云端地址，一个是本地文件
-  assert.ok(PAGE.includes("接入地址 · 云端 API 的 baseUrl"), "设置里的 baseUrl 要说清是云端地址");
-  assert.ok(PAGE.includes("加文档 · 只在本机读取，跟云端无关"), "加文档要说清是本地文件");
-  // 摄入表单里**不能**再有隐私选项：动作与属性放同一个表单，
-  // 怎么摆都会被读成“勾了才能摄”（用户连提两次）。
-  // 现在摄入永远 shareable=false，能不能进云端归 docview 的「标为可发送」。
-  const ingestBlock = PAGE.slice(PAGE.indexOf('class="ingest"'), PAGE.indexOf("</div></div>", PAGE.indexOf('class="ingest"')));
-  assert.ok(!ingestBlock.includes("dlg-share"), "摄入表单里不许有「允许进云端」");
-  assert.ok(ingestBlock.includes("摄入到本机"), "按钮要说清它只是落到本机");
-  assert.ok(PAGE.includes("标为可发送"), "那篇文档自己的入口要在（docview）");
-  // C-1 的面板半截：清除密钥的按钮与两步确认都要在
-  assert.ok(PAGE.includes('id="c-clear"'), "接口面板要有「清除密钥」按钮");
-  assert.ok(PAGE.includes("再点一次 = 真的清除"), "删除不可逆，必须两步确认");
-});
+
 
 // ── C-1：面板也能「清除密钥」（key:null，不是空串）───────────────
 test("配置：key:null 清除密钥 → hasKey 变 false，且不能靠空串误清", async () => {
@@ -1024,19 +855,19 @@ test("每一轮的过程要留档：右栏第四个签能看当前这一轮，�
 
   // 记录本：第四个签 + 过程容器 + 分组函数
   assert.ok(NOTEBOOK.includes('data-t="4"'), "右栏要有第四个签");
-  assert.ok(NOTEBOOK.includes("id=\"nb-trace\""), "要点开就能画过程");
-  assert.ok(NOTEBOOK.includes("function groupTrace("), "要按步分组");
-  assert.ok(NOTEBOOK.includes("thinkAppend(TRACE, 'think'"), "思考要进过程（逐 token 的片段要合并成一条，不能一垛碎字）");
-  assert.ok(NOTEBOOK.includes("TRACE.push({ k: 'tool'"), "工具要进过程");
-  assert.ok(NOTEBOOK.includes("TRACE.push({ k: 'res'"), "结果要进过程");
-  assert.ok(NOTEBOOK.includes("TRACE.push({ k: 'err'"), "错误要进过程");
-  assert.ok(NOTEBOOK.includes("bb.trace"), "重开时要能捞出最近一轮的过程");
+  assert.ok(NB_JS.includes("id=\"nb-trace\""), "要点开就能画过程");
+  assert.ok(NB_JS.includes("function groupTrace("), "要按步分组");
+  assert.ok(NB_JS.includes("thinkAppend(TRACE, 'think'"), "思考要进过程（逐 token 的片段要合并成一条，不能一垛碎字）");
+  assert.ok(NB_JS.includes("TRACE.push({ k: 'tool'"), "工具要进过程");
+  assert.ok(NB_JS.includes("TRACE.push({ k: 'res'"), "结果要进过程");
+  assert.ok(NB_JS.includes("TRACE.push({ k: 'err'"), "错误要进过程");
+  assert.ok(NB_JS.includes("bb.trace"), "重开时要能捞出最近一轮的过程");
 });
 
 test("过程按步分组：一段推理 + 它的动作 = 一步，上一步自动折叠", () => {
-  assert.ok(NOTEBOOK.includes("function groupTrace("), "要有分组函数");
-  assert.ok(NOTEBOOK.includes("if (cur.items.length) { steps.push(cur);"), "动手之后再想 = 开新的一步");
-  assert.ok(NOTEBOOK.includes("第 ' + (i + 1) + ' 步"), "面板上要标出第几步");
+  assert.ok(NB_JS.includes("function groupTrace("), "要有分组函数");
+  assert.ok(NB_JS.includes("if (cur.items.length) { steps.push(cur);"), "动手之后再想 = 开新的一步");
+  assert.ok(NB_JS.includes("第 ' + (i + 1) + ' 步"), "面板上要标出第几步");
 });
 
 test("闲时整理留痕：每次一条 events，成功失败都记，面板能看", () => {
@@ -1049,8 +880,6 @@ test("闲时整理留痕：每次一条 events，成功失败都记，面板能�
 
   const server = readFileSync(join(process.cwd(), "src/web/server.ts"), "utf8");
   assert.ok(server.includes('"/api/nightlog"'), "要有接口");
-  assert.ok(PAGE.includes("paintNightLog"), "面板要显示");
-  assert.ok(PAGE.includes("还没有闲时整理记录"), "从没跑过时要说清楚怎么跑");
 });
 
 test("插件可以单独重连：不用重启整个程序（学 Coopanion 的 World 单独重启）", () => {
@@ -1066,49 +895,15 @@ test("插件可以单独重连：不用重启整个程序（学 Coopanion 的 Wo
 
   const server = readFileSync(join(process.cwd(), "src/web/server.ts"), "utf8");
   assert.ok(server.includes('"/api/plugins/reconnect"'), "要有接口");
-  assert.ok(PAGE.includes("cap-reconnect"), "面板要有按钮");
-  assert.ok(PAGE.includes("不用重启程序"), "按钮要说清这件事");
 });
 
-test("两档模式：默认只留常用入口，文件/工具 收在高级里（学 Coopanion 的 normal/advanced）", () => {
-  assert.ok(PAGE.includes("body:not(.advanced) #side .item[data-adv]"), "CSS 要藏高级项");
-  assert.ok(PAGE.includes('data-view="filesview" data-adv'), "文件是高级项");
-  assert.ok(PAGE.includes('id="adv-toggle"'), "要有切换按钮");
-  assert.ok(PAGE.includes("jj.advanced"), "选择要记住（localStorage）");
-});
 
-test("没有动作时右栏要说话，不能是一片空白（用户：「现在过程看不见了」）", () => {
-  // traceStart() 以前一进来就把「还没有动作」藏掉；这一轮她要是没调工具，
-  // 右栏就剩下空白 —— 看着像功能坏了。现在改成：真有内容时才收提示。
-  assert.ok(PAGE.includes("if (empty) empty.hidden = false;\n"), "traceStart 不藏提示");
-  assert.ok(PAGE.includes("真有动作了，才把提示收起"), "traceStep 里才藏");
-});
 
-test("对话界面只呈现最终回答（不再靠文本匹配撤回）", () => {
-  // 旧做法：先把过程流式显示在正文里，再按「末尾匹配」撤回 —— 模型多一个空格就撤不掉。
-  // 新做法：按 step 归类，被判为过程的那一步整段不进正文（见 think-step.test.ts）。
-  assert.ok(PAGE.includes("turns[st2].process = true"), "think 标记那一步");
-  assert.ok(PAGE.includes("filter((k) => !turns[k].process)"), "正文只拼非过程的步");
-  assert.ok(!PAGE.includes("acc.slice(-tx.length)"), "旧的文本匹配撤回要清掉");
-});
 
-test("工作/聊天模式：接口能读能切，面板有 chip，聊天模式不带历史", () => {
-  const server = readFileSync(join(process.cwd(), "src/web/server.ts"), "utf8");
-  assert.ok(server.includes('"/api/mode"'), "要有模式接口");
-  assert.ok(server.includes('readFileConfig(deps.home).mode === "work"'), "读配置");
-  assert.ok(server.includes("writeFileConfig(deps.home, { mode })"), "写配置（跨重启保留）");
 
-  assert.ok(PAGE.includes('id="modechip"'), "面板要有模式 chip");
-  assert.ok(!PAGE.includes('id="perm"'), "权限档 chip 已删（2026-11-04 用户：去掉）");
-  assert.ok(PAGE.includes("setMode(MODE === \"work\" ? \"chat\" : \"work\")"), "点一下切换");
-  // 斜杠命令：/work /chat（权限档那层删了，/permission 也跟着去掉）
-  assert.ok(PAGE.includes("/work") && PAGE.includes("/chat"), "斜杠命令要能切模式");
 
-  // 工作模式放宽步数与单轮输出
-  assert.ok(server.includes('mode === "work" ? (supOn ? 24 : 20)'), "步数按模式放宽");
-  const cli = readFileSync(join(process.cwd(), "src/cli/jingjing.ts"), "utf8");
-  assert.ok(cli.includes('mode === "work" ? 6000 : 3000'), "单轮输出按模式放宽");
-});
+
+
 
 test("一轮没有结论时必须说出来（不是静默结束）", () => {
   // 实测：用户问「这是怎么回事最近 project.read error」，她回了 77 字「先说清楚我要做什么…」
@@ -1121,14 +916,7 @@ test("一轮没有结论时必须说出来（不是静默结束）", () => {
   assert.ok(server.includes("被挡住了"), "被拦时要指出是授权问题");
 });
 
-test("页面里被调用的本地函数都必须有定义（tsc 看不见字符串里的 JS）", () => {
-  // 实测事故：删权限档 UI 时把 handleSlash 的定义一起删了，但调用还在 ——
-  // typecheck 通过（那是模板字符串），运行时才炸。
-  const src = PAGE;
-  for (const fn of ["handleSlash", "traceStart", "traceAdd", "traceTool", "paintAnswer", "loadMode", "setMode", "paintLamps", "loadIdle", "paintNightLog"]) {
-    assert.ok(src.includes("function " + fn + "("), "缺定义：" + fn);
-  }
-});
+
 
 test("缺口会进对话：一次 /api/say 之后记下「问过了」，免得每轮查户口", async () => {
   const { srv, base, dir } = await start();
@@ -1178,7 +966,6 @@ test("缺口卡：GET 给全部没答的题、POST 答一句就落库，再问�
     });
     assert.equal(bad.status, 403);
 
-    assert.ok(PAGE.includes('id="gapcard"'), "面板要有缺口卡");
   } finally { srv.close(); }
 });
 
@@ -1214,8 +1001,6 @@ test("记忆视图：关于你 / 全部 / 断片 分流，summary 报三个数�
     assert.equal(all.length, 4, "不带 scope 仍是全部（老调用方不受影响）");
 
     // 面板上得真有这两个 chip，否则接口白做
-    assert.ok(PAGE.includes('id="memscope"'), "面板要有视图切换");
-    assert.ok(PAGE.includes("/api/memories/summary"), "面板要读三个数");
   } finally {
     await new Promise<void>((r) => srv.close(() => r()));
   }

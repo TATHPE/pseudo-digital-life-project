@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { PAGE } from "../src/web/page.ts";
+import { NOTEBOOK } from "../src/web/notebook.ts";
 import { WELCOME } from "../src/web/welcome.ts";
 
 /**
@@ -95,6 +95,6 @@ test("启动不许白屏：窗口第一帧必须是黑的（tauri.conf + 预热�
   assert.ok(warm.includes("PSEUDO DIGITAL"), "预热页显示项目名");
 
   // 面板自己也给 html 底色（只给 body 的话导航首帧会闪白）
-  assert.ok(PAGE.includes("html { background:var(--void); }"), "主面板 html 要有底色");
+  assert.ok(NOTEBOOK.includes("background:var(--void)"), "记录本要有底色");
   assert.ok(String(WELCOME).includes("html{background:#050706;}"), "引导页 html 要有底色");
 });

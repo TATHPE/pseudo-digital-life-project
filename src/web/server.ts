@@ -391,6 +391,27 @@ export function createWebServer(deps: WebDeps) {
       // 界面：2026-11-05 起**只有记录本**。
       // 旧面板（page.ts）从程序里撤下来了：没有路由、没有开关、没有第二套。
       // 代码留在仓里备查（用户要求"不删"），要回退去 git history 里找。
+      // ── 界面脚本（2026-11-06）：从模板字符串里抽出来的真文件 ──
+      // 只认 src/web/ui/<名字>.js，名字里不许有路径分隔符；改完不用重启就生效（no-store）。
+      const uiAsset = url.pathname.match(/^\/ui\/([a-z0-9-]+\.js)$/);
+      if ((req.method === "GET" || req.method === "HEAD") && uiAsset) {
+        const f = new URL("./ui/" + String(uiAsset[1]), import.meta.url);
+        try {
+          const body = readFileSync(f, "utf8");
+          res.writeHead(200, {
+            "content-type": "application/javascript; charset=utf-8",
+            "content-length": String(Buffer.byteLength(body)),
+            "cache-control": "no-store",
+            "x-content-type-options": "nosniff",
+          });
+          if (req.method === "HEAD") { res.end(); return; }
+          res.end(body);
+        } catch {
+          json(res, 404, { error: "E_NO_ASSET" });
+        }
+        return;
+      }
+
       if ((req.method === "GET" || req.method === "HEAD") && (url.pathname === "/" || url.pathname === "/notebook")) {
         const { NOTEBOOK } = await import("./notebook.ts");
         // 片头仍然按配置播（ui.splash：off / simple / full），记录本里留了 <!--BOOT--> 占位

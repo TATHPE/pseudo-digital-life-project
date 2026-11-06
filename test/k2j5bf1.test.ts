@@ -143,15 +143,16 @@ test("F-1 #5 溯源：改过的记忆能查到旧正文（pre-image）", async (
   assert.equal(JSON.parse(changes[0]!.payload).before_text, "我住在杭州", "旧正文要按逐字存下来（字段名 before_text）");
 });
 
-test("F-1 #3 工具列表可筛：paintTools 存在且默认只铺 6 项", () => {
-  const page = readFileSync(new URL("../src/web/page.ts", import.meta.url), "utf8");
-  assert.ok(page.includes("function paintTools"), "没有筛选函数");
-  assert.ok(page.includes("rows.slice(0, 6)"), "默认应折叠到 6 项");
-  assert.ok(page.includes(`id="toolq"`), "要有搜索框");
+test("F-1 #3 工具列表：能力页从接口读，不硬编码", () => {
+  const ui = readFileSync(new URL("../src/web/ui/notebook.js", import.meta.url), "utf8");
+  assert.ok(ui.includes("function capView"), "要有能力页");
+  assert.ok(ui.includes("'/api/capabilities'"), "工具表要读接口");
+  assert.ok(ui.includes("tools.slice(0, 40)"), "一次铺 40 项，别把三百条全倒出来");
 });
 
 test("F-1 #6 四个管理面收敛：能力表在读 API 而不是硬编码", () => {
-  const page = readFileSync(new URL("../src/web/page.ts", import.meta.url), "utf8");
-  assert.ok(page.includes(`fetch("/api/capabilities")`), "能力块必须读接口");
-  assert.ok(!/硬编码的工具清单/.test(page));
+  const ui = readFileSync(new URL("../src/web/ui/notebook.js", import.meta.url), "utf8");
+  assert.ok(ui.includes("/api/capabilities"), "能力块必须读接口");
+  assert.ok(ui.includes("/api/plugins"), "插件也要走接口（增删/重连）");
+  assert.ok(!/硬编码的工具清单/.test(ui));
 });

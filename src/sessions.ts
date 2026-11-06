@@ -80,12 +80,13 @@ export function openSession(db: DatabaseSync, now: Date, opts: { gapMs?: number;
   return rowOf(db.prepare("SELECT * FROM sessions WHERE id=?").get(id) as Record<string, unknown>);
 }
 
-export function touchSession(db: DatabaseSync, id: string, patch: { title?: string; status?: SessionRow["status"]; bump?: boolean } = {}): void {
+export function touchSession(db: DatabaseSync, id: string, patch: { title?: string; status?: SessionRow["status"]; bump?: boolean } = {}, now = new Date()): void {
   const sets: string[] = [];
   const vals: unknown[] = [];
   if (patch.title !== undefined) { sets.push("title=?"); vals.push(String(patch.title).slice(0, 60)); }
   if (patch.status !== undefined) { sets.push("status=?"); vals.push(patch.status); }
-  if (patch.bump) { sets.push("msgs=msgs+1", "updated_at=?"); vals.push(new Date().toISOString()); }
+  // 用传进来的 now（默认现在）：测试用固定时钟，跨天也不会因为"真实现在"而让会话复用判断出错
+  if (patch.bump) { sets.push("msgs=msgs+1", "updated_at=?"); vals.push(now.toISOString()); }
   if (!sets.length) return;
   vals.push(id);
   try { db.prepare("UPDATE sessions SET " + sets.join(",") + " WHERE id=?").run(...(vals as never[])); } catch { /* ignore */ }

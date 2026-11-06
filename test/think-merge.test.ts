@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const NB = readFileSync(join(process.cwd(), "src/web/notebook.ts"), "utf8");
+const NB = readFileSync(join(process.cwd(), "src/web/ui/notebook.js"), "utf8");
 const SERVER = readFileSync(join(process.cwd(), "src/web/server.ts"), "utf8");
 
 test("推理是逐 token 来的：面板要把碎片合并成一条，不能一垛「想 我 / 想 搜」", () => {

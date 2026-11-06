@@ -42,10 +42,3 @@ test("agent 的 delta / think 都要带 step（前端据此整段归类）", asy
   assert.notEqual(deltas[deltas.length - 1]!.step, think!.step, "最终回答是另一步");
 });
 
-test("前端按步剔除：被判为过程的那一步不进正文", () => {
-  const page = readFileSync(join(process.cwd(), "src/web/page.ts"), "utf8");
-  assert.ok(page.includes("turns[st2].process = true"), "think 要标记那一步");
-  assert.ok(page.includes("filter((k) => !turns[k].process)"), "正文只拼非过程的步");
-  assert.ok(page.includes("const turns = {};"), "按步收集（闭包内，能访问 box）");
-  assert.ok(!page.includes("acc.slice(-tx.length)"), "不再靠文本末尾匹配撤回");
-});

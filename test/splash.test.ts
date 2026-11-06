@@ -10,7 +10,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { renderSplash } from "../src/web/splash.ts";
-import { PAGE } from "../src/web/page.ts";
+import { NOTEBOOK } from "../src/web/notebook.ts";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -65,7 +65,7 @@ test("语言是我们的：无人机/基站那套术语清掉了，工具数换�
 test("接上了：full 档是 iframe 加载 /splash，播完/跳过会撤掉", () => {
   // iframe 是在 server 渲染 <!--BOOT--> 时插的（page.ts 只留占位）
   const server = readFileSync(join(process.cwd(), "src/web/server.ts"), "utf8");
-  assert.ok(PAGE.includes("<!--BOOT-->"), "页面留占位");
+  assert.ok(NOTEBOOK.includes("<!--BOOT-->"), "页面留占位");
   assert.ok(server.includes("src=\"/splash\""), "面板要知道去加载哪");
   assert.ok(server.includes("jjboot-done"), "页内桥要通知父页面");
   assert.ok(tpl.includes("jjboot-done"), "片头那份自己也要发这条消息");

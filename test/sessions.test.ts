@@ -44,8 +44,8 @@ test("会话：消息数会累加，列表按最近活动排序", () => {
   const db = fresh();
   const t0 = new Date("2026-11-05T10:00:00Z");
   const a = openSession(db, t0, { title: "A" });
-  touchSession(db, a.id, { bump: true });
-  touchSession(db, a.id, { bump: true });
+  touchSession(db, a.id, { bump: true }, t0);
+  touchSession(db, a.id, { bump: true }, t0);
   assert.equal(getSession(db, a.id)?.msgs, 2);
 
   const b = openSession(db, new Date("2026-11-05T20:00:00Z"), { title: "B" });

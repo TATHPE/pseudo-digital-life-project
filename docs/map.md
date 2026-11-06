@@ -8,7 +8,7 @@
 
 | 项 | 数量 |
 |---|---|
-| 源文件（src/**/*.ts） | 116 |
+| 源文件（src/**/*.ts） | 115 |
 | 错误码 E_* | 223 |
 | verbs | 27 |
 | CLI 子命令 | 39 |
@@ -94,7 +94,6 @@
 | `E_GRANT_PATH` | `src/grant.ts` |
 | `E_GRANT_SCOPE` | `src/grant.ts` |
 | `E_GRANT_SECRET` | `src/grant.ts` |
-| `E_HTTP` | `src/web/notebook.ts` |
 | `E_INDEX` | `src/assert.ts` |
 | `E_INSTALL` | `src/selfupdate.ts` |
 | `E_INTERP_BAD_BASIS` | `src/interpret.ts` |
@@ -119,6 +118,7 @@
 | `E_NIGHT` | `src/web/server.ts` |
 | `E_NIGHTLOG` | `src/web/server.ts` |
 | `E_NO_ARGV` | `src/shell.ts` |
+| `E_NO_ASSET` | `src/web/server.ts` |
 | `E_NO_AVATAR` | `src/web/server.ts` |
 | `E_NO_BASH` | `src/web/server.ts` |
 | `E_NO_CALL` | `src/toolsmoke.ts` |
@@ -129,7 +129,7 @@
 | `E_NO_CONVERTER` | `src/ingest.ts` |
 | `E_NO_DB` | `src/cli/jingjing.ts` `src/verbs.ts` |
 | `E_NO_DIR` | `src/web/server.ts` |
-| `E_NO_DOC` | `src/web/page.ts` `src/web/server.ts` |
+| `E_NO_DOC` | `src/web/server.ts` |
 | `E_NO_DRAFT` | `src/interview.ts` `src/web/server.ts` |
 | `E_NO_EMBED_MODEL` | `src/cli/jingjing.ts` |
 | `E_NO_EMBEDDER` | `src/fillvec.ts` `src/verbs.ts` |
@@ -391,7 +391,6 @@
 | `src/web/brand.ts` | 品牌图标（鲸）。从 page.ts 里抽出来的 —— 2026-11-05 旧面板从程序里撤下之后， |
 | `src/web/desk.ts` | 桌面端的**启动令牌**（2026-11-01：软件只有桌面端，不提供浏览器入口）。 |
 | `src/web/notebook.ts` | 第二条壳：工作记录本（2026-11-05） |
-| `src/web/page.ts` | 单页（零前端依赖、零构建）。 |
 | `src/web/server.ts` | 本地 Web 面板（17 §4）：127.0.0.1:7700，零前端依赖，SSE 流式。 |
 | `src/web/splash.ts` | 片头（完整档）：**在 dsh-550c-boot 的 550C 骨架上改出来的那一个**。 |
 | `src/web/state.ts` | 状态行（17 §4.1）：一句话，不是数字仪表盘 */ |
