@@ -1,4 +1,5 @@
 data/
+app/                 # 装好的壳（NSIS 装进项目里，靠向上找项目根）
 data2test/          # 测试用的 home：里面有 secrets，绝不许进仓库
 data.bak-*/
 exports/
