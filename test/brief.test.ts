@@ -168,21 +168,35 @@ test("P17 工具现状：插件挂了/待生效，她自己必须知道（别假
   assert.ok(!buildBrief(base({})).text.includes("【我的工具现状】"));
 });
 
-test("工作模式才带最近几轮历史；聊天模式故意不带（靠记忆召回，不随轮数增长）", () => {
+test("两档都带最近几轮：聊天窄而近，工作宽而远（2026-11-06 改）", () => {
+  // 以前聊天模式故意不带历史 —— 结果连「刚才那条」都接不住，那不叫聊天。
   const hist = [
     { role: "user" as const, text: "先把 docs/24 的数字对一遍" },
     { role: "agent" as const, text: "对好了，recall 1.000，abstainF1 1.000。" },
     { role: "user" as const, text: "那第二条呢" },
   ];
   const chat = buildBrief(base({ mode: "chat", history: hist }));
-  assert.ok(!chat.text.includes("【最近几轮】"), "聊天模式不带历史");
+  assert.ok(chat.text.includes("【最近几轮】"), "聊天模式也要带历史");
+  assert.ok(chat.text.includes("那第二条呢"), "最近一条必须在");
 
   const work = buildBrief(base({ mode: "work", history: hist }));
   assert.ok(work.text.includes("【最近几轮】"), "工作模式要带");
-  assert.ok(work.text.includes("那第二条呢"), "最近一条必须在");
   assert.ok(work.text.includes("你：") && work.text.includes("我："), "用户与她的话都要能区分");
-  assert.ok(work.tokens > chat.tokens, "工作模式预算更宽");
+  // 预算差在「记得多少轮」上：给一长串历史，工作模式留得更多
+  const many = Array.from({ length: 30 }, (_, i) => ({
+    role: (i % 2 === 0 ? "user" : "agent") as "user" | "agent",
+    text: `第 ${i + 1} 句：这句话有点长度，用来占预算。`,
+  }));
+  const chatMany = buildBrief(base({ mode: "chat", history: many }));
+  const workMany = buildBrief(base({ mode: "work", history: many }));
+  const countTurns = (t: string) => (t.match(/你：|我：/g) ?? []).length;
+  assert.ok(countTurns(workMany.text) > countTurns(chatMany.text),
+    `工作模式该留更多轮：work=${countTurns(workMany.text)} chat=${countTurns(chatMany.text)}`);
+
+  // 聊天模式的预算要装得下它那几轮（以前 2000，加了历史会溢出）
+  assert.ok(chat.tokens <= 2600, `chat=${chat.tokens}`);
 });
+
 
 test("P19 我还不知道的：有缺口才出现，且明说「没聊到别硬问」（2026-11-04）", () => {
   const none = buildBrief(base());

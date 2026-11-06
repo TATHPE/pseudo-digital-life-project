@@ -2294,14 +2294,16 @@ export function createWebServer(deps: WebDeps) {
         const recalled: MemoryLine[] = rc.recalled;
         // 模式：chat（默认，靠记忆召回） / work（带最近几轮历史 + 更宽的预算）
         const mode = (() => { try { return readFileConfig(deps.home).mode === "work" ? "work" as const : "chat" as const; } catch { return "chat" as const; } })();
-        // 工作模式才有历史：从 inbox 取最近的 user / agent 文本（不含工具轨迹 ——
-        // 跨轮的 tool 消息在协议上不合法，而且细节已经在右栏里）
-        const history = mode === "work"
-          ? messages(deps.db, deps.inboxDir)
-              .slice(-16)
-              .map((m) => ({ role: (m.role === "user" ? "user" : "agent") as "user" | "agent", text: String(m.text ?? "").slice(0, 600) }))
-              .filter((m) => m.text.trim())
-          : undefined;
+        // 两档都带历史（2026-11-06）。以前只有工作模式带，聊天模式连「刚才那条」都接不住，
+        // 那不叫聊天。差别只在长度：聊天近而短（8 条 / 220 字），工作远而长（16 条 / 600 字）。
+        // 不含工具轨迹 —— 跨轮的 tool 消息在协议上不合法，细节已经在右栏里。
+        const history = messages(deps.db, deps.inboxDir)
+          .slice(-(mode === "work" ? 16 : 8))
+          .map((m) => ({
+            role: (m.role === "user" ? "user" : "agent") as "user" | "agent",
+            text: String(m.text ?? "").slice(0, mode === "work" ? 600 : 220),
+          }))
+          .filter((m) => m.text.trim());
         // P16：她自己的容量（问「你能读多少记忆」时要能直接答，不用去查库）
         let capMem = 0, capDocs: number | undefined, capChunks: number | undefined;
         try {

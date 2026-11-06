@@ -101,7 +101,7 @@ export function buildBrief(input: BriefInput): BriefOutput {
   // 工作模式把预算放宽：要把最近几轮装进来，2000 装不下
   const b: BriefBudget = work
     ? { ...DEFAULT_BUDGET, total: 5200, recalled: 900, prefix: 2600, contracts: 600, ...(input.budget ?? {}) }
-    : { ...DEFAULT_BUDGET, ...(input.budget ?? {}) };
+    : { ...DEFAULT_BUDGET, total: 2600, ...(input.budget ?? {}) };   // 2026-11-06：要装得下「最近几轮」
   const p = input.persona;
 
   // ── 稳定前缀（P1–P4）：逐字不变 ───────────────────────
@@ -225,17 +225,22 @@ export function buildBrief(input: BriefInput): BriefOutput {
   }
   slots.push({ id: "P17", label: "工具现状", tokens: estimateTokens(p17), stable: false });
   // P18 最近几轮（**只有工作模式**）：让「刚才那条」「上面说的第二件」能被接住。
-  // 聊天模式故意不带 —— 那是它的设计（靠记忆召回，不随轮数增长）。
+  // 2026-11-06：聊天模式**也带**最近几轮。
+  // 以前是「聊天靠记忆召回，不带历史」—— 结果连「刚才那条」「上面第二件」都接不住，
+  // 那不是聊天。现在两档都带，只是预算不同：聊天窄而近，工作宽而远。
   let p18 = "";
-  if (work) {
-    const hist = (input.history ?? []).slice(-16);      // 最多 8 轮（user+agent）
+  {
+    const cap = work ? 2400 : 700;          // 聊天：≈4 条短句；工作：≈2400 tokens
+    const maxLines = work ? 12 : 6;
+    const perLine = work ? 400 : 220;
+    const hist = (input.history ?? []).slice(-(work ? 16 : 8));
     const lines: string[] = [];
     let used = 0;
     for (let i = hist.length - 1; i >= 0; i--) {
       const h = hist[i]!;
-      const one = (h.role === "user" ? "你：" : "我：") + h.text.replace(/\s+/g, " ").slice(0, 400);
+      const one = (h.role === "user" ? "你：" : "我：") + h.text.replace(/\s+/g, " ").slice(0, perLine);
       const t = estimateTokens(one);
-      if (used + t > 2400 || lines.length >= 12) break;   // 预算：装不下的更老那轮直接丢
+      if (used + t > cap || lines.length >= maxLines) break;
       used += t;
       lines.unshift(one);
     }
