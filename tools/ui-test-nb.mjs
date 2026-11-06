@@ -224,6 +224,33 @@ if (traceTab === "no-tab" || traceTab === "hidden" || traceTab === "no-box") {
     traceTab.steps ? `${traceTab.steps} 步` : traceTab.text.slice(0, 40));
 }
 
+// ⑥c 右栏要自己滚：内容再长也不许把整页顶出滚动条（用户报「下拉条还是全局」）
+const railScroll = await js(`(async () => {
+  // 签是开关：已经开着就别再点（点了会关掉）
+  const panel0 = document.getElementById('nb-panel');
+  if (panel0 && panel0.hidden) {
+    const t = document.querySelector('.nb-tab[data-t="4"]');
+    if (t) { t.click(); await new Promise((r) => setTimeout(r, 700)); }
+  }
+  const panel = document.getElementById('nb-panel');
+  const doc = document.scrollingElement || document.documentElement;
+  if (!panel || panel.hidden) return { why: 'panel 没打开' };
+  const cs = getComputedStyle(panel);
+  return {
+    overflowY: cs.overflowY,
+    panelH: panel.clientHeight,
+    panelScroll: panel.scrollHeight,
+    docScroll: doc.scrollHeight,
+    innerH: window.innerHeight,
+  };
+})()`);
+if (railScroll && railScroll.why) check("右栏自己滚，整页不滚", false, railScroll.why);
+else check(
+  "右栏自己滚，整页不滚",
+  !!railScroll && railScroll.overflowY === "auto" && railScroll.docScroll <= railScroll.innerH + 2,
+  railScroll ? ("面板 " + railScroll.panelH + "/" + railScroll.panelScroll + "px · 整页 " + railScroll.docScroll + "/" + railScroll.innerH + "px") : "?",
+);
+
 // ⑦ 回到记录
 check("能回到记录页", await js(`(async () => {
   const b = document.getElementById('nb-board-btn');

@@ -244,8 +244,9 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
 .nb-spec.wait .act button:hover{background:var(--ink);color:var(--void)}
 
 /* 切口索引 */
-.nb-tabs{display:flex;border-left:1px solid var(--line-dim)}
-.nb-rail{width:52px;display:flex;flex-direction:column;gap:2px;padding-top:12px}
+/* 右栏自己滚：不加 min-height:0，grid 子项会被内容撑高，整页出现滚动条（2026-11-06） */
+.nb-tabs{display:flex;border-left:1px solid var(--line-dim);min-height:0;height:100%;overflow:hidden}
+.nb-rail{width:52px;display:flex;flex-direction:column;gap:2px;padding-top:12px;overflow:auto}
 .nb-tab{font:11px/1 var(--mono);letter-spacing:.1em;color:var(--dim2);padding:11px 0;cursor:pointer;
   text-align:center;border:0;background:none;border-left:2px solid transparent}
 .nb-tab:hover{color:var(--dim);background:rgba(233,240,242,.03)}
@@ -253,7 +254,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
 .nb-tab.wait{color:var(--amber)}
 .nb-tab.wait.on{color:var(--void);background:var(--amber);border-left-color:var(--amber)}
 .nb-tab .c{display:block;margin-top:5px;font-size:9px}
-.nb-panel{width:280px;padding:14px 14px 40px;overflow:auto;border-left:1px solid var(--line-dim)}
+.nb-panel{width:280px;padding:14px 14px 40px;border-left:1px solid var(--line-dim);min-height:0;max-height:100%;overflow-y:auto;overscroll-behavior:contain}
 .nb-panel[hidden]{display:none}
 .nb-panel h3{font:10px/1 var(--mono);letter-spacing:.16em;color:var(--dim2);margin:0 0 12px;font-weight:400}
 .nb-card{border:1px solid var(--line-dim);padding:10px 11px;margin-bottom:9px}
