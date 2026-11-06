@@ -193,6 +193,11 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
 .md-table th,.md-table td{border:1px solid var(--line-dim);padding:6px 9px;text-align:left;vertical-align:top}
 .md-table th{color:var(--dim);font-weight:400;letter-spacing:.06em;background:rgba(233,240,242,.03)}
 .md-table tr:hover td{background:rgba(233,240,242,.02)}
+/* 聊天 / 工作：点一下切换，当前档亮着 */
+.nb-modechip{font:10px/1 var(--mono);letter-spacing:.08em;color:var(--dim);background:none;
+  border:1px solid var(--line-dim);padding:4px 8px;cursor:pointer;margin-right:8px}
+.nb-modechip:hover{color:var(--ink);border-color:var(--line)}
+.nb-modechip.on{color:var(--void);background:var(--ink);border-color:var(--ink)}
 .nb-gav{display:block;width:22px;height:22px;object-fit:cover;margin:0 0 5px auto;border:1px solid var(--line-dim);opacity:.85}
 .nb-e.me .g .w{color:var(--amber)}
 .nb-e .b{min-width:0}
@@ -285,6 +290,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
     <span><i class="nb-dot"></i><b id="nb-line">醒着</b></span>
     <span id="nb-counts"></span>
     <span class="sp"></span>
+    <button class="nb-modechip" id="nb-modechip" title="聊天：只靠记忆召回；工作：带上最近几轮 + 更宽的预算">聊天</button>
     <span id="nb-usd">今天 $0.000</span><span id="nb-model">—</span>
     <span id="nb-shell">记录本</span>
   </div>

@@ -23,6 +23,17 @@
   }
 
   // ── 顶栏与左栏 ────────────────────────────────
+  // 模式：聊天（默认，只靠记忆召回）/ 工作（带最近几轮 + 更宽预算）。
+  // 以前面板里根本没有入口 —— 想换只能改 config.json。
+  function paintMode(m){
+    var b = $('nb-modechip');
+    if (!b) return;
+    b.textContent = m === 'work' ? '工作' : '聊天';
+    b.className = 'nb-modechip' + (m === 'work' ? ' on' : '');
+  }
+  function loadMode(){
+    fetch('/api/mode').then(function(r){ return r.json(); }).then(function(j){ paintMode((j && j.mode) || 'chat'); }).catch(function(){});
+  }
   function loadState(){
     fetch('/api/state').then(function(r){ return r.json(); }).then(function(j){
       if (j && j.line) $('nb-line').textContent = j.line;
@@ -1486,7 +1497,7 @@
       html += sec('部署状态',
         '<div class="nb-kv">' +
         '<b>版本</b><span>' + esc(dep.version || '—') + '</span>' +
-        '<b>模式</b><span>' + esc(dep.mode || '—') + '</span></div>' +
+        '<b>运行方式</b><span>' + esc(dep.mode || '—') + '</span></div>' +
         '<div class="nb-kv">' +
         '<b>Node</b><span>' + esc(dep.node || '—') + '</span>' +
         '<b>已运行</b><span>' + esc(String(Math.round((dep.uptimeS || 0) / 60))) + ' 分钟</span>' +
@@ -1813,6 +1824,19 @@
   if (palBg) palBg.addEventListener('click', function(e){ if (e.target === palBg) palClose(); });
 
   // ── 启动 ─────────────────────────────────────
+  var modeChip = $('nb-modechip');
+  if (modeChip) modeChip.onclick = function(){
+    var now = modeChip.textContent.trim() === '工作' ? 'work' : 'chat';
+    var next = now === 'work' ? 'chat' : 'work';
+    modeChip.disabled = true;
+    fetch('/api/mode', { method: 'POST', headers: H, body: JSON.stringify({ mode: next }) })
+      .then(function(r){ return r.json(); }).then(function(j){
+        if (j && j.ok) { paintMode(j.mode); tick(j.mode === 'work' ? '工作模式：带上最近几轮' : '聊天模式：只靠记忆召回'); }
+        else tick('没切成');
+        modeChip.disabled = false;
+      }).catch(function(){ tick('没切成'); modeChip.disabled = false; });
+  };
+  loadMode();
   loadState(); loadTimeline(); loadTabs(); loadHome(); loadAvatars();
   // 深链接：?view=home|chat|board|mem|docs|cap|git|gap|cfg（截图、书签、排障都靠它）
   (function(){

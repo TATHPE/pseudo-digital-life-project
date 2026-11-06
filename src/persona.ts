@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { atomicWriteFile } from "./fsx.ts";
 import type { PersonaFiles } from "./types.ts";
+import { verbCatalog } from "./verbs.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..");
@@ -42,13 +43,35 @@ export function seedPersona(home: string): void {
   }
 }
 
+/**
+ * P4 的工具清单：**从 verbs 生成**，不再手写。
+ *
+ * 2026-11-06：persona/tools.md 里那句「常驻 4 个：search / remember / cite / act」
+ * 和目录里的 doc.read / net.fetch / calendar.add 全是过时的 —— 那些函数根本不存在，
+ * 模型照着去调只会先失败再改。清单必须从唯一的能力表来，才不会漂。
+ */
+export function toolCatalogText(): string {
+  const list = verbCatalog();
+  const apiName = (n: string) => n.replace(/\./g, "_");
+  const byTier = new Map<string, string[]>();
+  for (const v of list) {
+    const arr = byTier.get(v.tier) ?? [];
+    // 只写「名字(档)」：描述在 API 的 functions 参数里已经有一份，这里再抄一遍就是白烧 P4 预算
+    arr.push(apiName(v.name) + "(" + v.tier + ")");
+    byTier.set(v.tier, arr);
+  }
+  const order = ["T0", "T1", "T2", "T3"];
+  const lines = order.filter((t) => byTier.has(t)).map((t) => t + "：" + (byTier.get(t) ?? []).join(" · "));
+  return ["工具（真实可调用的就是这些；名字是下划线形式）：", ...lines].join(String.fromCharCode(10));
+}
 export function loadPersona(home?: string): PersonaFiles {
   const dir = personaDir(home);
   return {
     core: read(dir, "core"),
     boundaries: read(dir, "boundaries"),
     evidenceOrder: read(dir, "evidence"),
-    toolSchemas: read(dir, "tools").split("\n\n")[0] ?? "",
+    // 清单从能力表生成；tools.md 第一段只当「怎么用」的前言（可以为空）
+    toolSchemas: [read(dir, "tools").split("\n\n")[0] ?? "", toolCatalogText()].filter(Boolean).join("\n"),
     toolDirectory: read(dir, "tools").split("\n\n").slice(1).join("\n\n"),
   };
 }

@@ -110,6 +110,21 @@ check("表格渲染成 <table>，不是一排竖线", await js(`(() => {
   return t.querySelectorAll('th').length >= 2 && t.querySelectorAll('td').length >= 2 && !txt.includes('|---|');
 })()`));
 
+// ②d 顶栏的 聊天 / 工作 chip：要显示当前档，点一下能切
+const chip = await js(`(async () => {
+  const b = document.getElementById("nb-modechip");
+  if (!b) return null;
+  const before = b.textContent.trim();
+  b.click();
+  await new Promise((r) => setTimeout(r, 800));
+  const after = b.textContent.trim();
+  const m = await (await fetch('/api/mode')).json();
+  return { before, after, mode: m.mode };
+})()`);
+if (!chip) check("顶栏有 聊天 / 工作 chip", false, "没有 chip");
+else check("顶栏 聊天 / 工作 chip 能切", chip.before !== chip.after && (chip.mode === "work" || chip.mode === "chat"),
+  `${chip.before} → ${chip.after}（接口 ${chip.mode}）`);
+
 // ③ 切口签能开合
 check("点切口签能展开面板", await js(`(async () => {
   const t = document.querySelector('.nb-tab[data-t="3"]');

@@ -194,3 +194,17 @@ test("P19 我还不知道的：有缺口才出现，且明说「没聊到别硬�
   assert.ok(ask.text.includes("没聊到别硬问"), "要压住查户口感");
   assert.ok(ask.tokens <= 2000, "加了这一槽也不能破预算");
 });
+
+test("P4 的工具清单来自能力表：真实名字都在，过时的四个不许再出现（2026-11-06）", async () => {
+  const { loadPersona } = await import("../src/persona.ts");
+  const p = loadPersona("data");
+  const t = String(p.toolSchemas);
+  // 真实存在的（下划线形式）
+  for (const real of ["memory_search(T0)", "fs_read(T0)", "shell_run(T3)", "memory_remember(T1)"]) {
+    assert.ok(t.includes(real), "清单缺 " + real);
+  }
+  // 以前手写的那几个：能力表里没有，不许再冒出来
+  for (const ghost of ["cite(", "act(", "net.fetch", "calendar.add", "doc.tables"]) {
+    assert.ok(!t.includes(ghost), "过时的工具名还在：" + ghost);
+  }
+});
