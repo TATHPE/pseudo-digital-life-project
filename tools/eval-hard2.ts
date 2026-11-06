@@ -57,6 +57,8 @@ async function rebuild(): Promise<string> {
 const args = process.argv.slice(2);
 /** --rerank：候选交给本地 7B 挑一条（或说 NONE）——用来量 rerank 到底有没有用 */
 const USE_RERANK = args.includes("--rerank");
+/** --scores：只打印每条用例的分数分布，供「拒答门限」分析用 */
+const SHOW_SCORES = args.includes("--scores");
 const hi = args.indexOf("--home");
 const home = hi >= 0 ? args[hi + 1]! : await rebuild();
 
@@ -78,6 +80,21 @@ for (const c of cases) {
   const texts = hits.map((h) => String(h.text));
   const g = byGroup.get(c.group) ?? { ok: 0, n: 0 };
   g.n++;
+  if (SHOW_SCORES) {
+    const f = (x: number) => (Number.isFinite(x) ? x.toFixed(4) : "—");
+    const h0 = hits[0], h1 = hits[1];
+    const gap = h0 && h1 ? h0.score - h1.score : NaN;
+    rows.push([
+      (c.expectEmpty ? "该空" : "该答").padEnd(4),
+      c.id.padEnd(14),
+      "top1=" + f(h0 ? h0.score : NaN),
+      "rel1=" + f(h0 ? h0.relevance : NaN),
+      "top2=" + f(h1 ? h1.score : NaN),
+      "gap=" + f(gap),
+      "n=" + hits.length,
+    ].join(" "));
+    continue;
+  }
   if (c.expectEmpty) {
     const ok = hits.length === 0;
     if (ok) g.ok++;
