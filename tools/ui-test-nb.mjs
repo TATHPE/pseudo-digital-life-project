@@ -266,16 +266,17 @@ const themeSwitch = await js(`(async () => {
   btn.click();
   await new Promise((r) => setTimeout(r, 700));
   const ui = await (await fetch('/api/ui')).json();
+  const bg = getComputedStyle(document.body).backgroundColor;
   return {
     attr: document.documentElement.getAttribute('data-theme'),
     before, after: getComputedStyle(document.body).fontSize,
-    saved: ui.theme,
+    bg, saved: ui.theme,
   };
 })()`);
 if (themeSwitch && themeSwitch.why) check("主题能切", false, themeSwitch.why);
 else check(
   "主题能切（立刻生效 + 存进配置）",
-  !!themeSwitch && themeSwitch.attr === 'hermes' && themeSwitch.saved === 'hermes' && themeSwitch.after !== themeSwitch.before,
+  !!themeSwitch && themeSwitch.attr === 'hermes' && themeSwitch.saved === 'hermes' && themeSwitch.after !== themeSwitch.before && /24[0-9]|25[0-9]/.test(themeSwitch.bg),
   themeSwitch ? (`${themeSwitch.before} → ${themeSwitch.after} · 存 ${themeSwitch.saved}`) : "?",
 );
 

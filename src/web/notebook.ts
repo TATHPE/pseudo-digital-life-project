@@ -31,6 +31,8 @@ export const NOTEBOOK = `<!doctype html>
   --void:#0b0e0b;--ink:#e9f0f2;--dim:#9fb0b3;--dim2:#66757a;
   --line:rgba(233,240,242,.30);--line-dim:rgba(233,240,242,.10);
   --cyan:#0f97a4;--amber:#c9a227;--fade:#8a9698;
+  /* 叠加层：深色底上是白雾，浅色底上要反过来，否则一片隐形 */
+  --tint1:rgba(233,240,242,.015);--tint2:rgba(233,240,242,.03);--tint3:rgba(233,240,242,.05);
   --ok:#8db580;--warn:#c9a227;--err:#c4554d;
   --mono:ui-monospace,"Cascadia Mono",Consolas,monospace;
   --sans:"HarmonyOS Sans SC","PingFang SC","Noto Sans SC","Source Han Sans SC","Microsoft YaHei UI","Microsoft YaHei",system-ui,sans-serif;
@@ -38,25 +40,42 @@ export const NOTEBOOK = `<!doctype html>
 }
 /* ── 主题（2026-11-06）─────────────────────────────────────
    默认 = 记录本（黑白、紧凑、660 正文宽）
-   hermes = 借 Hermes-CN-Desktop 的比例：中性灰、12.5/1.75、248 侧栏、1120 正文宽
+   hermes = 借 Hermes-CN-Desktop 的浅色底：纸白 + 墨黑、12.5/1.75、248 侧栏、容器 1120 / 正文 720
    只换变量与版式，结构不动 —— 切换靠 <html data-theme>，不刷新页面。 */
 [data-theme="hermes"]{
-  --void:#101214;--ink:#e7eaea;--dim:#a3a9ab;--dim2:#6d7477;
-  --line:rgba(231,234,234,.26);--line-dim:rgba(231,234,234,.08);
-  --cyan:#2a9d8f;--amber:#c9a227;--fade:#8f9799;
+  color-scheme:light;
+  /* 纸白 + 墨黑：Hermes 是浅色底，不是深色底换个灰 */
+  --void:#fbfbf9;--ink:#17191a;--dim:#5b6367;--dim2:#8b9296;
+  --line:rgba(23,25,26,.22);--line-dim:rgba(23,25,26,.09);
+  --cyan:#0f7c74;--amber:#8a6d1f;--fade:#6f777a;
+  --ok:#3f7a3a;--warn:#8a6d1f;--err:#a8423a;
   --mono:ui-monospace,"Cascadia Mono",Consolas,monospace;
   --sans:"Inter","HarmonyOS Sans SC","PingFang SC","Noto Sans SC",system-ui,sans-serif;
-  --measure:1120px;
+  --measure:1120px;   /* 容器宽 */
+  --prose:720px;      /* 正文列:容器再宽,一行也别超过 ~50 字 */
   --lh:1.75;
+  /* 浅色底上的叠加层是**墨雾**，不是白雾 */
+  --tint1:rgba(23,25,26,.02);--tint2:rgba(23,25,26,.035);--tint3:rgba(23,25,26,.06);
 }
 [data-theme="hermes"] body{font-size:12.5px;line-height:1.75}
-/* 版式差异：左栏 248（Hermes 的 sidebar 宽度），正文列放宽到 1120 */
+/* 版式差异：左栏 248（Hermes 的 sidebar 宽） */
 [data-theme="hermes"] .nb-main{grid-template-columns:248px minmax(0,1fr) auto}
 [data-theme="hermes"] .nb-tick{left:248px}
 [data-theme="hermes"] .nb-composer{left:248px}
-[data-theme="hermes"] .nb-greet{font-size:22px;font-weight:600}
+/* 正文别跟着容器一起变宽：容器 1120 / 正文 720 */
+[data-theme="hermes"] .nb-say,[data-theme="hermes"] .nb-e .b{max-width:var(--prose)}
+[data-theme="hermes"] .nb-greet{font-size:22px;font-weight:600;letter-spacing:-.01em}
 [data-theme="hermes"] .nb-sec{letter-spacing:.18em}
 [data-theme="hermes"] .nb-e .g .w{letter-spacing:.1em}
+/* 浅色下代码块与表格的底要更实一点，不然像没渲染 */
+[data-theme="hermes"] .nb-say pre{background:rgba(23,25,26,.04)}
+[data-theme="hermes"] .md-table th{background:rgba(23,25,26,.035)}
+/* 顶栏与输入区在浅色底上要有一条实线，不然糊在一起 */
+[data-theme="hermes"] .nb-top{border-bottom-color:rgba(23,25,26,.14)}
+[data-theme="hermes"] .nb-composer{border-top:1px solid rgba(23,25,26,.12)}
+/* 滚动条：浅色底上用墨色滑块 */
+[data-theme="hermes"] ::-webkit-scrollbar-thumb{background:rgba(23,25,26,.18)}
+[data-theme="hermes"] ::-webkit-scrollbar-thumb:hover{background:rgba(23,25,26,.32)}
 
 *{box-sizing:border-box}
 /* hidden 要真的藏住：.nb-tabs 有 display:flex，会盖过 UA 的 [hidden]{display:none} */
@@ -81,8 +100,8 @@ body{background:var(--void);color:var(--ink);font:15px/1.85 var(--sans);
 .nb-index{border-right:1px solid var(--line-dim);display:flex;flex-direction:column;min-height:0;padding:14px 0 8px;overflow:auto}
 .nb-index h2{font:10px/1 var(--mono);letter-spacing:.18em;color:var(--dim2);margin:0 0 10px 16px;font-weight:400}
 .nb-day{display:grid;grid-template-columns:18px 1fr;gap:8px;padding:7px 14px;cursor:pointer;border-left:2px solid transparent}
-.nb-day:hover{background:rgba(233,240,242,.03)}
-.nb-day.on{border-left-color:var(--ink);background:rgba(233,240,242,.04)}
+.nb-day:hover{background:var(--tint2)}
+.nb-day.on{border-left-color:var(--ink);background:var(--tint3)}
 .nb-day .mk{width:7px;height:7px;border:1px solid var(--line);margin-top:9px}
 .nb-day.on .mk{background:var(--ink);border-color:var(--ink)}
 .nb-day .d{display:block;font:12px/1.5 var(--sans)}
@@ -91,7 +110,7 @@ body{background:var(--void);color:var(--ink);font:15px/1.85 var(--sans);
 .nb-go{display:flex;justify-content:space-between;gap:8px;padding:6px 14px;font:11px/1.9 var(--mono);
   color:var(--dim);cursor:pointer;border-top:1px solid var(--line-dim)}
 .nb-go:hover{color:var(--ink)}
-.nb-go.cur{color:var(--ink);background:rgba(233,240,242,.04)}
+.nb-go.cur{color:var(--ink);background:var(--tint3)}
 .nb-go .n{color:var(--dim2)}
 .nb-go.warn .n{color:var(--amber)}
 
@@ -102,8 +121,8 @@ body{background:var(--void);color:var(--ink);font:15px/1.85 var(--sans);
 .nb-greet em{font-style:italic;font-weight:400;border-bottom:1px solid var(--line)}
 .nb-meta{font:10.5px/1.7 var(--mono);color:var(--dim2);letter-spacing:.04em}
 .nb-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:18px 0 6px}
-.nb-card2{display:block;text-align:left;border:1px solid var(--line-dim);background:rgba(233,240,242,.015);color:var(--ink);padding:11px 12px;cursor:pointer}
-.nb-card2:hover{border-color:var(--line);background:rgba(233,240,242,.04)}
+.nb-card2{display:block;text-align:left;border:1px solid var(--line-dim);background:var(--tint1);color:var(--ink);padding:11px 12px;cursor:pointer}
+.nb-card2:hover{border-color:var(--line);background:var(--tint3)}
 .nb-card2 .k{display:block;font:9px/1 var(--mono);letter-spacing:.16em;color:var(--dim2);margin-bottom:9px}
 .nb-card2 b{display:block;font:22px/1 var(--sans);font-weight:700}
 .nb-card2 .m{display:block;font:9.5px/1.6 var(--mono);color:var(--dim2);margin-top:6px}
@@ -122,7 +141,7 @@ body{background:var(--void);color:var(--ink);font:15px/1.85 var(--sans);
 .nb-wrap{max-width:1100px;margin:0 auto;padding:0 22px 60px}
 .nb-row{display:block;width:100%;text-align:left;border:0;border-top:1px solid var(--line-dim);
   background:none;color:var(--ink);padding:11px 4px;cursor:pointer;font:14px/1.6 var(--sans)}
-.nb-row:hover{background:rgba(233,240,242,.03)}
+.nb-row:hover{background:var(--tint2)}
 .nb-row .m{display:block;font:10px/1.7 var(--mono);color:var(--dim2);margin-top:3px}
 .nb-row .tag{font:9px/1 var(--mono);letter-spacing:.1em;color:var(--dim2);margin-right:8px}
 .nb-kv{display:grid;grid-template-columns:96px 1fr;gap:6px 12px;font:11px/1.8 var(--mono);color:var(--dim);margin:10px 0}
@@ -153,11 +172,11 @@ body{background:var(--void);color:var(--ink);font:15px/1.85 var(--sans);
 .nb-gapt .m{display:block;font:10px/1.6 var(--mono);color:var(--dim2);margin-top:2px}
 .nb-grid2{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:6px}
 .nb-recipe{display:block;text-align:left;border:1px solid var(--line-dim);background:none;color:var(--ink);padding:10px 11px;cursor:pointer}
-.nb-recipe:hover{border-color:var(--line);background:rgba(233,240,242,.04)}
+.nb-recipe:hover{border-color:var(--line);background:var(--tint3)}
 .nb-recipe .n{display:block;font:12.5px/1.4 var(--sans)}
 .nb-recipe .d{display:block;font:10px/1.5 var(--mono);color:var(--dim2);margin-top:4px}
 .nb-actline{display:flex;gap:10px;align-items:baseline;padding:5px 2px;border-bottom:1px solid var(--line-dim);cursor:pointer;font:12px/1.6 var(--sans)}
-.nb-actline:hover{background:rgba(233,240,242,.03)}
+.nb-actline:hover{background:var(--tint2)}
 .nb-actline .t{font:10px/1.6 var(--mono);color:var(--dim2);flex:none}
 .nb-actline .w{font:9px/1.6 var(--mono);color:var(--dim);flex:none}
 .nb-actline .x{color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -213,8 +232,8 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
 /* 她写的 markdown 表格（榜单、对照表） */
 .md-table{border-collapse:collapse;margin:10px 0;font:12px/1.6 var(--mono)}
 .md-table th,.md-table td{border:1px solid var(--line-dim);padding:6px 9px;text-align:left;vertical-align:top}
-.md-table th{color:var(--dim);font-weight:400;letter-spacing:.06em;background:rgba(233,240,242,.03)}
-.md-table tr:hover td{background:rgba(233,240,242,.02)}
+.md-table th{color:var(--dim);font-weight:400;letter-spacing:.06em;background:var(--tint2)}
+.md-table tr:hover td{background:var(--tint1)}
 /* 聊天 / 工作：点一下切换，当前档亮着 */
 .nb-modechip{font:10px/1 var(--mono);letter-spacing:.08em;color:var(--dim);background:none;
   border:1px solid var(--line-dim);padding:4px 8px;cursor:pointer;margin-right:8px}
@@ -229,8 +248,8 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
 .nb-say p:last-child{margin-bottom:0}
 .nb-say ul,.nb-say ol{margin:.2em 0 .9em;padding-left:1.15em}
 .nb-say li{margin:.3em 0}
-.nb-say code{font:12.5px/1.7 var(--mono);background:rgba(233,240,242,.06);padding:1px 5px;border-radius:0}
-.nb-say pre{background:rgba(233,240,242,.05);border:1px solid var(--line-dim);padding:10px;overflow:auto;
+.nb-say code{font:12.5px/1.7 var(--mono);background:var(--tint3);padding:1px 5px;border-radius:0}
+.nb-say pre{background:var(--tint3);border:1px solid var(--line-dim);padding:10px;overflow:auto;
   font:12px/1.7 var(--mono);margin:.6em 0}
 .nb-say h1,.nb-say h2,.nb-say h3{font-size:15px;margin:.9em 0 .4em;letter-spacing:.02em}
 .nb-fold{position:relative;max-height:10.8em;overflow:hidden}
@@ -242,7 +261,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
 .nb-more:hover{color:var(--ink);border-bottom-color:var(--ink)}
 .nb-ev{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
 .nb-ev span{font:10px/1 var(--mono);color:var(--dim);border:1px solid var(--line-dim);
-  padding:5px 7px;background:rgba(233,240,242,.02)}
+  padding:5px 7px;background:var(--tint1)}
 .nb-daymark{display:flex;align-items:center;gap:10px;margin:6px 0 4px;font:10px/1 var(--mono);
   letter-spacing:.14em;color:var(--dim2)}
 .nb-daymark:after{content:"";flex:1;height:1px;background:var(--line-dim)}
@@ -252,7 +271,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
 .nb-board h1{font:10px/1 var(--mono);letter-spacing:.2em;color:var(--dim2);margin:0 0 14px;font-weight:400}
 .nb-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
 .nb-spec{position:relative;border:1px solid var(--line-dim);padding:13px 13px 38px;min-height:132px;}
-.nb-spec:hover{border-color:var(--line);background:rgba(233,240,242,.03)}
+.nb-spec:hover{border-color:var(--line);background:var(--tint2)}
 .nb-spec .k{font:9px/1 var(--mono);letter-spacing:.16em;color:var(--dim2);margin-bottom:8px}
 .nb-spec .v{font-size:14px;line-height:1.7;word-break:break-word}
 .nb-spec .lab{position:absolute;left:13px;right:13px;bottom:9px;display:flex;justify-content:space-between;
@@ -271,7 +290,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
 .nb-rail{width:52px;display:flex;flex-direction:column;gap:2px;padding-top:12px;overflow:auto}
 .nb-tab{font:11px/1 var(--mono);letter-spacing:.1em;color:var(--dim2);padding:11px 0;cursor:pointer;
   text-align:center;border:0;background:none;border-left:2px solid transparent}
-.nb-tab:hover{color:var(--dim);background:rgba(233,240,242,.03)}
+.nb-tab:hover{color:var(--dim);background:var(--tint2)}
 .nb-tab.on{color:var(--void);background:var(--ink);border-left-color:var(--ink)}
 .nb-tab.wait{color:var(--amber)}
 .nb-tab.wait.on{color:var(--void);background:var(--amber);border-left-color:var(--amber)}
