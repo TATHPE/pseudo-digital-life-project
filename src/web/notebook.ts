@@ -37,6 +37,7 @@ export const NOTEBOOK = `<!doctype html>
   --mono:ui-monospace,"Cascadia Mono",Consolas,monospace;
   --sans:"HarmonyOS Sans SC","PingFang SC","Noto Sans SC","Source Han Sans SC","Microsoft YaHei UI","Microsoft YaHei",system-ui,sans-serif;
   --measure:660px;
+  --rail:248px;   /* 左栏宽度：两套主题一致（2026-11-06 用户要求） */
 }
 /* ── 主题（2026-11-06）─────────────────────────────────────
    默认 = 记录本（黑白、紧凑、660 正文宽）
@@ -59,9 +60,6 @@ export const NOTEBOOK = `<!doctype html>
 }
 [data-theme="hermes"] body{font-size:12.5px;line-height:1.75}
 /* 版式差异：左栏 248（Hermes 的 sidebar 宽） */
-[data-theme="hermes"] .nb-main{grid-template-columns:248px minmax(0,1fr) auto}
-[data-theme="hermes"] .nb-tick{left:248px}
-[data-theme="hermes"] .nb-composer{left:248px}
 /* 正文别跟着容器一起变宽：容器 1120 / 正文 720 */
 [data-theme="hermes"] .nb-say,[data-theme="hermes"] .nb-e .b{max-width:var(--prose)}
 [data-theme="hermes"] .nb-greet{font-size:22px;font-weight:600;letter-spacing:-.01em}
@@ -76,6 +74,27 @@ export const NOTEBOOK = `<!doctype html>
 /* 滚动条：浅色底上用墨色滑块 */
 [data-theme="hermes"] ::-webkit-scrollbar-thumb{background:rgba(23,25,26,.18)}
 [data-theme="hermes"] ::-webkit-scrollbar-thumb:hover{background:rgba(23,25,26,.32)}
+/* hermes：工作台的可视化 —— 细线 + 等宽小标签 + 密读数，不加底色 */
+[data-theme="hermes"] .nb-cards{gap:0;border:1px solid var(--line);border-right:0}
+[data-theme="hermes"] .nb-card2{border:0;border-right:1px solid var(--line);padding:14px 16px;background:none}
+[data-theme="hermes"] .nb-card2:hover{background:var(--tint1)}
+[data-theme="hermes"] .nb-card2 .k{font-size:9.5px;letter-spacing:.18em;text-transform:uppercase}
+[data-theme="hermes"] .nb-card2 b{font-size:26px;font-weight:500;letter-spacing:-.02em}
+[data-theme="hermes"] .nb-card2 .m{font-size:10px;letter-spacing:.04em}
+/* 中间那排读数：一格一条竖线，像表格 */
+[data-theme="hermes"] .nb-kv{grid-template-columns:88px 1fr;font-size:10.5px;line-height:1.9;
+  border-top:1px solid var(--line-dim);border-bottom:1px solid var(--line-dim);padding:8px 0;margin:14px 0}
+[data-theme="hermes"] .nb-kv b{font-size:9.5px;letter-spacing:.16em;text-transform:uppercase}
+/* 分区标题：细线在上 */
+[data-theme="hermes"] .nb-sec{border-top:1px solid var(--line-dim);padding-top:10px;margin:26px 0 10px;
+  font-size:9.5px;letter-spacing:.22em}
+/* 配方卡与按钮：只有细线 */
+[data-theme="hermes"] .nb-recipe{border:1px solid var(--line);background:none;padding:12px 14px}
+[data-theme="hermes"] .nb-recipe:hover{background:var(--tint1);border-color:var(--ink)}
+[data-theme="hermes"] .nb-btn{border-color:var(--line);font-size:10.5px;letter-spacing:.08em}
+[data-theme="hermes"] .nb-btn:hover{background:var(--ink);color:var(--void);border-color:var(--ink)}
+/* 活动行：更密、时间戳等宽 */
+[data-theme="hermes"] .nb-actline{border-top:1px solid var(--line-dim)}
 
 *{box-sizing:border-box}
 /* hidden 要真的藏住：.nb-tabs 有 display:flex，会盖过 UA 的 [hidden]{display:none} */
@@ -95,7 +114,7 @@ body{background:var(--void);color:var(--ink);font:15px/1.85 var(--sans);
 .nb-top b{color:var(--ink);font-weight:600}
 .nb-top .sp{flex:1}
 .nb-dot{width:5px;height:5px;background:var(--cyan);border-radius:50%;display:inline-block;margin-right:7px;vertical-align:1px}
-.nb-main{display:grid;grid-template-columns:196px minmax(0,1fr) auto;min-height:0}
+.nb-main{display:grid;grid-template-columns:var(--rail) minmax(0,1fr) auto;min-height:0}
 
 .nb-index{border-right:1px solid var(--line-dim);display:flex;flex-direction:column;min-height:0;padding:14px 0 8px;overflow:auto}
 .nb-index h2{font:10px/1 var(--mono);letter-spacing:.18em;color:var(--dim2);margin:0 0 10px 16px;font-weight:400}
@@ -309,7 +328,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
 .nb-empty{font:11px/1.8 var(--mono);color:var(--dim2)}
 
 /* 输入 */
-.nb-composer{position:fixed;left:196px;right:52px;bottom:0;padding:0 24px 14px;background:var(--void)}
+.nb-composer{position:fixed;left:var(--rail);right:52px;bottom:0;padding:0 24px 14px;background:var(--void)}
 .nb-cin{max-width:calc(var(--measure) + 76px);margin:0 auto;border-top:1px solid var(--line);
   padding:9px 24px 0 76px;display:flex;align-items:flex-end;gap:10px}
 .nb-cin .cr{color:var(--cyan);font:12px/1 var(--mono);padding-bottom:7px}
@@ -320,7 +339,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
 .nb-cin .sd{font:10px/1 var(--mono);letter-spacing:.1em;color:var(--ink);background:none;
   border:1px solid var(--line);padding:7px 10px;cursor:pointer;margin-bottom:3px}
 .nb-cin .sd:hover{background:var(--ink);color:var(--void)}
-.nb-tick{position:fixed;left:196px;right:52px;bottom:64px;padding:0 24px;pointer-events:none}
+.nb-tick{position:fixed;left:var(--rail);right:52px;bottom:64px;padding:0 24px;pointer-events:none}
 .nb-tick div{max-width:calc(var(--measure) + 76px);margin:0 auto;font:10px/1.4 var(--mono);color:var(--dim2);
   padding-left:76px;text-align:right}
 
