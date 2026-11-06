@@ -431,7 +431,12 @@ export function createWebServer(deps: WebDeps) {
               ].join(String.fromCharCode(10))
             : bootMod.bootOverlay(splash);
         res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
-        res.end(req.method === "HEAD" ? undefined : NOTEBOOK.split("<!--BOOT-->").join(bootHtml));
+        // 主题在服务端就写进 <html>：否则首屏会是默认主题，闪一下再变（2026-11-06）
+        const themeAttr = readFileConfig(deps.home).ui?.theme === "hermes" ? ' data-theme="hermes"' : "";
+        const page = NOTEBOOK
+          .replace('<html lang="zh-CN">', '<html lang="zh-CN"' + themeAttr + '>')
+          .split("<!--BOOT-->").join(bootHtml);
+        res.end(req.method === "HEAD" ? undefined : page);
         return;
       }
       // ── 头像自定义（上传的是图片，不是 SVG：SVG 里能带脚本，直接当图片打开就执行了）──
@@ -1157,9 +1162,10 @@ export function createWebServer(deps: WebDeps) {
       // ── 外观偏好（现在只剩开机片头档位；头像框已删 2026-11-01）──
       if (req.method === "GET" && url.pathname === "/api/ui") {
         const boot = await import("../web/boot.ts");
-        const ui = (readFileConfig(deps.home).ui ?? {}) as { splash?: string; shell?: string };
+        const ui = (readFileConfig(deps.home).ui ?? {}) as { splash?: string; shell?: string; theme?: string };
         json(res, 200, {
           splash: boot.splashMode(ui),
+          theme: ui.theme === "hermes" ? "hermes" : "ledger",
           modes: boot.SPLASH_MODES,
           shell: ui.shell === "notebook" ? "notebook" : "classic",
           shells: ["classic", "notebook"],
@@ -1168,10 +1174,18 @@ export function createWebServer(deps: WebDeps) {
       }
       if (req.method === "PUT" && url.pathname === "/api/ui") {
         const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
-        const body = JSON.parse(await readBody(req)) as { splash?: string; shell?: string };
+        const body = JSON.parse(await readBody(req)) as { splash?: string; shell?: string; theme?: string };
         const boot = await import("../web/boot.ts");
-        // 两个都能单独改：只传哪个就改哪个（别把另一个顺手写回默认值）
-        const patch: { splash?: string; shell?: "classic" | "notebook" } = {};
+        // 三个都能单独改：只传哪个就改哪个（别把别的顺手写回默认值）
+        const patch: { splash?: string; shell?: "classic" | "notebook"; theme?: "ledger" | "hermes" } = {};
+        if (body.theme !== undefined) {
+          const v = String(body.theme ?? "");
+          if (v !== "ledger" && v !== "hermes") {
+            json(res, 400, { error: "E_BAD_THEME", why: "只能是 ledger / hermes" });
+            return;
+          }
+          patch.theme = v;
+        }
         if (body.splash !== undefined) {
           const v = String(body.splash ?? "");
           if (!(boot.SPLASH_MODES as readonly string[]).includes(v)) {

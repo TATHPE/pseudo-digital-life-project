@@ -1005,3 +1005,30 @@ test("记忆视图：关于你 / 全部 / 断片 分流，summary 报三个数�
     await new Promise<void>((r) => srv.close(() => r()));
   }
 });
+
+test("主题：ledger / hermes 能读能写，首屏就带上 data-theme（2026-11-06）", async () => {
+  const dir = tmp();
+  const d = openDb(join(dir, "m.db"));
+  const srv = createWebServer({
+    db: d.db, inboxDir: join(dir, "inbox"), home: dir,
+    getTransport: () => { throw new Error("no model"); }, getEmbedder: () => null,
+    getConfig: () => ({ ollama: "", roles: { express: { provider: "deepseek", model: "x" } } }),
+  });
+  const base = `http://127.0.0.1:${await listenSafe(srv)}`;
+  try {
+    const h = { "content-type": "application/json", "x-jj": "1" };
+    const a = await (await fetch(`${base}/api/ui`)).json() as { theme?: string };
+    assert.equal(a.theme, "ledger", "默认是记录本主题");
+
+    const put = await fetch(`${base}/api/ui`, { method: "PUT", headers: h, body: JSON.stringify({ theme: "hermes" }) });
+    assert.equal(put.status, 200);
+    const b = await (await fetch(`${base}/api/ui`)).json() as { theme?: string };
+    assert.equal(b.theme, "hermes", "写进去要能读回来");
+
+    const html = await (await fetch(`${base}/?skip=1`)).text();
+    assert.ok(html.includes('data-theme="hermes"'), "首屏就要带上，否则会闪一下默认主题");
+
+    const bad = await fetch(`${base}/api/ui`, { method: "PUT", headers: h, body: JSON.stringify({ theme: "neon" }) });
+    assert.equal(bad.status, 400, "不认识的主题要拒");
+  } finally { srv.close(); }
+});

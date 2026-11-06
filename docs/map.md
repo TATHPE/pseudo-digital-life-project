@@ -9,7 +9,7 @@
 | 项 | 数量 |
 |---|---|
 | 源文件（src/**/*.ts） | 115 |
-| 错误码 E_* | 221 |
+| 错误码 E_* | 222 |
 | verbs | 27 |
 | CLI 子命令 | 39 |
 
@@ -49,6 +49,7 @@
 | `E_BAD_STEP` | `src/web/server.ts` |
 | `E_BAD_TARGET` | `src/decayparams.ts` |
 | `E_BAD_TEMPLATE` | `src/shell.ts` |
+| `E_BAD_THEME` | `src/web/server.ts` |
 | `E_BAD_WS` | `src/web/server.ts` |
 | `E_BRIDGE_HTTP_` | `src/bridge.ts` |
 | `E_CALL` | `src/toolsmoke.ts` |

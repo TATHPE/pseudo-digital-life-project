@@ -251,6 +251,34 @@ else check(
   railScroll ? ("面板 " + railScroll.panelH + "/" + railScroll.panelScroll + "px · 整页 " + railScroll.docScroll + "/" + railScroll.innerH + "px") : "?",
 );
 
+// ⑥d 主题能切：点一下立刻换（字号/侧栏宽/属性都变），并且存进配置
+const themeSwitch = await js(`(async () => {
+  const goCfg = document.querySelector('.nb-go[data-v="cfg"]');
+  if (goCfg) goCfg.click();
+  for (let i = 0; i < 20; i++) { if (document.querySelectorAll('.nb-jump').length) break; await new Promise((r) => setTimeout(r, 300)); }
+  const tab = [...document.querySelectorAll('.nb-jump')].find((x) => x.textContent.trim() === '外观');
+  if (!tab) return { why: 'no-tab' };
+  tab.click();
+  await new Promise((r) => setTimeout(r, 300));
+  const btn = [...document.querySelectorAll('[data-theme]')].find((x) => x.getAttribute('data-theme') === 'hermes');
+  if (!btn) return { why: 'no-hermes-btn' };
+  const before = getComputedStyle(document.body).fontSize;
+  btn.click();
+  await new Promise((r) => setTimeout(r, 700));
+  const ui = await (await fetch('/api/ui')).json();
+  return {
+    attr: document.documentElement.getAttribute('data-theme'),
+    before, after: getComputedStyle(document.body).fontSize,
+    saved: ui.theme,
+  };
+})()`);
+if (themeSwitch && themeSwitch.why) check("主题能切", false, themeSwitch.why);
+else check(
+  "主题能切（立刻生效 + 存进配置）",
+  !!themeSwitch && themeSwitch.attr === 'hermes' && themeSwitch.saved === 'hermes' && themeSwitch.after !== themeSwitch.before,
+  themeSwitch ? (`${themeSwitch.before} → ${themeSwitch.after} · 存 ${themeSwitch.saved}`) : "?",
+);
+
 // ⑦ 回到记录
 check("能回到记录页", await js(`(async () => {
   const b = document.getElementById('nb-board-btn');

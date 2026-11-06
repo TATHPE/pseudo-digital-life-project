@@ -22,6 +22,19 @@
     } catch(e){ return ''; }
   }
 
+  // ── 主题 ──────────────────────────────────────
+  // ledger（默认，黑白紧凑）/ hermes（中性灰、宽版式）。只改 <html data-theme>，
+  // 结构、数据、接口都不动；服务端也会把它写进首屏，避免闪一下。
+  function applyTheme(name){
+    if (name === 'hermes') document.documentElement.setAttribute('data-theme', 'hermes');
+    else document.documentElement.removeAttribute('data-theme');
+  }
+  function loadTheme(){
+    fetch('/api/ui').then(function(r){ return r.json(); }).then(function(j){
+      applyTheme((j && j.theme) || 'ledger');
+    }).catch(function(){});
+  }
+
   // ── 顶栏与左栏 ────────────────────────────────
   // 模式：聊天（默认，只靠记忆召回）/ 工作（带最近几轮 + 更宽预算）。
   // 以前面板里根本没有入口 —— 想换只能改 config.json。
@@ -1465,6 +1478,12 @@
         '<div class="nb-actrow"><button class="nb-btn" id="cf-ver">校验一个导出目录</button>' +
         '<button class="nb-btn" id="cf-imp">看导入命令</button></div>' +
         '<div class="nb-empty" id="cf-impout"></div>');
+      html += sec('外观',
+        '<div class="nb-form"><div class="nb-opts" id="cf-theme">' +
+        [['ledger','记录本（黑白 · 紧凑）'],['hermes','Hermes（中性灰 · 宽版式）']].map(function(x){
+          return '<button class="nb-opt" data-theme="' + x[0] + '">' + x[1] + '</button>';
+        }).join('') + '</div>' +
+        '<div class="nb-actrow"><span class="nb-empty">切了立刻生效，不用重启</span></div></div>');
       html += sec('开机片头',
         '<div class="nb-form">' +
         '<div class="nb-opts" id="cf-splash">' +
@@ -1648,6 +1667,25 @@
           });
         };
       });
+      // 主题：点一下立刻换（同时存进 config）
+      var curTheme = ui.theme === 'hermes' ? 'hermes' : 'ledger';
+      function paintTheme(){
+        Array.prototype.forEach.call(box.querySelectorAll('[data-theme]'), function(x){
+          x.className = 'nb-opt' + (x.getAttribute('data-theme') === curTheme ? ' on' : '');
+        });
+      }
+      paintTheme();
+      Array.prototype.forEach.call(box.querySelectorAll('[data-theme]'), function(b){
+        b.onclick = function(){
+          var v = b.getAttribute('data-theme');
+          curTheme = v;
+          applyTheme(v);
+          paintTheme();
+          fetch('/api/ui', { method: 'PUT', headers: H, body: JSON.stringify({ theme: v }) })
+            .then(function(r){ return r.json(); }).then(function(j){ tick(j.ok ? ('主题：' + (v === 'hermes' ? 'Hermes' : '记录本')) : (j.error || '没存成')); });
+        };
+      });
+
       Array.prototype.forEach.call(box.querySelectorAll('[data-splash]'), function(b){
         b.onclick = function(){
           var v = b.getAttribute('data-splash');
@@ -1836,6 +1874,7 @@
         modeChip.disabled = false;
       }).catch(function(){ tick('没切成'); modeChip.disabled = false; });
   };
+  loadTheme();
   loadMode();
   loadState(); loadTimeline(); loadTabs(); loadHome(); loadAvatars();
   // 深链接：?view=home|chat|board|mem|docs|cap|git|gap|cfg（截图、书签、排障都靠它）

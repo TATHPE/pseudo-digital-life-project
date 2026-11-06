@@ -43,6 +43,8 @@ export interface FileConfig {
      * 默认 full —— 用户 2026-11-02 明确要完整档。
      */
     splash?: string;
+    /** 主题：ledger（记录本，默认）/ hermes（Hermes 版式） */
+    theme?: string;
   };
   /**
    * 她叫什么（2026-11-01）：**"鲸鲸" 只是预置人格的名字，不是项目名**。

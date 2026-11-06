@@ -36,6 +36,28 @@ export const NOTEBOOK = `<!doctype html>
   --sans:"HarmonyOS Sans SC","PingFang SC","Noto Sans SC","Source Han Sans SC","Microsoft YaHei UI","Microsoft YaHei",system-ui,sans-serif;
   --measure:660px;
 }
+/* ── 主题（2026-11-06）─────────────────────────────────────
+   默认 = 记录本（黑白、紧凑、660 正文宽）
+   hermes = 借 Hermes-CN-Desktop 的比例：中性灰、12.5/1.75、248 侧栏、1120 正文宽
+   只换变量与版式，结构不动 —— 切换靠 <html data-theme>，不刷新页面。 */
+[data-theme="hermes"]{
+  --void:#101214;--ink:#e7eaea;--dim:#a3a9ab;--dim2:#6d7477;
+  --line:rgba(231,234,234,.26);--line-dim:rgba(231,234,234,.08);
+  --cyan:#2a9d8f;--amber:#c9a227;--fade:#8f9799;
+  --mono:ui-monospace,"Cascadia Mono",Consolas,monospace;
+  --sans:"Inter","HarmonyOS Sans SC","PingFang SC","Noto Sans SC",system-ui,sans-serif;
+  --measure:1120px;
+  --lh:1.75;
+}
+[data-theme="hermes"] body{font-size:12.5px;line-height:1.75}
+/* 版式差异：左栏 248（Hermes 的 sidebar 宽度），正文列放宽到 1120 */
+[data-theme="hermes"] .nb-main{grid-template-columns:248px minmax(0,1fr) auto}
+[data-theme="hermes"] .nb-tick{left:248px}
+[data-theme="hermes"] .nb-composer{left:248px}
+[data-theme="hermes"] .nb-greet{font-size:22px;font-weight:600}
+[data-theme="hermes"] .nb-sec{letter-spacing:.18em}
+[data-theme="hermes"] .nb-e .g .w{letter-spacing:.1em}
+
 *{box-sizing:border-box}
 /* hidden 要真的藏住：.nb-tabs 有 display:flex，会盖过 UA 的 [hidden]{display:none} */
 [hidden]{display:none !important}
