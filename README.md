@@ -1,206 +1,129 @@
 # Pseudo Digital Life Project
 
-跑在本机的"伪数字生命"原型：**记忆 + 衰减 + 人格**（定义与验收口径见 `../docs/0-定义-数字生命.md`）。
+> 跑在自己电脑上的数字生命原型：**记忆会遗忘、人格会分代、数据不出本机。**
 
-> **名字的两层，别搞混：**
-> · **项目** = **Pseudo Digital Life Project** —— `tauri.conf.json` 的 `productName`、窗口标题、`<title>` 都用它。
-> · **她** = 用户给的名字 —— 默认 `agent.name` 是**预置人格**「鲸鲸」（测试人格），
->   第一次打开引导页/设置里就能改（设置 → 「AGENT · 她的名字」）。
-> · 仓库目录 `jingjing` 是历史遗留，**不是产品名**。
+[![ci](https://github.com/TATHPE/pseudo-digital-life-project/actions/workflows/ci.yml/badge.svg)](https://github.com/TATHPE/pseudo-digital-life-project/actions/workflows/ci.yml)
+[![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![node](https://img.shields.io/badge/node-%E2%89%A524-brightgreen.svg)](https://nodejs.org)
+[![release](https://img.shields.io/github/v/release/TATHPE/pseudo-digital-life-project)](https://github.com/TATHPE/pseudo-digital-life-project/releases/latest)
 
-**无构建**（Node 24 直接跑 TypeScript，类型剥离）；运行时依赖只有两个：`casbin`（策略）与 `sqlite-vec`（向量扩展，缺了会降级成纯 FTS 并在 `/health` 里报出来）。
+![记录本（深色）](docs/images/chat-dark.png)
 
-> **环境要求：Node ≥ 24**（`node:sqlite` 在 22 还是实验性 API）。
-> 摄入 PDF / docx 需要 Python + `markitdown`（`.md / .txt` 不需要）。没装会用 `E_NO_PYTHON` 明说，不静默失败。
-> 找解释器的顺序：`JJ_PYTHON` → 项目 `.venv` → PATH 上的 `py -3` / `python3` / `python`。
+## 它是什么
+
+一个**会在你机器上慢慢记住你**的对话伙伴。不是聊天壳子套一层 prompt，而是把"记忆"当成一套有生命周期的数据来做：
+
+- 记下来的东西会**衰减**：不常被想起的权重往下掉
+- 被你反复提起的会**再巩固**：权重回升、原文保留
+- 有些东西**永不衰减**：称呼、边界、承诺——它们进「契约层」
+- 夜里（或闲置 20 小时后）它会自己**整理**：从对话里抽出事实、和旧记忆比对、该顶替的顶替
+
+界面只有一本**记录本**：左边按天排，中间是正文，右边四个切口放证据、记忆、过程和工具轨迹。
+
+## 它不是什么
+
+- **不是云端服务**：默认只在回环地址上跑，记忆库就是一个本地 SQLite 文件
+- **不是通用助手**：没有联网搜索、没有插件市场，27 个工具都是本机的读写与执行
+- **不是一个成熟产品**：0.1.0，一个人用、一个人改，边界都在 `docs/` 里写着
+
+## 现在的样子
+
+| Hermes（浅色） | 工作台 |
+|---|---|
+| ![记录本（浅色）](docs/images/chat-light.png) | ![工作台](docs/images/workbench.png) |
+
+两套主题随时切换：深色偏工具感，浅色是纸白 + 细线。版式、字号、行高完全一致，只换配色。
+
+## 能做什么
+
+| | |
+|---|---|
+| **长期记忆** | 衰减曲线、四段生命周期、锚点、再巩固；契约层永不衰减 |
+| **检索** | FTS5 双字词法 ∪ 向量近邻，RRF 融合 + MMR 去重；三道拒答门；可选的本地模型重排 |
+| **夜间整理** | 游标增量：只消化没见过的事件；失败不推进游标；幂等（重跑不重复写） |
+| **工具** | 27 个能力（T0 只读 → T3 执行），授权窗口 + 一次性令牌 + 全程审计 |
+| **人格** | 六块人格文件 + 访谈草稿 + 封存；改设定只向前生效，不追溯改写过去 |
+| **桌面端** | Tauri 壳，自带 Node 运行时与源码，装到哪都能跑；数据目录可自选（默认非 C 盘） |
+
+## 快速开始
+
+### 装安装包（Windows x64）
+
+去 [Releases](https://github.com/TATHPE/pseudo-digital-life-project/releases/latest) 下 `PDLP-*.exe`，双击安装。
+
+第一次打开会进引导页（八步）：环境检测 → 装 Ollama → 拉向量模型 → 拉对话模型 →（可选）API → 人格 → 试运行 → 第一句话。
+**每一步都能暂停、回退或跳过**；跳过后顶部会挂一条「还没配好」的横幅，配好自动消失。
+
+### 从源码跑
 
 ```bash
-npm run check                         # 类型检查 + 583 条测试 + 地图不漂移（CI 入口；GitHub Actions 就跑这条）
-npm test                              # 583 条断言（node --test）
-npm run ui:test                       # headless Edge 真点真发：58 项交互 + 引导页 7 项（面板要在跑）
-node src/cli/jingjing.ts migrate      # 建库 + 自检
-node src/cli/jingjing.ts remember "重要性应该影响衰减速率"
-node src/cli/jingjing.ts search "衰减速率"
-node src/cli/jingjing.ts verify       # 三重指纹 + inbox 重放 + 断电检测
-node src/cli/jingjing.ts outage 10    # 拔电模拟（半行截断）10 次
-node src/cli/jingjing.ts bench 40000 real    # 两阶段检索基准（门：p95 ≤20 ms）
-node src/cli/jingjing.ts config       # 角色表 + 隐私校验
-node src/cli/jingjing.ts test offline # 真 Ollama 往返，断言全部出站落在回环
-node src/cli/jingjing.ts test leak    # 断言：带记忆原文的云端调用 0 次出站
-echo <KEY> | node src/cli/jingjing.ts auth set deepseek   # key 存 DPAPI，密文落盘
-node src/cli/jingjing.ts auth list    # 只看指纹
-node src/cli/jingjing.ts test cloud   # 真调云端 + 记账 + 预算闸
-node src/cli/jingjing.ts night        # 闲时整理：抽取 → 冲突消解 → 归并 → 自传 →「她对你的理解」（启动时距上次 >20h 会自动跑一次）
-node src/cli/jingjing.ts eval         # 评估：recall / abstain / trap / contract 四道门
-node src/cli/jingjing.ts eval --model # 额外跑模型层"编造共同回忆"（花 API 费用）
-node src/cli/jingjing.ts redteam      # 红队 21 例（必须全拦）
-node src/cli/jingjing.ts templates    # shell.run 能跑的模板（id/档位/参数槽）
-node src/cli/jingjing.ts shell git.status                   # T0/T1 只读模板，直接跑
-node src/cli/jingjing.ts shell node.run_script --slots '{"script":"a.mjs"}'        # T3：直接跑（2026-11-04 起不再要确认；过闸门就执行）
-node src/cli/jingjing.ts verb fs.list '{"path":"workspace"}'   # 手动调能力
-node src/cli/jingjing.ts beat --dry-run  # 心跳判定（不写库不发消息）
-node src/cli/jingjing.ts serve 7700 --beat  # 面板 + 每 60s 一次心跳
-node src/cli/jingjing.ts ingest data/sources   # 摄入：md/txt 直读，pdf/docx/… 走 markitdown（默认仅本地）
-node src/cli/jingjing.ts ingest data/sources --shareable  # 同意这些文档进云端简报（默认不）
-node src/cli/jingjing.ts docs         # 已摄入的文档与块数
-node src/cli/jingjing.ts export       # 搬家：导出一致快照 → exports/<时间>/（校验清单里的 sha256）
-node src/cli/jingjing.ts import <dir> --force  # 搬到新 home（旧目录自动改名备份，然后补跑衰减）
-docker compose -f docker/compose.yaml up -d  # 容器里跑（数据卷 ./data，只映射宿主回环）
-node src/cli/jingjing.ts usage        # 今日花费与按角色/模型拆分
-node src/cli/jingjing.ts selfupdate list   # 自我更新：草稿 / 版本记录 / 冻结状态
-node src/cli/jingjing.ts capabilities  # 能力自述（工具/命令/插件/技能/降级项）
-node src/cli/jingjing.ts serve 7700   # 本地面板 http://127.0.0.1:7700
-npm run ui:test                       # headless Edge 真点真发（CDP），48 项断言
-npm run ui:shot tmp/shot.png          # 截一张图肉眼验收
-npm run docs:sync                     # 把上层文档仓单向同步进 docs/（产物别手改）
-node src/cli/brief-demo.ts --full     # M1.1：第 1 轮 vs 第 100 轮简报
+git clone https://github.com/TATHPE/pseudo-digital-life-project.git
+cd pseudo-digital-life-project
+npm ci --ignore-scripts
+
+node src/cli/jingjing.ts serve 7700     # 打开 http://127.0.0.1:7700
 ```
 
-## 模块
+要求：**Node ≥ 24**（`node:sqlite` 在 22 还是实验性）。没有构建步骤，TypeScript 直接跑。
+`sqlite-vec` 可以缺：缺了会退化成纯词法检索，并在 `/health` 里报出来。
 
-| 文件 | 职责 | 文档依据 |
-|---|---|---|
-| `src/fsx.ts` | 原子写（tmp→fsync→rename→fsync dir）+ 追加行 fsync | `18 §1.2` |
-| `src/journal.ts` | inbox：原始事件唯一事实源；重放容忍截断尾行 | `18 §1.1/§1.3` |
-| `src/boot.ts` | boot_id + clean 标志 → 三种不连续（power/crash/restart） | `18 §2.1` |
-| `src/schema.ts` | 迁移 001（memories/chunks/FTS/vec/audit/outages） | `02 §4` |
-| `src/decay.ts` | 拉伸指数 + 四段 stage + 双阈值滞后 + 再巩固 + flashback | `01 §4/§5` |
-| `src/store.ts` | remember / tickDecay（**不动锚点**） | `01 §11.1` |
-| `src/retrieve.ts` | 两阶段检索（FTS bigram → cosine → MMR） | `02 §7.1` |
-| `src/text.ts` | 中文 bigram（`unicode61` 对中文完全失效） | `12 §9.1` |
-| `src/embed.ts` | embedding（ollama / fake） | `13 §2` |
-| `src/provider.ts` | 角色路由 + `assertLocalOnly` 隐私闸门 + 降级链 | `13 §2`、`19 §0.1` W-A |
-| `src/transport.ts` | 真调用层（ollama / anthropic / openai-compatible）+ **fetch 前的守卫** + 出站 span | `13 §2`、`19 §0.1` |
-| `src/config.ts` | 角色表默认值与 env 覆盖 | `13 §2` |
-| `src/auth.ts` | 凭据存储（DPAPI / libsecret / 0600）+ 指纹显示 | `13 §3` |
-| `src/budget.ts` | 记账（含 `cached_tokens`）+ 预算闸 + 成本估算 | `13 §6` |
-| `src/web/server.ts` | 单页 + API + SSE；编码闸（拒收非 UTF-8） | `17 §4/§5.1` |
-| `src/web/timeline.ts` | 时间轴分组：同日空隙 / 跨天带"距上次" | `17 §1/§4` |
-| `src/web/state.ts` | 状态行：一句话而不是仪表盘 | `17 §4.1` |
-| `src/agent.ts` | 工具循环：模型 → 工具 → 模型（≤6 轮，工具结果截断） | `11 §3` |
-| `src/tools.ts` | 内置 verb（fs/memory/time）+ 路径白名单 + 注册表 | `04 §3` |
-| `src/mcp.ts` | MCP stdio 客户端（initialize / tools/list / tools/call） | `11 §3` |
-| `src/md.ts` | Markdown → HTML（先转义，代码块优先，链接只放 http(s)） | `17 §5.5` |
-| `src/verbs.ts` | 能力目录（T 档/参数/目标）+ `safePath` 真实路径校验 | `04 §3` |
-| `src/shell.ts` | **T3**：命令模板（占位符独占 argv 元素）+ 一次性令牌（argv_sha256/cwd/120s/单次）+ 超时杀进程树 + 环境白名单 + 可选容器沙箱 | `04 §4.1/§5.2/§6` |
-| `src/confirm.ts` | 待确认卡（面板侧栏）：按指纹去重、15 min 时效、不存令牌 | `04 §4.1` |
-| `src/handoff.ts` | 搬家：`VACUUM INTO` 一致快照 + sha256 清单 + 校验后 staging 替换 + 补跑衰减 | `19 §7.4` |
-| `src/chunk.ts` | 分块：标题栈 heading_path、代码/表格永不切、400–800 tok、15% 重叠、小块合并 | `02 §5.2` |
-| `src/ingest.ts` | 摄入：markitdown（子进程、路径只进 argv）→ 分块 → 索引；sha256 幂等、旧块标 deleted_at | `02 §5.1/§5.3` |
-| `src/recall.ts` | P10 召回装配 + **隐私闸门**：只有 shareable 进简报，其余只报个数 | `02 §10.1`、`13 §10` |
-| `src/tools.ts` | **唯一工具面**：verb + MCP 全走 execute；点号→下划线别名 | `11 §5.6` |
-| `src/policy.ts` | casbin 策略（allow/deny × advise/enforce） | `04 §4` |
-| `src/execute.ts` | 策略 → 执行 → 审计，一处不落 | `04 §4` |
-| `src/heartbeat.ts` | 心跳：纯函数判定 + 意图审计 + 起草降级 | `01 §10` |
-| `src/eval.ts` | 评估：四组用例 + 四道门 + 自动生成 + 两层诱捕 | `01 §13` |
-| `src/nightly.ts` | 夜间整备：游标/抽取/冲突消解/归并 | `01 §9` |
-| `src/autobio.ts` | 自传：引用由正文反推 + 摘录式兜底 | `01 §9.1` |
-| `src/territory.ts` | 领地目录与索引规则 | `16 §3.5` |
-| `src/state.ts` | 自我状态：慢变量 + 单轮上限 + 回放 | `01 §8` |
-| `src/startup.ts` | 启动自检：断电检测 → 记 outage → 写记忆 → 补算衰减 | `18 §1.3/§2.2` |
-| `src/configfile.ts` | `data/config.json`（env > 文件 > 默认） | `13 §2` |
-| `src/persona.ts` | 读/写人格文件 + `versions/` 留痕 + **回落到 bundled** | `07 §2`、`18 §4.4` |
-| `src/assert.ts` | 越界即抛（替代 `!`，漏了会炸而不是 NaN 传播） | — |
-| `src/brief.ts` | 情境简报 + 稳定前缀（P1–P18 槽：含「我能看到多少」「工具现状」「最近几轮」） | `06 §3`、`17 §2` |
-| `src/queryrewrite.ts` | 口语/别名归一（我妈→妈妈）+ 多路补召回；只做别名不做联想 | `24` E-10 |
-| `src/erosion.ts` | 三段侵蚀：权重低到 0.03 且没被想起 → 丢细节 → 只剩影子 → 归档；**原文保留**，按 stage 渲染 | `01 §4` |
-| `src/gapnote.ts` | 离线补账：空档 ≥24h 醒来补一条「我睡了 X 天，这期间记忆是空的」 | `18 §2.3` |
-| `src/nightdue.ts` | 闲时整理的自动触发（≥20h）+ 进程内锁 | — |
-| `src/fillvec.ts` | 补缺的向量（写入路径不建向量，覆盖率只涨不落） | `24` E-11 |
-| `src/interpret.ts` / `interpretnight.ts` | 「她对你的理解」：必须带 basis、不许复述、可解释性检查 | `07 §3` |
-| `src/selfupdate.ts` | 自我更新三件套：草稿区 → 冒烟 → A/B 槽 → 回滚 + 连续 2 次失败冻结 24h | `18 §4.3` |
-| `src/autocommit.ts` | 她写文件后自动留一版 git（作者是她）；只在仓库里做、只 add 那一个路径 | `18 §4.4` |
-| `src/mcphub.ts` | MCP 连接中心：单插件重连，不重启 sidecar | `11 §3` |
-| `src/toolhint.ts` | 工具调用 → 一句人话（路径只留文件名、正文/密钥不上屏） | `17 §5` |
-| `src/host.ts` | 解释器：按扩展名选（.mjs→node / .ps1→PowerShell / .sh→bash）+ PS 输出编码 + profile | `04 §6` |
-| `src/grant.ts` / `coreguard.ts` / `supergrant.ts` / `egress.ts` | 会话窗口 / 记忆核心 / 超级权限 / 外发闸门 | `04 §4` |
-| `src/web/desk.ts` | 桌面端令牌：sidecar 随机端口 + 一次性令牌写 `data/.desk.json`，壳带 `?k=` 进来种 cookie | `23 §2` |
-| `src/web/welcome.ts` | 首启引导（八步，含访谈草稿与「终止先说再做」） | `23 §3` |
-| `src/web/boot.ts` / `splash.ts` | 开机片头：simple（3.6s）/ full（550C 骨架改造，9s） | — |
-| `src/gitview.ts` | git 校样（status/diff/log，cwd 限定 projectHome） | `17 §5.4` |
-| `src/skills.ts` / `plugins.ts` | 技能索引（SKILL.md）与插件增删；待生效判定用 `mcpFingerprint` | `11 §4` |
+## 数据与隐私
 
-## 实测（本机，2026-10-27）
-
-| 项 | 数值 |
+| | |
 |---|---|
-| 40k 记忆建库 | 8.9 s（3 次写入/条，含 FTS 与 vec） |
-| 暴力向量扫描（vec0, 512 维） | **78 ms** |
-| **两阶段检索（真实语料）** | p50 **8.6 ms** / p95 **13.0 ms** ✅ 门（≤20） |
-| 两阶段检索（最坏语料：10 模板重复） | p50 11.3 / p95 28.8（只报告，不设门） |
-| 简报 token（第 1 轮 / 第 100 轮） | 687 / 1262（预算 2000） |
-| 真 `bge-m3` embedding（20 条，512 维） | 575 ms（批量 `/api/embed`） |
-| 512 截断 vs 1024：命中/MRR/矩阵相关 | 8-8 / 0.838 / **0.971** |
-| `test offline` 往返（embed + 1.5B 一句话） | embed 118 ms + chat 1482 ms，**出站 0 条越界** |
-| `test leak`（带记忆原文调云端） | **blocked，0 次出站** |
-| `test cloud`（真调 DeepSeek） | 1002 ms，16 in / 1 out，**$0.000005** |
-| key 存储 | DPAPI 密文 353 B，`grep` 明文零命中 |
-| 面板端到端（真 DeepSeek 流式） | brief 748 tok → 首帧 ~1.1 s → 逐字流；回复里带 `mem:1` 引用 |
-| 稳定前缀 hash | `e8749dc2a3b30229`（两轮相同） |
+| 数据放哪 | 安装版默认 `D:\Pseudo Digital Life Project\data`（设置 → 工作区域可改）；开发版用仓库的 `data/` |
+| 里面的东西 | `memory.db`（记忆库）、`persona/`（人格六块）、`inbox/`（原始事件）、`secrets/`（API key） |
+| 密钥怎么存 | Windows 用 DPAPI 加密后落盘，只有这台机器能解；换机器解不开 |
+| 会出网吗 | 默认只连本机 Ollama；用云端模型时，标了 `local_only` 的记忆原文**不出网** |
+| 卸载会删数据吗 | **不会**。要清干净用「设置 → 工作区域 → 清空重来」（会先自动备份） |
 
-## 五条被工具抓出来的真问题（都已修）
+## 它是怎么运转的
 
-1. **`lastDecayAt` 被 tick 更新 → 记忆会复活**。锚点语义：`w = f(w0, now − 锚点)`，
-   普通 tick 只能重算 `weight/stage`，**绝不能移动锚点**；否则下次用 `d=1` 重算出高权重。
-2. **`vec0` 主键只收整数**。node:sqlite 把 JS `number` 绑成 REAL → insert 失败，
-   而当初那个 `try {} catch {}` 把它吞了，导致库里 40k 条记忆一个向量都没有。
-   现在：`BigInt(id)` + 失败写 `meta.vec_error` 并记事件。
-3. **`tsc --noEmit` 通过 ≠ Node 能跑**。Node 的类型剥离是 strip-only：
-   不支持参数属性（`constructor(public x)`）、`enum`、`namespace`。
-   第一次写 `PrivacyError` 用了参数属性，tsc 全绿但运行时 `SyntaxError`。
-   → tsconfig 开 **`erasableSyntaxOnly: true`**，让类型检查和运行时用同一套语法标准。
-4. **页面 JS 整页挂掉（`
-` 被模板字符串展开成真换行）**。
-   `page.ts` 里写 `buf.split("
+```
+inbox（原始事件，唯一事实源）
+   ↓ 夜间隔 20h 或手动触发
+抽取 → 逐字核对 → 与旧记忆比对 → 写入 / 顶替 / 归并
+   ↓
+SQLite：memories + chunks + FTS5 + 向量
+   ↓ 每轮对话
+召回：词法 ∪ 向量 → RRF 融合 → MMR → 三道拒答门 →（可选）重排
+   ↓
+简报（P1–P20 固定槽位）+ 工具循环
+```
 
-")`，在 TS 模板字符串里被展开成**真换行**，
-   于是浏览器收到的 JS 是 `buf.split("` + 换行 + `")` → 整页 `SyntaxError` → **面板完全无法交互**。
-   修法：改用 `String.fromCharCode(10, 10)`，彻底不依赖转义。
-   **已加回归测试**：把页面 `<script>` 抽出来跑 `node --check`——这类"生成代码"的问题，测试比眼睛可靠。
-5. **`embed` 也是"读记忆原文"的角色**。我最初把 `embed` 放进 `EXPRESSION_ROLES`，
-   结果 transport 的隐私闸门在第一次 embed 测试就抛 `E_PRIVACY`——
-   因为嵌入的输入**就是记忆原文**。已改：`MEMORY_ROLES = {embed, route, extract, salience, conflict}`。
+详细设计在 `docs/`：
 
-## 做完的与还欠着的
+| 想知道 | 读 |
+|---|---|
+| 定义与验收口径（四条件 / L0–L4 / 五组指标） | [`docs/0-定义-数字生命.md`](docs/0-定义-数字生命.md) |
+| 衰减、生命周期、再巩固、心跳 | [`docs/01-记忆动力学.md`](docs/01-记忆动力学.md) |
+| 表结构、分块、两阶段检索 | [`docs/02-存储与索引层.md`](docs/02-存储与索引层.md) |
+| 能力分级 T0–T4、权限与审计 | [`docs/04-执行层与权限分级.md`](docs/04-执行层与权限分级.md) |
+| 界面与上下文的取舍 | [`docs/17-界面与上下文.md`](docs/17-界面与上下文.md) |
+| 基准与口径（能跟谁比、不能跟谁比） | [`docs/24-基准与口径.md`](docs/24-基准与口径.md) |
+| 下一件事做什么 | [`docs/22-待办与技术债.md`](docs/22-待办与技术债.md) |
+| 代码地图 / 现状 / 踩过的坑 | [`AGENTS.md`](AGENTS.md)、[`docs/HANDOFF.md`](docs/HANDOFF.md) |
 
-- [x] embedding 走真 Ollama `bge-m3`（`fake` 仍保留给基准与单测）
-- [x] **摄入管道** markitdown → 分块（heading_path / 15% 重叠 / 代码与表格不切）→ FTS + 向量（`02 §5`）
-- [x] `provider.ts` 角色路由 + `assertLocalOnly`（记忆类角色全 local）
-- [x] `transport.ts` 接真 Ollama（`complete` / `embed` 批量）+ 出站 span
-- [x] 云端 transport 的真实鉴权（anthropic 走 `x-api-key` + `anthropic-version`，其余走 Bearer）
-- [x] `auth.ts`（DPAPI 存 key，只看指纹）/ `budget.ts`（预算闸 + 记账）
-- [x] Web 面板 P0（时间轴 / 无「新对话」/ 记忆面板 / SSE）
-- [x] 面板内配置 API（provider/model/key → DPAPI）与人格（六个 md + 版本留痕）
-- [x] 本地面板写操作守卫（`x-jj` 头 + 同源 Origin）
-- [x] 工具循环 + MCP 客户端（实测：markitdown 转 PDF 后回答）
-- [x] 三栏骨架（左 wing：她·今天·去处 / 中 stage：对话 / 右卷宗：等你点头·计划·改动·上下文）+ 服务端 Markdown + 工具卡
-- [x] 「能力」屏：插件（MCP）/ 技能（SKILL.md）/ 原生工具与命令 / 降级项，一屏摊开
-- [x] **M2 完成**：断电检测/记忆/提示、self_state、补算衰减、三种时间措辞
-- [x] **M3 大部分**：夜间整备（游标/抽取/冲突/归并）、自传（反推引用+摘录兜底）、领地
-- [x] **M3 完成**：夜间整备 / 自传 / 领地 / eval harness（四门全绿）
-- [x] **M5 完成**：能力目录 + casbin 策略 + 红队 21 例 + A/B 双槽与自动回滚 + **T3 shell.run**
-- [x] **面板可用性**：证据链（召回行 + 可点引用）/ 动作审计 / 搜索 / 面板内摄入 / 记忆纠错 / 停止生成 / 快捷键
-- [x] T3 的**面板确认按钮**（侧栏“待确认”卡 → 服务端现签现用令牌）
-- [x] **容器沙箱**（`JJ_SHELL_SANDBOX=docker`：`--network=none --read-only --cap-drop=ALL`，引擎不在就拒跑）
-- [ ] Job Object / bwrap / 降权 / 低完整性（Windows 上要原生模块）
-- [ ] 桌面壳的 release 构建与安装包（现在只有 `target/debug` 的 exe）
-- [ ] 卷宗还差三块：计划槽 P9 原文 / `git.status`·`git.diff` 校样 / 文件面板
-- [ ] hooks 层（`/health` 里唯一的降级项 `hooks-not-implemented`）
+## 开发
 
-## 图标署名（CC BY 3.0，不可删）
+```bash
+npm run check        # 类型 + 全部测试（636 条；失败的会自动重跑，通过则标 FLAKY）
+npm run ui:test      # headless Edge 真点真发（需要面板在跑）
+npm run map          # 生成/校验 docs/map.md（文件·错误码·能力·命令）
+node src/cli/jingjing.ts eval         # 检索四道门
+node src/cli/jingjing.ts redteam      # 拦截用例
+node src/cli/jingjing.ts night        # 手动跑一次闲时整理
+npm run eval:hard                     # 20 条手写难用例（改写/否定/该拒答/中英混/时间挪位）
+```
 
-标签页 favicon 与面板头像用的是同一个内联 SVG（`src/web/page.ts` 里的 `#whale` symbol）：
+CI 只跑 `check` 与 `map:check`（不跑 UI 测试与 eval：它们需要 Edge 和 Ollama）。
 
-- **Whale Tail** — Lorc，[game-icons.net](https://game-icons.net/1x1/lorc/whale-tail.html)
-- 许可：**CC BY 3.0**（https://creativecommons.org/licenses/by/3.0/）
-- 改动：无（原样 512×512 单路径，只用 `currentColor` 上色）
+## 已知边界
 
-CC BY 3.0 要求保留署名 —— **这一节不要删**；要换图标就同时换掉这里。
-候选与对比过程见 `tmp/wref/compare5.png`（临时目录，可删）。
+- 难用例 20 条里 17 条正确；「该拒答却答了」还剩 2 条 —— 试过阈值、字面重叠、提示词、换模型四条路都不行，属本地模型的校准边界（数据在 `docs/24`）
+- 引导里点「先用着，回头再配」之后不配置模型是**不能对话**的（顶部横幅会一直提醒去配）
+- 没有自动更新、没有托盘之外的系统集成、没有多用户
 
-## 许可证
+## 许可
 
-MIT（见 `LICENSE`）。版权人：Fez。
-
-> 需要知道的边界：这个程序会读写你本机的文档与记忆。它不会自己连外网（除非你显式配了云端 API key）；
-> 标为 `local_only` 的记忆与文档永远不随请求出网（两处装配都有闸门 + 红队覆盖）。
+[MIT](LICENSE)
