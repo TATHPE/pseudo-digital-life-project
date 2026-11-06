@@ -31,7 +31,7 @@ import { reviewQueue, noteReviewed } from "../surface.ts";
 import { openThreads, closeThread } from "../threads.ts";
 import { openGrant, listGrants, revokeGrant, currentPreset, setPreset, PRESETS, type Preset } from "../grant.ts";
 import { egressStatus, allowOnce, allowFor, revokeEgress } from "../egress.ts";
-import { readSession, startSetup, skipSetup, pauseSetup, resumeSetup, undoSetup, detect, SETUP_STEPS, type SetupStep } from "../setup.ts";
+import { readSession, startSetup, skipSetup, pauseSetup, resumeSetup, backSetup, undoSetup, detect, SETUP_STEPS, type SetupStep } from "../setup.ts";
 import { runStep } from "../setupsteps.ts";
 import { listReceipts, markSeen, unseenCount } from "../notify.ts";
 import { listStanding, disableStanding } from "../standing.ts";
@@ -1930,7 +1930,16 @@ export function createWebServer(deps: WebDeps) {
         const session = readSession(deps.home);
         let d: Awaited<ReturnType<typeof detect>> | null = null;
         if (url.searchParams.get("detect") === "1") { try { d = await detect(deps.home); } catch { d = null; } }
-        json(res, 200, { session, steps: SETUP_STEPS, job: jobState, detected: d });
+        // 「还没配好」看的是能不能真开口：有没有模型 + 有没有对应的密钥。
+        // 用户跳过引导、后来在设置里手配了，这里就应当是 false（不该再挂横幅）。
+        const cfgNow = deps.getConfig();
+        const exRole = cfgNow.roles?.["express"];
+        const localModel = String((readFileConfig(deps.home) as { local?: { default?: string } }).local?.default ?? "");
+        const hasAnyModel = Boolean(exRole?.model) || Boolean(localModel);
+        let hasAnyKey = false;
+        try { hasAnyKey = Boolean(exRole?.provider && secrets().get(exRole.provider as Provider)); } catch { hasAnyKey = false; }
+        const needsConfig = !hasAnyModel || (Boolean(exRole?.provider) && !hasAnyKey && !localModel);
+        json(res, 200, { session, steps: SETUP_STEPS, job: jobState, detected: d, needsConfig });
         return;
       }
       if (req.method === "POST" && url.pathname === "/api/setup") {
@@ -1940,6 +1949,7 @@ export function createWebServer(deps: WebDeps) {
         if (body.action === "pause") { json(res, 200, { ok: true, session: pauseSetup(deps.home) }); return; }
         if (body.action === "skip") { json(res, 200, { ok: true, session: skipSetup(deps.home) }); return; }
         if (body.action === "resume") { json(res, 200, { ok: true, session: resumeSetup(deps.home) }); return; }
+        if (body.action === "back") { json(res, 200, { ok: true, session: backSetup(deps.home) }); return; }
         if (body.action === "run") {
           const step = String(body.step ?? "") as SetupStep;
           if (!SETUP_STEPS.includes(step)) { json(res, 400, { error: "E_BAD_STEP" }); return; }

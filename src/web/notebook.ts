@@ -141,7 +141,8 @@ body{background:var(--void);color:var(--ink);font:12.5px/1.75 var(--sans);
   text-spacing-trim:trim-start;text-autospace:ideograph-alpha ideograph-numeric;
   line-break:strict;hanging-punctuation:first allow-end last;font-kerning:normal;
   font-variant-east-asian:normal}
-.nb{height:100vh;display:grid;grid-template-rows:34px minmax(0,1fr)}
+.nb{height:100vh;display:flex;flex-direction:column}
+.nb-top{flex:0 0 34px}
 .nb-top{display:flex;align-items:center;gap:16px;padding:0 14px;border-bottom:1px solid var(--line-dim);
   font:11px/1 var(--mono);color:var(--dim);letter-spacing:.04em;white-space:nowrap;overflow:hidden}
 .nb-top b{color:var(--ink);font-weight:600}
@@ -150,7 +151,7 @@ body{background:var(--void);color:var(--ink);font:12.5px/1.75 var(--sans);
 .nb-crumb b{color:var(--ink);font-weight:500;letter-spacing:.12em}
 .nb-crumb i{color:var(--dim2);font-style:normal;margin:0 6px}
 .nb-dot{width:5px;height:5px;background:var(--cyan);border-radius:50%;display:inline-block;margin-right:7px;vertical-align:1px}
-.nb-main{display:grid;grid-template-columns:var(--rail) minmax(0,1fr) auto;min-height:0}
+.nb-main{display:grid;grid-template-columns:var(--rail) minmax(0,1fr) auto;min-height:0;flex:1}
 
 .nb-index{border-right:1px solid var(--line-dim);display:flex;flex-direction:column;min-height:0;padding:14px 0 8px;overflow:auto}
 .nb-index h2{font:10px/1 var(--mono);letter-spacing:.18em;color:var(--dim2);margin:0 0 10px 16px;font-weight:400}
@@ -435,10 +436,16 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
 .nb-jumpbar{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;padding:8px 0 6px}
 .nb-jump{flex:0 0 auto;white-space:nowrap}
 .nb-jumpbar::-webkit-scrollbar{height:6px}
+/* 还没配好的横幅：细线一条，不弹窗、不挡操作 */
+.nb-cfgbar{display:flex;align-items:center;gap:12px;padding:7px 16px;border-bottom:1px solid var(--line-dim);
+  background:var(--tint1);font:10.5px/1.4 var(--mono);letter-spacing:.04em;color:var(--amber)}
+.nb-cfgbar .t{flex:1}
+.nb-cfgbar .nb-btn{margin:0}
 </style></head>
 <body>
 <!--BOOT-->
 <div class="nb">
+  <div class="nb-cfgbar" id="nb-cfgbar" hidden></div>
   <div class="nb-top">
     <span><i class="nb-dot"></i><b id="nb-line">醒着</b></span>
     <span id="nb-counts"></span>

@@ -58,6 +58,22 @@
   function loadMode(){
     fetch('/api/mode').then(function(r){ return r.json(); }).then(function(j){ paintMode((j && j.mode) || 'chat'); }).catch(function(){});
   }
+  // 「还没配好」横幅（2026-11-06）：用户点过「先用着」之后，没有任何痕迹，
+  // 一对话就甩一个 401。这里按**真配置**判断，配好就自己消失。
+  function checkSetup(){
+    fetch('/api/setup').then(function(r){ return r.json(); }).then(function(j){
+      var bar = $('nb-cfgbar');
+      if (!bar) return;
+      var st = (j && j.session && j.session.status) || 'idle';
+      var step = (j && j.session && j.session.step) || 'detect';
+      if (!j || !j.needsConfig) { bar.hidden = true; return; }
+      var why = st === 'skipped' ? '你点过「先用着」' : st === 'paused' ? '配置暂停了' : st === 'done' ? '配置没完成' : '还没配置';
+      bar.innerHTML = '<span class="t">' + esc(why) + ' · 还没有能用的模型，现在聊不了</span>' +
+        '<a class="nb-btn" href="/welcome">继续配置</a>';
+      bar.hidden = false;
+    }).catch(function(){});
+  }
+
   function loadState(){
     fetch('/api/state').then(function(r){ return r.json(); }).then(function(j){
       if (j && j.line) $('nb-line').textContent = j.line;
@@ -1499,8 +1515,11 @@
         '<span class="m">启动自动开，不会逐次问你</span></div>' +
         '<div class="nb-runrow"><span class="k">代码外发</span><span class="v">开</span>' +
         '<span class="m">每次仍写审计</span></div>' +
-        '<div class="nb-runrow"><span class="k">超级权限</span><span class="v">关</span>' +
-        '<span class="m">只影响「改记忆库本体/人格」这一档</span></div>');
+        '<div class="nb-runrow"><span class="k">超级权限</span>' +
+        '<span class="v" id="cf-super-v">读取中…</span>' +
+        '<span class="m">只影响「改记忆库本体 / 人格」这一档；trash 与 snapshots 仍然拒</span></div>' +
+        '<div class="nb-actrow"><button class="nb-btn" id="cf-super">切换</button>' +
+        '<span class="nb-empty" id="cf-super-msg">开着的时候她会跟你确认一次，并记进审计</span></div>');
       html += sec('诊断',
         '<div class="nb-actrow"><button class="nb-btn" id="cf-doc">跑一遍体检</button>' +
         '<span class="nb-empty">按项看，红的会列出来</span></div>' +
@@ -1544,8 +1563,9 @@
         '<div class="nb-empty">先装 NapCat 并在它的 WebUI 里开一个 WebSocket 服务器（默认 127.0.0.1:3001），' +
         '再回来填这里。开启后，私聊她就能收到消息；群里要 @ 她（或在白名单里配群号）。</div></div>');
       html += sec('引导',
-        '<div class="nb-actrow"><a class="nb-btn" href="/welcome">重新过一遍引导</a>' +
-        '<span class="nb-empty">首页那八步：装 Ollama / 拉模型 / 试运行</span></div>');
+        '<div class="nb-kv"><b>当前状态</b><span id="cf-setupst">读取中…</span></div>' +
+        '<div class="nb-actrow"><a class="nb-btn" href="/welcome">继续配置</a>' +
+        '<span class="nb-empty">没配好时这里会写着卡在哪一步；配好之后只是重来一遍</span></div>');
       html += sec('部署状态',
         '<div class="nb-kv">' +
         '<b>版本</b><span>' + esc(dep.version || '—') + '</span>' +
@@ -1731,6 +1751,43 @@
             });
         };
       });
+      // 超级权限：读 → 切 → 再读（后端 /api/super 早就有，只是界面没入口）
+      var superOn = false;
+      function paintSuper(on, why){
+        superOn = !!on;
+        var v = $('cf-super-v');
+        if (v) { v.textContent = on ? '开' : '关'; v.style.color = on ? 'var(--amber)' : ''; }
+        var m = $('cf-super-msg');
+        if (m && why) m.textContent = why;
+      }
+      // 引导状态：让人一眼看出「卡在哪」而不是只有一句『重新过一遍』
+      var STEPNAME = { detect: '环境检测', ollama: '装 Ollama', embed: '向量模型', chat: '聊天模型',
+        api: 'API / 密钥', persona: '人格', smoke: '试运行', first: '第一句话' };
+      fetch('/api/setup').then(function(r){ return r.json(); }).then(function(j){
+        var el = $('cf-setupst');
+        if (!el) return;
+        var st = (j && j.session && j.session.status) || 'idle';
+        var step = (j && j.session && j.session.step) || 'detect';
+        var word = { idle: '还没开始', running: '进行中', paused: '已暂停', skipped: '已跳过', done: '已完成', aborted: '已终止' }[st] || st;
+        var tail = st === 'done' ? '' : '（停在：' + (STEPNAME[step] || step) + '）';
+        el.textContent = word + tail + ((j && j.needsConfig) ? ' · 还不能对话' : '');
+        el.style.color = (j && j.needsConfig) ? 'var(--amber)' : '';
+      }).catch(function(){ var el = $('cf-setupst'); if (el) el.textContent = '读不到'; });
+
+      fetch('/api/super').then(function(r){ return r.json(); }).then(function(j){
+        paintSuper(!!(j && j.enabled));
+      }).catch(function(){ paintSuper(false, '读不到超级权限状态'); });
+      on('cf-super', function(){
+        var next = !superOn;
+        fetch('/api/super', { method: 'POST', headers: H, body: JSON.stringify({ action: next ? 'on' : 'off', because: '面板开关' }) })
+          .then(function(r){ return r.json(); })
+          .then(function(j){
+            if (!j || j.ok === false || j.error) { paintSuper(superOn, (j && (j.why || j.error)) || '切换失败'); return; }
+            var on = j && j.state ? j.state.enabled === true : next;
+            paintSuper(on, on ? '已开启 —— 改记忆库本体/人格这一档放开（trash 与 snapshots 仍拒）' : '已关闭');
+          }).catch(function(){ paintSuper(superOn, '切换失败'); });
+      });
+
       on('cf-hsave', function(){
         fetch('/api/host', { method: 'PUT', headers: H, body: JSON.stringify({ shell: chosen.shell }) })
           .then(function(r){ return r.json(); }).then(function(j){ msg(j.ok ? '解释器已保存' : (j.error || '失败'), !!j.ok); });
@@ -1909,6 +1966,7 @@
   };
   loadTheme();
   loadMode();
+  checkSetup();
   loadState(); loadTimeline(); loadTabs(); loadHome(); loadAvatars();
   // 深链接：?view=home|chat|board|mem|docs|cap|git|gap|cfg（截图、书签、排障都靠它）
   (function(){

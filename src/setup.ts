@@ -147,6 +147,20 @@ export function skipSetup(home: string, now = new Date()): SetupSession {
   return s;
 }
 
+/**
+ * 回上一步（2026-11-06 用户：配置过程没有返回上一步）。
+ * 只把 session.step 往回挪一格，已写进去的配置**一律不动** ——
+ * 回退是为了改答案，不是撤销（撤销那条路是 abort）。
+ */
+export function backSetup(home: string, now = new Date()): SetupSession {
+  const s = readSession(home) ?? startSetup(home, now);
+  const i = SETUP_STEPS.indexOf(s.step);
+  s.step = i > 0 ? SETUP_STEPS[i - 1]! : SETUP_STEPS[0]!;
+  if (s.status === "done" || s.status === "skipped") s.status = "running";
+  s.updatedAt = now.toISOString();
+  writeSession(home, s);
+  return s;
+}
 export function resumeSetup(home: string, now = new Date()): SetupSession {
   const s = readSession(home) ?? startSetup(home, now);
   s.status = "running";
