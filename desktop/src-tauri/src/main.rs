@@ -37,6 +37,20 @@ fn shell_note(home: &std::path::Path, msg: &str) {
     }
 }
 
+
+/// 安装包里自带的运行环境（resources/app 与 resources/node）。
+/// 开发态（仓库里跑）没有这两样，就退回「向上找项目根 + 系统 node」。
+fn bundled_app_dir(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
+    let res = app.path().resource_dir().ok()?;
+    let p = res.join("app");
+    if p.join("src").join("cli").join("jingjing.ts").exists() { Some(p) } else { None }
+}
+
+fn bundled_node(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
+    let res = app.path().resource_dir().ok()?;
+    let p = res.join("node").join(if cfg!(windows) { "node.exe" } else { "node" });
+    if p.exists() { Some(p) } else { None }
+}
 /// 项目根的判据：从 exe 向上找 `src/cli/jingjing.ts`。
 /// 找不到（真安装之后）就返回 None —— 那时用 app_data_dir。
 fn project_root_hint() -> Option<std::path::PathBuf> {
@@ -90,7 +104,17 @@ pub fn run() {
         .manage(AppState { sidecar: Mutex::new(None) })
         .setup(|app| {
             // 数据目录：JJ_HOME 优先（开发/自测用现有库），否则用 AppData 下的独立目录
+            // 安装包自带运行环境时，先把它指给 sidecar（node 与项目根都从 resources 来）
+            let bundled = bundled_app_dir(app.handle());
+            if let Some(root) = &bundled {
+                std::env::set_var("JJ_PROJECT_ROOT", root);
+                if let Some(n) = bundled_node(app.handle()) { std::env::set_var("JJ_NODE", n); }
+            }
             let home = std::env::var("JJ_HOME").map(std::path::PathBuf::from).unwrap_or_else(|_| {
+                // 安装态：永远用 AppData 下的独立目录（干净安装 → 会走新手引导）
+                if bundled.is_some() {
+                    return app.path().app_data_dir().map(|d| d.join("data")).unwrap_or_else(|_| std::env::current_dir().unwrap());
+                }
                 // 开发/测试期：项目根下的 data/（就是你聊过的那份）
                 if let Some(root) = project_root_hint() {
                     let d = root.join("data");
