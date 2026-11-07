@@ -97,12 +97,12 @@ Design documents (Chinese) live in `docs/`:
 
 | Topic | Read |
 |---|---|
-| Definition and acceptance criteria | [`docs/0-定义-数字生命.md`](docs/0-定义-数字生命.md) |
-| Decay, lifecycle, reconsolidation | [`docs/01-记忆动力学.md`](docs/01-记忆动力学.md) |
-| Schema, chunking, two-stage retrieval | [`docs/02-存储与索引层.md`](docs/02-存储与索引层.md) |
-| Capability tiers T0–T4, permissions | [`docs/04-执行层与权限分级.md`](docs/04-执行层与权限分级.md) |
-| UI and context trade-offs | [`docs/17-界面与上下文.md`](docs/17-界面与上下文.md) |
-| Benchmarks: what we can and cannot claim | [`docs/24-基准与口径.md`](docs/24-基准与口径.md) |
+| Definition and acceptance criteria | [`docs/design/0-定义-数字生命.md`](docs/design/0-定义-数字生命.md) |
+| Decay, lifecycle, reconsolidation | [`docs/design/01-记忆动力学.md`](docs/design/01-记忆动力学.md) |
+| Schema, chunking, two-stage retrieval | [`docs/design/02-存储与索引层.md`](docs/design/02-存储与索引层.md) |
+| Capability tiers T0–T4, permissions | [`docs/runtime/04-执行层与权限分级.md`](docs/runtime/04-执行层与权限分级.md) |
+| UI and context trade-offs | [`docs/design/17-界面与上下文.md`](docs/design/17-界面与上下文.md) |
+| Benchmarks: what we can and cannot claim | [`docs/ops/24-基准与口径.md`](docs/ops/24-基准与口径.md) |
 | Papers we read while designing memory | [`docs/papers/`](docs/papers/) |
 | Code map (one line per file) | [`AGENTS.md`](AGENTS.md) |
 
@@ -122,7 +122,7 @@ CI runs only `check` and `map:check` (UI tests need Edge, evals need Ollama).
 
 ## Known limits
 
-- 17 of 20 hand-written hard cases pass; the two misses are "answers when it should abstain" — four different approaches failed, it is a local-model calibration limit (numbers in `docs/24`)
+- 17 of 20 hand-written hard cases pass; the two misses are "answers when it should abstain" — four different approaches failed, it is a local-model calibration limit (numbers in `docs/ops/24`)
 - After "I'll set it up later" in the guide, chatting genuinely does not work until a model is configured (the banner keeps saying so)
 - No auto-update, no system integration beyond the tray, single user
 

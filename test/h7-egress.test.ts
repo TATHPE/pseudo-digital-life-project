@@ -49,7 +49,7 @@ test("H-7 待批列表：同一个路径只留最新一条，批完就消失", (
   const home = H();
   noteEgressRequest(home, "jingjing/src/x.ts", "project.read", new Date(Date.UTC(2026, 9, 31, 10)));
   noteEgressRequest(home, "jingjing/src/x.ts", "project.read", new Date(Date.UTC(2026, 9, 31, 11)));
-  noteEgressRequest(home, "docs/01-记忆动力学.md", "project.read", new Date(Date.UTC(2026, 9, 31, 9)));
+  noteEgressRequest(home, "docs/design/01-记忆动力学.md", "project.read", new Date(Date.UTC(2026, 9, 31, 9)));
   const st = egressStatus(home, { env: ENV });
   assert.equal(st.pending.length, 2, "同一路径去重");
   assert.equal(st.pending[0]!.path, "jingjing/src/x.ts", "最新的排前面");

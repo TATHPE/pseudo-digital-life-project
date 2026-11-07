@@ -183,7 +183,7 @@ export function buildBrief(input: BriefInput): BriefOutput {
   const p13 = it.length ? `【我怎么理解你】${it.join(" ／ ")}` : "";
   slots.push({ id: "P13", label: "我的理解", tokens: estimateTokens(p13), stable: false });
 
-  // P14 技能索引（docs/11 第二优先）：只报"有这么一份说明书"，正文按需取。
+  // P14 技能索引（docs/runtime/11 第二优先）：只报"有这么一份说明书"，正文按需取。
   // 放在易变区：装了/删了技能不该让稳定前缀（prefixHash）变。
   const p14 = input.skills ? input.skills : "";
   slots.push({ id: "P14", label: "可用技能", tokens: estimateTokens(p14), stable: false });

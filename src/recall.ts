@@ -81,7 +81,7 @@ export async function recallForBrief(
   }
   // D-1 的注入侧：不可信来源（taint=external）不进简报。
   // 它可以存在、可以被显式搜到，但不能自己跑到模型眼前 —— “quarantine by tier”。
-  // 这就是 taint 那个列之前**零处参与逻辑**的那个缺口（docs/22 D-1）。
+  // 这就是 taint 那个列之前**零处参与逻辑**的那个缺口（docs/ops/22 D-1）。
   const shareable = hits.filter((h) => {
     const m = metaById.get(h.id);
     return m?.sensitivity === "shareable" && (m.taint ?? "trusted") === "trusted";

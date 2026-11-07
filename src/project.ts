@@ -43,7 +43,7 @@ function roots(env?: Record<string, string | undefined>): string[] {
   return PROJECT_ROOTS.map((r) => (r === "." ? h : join(h, r))).filter((p) => existsSync(p));
 }
 
-/** 相对项目根的写法（`jingjing/src/recall.ts` / `docs/22-….md`），也接受只写 `src/…` */
+/** 相对项目根的写法（`jingjing/src/recall.ts` / `docs/ops/22-….md`），也接受只写 `src/…` */
 export function resolveProjectPath(p: string, env?: Record<string, string | undefined>): string {
   let raw = String(p ?? "").trim();
   // 兼容旧写法「<仓库名>/src/x.ts」：现在的根就是仓库本身（2026-11-06）

@@ -3,12 +3,12 @@
  *
  * 一句话：**回答"我现在能干什么、哪儿降级了"，而且每一行都能追到代码。**
  *
- * 为什么必须从代码真读：`docs/11 §5.3` 设计过这个结构，但一直没实现。手写一份常量
+ * 为什么必须从代码真读：`docs/runtime/11 §5.3` 设计过这个结构，但一直没实现。手写一份常量
  * 只会变成第 N 个"装饰列"——文档说会调工具，实际根本没有那个工具。
  * 所以这里**没有一处常量清单**：工具来自 `verbs`，provider 来自 `resolveConfig`，
  * MCP 来自真实的连接结果，`degraded` 来自真实探测（端点、索引、meta 标记）。
  *
- * 六类能力（`docs/11 §5.1`）：tool / command / hook / cron / panel / provider。
+ * 六类能力（`docs/runtime/11 §5.1`）：tool / command / hook / cron / panel / provider。
  * 哪类没实现就**明说没实现**（`degraded` 里记一条），不装作有。
  */
 import type { DatabaseSync } from "node:sqlite";

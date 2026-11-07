@@ -5,7 +5,7 @@
  * 这里一次抓齐 —— commit（含是否有未提交改动）、日期、每个 role 用的模型、
  * embed 模型、衰减参数版本、用例文件的 sha256 与分组条数 —— 然后
  *   · 原始 JSON 落盘到 docs/eval-runs/<sha8>-<日期>.json
- *   · 在 docs/24-基准与口径.md 的表里追加一行
+ *   · 在 docs/ops/24-基准与口径.md 的表里追加一行
  *
  * 纪律：**同一个 sha + 同一个模型 + 同一份用例**才能和旧数字比。
  * 换个模型、改个阈值、动一下提示，就要新开一行，旧数字不许混引（学自 Twig 的"口径焊死"）。
@@ -86,7 +86,7 @@ console.log("原始结果 →", rawPath);
 
 // ── ④ 追加一行到口径表 ───────────────────────────────
 if (!existsSync(DOC)) {
-  console.error("找不到 docs/24-基准与口径.md（先建骨架，别让工具替你写叙事）");
+  console.error("找不到 docs/ops/24-基准与口径.md（先建骨架，别让工具替你写叙事）");
   process.exit(1);
 }
 const gate = (n) => (row.gates[n] === undefined ? "—" : String(row.gates[n]));
@@ -107,7 +107,7 @@ const line = [
 // 必须插进「结果」表里，不能追加到文件末尾（否则会跑到「口径变更声明」下面去）
 const doc = readFileSync(DOC, "utf8").split(String.fromCharCode(10));
 const secStart = doc.findIndex((l) => l.trim() === "## 结果");
-if (secStart < 0) { console.error("docs/24 里找不到「## 结果」小节"); process.exit(1); }
+if (secStart < 0) { console.error("docs/ops/24 里找不到「## 结果」小节"); process.exit(1); }
 let lastRow = -1;
 for (let i = secStart; i < doc.length; i++) {
   const l = doc[i].trim();

@@ -9,22 +9,22 @@
  * 每个文件顶部写清"别在这儿改"，但**不再写死 D:/LLM 的具体路径**。
  */
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
-import { join, relative } from "node:path";
+import { dirname, join, relative } from "node:path";
 
 /** 公开的设计文档：只放"讲设计"的，不放"讲进度/决策/交接"的 */
 export const PUBLIC = [
-  "0-定义-数字生命.md",
-  "01-记忆动力学.md",
-  "02-存储与索引层.md",
-  "04-执行层与权限分级.md",
-  "11-技能与插件兼容.md",
-  "13-模型与API配置方案.md",
-  "17-界面与上下文.md",
-  "18-断电与自我更新.md",
-  "21-语言与技术栈选择.md",
-  "23-发布-桌面端-首次配置.md",
-  "24-基准与口径.md",
-  "25-常驻指令-设计记录.md",
+  "design/0-定义-数字生命.md",
+  "design/01-记忆动力学.md",
+  "design/02-存储与索引层.md",
+  "runtime/04-执行层与权限分级.md",
+  "runtime/11-技能与插件兼容.md",
+  "runtime/13-模型与API配置方案.md",
+  "design/17-界面与上下文.md",
+  "runtime/18-断电与自我更新.md",
+  "runtime/21-语言与技术栈选择.md",
+  "ops/23-发布-桌面端-首次配置.md",
+  "ops/24-基准与口径.md",
+  "ops/25-常驻指令-设计记录.md",
 ];
 
 const ROOT = process.cwd();
@@ -44,7 +44,9 @@ const header = (name) =>
     "",
   ].join(String.fromCharCode(10));
 
-const have = new Set(readdirSync(SRC).filter((f) => f.endsWith(".md")));
+// 2026-11-07：上层 docs/ 分了子目录（design/runtime/ops/history），
+// 所以不能只 readdir 顶层 —— 要按 PUBLIC 里的相对路径逐个 existsSync。
+const have = { has: (f) => existsSync(join(SRC, f)) };
 const files = PUBLIC.filter((f) => have.has(f));
 const missing = PUBLIC.filter((f) => !have.has(f));
 if (missing.length) console.error("上层文档仓缺这些（已跳过）：" + missing.join(" "));
@@ -63,6 +65,7 @@ const index = [
 for (const f of files) {
   const src = join(SRC, f);
   const body = readFileSync(src, "utf8");
+  mkdirSync(dirname(join(DST, f)), { recursive: true });
   writeFileSync(join(DST, f), header(f) + body, "utf8");
   index.push(`| [${f}](${f}) | ${(body.length / 1024).toFixed(1)} KB |`);
   n++;

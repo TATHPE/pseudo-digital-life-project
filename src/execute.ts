@@ -135,7 +135,7 @@ export async function execute(
     argv: proposal?.argv, cwd: proposal?.cwd,
     capability: tokenId,
     // T3 记真实宿主：脚本走 config.host.shell 挑的解释器（默认 PowerShell），
-    // 模板走直接 spawn —— 审计里能分清"这句话是在哪种笼子里跑的"（docs/04 §1）。
+    // 模板走直接 spawn —— 审计里能分清"这句话是在哪种笼子里跑的"（docs/runtime/04 §1）。
     profile: tier === "T3" ? (proposal?.profile ?? profileOf(resolveShell(home).shell)) : undefined,
   };
   try {

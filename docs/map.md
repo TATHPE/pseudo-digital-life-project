@@ -345,7 +345,7 @@
 | `src/grant.ts` | 会话式授权（K-3）：**窗口内**可以用模型给的 argv，窗口外回到 6 个模板。 |
 | `src/handoff.ts` | 搬家协议（19 §7.4 / 09 §5）：**quiesce → export → 校验 → import → 补跑** |
 | `src/heartbeat.ts` | 心跳与主动性（01 §10）。 |
-| `src/hooks.ts` | 钩子（hooks）—— `docs/11` 六类能力里最后一块。 |
+| `src/hooks.ts` | 钩子（hooks）—— `docs/runtime/11` 六类能力里最后一块。 |
 | `src/host.ts` | 宿主层（host）的**解释器选择**（2026-11-01 用户要求）： |
 | `src/ingest.ts` | 摄入管道（02 §5.1 转换 → §5.2 分块 → §5.3 幂等） |
 | `src/interpret.ts` | 记忆的「意义层」（H-b）—— 人性缺的第二块。 |
@@ -360,7 +360,7 @@
 | `src/nightagent.ts` | 夜间整理的「工具循环」抽取器（P0-2） |
 | `src/nightdue.ts` | 闲时整理的自动触发（2026-11-03）。 |
 | `src/nightly.ts` | 闲时整理（01 §9）：消化 inbox → 抽取 → 冲突消解 → 归并。 |
-| `src/notify.ts` | 回执通道（D-3 的前置，`docs/25 §4`）。 |
+| `src/notify.ts` | 回执通道（D-3 的前置，`docs/ops/25 §4`）。 |
 | `src/ollama.ts` | Ollama 探测（C-4）：一次 /api/tags + 两个最小调用探针。 |
 | `src/onebot.ts` | OneBot 11 适配器（2026-11-05）：把 QQ 消息接进来，把她的回话发出去。 |
 | `src/persona.ts` | import { readFileSync, mkdirSync, existsSync, readdirSync } from "node |
@@ -376,15 +376,15 @@
 | `src/queryrewrite.ts` | 查询改写 / 别名归一（E-10，2026-11-02） |
 | `src/recall.ts` | 召回装配（17 §2 的 P10 槽位该放什么） |
 | `src/reembed.ts` | 重建向量索引（C-2） |
-| `src/rerank.ts` | 选择性重排（2026-11-05，docs/24 的标准：R@1 和 abstain **同时**变好才落地）。 |
+| `src/rerank.ts` | 选择性重排（2026-11-05，docs/ops/24 的标准：R@1 和 abstain **同时**变好才落地）。 |
 | `src/retrieve.ts` | 两阶段检索（02 §7.1 实测修订 / 12 §9.1） |
 | `src/schema.ts` | M0 schema（02 §4 + 18 §1 的 outage/审计） */ |
-| `src/selfupdate.ts` | 自我更新三件套（2026-11-03）。按 `docs/18 §4.3` 的流程，落到我们能实现的那部分： |
+| `src/selfupdate.ts` | 自我更新三件套（2026-11-03）。按 `docs/runtime/18 §4.3` 的流程，落到我们能实现的那部分： |
 | `src/sessions.ts` | 会话对象（2026-11-05）：把「一串消息」变成「一次可指认的对话」。 |
 | `src/setup.ts` | 首次配置事务（H-4）。 |
 | `src/setupsteps.ts` | 引导步骤的执行（H-4 的第 2–4 步）。 |
 | `src/shell.ts` | T3 受限命令执行（04 §5.2 模板 / §4.1 一次性令牌 / §6 宿主层） |
-| `src/skills.ts` | 技能（SKILL.md）—— docs/11 的第二优先。 |
+| `src/skills.ts` | 技能（SKILL.md）—— docs/runtime/11 的第二优先。 |
 | `src/standing.ts` | 常驻指令（D-3）：有范围的预授权 + 调度。 |
 | `src/startup.ts` | 启动自检（18 §1.3 / §2.2）：断电检测 → 记 outage → 写一条记忆 → 补算衰减。 |
 | `src/startupcheck.ts` | 启动前配置校验（D-5） |

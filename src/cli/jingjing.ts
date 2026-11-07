@@ -973,7 +973,7 @@ async function main(): Promise<void> {
     }
 
     case "selfupdate": {
-      // 自我更新三件套（docs/18 §4.3）：草稿 → 冒烟 → A/B 槽 → 回滚/冻结
+      // 自我更新三件套（docs/runtime/18 §4.3）：草稿 → 冒烟 → A/B 槽 → 回滚/冻结
       const su = await import("../selfupdate.ts");
       const d2 = openDb(dbFile);
       const sub = rest[0] ?? "list";
@@ -1088,7 +1088,7 @@ async function main(): Promise<void> {
       if ((op === "remove" || op === "clear") && provider) {
         const had = store.clear(provider);
         // “清引用”：OpenClaw 的教训是删了凭据却留下空引用，反而把整家 provider 禁了。
-        // 我们的对应物是 config.json.express。**默认一并清掉**（docs/22 C-1 要求"含清引用"）：
+        // 我们的对应物是 config.json.express。**默认一并清掉**（docs/ops/22 C-1 要求"含清引用"）：
         // 只删密钥却留着 provider 指向，就成了"有配置、没凭据"的半截状态，排障时最容易误判。
         // 想留配置（比如只想临时断云端）用 --keep-config。
         let purged = false;

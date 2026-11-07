@@ -1443,7 +1443,7 @@ export function createWebServer(deps: WebDeps) {
         return;
       }
 
-      // ── 技能（docs/11 第二优先）：只读列表；正文走 skill.read（同一条闸门） ──
+      // ── 技能（docs/runtime/11 第二优先）：只读列表；正文走 skill.read（同一条闸门） ──
       if (req.method === "GET" && url.pathname === "/api/skills") {
         const sk = await import("../skills.ts");
         const agentsDir = join(process.env.AGENTS_HOME ?? join(homedir(), ".agents"), "skills");

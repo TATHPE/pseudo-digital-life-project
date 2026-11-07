@@ -4,7 +4,7 @@
  * 为什么用本地模型而不是 cross-encoder：Ollama 没有 rerank 接口，
  * 引 Python/ONNX 会打破「零构建、两个依赖」。本地 7B 是现成的，代价是慢。
  *
- * 口径（docs/24 定的，不改）：**R@1 和 abstain 必须同时变好**才算可用。
+ * 口径（docs/ops/24 定的，不改）：**R@1 和 abstain 必须同时变好**才算可用。
  *
  * 用法：node --experimental-strip-types tools/eval-rerank.ts [--model qwen2.5:7b-instruct]
  */
@@ -93,4 +93,4 @@ console.log("基线   R@1 " + baseR1 + "/" + n + " ｜ abstain " + baseAb + "/" 
 console.log("重排   R@1 " + reR1 + "/" + n + " ｜ abstain " + reAb + "/" + abN + "   （模型 " + MODEL + "）");
 const better = reR1 > baseR1 && reAb > baseAb;
 const worse = reR1 < baseR1 || reAb < baseAb;
-console.log(better ? "✅ 两列同时变好 —— 可以落地（选择性重排）" : worse ? "❌ 至少一列变差 —— 不落地" : "△ 有一列没变 —— 按 docs/24 不算达标");
+console.log(better ? "✅ 两列同时变好 —— 可以落地（选择性重排）" : worse ? "❌ 至少一列变差 —— 不落地" : "△ 有一列没变 —— 按 docs/ops/24 不算达标");

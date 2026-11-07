@@ -1,9 +1,9 @@
 /**
- * 自我更新三件套（2026-11-03）。按 `docs/18 §4.3` 的流程，落到我们能实现的那部分：
+ * 自我更新三件套（2026-11-03）。按 `docs/runtime/18 §4.3` 的流程，落到我们能实现的那部分：
  *
  *   提议 → 草稿区 → 冒烟 → 上 A/B 槽 → 失败自动回滚 → 连续失败冻结 24h
  *
- * **只做 ③ 技能**（docs/18 的分类）：④ 核心代码永不自改（可复现性），
+ * **只做 ③ 技能**（docs/runtime/18 的分类）：④ 核心代码永不自改（可复现性），
  * ② 参数已经由 `decayparams.ts` 的白名单管住了。技能是她能自己长出来的"手脚"。
  *
  * 三条硬边界：
@@ -65,7 +65,7 @@ export function proposeSkill(
   const bytes = Buffer.byteLength(content, "utf8");
   if (bytes > MAX_DRAFT_BYTES) return { ok: false, code: "E_TOO_BIG", why: "超过 64KB" };
   const because = String(input.because ?? "").trim();
-  // 为什么必须有：没有理由的技能，人没法判断要不要留（docs/18 §4.4）
+  // 为什么必须有：没有理由的技能，人没法判断要不要留（docs/runtime/18 §4.4）
   if (because.length < 6) return { ok: false, code: "E_NEED_WHY", why: "写清为什么想加它（至少 6 个字）：没有理由的技能不该存在" };
 
   const dir = join(draftsDir(home), id);

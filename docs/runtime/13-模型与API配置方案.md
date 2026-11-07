@@ -1,5 +1,5 @@
 <!-- 自动生成，别在这个文件里改 -->
-<!-- 真源：文档仓的 13-模型与API配置方案.md（改完跑 npm run docs:sync） -->
+<!-- 真源：文档仓的 runtime/13-模型与API配置方案.md（改完跑 npm run docs:sync） -->
 # 模型与 API Key 配置方案
 
 > 版本 v0.2 · 2026-10-27 · 配套：`00 §4`（L0–L4 编队）、`06`（接管与简报）、`11`（MCP/技能）、`02 §4.1`（provisioned 记录）
@@ -285,11 +285,11 @@ OLLAMA_NUM_PARALLEL=1
 ### 9.3 拐点不在参数量
 
 瓶颈是“能看到多少”而非“多聪明”：7B 能看到“已有 3 条相似记忆 + 当天全文”就写不出重复；14B 看不到照样写重复。
-**所以 `P0-2`（工具循环）的价值 > 换更大的模型。** 规模判断与完整门槛表见 `docs/22` **G 组**。
+**所以 `P0-2`（工具循环）的价值 > 换更大的模型。** 规模判断与完整门槛表见 `docs/ops/22` **G 组**。
 
 ### 9.4 配置可管理性（同时补的三条）
 
-本地角色（route/extract/salience/conflict/night/embed）**不在 `FileConfig` 里**，只存在于代码常量 + 进程级 env；`auth` 没有 `remove`；本地端点挂了没有冷却。三条与验收见 `docs/22` **C 组**。
+本地角色（route/extract/salience/conflict/night/embed）**不在 `FileConfig` 里**，只存在于代码常量 + 进程级 env；`auth` 没有 `remove`；本地端点挂了没有冷却。三条与验收见 `docs/ops/22` **C 组**。
 
 ---
 

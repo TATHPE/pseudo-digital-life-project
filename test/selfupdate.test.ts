@@ -1,5 +1,5 @@
 /**
- * 自我更新三件套（docs/18 §4.3）：草稿区 → 冒烟 → A/B 槽 → 失败回滚 + 冻结。
+ * 自我更新三件套（docs/runtime/18 §4.3）：草稿区 → 冒烟 → A/B 槽 → 失败回滚 + 冻结。
  *
  * 只做 ③ 技能：④ 核心代码永不自改（可复现性），② 参数已由 decayparams 的白名单管住。
  */
@@ -33,7 +33,7 @@ test("草稿不等于生效：写进 _drafts，扫描器看不见它", () => {
   } finally { try { rmSync(home, { recursive: true, force: true }); } catch { /* ignore */ } }
 });
 
-test("没有理由的技能不许存在（docs/18 §4.4）", () => {
+test("没有理由的技能不许存在（docs/runtime/18 §4.4）", () => {
   const home = mkdtempSync(join(tmpdir(), "jj-su2-"));
   try {
     const r = proposeSkill(home, { id: "x", content: SKILL, because: "随便" });

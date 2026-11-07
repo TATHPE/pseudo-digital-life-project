@@ -17,7 +17,7 @@ export interface FileConfig {
    * 不摊成 5 个格子 —— 5 个角色 × N 个模型的下拉框没人会去调。
    *   default → route / extract / salience / conflict（night 也跟着它，除非单设）
    *   night   → 自传/反思（建议比 default 大一档）
-   *   embed   → 向量模型（换它必须重建索引，见 docs/22 C-2）
+   *   embed   → 向量模型（换它必须重建索引，见 docs/ops/22 C-2）
    */
   local?: { default?: string; night?: string; embed?: string };
   /**
