@@ -123,15 +123,10 @@ CI runs only `check` and `map:check` (UI tests need Edge, evals need Ollama).
 ## Known limits
 
 - 17 of 20 hand-written hard cases pass; the two misses are "answers when it should abstain" — four different approaches failed, it is a local-model calibration limit (numbers in `docs/ops/24`)
-- After "I'll set it up later" in the guide, chatting genuinely does not work until a model is configured (the banner keeps saying so)
+- If you skip the setup guide, chat only works when a local chat model is installed: it then falls back to that model, which **cannot use tools** and says so in the top bar. With no local model, the banner keeps telling you to configure one
+- Task orchestration advances one step per tick and stops after two steps without progress; there is no planning tree, no parallelism
+- `memory.db` is plain SQLite; secrets are sealed with DPAPI and do not survive a machine move
 - No auto-update, no system integration beyond the tray, single user
-
-
-### Desktop install note
-
-Install to a path **without spaces** (e.g. `D:\Apps\PDLP`). The NSIS installer uses
-`/D=` internally and silently installs nothing when the path contains spaces.
-
 ## License
 
 [MIT](LICENSE)
