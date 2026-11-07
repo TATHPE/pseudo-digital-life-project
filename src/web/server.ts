@@ -2292,6 +2292,14 @@ export function createWebServer(deps: WebDeps) {
             memories: memAll, stages: mem, docs, chunks,
             tools: toolN, plugins: { servers: mcpServers, tools: mcpTools }, skills: skillsN,
             model, todayTokens: usage.p + usage.c, todayUsd: usage.u,
+            // 兜底状态：有值 = 最近一次是用本地答的（真配好 key 并成功调用后会自动清）
+            expressFallback: (() => {
+              try {
+                const row = deps.db.prepare("SELECT value FROM meta WHERE key='express_fallback'").get() as { value?: string } | undefined;
+                if (!row?.value) return null;
+                return JSON.parse(row.value) as { at: string; model: string };
+              } catch { return null; }
+            })(),
           },
         });
         return;
@@ -2611,7 +2619,17 @@ export function createWebServer(deps: WebDeps) {
                 if (typeof ev.step === "number") curStep = ev.step;
                 full += ev.text; answerChars += ev.text.length; send({ type: "delta", text: ev.text, step: ev.step });
               }
-              else if (ev.type === "notice") { trace.push({ k: "think", t: ev.text }); send({ type: "notice", text: ev.text }); }
+              else if (ev.type === "notice") {
+                trace.push({ k: "think", t: ev.text });
+                send({ type: "notice", text: ev.text });
+                // 记下「现在在兜底」：面板顶栏要常驻显示，而不是只闪一句（2026-11-07）
+                if (String(ev.text).includes("本地模式")) {
+                  try {
+                    const loc = String((readFileConfig(deps.home) as { local?: { default?: string } }).local?.default ?? "");
+                    deps.db.prepare("INSERT INTO meta(key,value) VALUES('express_fallback',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(JSON.stringify({ at: now().toISOString(), model: loc }));
+                  } catch { /* 记不下不影响回答 */ }
+                }
+              }
               else if (ev.type === "think") { answerChars -= ev.text.length; thinkBuf += ev.text; send({ type: "think", text: ev.text }); }
               else if (ev.type === "tool") {
                 flushThink();

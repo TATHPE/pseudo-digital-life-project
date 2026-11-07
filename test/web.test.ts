@@ -1033,3 +1033,22 @@ test("主题：ledger / hermes 能读能写，首屏就带上 data-theme（2026-
     assert.equal(bad.status, 400, "不认识的主题要拒");
   } finally { srv.close(); }
 });
+
+test("兜底状态：写入后用 dossier 能读到（顶栏据此显示「本地 · 模型名」）", async () => {
+  const dir = tmp();
+  const d = openDb(join(dir, "m.db"));
+  const srv = createWebServer({
+    db: d.db, inboxDir: join(dir, "inbox"), home: dir,
+    getTransport: () => { throw new Error("no model"); }, getEmbedder: () => null,
+    getConfig: () => ({ ollama: "", roles: { express: { provider: "deepseek", model: "x" } } }),
+  });
+  const base = `http://127.0.0.1:${await listenSafe(srv)}`;
+  try {
+    const a = await (await fetch(`${base}/api/dossier`)).json() as { context?: { expressFallback?: unknown } };
+    assert.equal(a.context?.expressFallback ?? null, null, "没兜底时不该有标记");
+    d.db.prepare("INSERT INTO meta(key,value) VALUES('express_fallback',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value")
+      .run(JSON.stringify({ at: "2026-11-07T10:00:00Z", model: "qwen2.5:7b-instruct" }));
+    const b = await (await fetch(`${base}/api/dossier`)).json() as { context?: { expressFallback?: { model?: string } } };
+    assert.equal(b.context?.expressFallback?.model, "qwen2.5:7b-instruct");
+  } finally { srv.close(); }
+});

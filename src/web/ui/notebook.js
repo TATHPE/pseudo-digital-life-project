@@ -319,7 +319,21 @@
       $('nb-c1').textContent = plan;
       $('nb-c2').textContent = chg;
       $('nb-c3').textContent = ctx.memories == null ? '…' : ctx.memories;
-      $('nb-model').textContent = ctx.model || '—';
+      // 顶栏模型标：兜底时写「本地 · 模型名」，并用琥珀色 —— 用户随时知道现在是谁在答（2026-11-07）
+      (function(){
+        var el = $('nb-model');
+        if (!el) return;
+        var fb = ctx.expressFallback;
+        if (fb) {
+          el.textContent = '本地 · ' + (fb.model || '兜底');
+          el.style.color = 'var(--amber)';
+          el.title = '云端接不上，正在用本机模型作答（只能对话）。填好 key 并成功调用后会自动切回。' + (fb.at ? ' 起于 ' + String(fb.at).slice(11, 16) : '');
+        } else {
+          el.textContent = ctx.model || '—';
+          el.style.color = '';
+          el.title = '现在用的表达模型';
+        }
+      })();
       if (ctx.todayUsd != null) $('nb-usd').textContent = '今天 $' + Number(ctx.todayUsd).toFixed(3);
       window.__dossier = d;
     }).catch(function(){});

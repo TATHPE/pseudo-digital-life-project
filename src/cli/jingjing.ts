@@ -315,6 +315,10 @@ async function main(): Promise<void> {
         // 所以「今日花费」几乎永远是 $0，预算闸也形同虚设。
         const t = createChatTransport(routerFrom(c.roles as any), { apiKeys: ks, onUsage: (u) => {
           try {
+            // 云端答成功 = 已经恢复：把兜底标记清掉（顶栏自己会变回云端）
+            try {
+              if (u.provider && u.provider !== "ollama") d.db.prepare("DELETE FROM meta WHERE key='express_fallback'").run();
+            } catch { /* meta 表可能在老库上不存在 */ }
             record(d.db, {
               ts: new Date().toISOString(), role: u.role, provider: u.provider, model: u.model,
               inTokens: u.inTokens, cachedTokens: 0, outTokens: u.outTokens,
