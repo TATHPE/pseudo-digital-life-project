@@ -2427,14 +2427,17 @@ export function createWebServer(deps: WebDeps) {
         const rc = await recallForBrief(deps.db, emb, text, { memK: 6, docK: 4, home: deps.home });
         let omitted = rc.omittedMem;
         const recalled: MemoryLine[] = rc.recalled;
+        // 这一轮是不是只能靠本地（云端没有 key / 只有本地 express）。
+        // 只算一次：自动切档与 P15 用的是同一个事实，算两次迟早会不一致。
+        let localOnlyTurn = false;
+        try { localOnlyTurn = deps.cloudReady ? !deps.cloudReady() : false; } catch { localOnlyTurn = false; }
         // 模式：chat（默认，靠记忆召回） / work（带最近几轮历史 + 更宽的预算）
         // 自动切档（2026-11-07）：config.mode = auto 时按这句话判；手动设了就用手动值
         const modePick = (() => {
           let raw = "auto";
           try { raw = String(readFileConfig(deps.home).mode ?? "auto"); } catch { raw = "auto"; }
           if (raw === "work" || raw === "chat") return { mode: raw as "chat" | "work", why: "手动", auto: false };
-          const localOnly = (() => { try { return deps.cloudReady ? !deps.cloudReady() : false; } catch { return false; } })();
-          const d = resolveMode(text, { prev: lastMode, hasTools: !localOnly });
+          const d = resolveMode(text, { prev: lastMode, hasTools: !localOnlyTurn });
           lastMode = d.mode;
           return { mode: d.mode, why: d.why + (d.sticky ? "（承接）" : ""), auto: true };
         })();
@@ -2519,16 +2522,11 @@ export function createWebServer(deps: WebDeps) {
           skillIdx = sk.skillsIndexText(sk.indexableSkills(sk.scanSkills(deps.home))) || null;
         } catch { /* 没有技能不影响对话 */ }
         // 我现在的权限（P15）：不说这一句，她明明能跑命令也会说「我不能操作你的电脑」
-        // 这一轮是不是只能靠本地：云端 key 没有 → 直接用本地（也省掉一次 401 往返）
-        let localOnlyTurn = false;
-        try { localOnlyTurn = deps.cloudReady ? !deps.cloudReady() : false; } catch { localOnlyTurn = false; }
         let powers: string | null = null;
         try {
           const sg = await import("../supergrant.ts");
           const perm = currentPreset(deps.home, now());
-          powers = localOnlyTurn
-            ? "本次没有工具：只能说话，不能读文件、不能跑命令、不能调用任何工具。需要动手的事，告诉用户「这要云端模型，去设置里配 key」。"
-            : sg.powersLine(deps.home, perm.preset, egressStatus(deps.home, { now: now() }).until !== null);
+          powers = sg.powersLine(deps.home, perm.preset, egressStatus(deps.home, { now: now() }).until !== null, { noTools: localOnlyTurn });
         } catch { /* 读不到就不加这一槽 */ }
         const selfState = advance(deps.db, { turns: 1, silenceDays: last ? (now().getTime() - new Date(last.ts).getTime()) / 86400000 : 0 }, now());
         // 缺口：一天最多问一次（冷却写 meta，免得她每轮查户口）

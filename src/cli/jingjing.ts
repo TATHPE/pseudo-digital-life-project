@@ -307,7 +307,19 @@ async function main(): Promise<void> {
             tools: [],   // 空工具：这一档只说话
           });
         } catch { return null; }
-      })();      const getChat = () => {
+      })();      // 云端能不能用：有 key 才算。读不到配置一律当不可用（fail closed）——
+      // 宁可降级，也不要给它一个兑现不了的权限（上一版这里 fail open，正是幻觉的来源）。
+      const cloudReady = () => {
+        try {
+          const c = resolveConfig(HOME);
+          const ex = (c.roles as Record<string, { provider?: string; kind?: string }>).express;
+          if (!ex) return false;
+          if (ex.kind === "local") return false;   // 本地 express：按「这一轮动不了手」处理
+          return Boolean(store.get(ex.provider as Provider));
+        } catch { return false; }
+      };
+
+      const getChat = () => {
         const c = getConfig();
         const ks: Record<string, string> = {};
         for (const p of ["deepseek", "anthropic", "openai"] as Provider[]) { const k = store.get(p); if (k) ks[p] = k; }
@@ -337,8 +349,15 @@ async function main(): Promise<void> {
 
       // 外面再包一层：云端失败且**还没吐过字**时，换本地（无工具）继续。
       // 上下文照旧（messages 原样传进去），只是这一档动不了手。
-      const chatWithFallback = (messages: unknown[], tools: unknown) =>
-        withFallback(messages, tools, (m, t) => getChat()(m, t), localFallback);
+      const chatWithFallback = async function* (messages: unknown[], tools: unknown) {
+        // 云端没有钥匙：不必先撞一次 401 —— 直接本地，但仍然先说清楚（notice 是承诺）
+        if (!cloudReady() && localFallback) {
+          yield { type: "notice" as const, text: "云端没接到，这条用本地模式答（只能对话，动不了手）" };
+          yield* localFallback(messages);
+          return;
+        }
+        yield* withFallback(messages, tools, (m, t) => getChat()(m, t), localFallback);
+      };
       const toolCtx = () => ({ db: d.db, embedder: getEmbedder(), home: HOME, now: () => new Date() });
       const registry = createToolRegistry({ db: d.db, policy, ctx: toolCtx(), external: externals });
       // 默认姿态：能干活（write）+ 会话内外发开放；JJ_PARANOID=1 回到「什么都问」
@@ -400,15 +419,7 @@ async function main(): Promise<void> {
         db: d.db, inboxDir: inbox, home: HOME, getTransport, getEmbedder, getConfig,
         tools: registry, getChat: () => chatWithFallback, pendingOutage: boot1.outage,
         // 云端有没有钥匙：没有就整轮按「本地、无工具」处理（不先撞一次 401）
-        cloudReady: () => {
-          try {
-            const c = resolveConfig(HOME);
-            const ex = (c.roles as Record<string, { provider?: string; kind?: string }>).express;
-            if (!ex) return false;
-            if (ex.kind === "local") return true;   // 本来就是本地，无需降级
-            return Boolean(store.get(ex.provider as Provider));
-          } catch { return true; }
-        },
+        cloudReady,
         // running = 我这次启动实际加载的那份配置的指纹；磁盘后来改了就对不上
         mcpInfo: { servers: mcp.servers, tools: mcp.tools, errors: mcp.errors,
           running: (await import("../plugins.ts")).mcpFingerprint(HOME) },

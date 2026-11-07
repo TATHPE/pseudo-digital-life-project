@@ -54,3 +54,13 @@ test("noTools：不再讨计划（C-2 那两条回路关掉）", async () => {
   assert.equal(rec.passes, 1, "没有工具时不该为了讨计划多跑一轮");
   assert.equal(events.filter((t) => t === "notice").length, 0);
 });
+
+test("P15 只有一个生产者：本地这一档由 powersLine 说话", async () => {
+  const { powersLine } = await import("../src/supergrant.ts");
+  const noTools = powersLine("unused", "full", false, { noTools: true });
+  assert.match(noTools, /本次没有工具/);
+  assert.match(noTools, /只能说话/);
+  // 有工具时仍然是原来的权限句（没被这条覆盖掉）
+  const normal = powersLine("unused", "full", false);
+  assert.doesNotMatch(normal, /本次没有工具/);
+});

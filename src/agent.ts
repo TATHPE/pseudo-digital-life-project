@@ -84,7 +84,8 @@ type Msg =
 
 export async function* runAgent(deps: AgentDeps, system: string, user: string): AsyncGenerator<AgentEvent, void, void> {
   const maxSteps = deps.maxSteps ?? 6;
-  // 没有工具时不该讨计划：C-1/C-2 那两条回路假设能动手，没工具时它只会把计划念两遍
+  // guards 关掉的两种情形：结构化抽取（夜间整理要的是先查库再交 JSON），
+  // 以及**没有工具**（本地兜底）—— C-1/C-2/C-3 都假设能动手，没工具时它们只会让模型把计划念两遍。
   const guards = deps.guards !== false && !deps.noTools;
   const cap = deps.maxToolChars ?? 4000;
   const messages: Msg[] = [{ role: "system", content: system }, { role: "user", content: user }];

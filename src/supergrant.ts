@@ -87,7 +87,16 @@ export function disableSuper(home: string): SuperResult {
  * 她现在的手脚，写成**她看得懂的一句话**（进简报 P15）。
  * 关键是要说"能做什么"，而不是"你有 write 权限"—— 后者模型看不懂。
  */
-export function powersLine(home: string, preset: string, egressOpen: boolean): string {
+export function powersLine(
+  home: string,
+  preset: string,
+  egressOpen: boolean,
+  /** 这一轮没有工具（本地兜底）：P15 必须这么说，否则模型会编「我跑了一下」 */
+  opts: { noTools?: boolean } = {},
+): string {
+  if (opts.noTools) {
+    return "本次没有工具：只能说话，不能读文件、不能跑命令、不能调用任何工具。需要动手的事，告诉用户「这要云端模型，去设置里配 key」。";
+  }
   const parts: string[] = [];
   const sup = superEnabled(home);
   if (sup) {
