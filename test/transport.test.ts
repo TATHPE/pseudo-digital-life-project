@@ -137,7 +137,7 @@ test("云端失败 → 本地兜底，且必须留一条 notice（不假装是�
   async function* local() { yield { type: "delta" as const, text: "本地回答" }; yield { type: "done" as const, finish: "stop" }; }
 
   const got: any[] = [];
-  for await (const ev of withFallback(() => broken(), () => local())) got.push(ev);
+  for await (const ev of withFallback([], [], (_m, _t) => broken(), () => local())) got.push(ev);
   assert.equal(got[0].type, "notice", "先告诉用户换成本地了");
   assert.match(String(got[0].text), /本地/);
   assert.equal(got.filter((e) => e.type === "delta").map((e) => e.text).join(""), "本地回答");
@@ -149,7 +149,7 @@ test("已经吐过字就不再切换（否则两段话会拼成一句假话）",
   async function* local() { yield { type: "delta" as const, text: "不该出现" }; }
   const got: any[] = [];
   await assert.rejects(async () => {
-    for await (const ev of withFallback(() => half(), () => local())) got.push(ev);
+    for await (const ev of withFallback([], [], (_m, _t) => half(), () => local())) got.push(ev);
   }, /boom/);
   assert.equal(got.map((e) => e.text).join(""), "说到一半");
 });
@@ -158,7 +158,7 @@ test("没有本地兜底时，错误原样抛（不吞）", async () => {
   const { withFallback } = await import("../src/agent.ts");
   async function* broken() { throw new Error("E_PROVIDER: 401"); yield 0 as never; }
   await assert.rejects(async () => {
-    for await (const _ of withFallback(() => broken(), null)) { /* drain */ }
+    for await (const _ of withFallback([], [], (_m, _t) => broken(), null)) { /* drain */ }
   }, /401/);
 });
 

@@ -188,7 +188,7 @@
 | `E_POLICY_CORRUPT` | `src/startupcheck.ts` |
 | `E_POLICY_MODEL_CORRUPT` | `src/startupcheck.ts` |
 | `E_PRESET_READ_ONLY` | `src/grant.ts` |
-| `E_PRIVACY` | `src/provider.ts` |
+| `E_PRIVACY` | `src/cli/jingjing.ts` `src/provider.ts` |
 | `E_PROPOSAL_ARGV_BIN` | `src/proposals.ts` |
 | `E_PROPOSAL_ARGV_PIPE` | `src/proposals.ts` |
 | `E_PROPOSAL_BACKLOG` | `src/proposals.ts` |

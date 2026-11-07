@@ -26,19 +26,30 @@ export type AgentEvent =
  *  - **已经吐过字就不再切换**：两段话拼在一起会变成一句假话
  *  - 切换时必须留一条 notice，否则用户会以为云端在答（"不假装" 的第一条）
  */
+/**
+ * 云端接不上时换本地顶上（2026-11-07；这条推翻了 2026-10-31 的「本地不参与对话」）。
+ * 规矩写在签名里：
+ *   · 备胎拿得到 messages —— 人格、记忆召回、最近几轮一个字都不少；
+ *   · 备胎拿不到工具 schema —— 本地 7B 调工具不可靠，这一档它只说话；
+ *   · 只在还没吐过字时降级（说了一半再换，前后就不是一个人了）；
+ *   · 一定先发 notice：面板上看得到「这次是本地答的」，不静默。
+ */
 export async function* withFallback(
-  primary: () => AsyncGenerator<ChatEvent, void, void>,
-  backup: (() => AsyncGenerator<ChatEvent, void, void>) | null,
-  notice = "云端不可用，这条用本地模型回答",
+  messages: unknown[],
+  tools: unknown,
+  primary: (m: unknown[], t: unknown) => AsyncGenerator<ChatEvent, void, void>,
+  backup: ((m: unknown[]) => AsyncGenerator<ChatEvent, void, void>) | null,
+  notice = "云端没接到，这条用本地模式答（只能对话，动不了手）",
 ): AsyncGenerator<ChatEvent, void, void> {
   let spoke = false;
   try {
-    for await (const ev of primary()) { if (ev.type === "delta") spoke = true; yield ev; }
+    for await (const ev of primary(messages, tools)) { if (ev.type === "delta") spoke = true; yield ev; }
     return;
   } catch (e) {
     if (spoke || !backup) throw e;
     yield { type: "notice", text: notice };
-    yield* backup();
+    // 空工具：这一档只说话
+    yield* backup(messages);
   }
 }
 
