@@ -394,7 +394,27 @@ check("动效关键帧在（rise/line-grow/fade/drop）",
   ["nb-rise", "nb-line-grow", "nb-fade", "nb-drop"].every((n) => (motion.names || []).includes(n)), JSON.stringify(motion));
 check("动效有 reduced-motion 兜底", motion.hasReduce === true, JSON.stringify(motion));
 
-// ⑦ 回到记录// ⑦ 回到记录
+// ⑥i a11y：跳转链接 + 播报区（键盘用户与读屏用户的两条基本通道）
+const a11y = await js(`(async () => {
+  const skip = document.querySelector(".nb-skip");
+  const live = document.querySelector("[role=status][aria-live=polite]");
+  const before = skip ? getComputedStyle(skip).top : null;
+  if (skip) skip.focus();
+  await new Promise((r) => setTimeout(r, 220));   // 等过渡跑完再读
+  const topAfter = skip ? parseFloat(getComputedStyle(skip).top) : NaN;
+  return { hasSkip: !!skip, target: skip ? skip.getAttribute("href") : null, hasLive: !!live,
+    cameOut: skip ? (topAfter >= 0) : false, isFocused: skip ? skip.matches(":focus") : false,
+    active: document.activeElement === skip };
+})()`);
+check("有跳转链接（Tab 第一下跳到内容）", a11y && a11y.hasSkip && a11y.target === "#nb-page", JSON.stringify(a11y));
+const skipCss = await js(`(() => {
+  const rules = [...document.styleSheets].flatMap((s) => { try { return [...s.cssRules]; } catch { return []; } });
+  return rules.some((r) => String(r.selectorText || "").includes(".nb-skip:focus"));
+})()`);
+check("跳转链接有「聚焦才出现」的样式", skipCss === true, "headless 下 :focus 重绘不可靠，这里断言样式存在");
+check("有 aria-live 播报区（读屏能念出反馈）", a11y && a11y.hasLive === true, JSON.stringify(a11y));
+
+// ⑦ 回到记录// ⑦ 回到记录// ⑦ 回到记录
 check("能回到记录页", await js(`(async () => {
   const b = document.getElementById('nb-board-btn');
   b.click();

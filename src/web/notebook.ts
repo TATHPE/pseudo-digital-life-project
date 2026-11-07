@@ -505,8 +505,14 @@ input:focus-visible,textarea:focus-visible{outline:none;border-bottom-color:var(
   .nb-say .streaming::after{animation:none}
   .nb-btn:active,.nb-opt:active,.nb-jump:active{transform:none}
 }
+/* 跳转链接：平时看不见，Tab 一进来就出现（2026-11-07 a11y 补） */
+.nb-skip{position:absolute;left:8px;top:-40px;z-index:99;padding:6px 10px;background:var(--ink);color:var(--void);
+  font:10.5px/1 var(--mono);letter-spacing:.08em;text-decoration:none;transition:top .12s}
+.nb-skip:focus{top:8px}
+@media (prefers-reduced-motion: reduce){.nb-skip{transition:none}}
 </style></head>
 <body>
+<a class="nb-skip" href="#nb-page">跳到内容</a>
 <!--BOOT-->
 <div class="nb">
   <div class="nb-cfgbar" id="nb-cfgbar" role="status" aria-live="polite" hidden></div>
@@ -559,7 +565,7 @@ input:focus-visible,textarea:focus-visible{outline:none;border-bottom-color:var(
   </div>
 </div>
 
-<div class="nb-tick"><div id="nb-tickmsg"></div></div>
+<div class="nb-tick" role="status" aria-live="polite"><div id="nb-tickmsg"></div></div>
 <button class="nb-latest" id="nb-latest" hidden>回到最新 ↓</button>
 <div class="nb-pal" id="nb-pal" role="dialog" aria-modal="true" aria-label="调色板" hidden>
   <div class="nb-palbox">

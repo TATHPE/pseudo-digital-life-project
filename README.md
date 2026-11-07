@@ -109,7 +109,7 @@ Design documents (Chinese) live in `docs/`:
 ## Development
 
 ```bash
-npm run check        # types + 636 tests (failed tests are retried; pass-on-retry is reported as FLAKY)
+npm run check        # types + 662 tests (failed tests are retried; pass-on-retry is reported as FLAKY)
 npm run ui:test      # headless Edge, real clicks (needs the server running)
 npm run map          # generate/verify docs/map.md (files · error codes · verbs · commands)
 node src/cli/jingjing.ts eval         # the four retrieval gates
@@ -125,6 +125,12 @@ CI runs only `check` and `map:check` (UI tests need Edge, evals need Ollama).
 - 17 of 20 hand-written hard cases pass; the two misses are "answers when it should abstain" — four different approaches failed, it is a local-model calibration limit (numbers in `docs/ops/24`)
 - After "I'll set it up later" in the guide, chatting genuinely does not work until a model is configured (the banner keeps saying so)
 - No auto-update, no system integration beyond the tray, single user
+
+
+### Desktop install note
+
+Install to a path **without spaces** (e.g. `D:\Apps\PDLP`). The NSIS installer uses
+`/D=` internally and silently installs nothing when the path contains spaces.
 
 ## License
 

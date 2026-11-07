@@ -59,7 +59,8 @@ export interface FileConfig {
    * 为什么必须分开：「不随轮数增长」在闲聊里成立，在连续干活时是错的 ——
    * 你连着问三件有依赖的事时，聊天模式会断片（实测她说「我看不到你的界面」）。
    */
-  mode?: "chat" | "work";
+  /** chat / work / auto（auto：按每句话自己判，2026-11-07） */
+  mode?: "chat" | "work" | "auto";
   /**
    * 宿主层：跑脚本文件时用哪个解释器（2026-11-01 用户要求：PowerShell 默认，Git Bash 自配）。
    * 只影响「跑 home 里的脚本文件」，**不影响**任意命令的 argv 直传（见 src/host.ts 的头注释）。

@@ -59,11 +59,29 @@
   // ── 顶栏与左栏 ────────────────────────────────
   // 模式：聊天（默认，只靠记忆召回）/ 工作（带最近几轮 + 更宽预算）。
   // 以前面板里根本没有入口 —— 想换只能改 config.json。
-  function paintMode(m){
+  // 自动切档：chip 显示「自动 · <这轮判出来的档>」；手动点了就固定下来（2026-11-07）
+  var MODE_AUTO = true, MODE_RESOLVED = 'chat';
+  function paintMode(m, resolved){
     var b = $('nb-modechip');
     if (!b) return;
-    b.textContent = m === 'work' ? '工作' : '聊天';
-    b.className = 'nb-modechip' + (m === 'work' ? ' on' : '');
+    if (resolved) MODE_RESOLVED = resolved;
+    if (m === 'auto') {
+      MODE_AUTO = true;
+      b.textContent = '自动 · ' + (MODE_RESOLVED === 'work' ? '工作' : '聊天');
+      b.className = 'nb-modechip auto' + (MODE_RESOLVED === 'work' ? ' on' : '');
+      b.title = '按每句话自己判断该用哪一档；点一下可以手动固定';
+    } else {
+      MODE_AUTO = false;
+      b.textContent = m === 'work' ? '工作' : '聊天';
+      b.className = 'nb-modechip' + (m === 'work' ? ' on' : '');
+      b.title = '手动固定在这一档；再点两下可以回到自动';
+    }
+  }
+  // 每轮回答里带回来的真实档位（服务端判的），用来更新 chip 后半截
+  function noteResolvedMode(m){
+    if (!m) return;
+    MODE_RESOLVED = m;
+    if (MODE_AUTO) paintMode('auto', m);
   }
   function loadMode(){
     fetch('/api/mode').then(function(r){ return r.json(); }).then(function(j){ paintMode((j && j.mode) || 'chat'); }).catch(function(){});
@@ -509,7 +527,10 @@
             if (line.indexOf('data: ') !== 0) return;
             var ev;
             try { ev = JSON.parse(line.slice(6)); } catch(e){ return; }
-            if (ev.type === 'done') {
+            if (ev.type === 'mode') {
+              // 服务端判定的档位：自动模式下 chip 跟着变
+              noteResolvedMode(ev.mode);
+            } else if (ev.type === 'done') {
               var lb = $('nb-live'); if (lb) lb.className = '';
             } else if (ev.type === 'reset') {
               var lv = $('nb-live'); if (lv) lv.textContent = '';
@@ -2121,16 +2142,20 @@
 
   // ── 启动 ─────────────────────────────────────
   var modeChip = $('nb-modechip');
+  // 点一下循环：自动 → 聊天 → 工作 → 自动（自动时不再问，直接按句子判）
   if (modeChip) modeChip.onclick = function(){
-    var now = modeChip.textContent.trim() === '工作' ? 'work' : 'chat';
-    var next = now === 'work' ? 'chat' : 'work';
+    var next = MODE_AUTO ? 'chat' : (modeChip.textContent.indexOf('工作') >= 0 ? 'auto' : 'work');
     modeChip.disabled = true;
     fetch('/api/mode', { method: 'POST', headers: H, body: JSON.stringify({ mode: next }) })
       .then(function(r){ return r.json(); }).then(function(j){
-        if (j && j.ok) { paintMode(j.mode); tick(j.mode === 'work' ? '工作模式：带上最近几轮' : '聊天模式：只靠记忆召回'); }
-        else tick('没切成');
+        if (j && j.ok) {
+          paintMode(j.mode, j.mode === 'auto' ? MODE_RESOLVED : undefined);
+          tick(j.mode === 'auto' ? '自动：按每句话自己判断该用哪档'
+            : j.mode === 'work' ? '固定工作模式：简报更长、允许更多步'
+            : '固定聊天模式：简报更短、更省');
+        } else tick('没切成');
         modeChip.disabled = false;
-      }).catch(function(){ tick('没切成'); modeChip.disabled = false; });
+      }).catch(function(){ modeChip.disabled = false; tick('没切成'); });
   };
   loadTheme();
   loadMode();

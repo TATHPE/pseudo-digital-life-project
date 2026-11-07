@@ -28,7 +28,9 @@ ok("tauri.conf.json 能解析", (() => {
 
 const conf = JSON.parse(readFileSync(join(T, "tauri.conf.json"), "utf8"));
 const url = conf.app?.windows?.[0]?.url ?? "";
-ok("窗口直接指内置面板（不打包前端）", url.startsWith("http://127.0.0.1:"), url);
+ok("窗口指内置面板（占位页 + 起来后带令牌导航到 127.0.0.1）",
+  url.startsWith("http://127.0.0.1:") || (url === "index.html" && /127\.0\.0\.1:\{\}\/\?k=/.test(readFileSync(join(T, "src", "main.rs"), "utf8"))),
+  url);
 ok("图标存在", (conf.bundle?.icon ?? []).every((p) => existsSync(join(T, p))), (conf.bundle?.icon ?? []).join(","));
 
 /** ② 壳不该有 fs/shell 权限（只允许打开链接/文件） */
@@ -39,7 +41,8 @@ ok("能力面只有 opener（没有 fs / shell / http）", perms.every((p) => !/
 /** ③ 源码里不允许出现业务逻辑的痕迹（壳只做四件事） */
 const rs = ["src/main.rs", "src/sidecar.rs"].map((f) => readFileSync(join(T, f), "utf8")).join("\n");
 ok("sidecar 用 taskkill /T 杀进程树", /\/T/.test(rs));
-ok("三次探测失败后回落浏览器", /fallback_to_browser/.test(rs) && /3/.test(rs));
+// 2026-11 的设计：sidecar 起不来只弹报错（说清哪步失败、日志在哪），不回落浏览器
+ok("起不来只弹报错（不回落浏览器）", /show_boot_error/.test(rs) && !/fallback_to_browser/.test(rs));
 ok("托盘四项齐全", ["暂停 / 继续心跳", "打开数据目录", "导出备份", "退出"].every((s) => rs.includes(s)));
 ok("关闭窗口会 stop() sidecar", /CloseRequested/.test(rs));
 

@@ -25,6 +25,7 @@ export const PUBLIC = [
   "ops/23-发布-桌面端-首次配置.md",
   "ops/24-基准与口径.md",
   "ops/25-常驻指令-设计记录.md",
+  "runtime/26-降级与编排.md",
 ];
 
 const ROOT = process.cwd();

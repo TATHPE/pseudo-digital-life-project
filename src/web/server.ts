@@ -57,6 +57,10 @@ import { loadPolicy, type Policy } from "../policy.ts";
 import { createStore, fingerprint, type Provider } from "../auth.ts";
 import type { ToolRegistry } from "../tools.ts";
 import { runAgent, type ChatFn } from "../agent.ts";
+import { resolveMode, type Mode } from "../mode.ts";
+
+/** 上一轮实际用的档：自动判定要靠它做粘性 */
+let lastMode: Mode = "chat";
 import { renderMarkdown, esc } from "../md.ts";
 import { loadState, advance, describe } from "../state.ts";
 import type { Outage } from "../types.ts";
@@ -2138,14 +2142,18 @@ export function createWebServer(deps: WebDeps) {
 
       // ── 工作/聊天模式：chat 靠记忆召回，work 带最近几轮历史 + 更宽预算 ──
       if (req.method === "GET" && url.pathname === "/api/mode") {
-        try { json(res, 200, { mode: readFileConfig(deps.home).mode === "work" ? "work" : "chat" }); }
+        try {
+          const raw = String(readFileConfig(deps.home).mode ?? "auto");
+          const mode = raw === "work" ? "work" : raw === "chat" ? "chat" : "auto";
+          json(res, 200, { mode, auto: mode === "auto", resolved: lastMode });
+        }
         catch { json(res, 200, { mode: "chat" }); }
         return;
       }
       if (req.method === "POST" && url.pathname === "/api/mode") {
         const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
         const body = JSON.parse(await readBody(req)) as { mode?: string };
-        const mode = body.mode === "work" ? "work" : "chat";
+        const mode = body.mode === "work" ? "work" : body.mode === "chat" ? "chat" : "auto";
         writeFileConfig(deps.home, { mode });
         json(res, 200, { ok: true, mode });
         return;
@@ -2420,7 +2428,17 @@ export function createWebServer(deps: WebDeps) {
         let omitted = rc.omittedMem;
         const recalled: MemoryLine[] = rc.recalled;
         // 模式：chat（默认，靠记忆召回） / work（带最近几轮历史 + 更宽的预算）
-        const mode = (() => { try { return readFileConfig(deps.home).mode === "work" ? "work" as const : "chat" as const; } catch { return "chat" as const; } })();
+        // 自动切档（2026-11-07）：config.mode = auto 时按这句话判；手动设了就用手动值
+        const modePick = (() => {
+          let raw = "auto";
+          try { raw = String(readFileConfig(deps.home).mode ?? "auto"); } catch { raw = "auto"; }
+          if (raw === "work" || raw === "chat") return { mode: raw as "chat" | "work", why: "手动", auto: false };
+          const localOnly = (() => { try { return deps.cloudReady ? !deps.cloudReady() : false; } catch { return false; } })();
+          const d = resolveMode(text, { prev: lastMode, hasTools: !localOnly });
+          lastMode = d.mode;
+          return { mode: d.mode, why: d.why + (d.sticky ? "（承接）" : ""), auto: true };
+        })();
+        const mode = modePick.mode;
         // 两档都带历史（2026-11-06）。以前只有工作模式带，聊天模式连「刚才那条」都接不住，
         // 那不叫聊天。差别只在长度：聊天近而短（8 条 / 220 字），工作远而长（16 条 / 600 字）。
         // 不含工具轨迹 —— 跨轮的 tool 消息在协议上不合法，细节已经在右栏里。
@@ -2572,6 +2590,8 @@ export function createWebServer(deps: WebDeps) {
             }
           })(),
         });
+        // 这一轮判成了哪档（auto 时 chip 的后半截跟着它）
+        try { send({ type: "mode", mode: modePick.mode, why: modePick.why, auto: modePick.auto }); } catch { /* 已断开 */ }
 
         let full = "";
         // 真正的回答字数（delta 总量 - 被判为过程的量）。为 0 说明这一轮只说了过程、没结论，
