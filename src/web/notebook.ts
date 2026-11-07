@@ -30,7 +30,7 @@ export const NOTEBOOK = `<!doctype html>
   color-scheme:dark;
   --void:#0b0e0b;--ink:#f2f7f8;--dim:#b9c6c9;--dim2:#7d8b8f;
   --line:rgba(233,240,242,.30);--line-dim:rgba(233,240,242,.10);
-  --cyan:#0f7c74;--amber:#8a6d1f;--fade:#8f9799;
+  --cyan:#0f7c74;--amber:#c9a227;--fade:#8f9799;   /* 深底上琥珀要够亮：8.02:1 */
   /* 叠加层：深色底上是白雾，浅色底上要反过来，否则一片隐形 */
   --tint1:rgba(233,240,242,.015);--tint2:rgba(233,240,242,.03);--tint3:rgba(233,240,242,.05);
   --ok:#3f7a3a;--warn:#8a6d1f;--err:#a8423a;
@@ -441,6 +441,11 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
   background:var(--tint1);font:10.5px/1.4 var(--mono);letter-spacing:.04em;color:var(--amber)}
 .nb-cfgbar .t{flex:1}
 .nb-cfgbar .nb-btn{margin:0}
+
+/* 键盘可达性（2026-11-07 a11y 审计 P1）：用 Tab 走界面时要有可见焦点 */
+[role="button"]:focus-visible,button:focus-visible,a:focus-visible,textarea:focus-visible,input:focus-visible{
+  outline:2px solid var(--ink);outline-offset:-2px}
+.nb-day:focus-visible,.nb-tab:focus-visible{outline-offset:0}
 </style></head>
 <body>
 <!--BOOT-->
@@ -460,18 +465,18 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
       <h2>记录</h2>
       <div id="nb-days"></div>
       <h2 style="margin-top:16px">去处</h2>
-      <div class="nb-go" data-v="home">工作台</div>
-      <div class="nb-go" data-v="sess">会话<span class="n" id="nb-nsess">…</span></div>
-      <div class="nb-go" data-v="mem">记忆<span class="n" id="nb-nmem">…</span></div>
-      <div class="nb-go" data-v="docs">文档<span class="n" id="nb-ndocs">…</span></div>
-      <div class="nb-go" data-v="cap">能力</div>
-      <div class="nb-go" data-v="logs">日志</div>
-      <div class="nb-go" data-v="files">文件</div>
-      <div class="nb-go" data-v="git">校样</div>
-      <div class="nb-go" data-v="cfg">设置</div>
+      <div class="nb-go" data-v="home" role="button" tabindex="0">工作台</div>
+      <div class="nb-go" data-v="sess" role="button" tabindex="0">会话<span class="n" id="nb-nsess">…</span></div>
+      <div class="nb-go" data-v="mem" role="button" tabindex="0">记忆<span class="n" id="nb-nmem">…</span></div>
+      <div class="nb-go" data-v="docs" role="button" tabindex="0">文档<span class="n" id="nb-ndocs">…</span></div>
+      <div class="nb-go" data-v="cap" role="button" tabindex="0">能力</div>
+      <div class="nb-go" data-v="logs" role="button" tabindex="0">日志</div>
+      <div class="nb-go" data-v="files" role="button" tabindex="0">文件</div>
+      <div class="nb-go" data-v="git" role="button" tabindex="0">校样</div>
+      <div class="nb-go" data-v="cfg" role="button" tabindex="0">设置</div>
       <div class="nb-grow"></div>
-      <div class="nb-go" id="nb-board-btn">她收着的<span class="n" id="nb-about">…</span></div>
-      <div class="nb-go" id="nb-gap">还缺<span class="n" id="nb-gapn">…</span></div>
+      <div class="nb-go" id="nb-board-btn" role="button" tabindex="0">她收着的<span class="n" id="nb-about">…</span></div>
+      <div class="nb-go" id="nb-gap" role="button" tabindex="0">还缺<span class="n" id="nb-gapn">…</span></div>
     </nav>
 
     <main class="nb-page" id="nb-page">

@@ -33,6 +33,16 @@
     el.innerHTML = b ? (esc(a) + '<i>/</i><b>' + esc(b) + '</b>') : ('<b>' + esc(a) + '</b>');
   }
 
+  // KB_DELEGATE：所有 role=button 的元素都该能用 Enter / Space 触发（a11y 审计 P1）
+  (function(){
+    document.addEventListener('keydown', function(e){
+      if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
+      var t = e.target;
+      if (!t || t.getAttribute('role') !== 'button') return;
+      e.preventDefault();
+      t.click();
+    });
+  })();
   // ── 主题 ──────────────────────────────────────
   // ledger（默认，黑白紧凑）/ hermes（中性灰、宽版式）。只改 <html data-theme>，
   // 结构、数据、接口都不动；服务端也会把它写进首屏，避免闪一下。
@@ -125,7 +135,7 @@
     var md = String(Number(todayLabel.slice(5, 7))) + ' 月 ' + String(Number(todayLabel.slice(8, 10))) + ' 日';
     var hasToday = days.some(function(d){ return String(d.label || '').indexOf(md) >= 0; });
     if (hasToday) {
-      html += '<div class="nb-day on" data-d="' + todayLabel + '"><span class="mk"></span>' +
+      html += '<div class="nb-day on" data-d="' + todayLabel + '" role="button" tabindex="0"><span class="mk"></span>' +
         '<span><span class="d">今天</span><span class="m">' + hhmm(today.toISOString()) + '</span></span></div>';
     }
     days.slice(0, DAYS_SHOWN).forEach(function(d){
@@ -133,7 +143,7 @@
       var lab = String(d.label || '');
       var isToday = lab.indexOf(md) >= 0;
       if (isToday && hasToday) return;   // 顶上已经钉了一个「今天」，别再列一次
-      html += '<div class="nb-day' + (isToday ? ' on' : '') + '" data-d="' + esc(lab) + '">' +
+      html += '<div class="nb-day' + (isToday ? ' on' : '') + '" data-d="' + esc(lab) + '" role="button" tabindex="0">' +
         '<span class="mk"></span><span><span class="d">' + esc(isToday ? '今天' : lab) + '</span>' +
         '<span class="m">' + esc(gap) + '</span></span></div>';
     });

@@ -316,6 +316,28 @@ else check(
   themeSwitch ? (`${themeSwitch.before} → ${themeSwitch.after} · 存 ${themeSwitch.saved}`) : "?",
 );
 
+// ⑥f 键盘可达性（a11y 审计 P1）：左栏/日期/切口签要能 Tab 进去，Enter 能触发
+const kb = await js(`(async () => {
+  const nav = [...document.querySelectorAll('.nb-go')];
+  const days = [...document.querySelectorAll('.nb-day')];
+  const focusable = nav.filter((x) => x.getAttribute('tabindex') === '0' && x.getAttribute('role') === 'button');
+  const daysOk = days.every((x) => x.getAttribute('tabindex') === '0');
+  const target = nav.find((x) => x.getAttribute('data-v') === 'mem');
+  if (!target) return { why: 'no-mem-nav' };
+  target.focus();
+  const focused = document.activeElement === target;
+  target.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  await new Promise((r) => setTimeout(r, 700));
+  const crumb = (document.getElementById('nb-crumb') || {}).textContent || '';
+  return { nav: nav.length, focusable: focusable.length, days: days.length, daysOk, focused, crumb };
+})()`);
+if (kb && kb.why) check("导航能键盘走", false, kb.why);
+else {
+  check("左栏每个去处都能 Tab 聚焦（role+tabindex）", kb && kb.nav > 0 && kb.focusable === kb.nav, JSON.stringify(kb));
+  check("日期条目也能聚焦", kb && kb.days > 0 && kb.daysOk === true, JSON.stringify(kb));
+  check("Enter 键能触发导航", kb && kb.focused === true && /记忆/.test(kb.crumb || ''), JSON.stringify(kb));
+}
+
 // ⑦ 回到记录
 check("能回到记录页", await js(`(async () => {
   const b = document.getElementById('nb-board-btn');
