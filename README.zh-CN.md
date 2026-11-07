@@ -26,7 +26,7 @@
 
 - **不是云端服务**：默认只在回环地址上跑，记忆库就是一个本地 SQLite 文件
 - **不是通用助手**：没有联网搜索、没有插件市场，27 个工具都是本机的读写与执行
-- **不是一个成熟产品**：0.1.0，一个人用、一个人改，边界都在 `docs/` 里写着
+- **不是一个成熟产品**：0.1.1，一个人用、一个人改，边界都在 `docs/` 里写着
 
 ## 现在的样子
 
@@ -109,7 +109,7 @@ SQLite：memories + chunks + FTS5 + 向量
 ## 开发
 
 ```bash
-npm run check        # 类型 + 全部测试（662 条；失败的会自动重跑，通过则标 FLAKY）
+npm run check        # 类型 + 全部测试（673 条；失败的会自动重跑，通过则标 FLAKY）
 npm run ui:test      # headless Edge 真点真发（需要面板在跑）
 npm run map          # 生成/校验 docs/map.md（文件·错误码·能力·命令）
 node src/cli/jingjing.ts eval         # 检索四道门

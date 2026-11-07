@@ -79,7 +79,7 @@ export class McpClient {
     const r = await c.request("initialize", {
       protocolVersion: "2024-11-05",
       capabilities: {},
-      clientInfo: { name: "jingjing", version: "0.1.0" },
+      clientInfo: { name: "jingjing", version: "0.1.1" },
     });
     const info = (r as { serverInfo?: { name?: string; version?: string } }).serverInfo ?? {};
     c.info = info;

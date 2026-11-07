@@ -545,7 +545,7 @@ input:focus-visible,textarea:focus-visible{outline:none;border-bottom-color:var(
       <div class="nb-go" id="nb-gap" role="button" tabindex="0">还缺<span class="n" id="nb-gapn">…</span></div>
     </nav>
 
-    <main class="nb-page" id="nb-page">
+    <main class="nb-page" id="nb-page" tabindex="-1">
       <section id="nb-home"></section>
       <div id="nb-board" hidden></div>
       <div id="nb-view" hidden></div>

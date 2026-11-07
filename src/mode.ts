@@ -71,7 +71,7 @@ export function resolveMode(text: string, ctx: ModeContext): ModeDecision {
     return "";
   })();
 
-  // 2/3. 双方都有信号时：问句赢（"能不能帮我看下 X" 是把决定权交给你，不是让你直接动手）
+  // 2/3. 双方都有信号时：工作信号优先（"跑一下 npm run check？" 带命令，就该按工作办）；
   if (chatHit === "问句" || chatHit === "寒暄" || chatHit === "情绪") {
     return { mode: "chat", why: "聊天信号：" + chatHit, sticky: false };
   }

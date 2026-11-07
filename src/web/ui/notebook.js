@@ -84,7 +84,7 @@
     if (MODE_AUTO) paintMode('auto', m);
   }
   function loadMode(){
-    fetch('/api/mode').then(function(r){ return r.json(); }).then(function(j){ paintMode((j && j.mode) || 'chat'); }).catch(function(){});
+    fetch('/api/mode').then(function(r){ return r.json(); }).then(function(j){ paintMode((j && j.mode) || 'auto', j && j.resolved); }).catch(function(){});
   }
   // 「还没配好」横幅（2026-11-06）：用户点过「先用着」之后，没有任何痕迹，
   // 一对话就甩一个 401。这里按**真配置**判断，配好就自己消失。
@@ -507,7 +507,7 @@
     var her = document.createElement('article');
     her.className = 'nb-e her fresh';
     her.innerHTML = '<div class="g">' + hhmm(new Date().toISOString()) + '<span class="w">她</span></div>' +
-      '<div class="b"><div class="nb-say"><div id="nb-live"></div></div></div>';
+      '<div class="b"><div class="nb-say"><div id="nb-live" role="log" aria-live="polite" aria-atomic="true"></div></div></div>';
     var liveBox = her.querySelector('#nb-live');
     if (liveBox) liveBox.className = 'streaming';
     $('nb-log').appendChild(her);

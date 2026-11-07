@@ -413,8 +413,17 @@ const skipCss = await js(`(() => {
 })()`);
 check("跳转链接有「聚焦才出现」的样式", skipCss === true, "headless 下 :focus 重绘不可靠，这里断言样式存在");
 check("有 aria-live 播报区（读屏能念出反馈）", a11y && a11y.hasLive === true, JSON.stringify(a11y));
+const a11y2 = await js(`(() => {
+  const page = document.getElementById("nb-page");
+  return { pageFocusable: page ? page.getAttribute("tabindex") === "-1" : false };
+})()`);
+check("跳转目标可聚焦（焦点真的会过去）", a11y2 && a11y2.pageFocusable === true, JSON.stringify(a11y2));
+// 回答容器只在有回答时才创建，所以这条读脚本源码：模板里必须带 role=log + aria-live
+const liveSrc = await (await fetch(new URL("/ui/notebook.js", URL_PAGE))).text();
+check("她的回答会被播报（#nb-live 带 role=log + aria-live）",
+  /id="nb-live" role="log" aria-live="polite"/.test(liveSrc), "源码里没找到播报属性");
 
-// ⑦ 回到记录// ⑦ 回到记录// ⑦ 回到记录
+// ⑦ 回到记录
 check("能回到记录页", await js(`(async () => {
   const b = document.getElementById('nb-board-btn');
   b.click();

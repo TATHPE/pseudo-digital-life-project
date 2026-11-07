@@ -26,7 +26,7 @@ There is exactly one interface, a **notebook**: days down the left, prose in the
 
 - **Not a cloud service**: everything runs on loopback; the memory store is a local SQLite file
 - **Not a general assistant**: no web search, no plugin marketplace; the 27 tools are local read/write/exec
-- **Not a mature product**: 0.1.0, built and used by one person; the rough edges are documented in `docs/` (Chinese)
+- **Not a mature product**: 0.1.1, built and used by one person; the rough edges are documented in `docs/` (Chinese)
 
 ## Today
 
@@ -109,7 +109,7 @@ Design documents (Chinese) live in `docs/`:
 ## Development
 
 ```bash
-npm run check        # types + 662 tests (failed tests are retried; pass-on-retry is reported as FLAKY)
+npm run check        # types + 673 tests (failed tests are retried; pass-on-retry is reported as FLAKY)
 npm run ui:test      # headless Edge, real clicks (needs the server running)
 npm run map          # generate/verify docs/map.md (files · error codes · verbs · commands)
 node src/cli/jingjing.ts eval         # the four retrieval gates

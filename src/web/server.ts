@@ -59,8 +59,7 @@ import type { ToolRegistry } from "../tools.ts";
 import { runAgent, type ChatFn } from "../agent.ts";
 import { resolveMode, type Mode } from "../mode.ts";
 
-/** 上一轮实际用的档：自动判定要靠它做粘性 */
-let lastMode: Mode = "chat";
+/** 上一轮实际用的档：自动判定靠它做粘性（**每个 server 一份**，不是进程级） */
 import { renderMarkdown, esc } from "../md.ts";
 import { loadState, advance, describe } from "../state.ts";
 import type { Outage } from "../types.ts";
@@ -343,6 +342,8 @@ function readTurns(deps: WebDeps, sessionId: string): TurnRow[] {
 }
 
 export function createWebServer(deps: WebDeps) {
+  /** 自动切档的粘性：每个 server 自己记上一轮，跨 home / 跨测试互不影响 */
+  let lastMode: Mode = "chat";
   const now = deps.now ?? (() => new Date());
   // 每次请求都 createStore 会重新做一遍 DPAPI 探测（又是一个 PowerShell 进程）；
   // 存储本身无状态，进程内复用即可（clear/set 会自己让解密缓存失效）。

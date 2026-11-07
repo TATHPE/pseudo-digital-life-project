@@ -95,7 +95,7 @@ export function powersLine(
   opts: { noTools?: boolean } = {},
 ): string {
   if (opts.noTools) {
-    return "本次没有工具：只能说话，不能读文件、不能跑命令、不能调用任何工具。需要动手的事，告诉用户「这要云端模型，去设置里配 key」。";
+    return "本次没有工具：只能说话，不能读文件、不能跑命令、不能调用任何工具。需要动手的事，说清「这一步需要能调用工具的模式」，不要描述自己做过的动作。";
   }
   const parts: string[] = [];
   const sup = superEnabled(home);
