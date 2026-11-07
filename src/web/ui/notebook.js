@@ -612,7 +612,7 @@
         '<div class="nb-sec">§ 02 进行中</div>' +
         '<div class="nb-run">' +
           '<div class="nb-runrow"><span class="k">正在跑</span><span class="v">' +
-            (night.running ? '夜里那次整理正在跑' : '没有在跑的后台任务') + '</span>' +
+            (night.running ? '闲时整理正在跑' : '没有在跑的后台任务') + '</span>' +
             '<span class="m">' + (night.lastAt ? '上次整理 ' + esc(String(night.lastAt).slice(5, 16).replace('T', ' ')) : '还没整理过') + '</span></div>' +
           '<div class="nb-runrow"><span class="k">已花</span><span class="v">' + USD +
             Number(use.todayUsd || 0).toFixed(3) + '</span><span class="m">今天 ' + Number(use.calls || 0) +
@@ -624,7 +624,7 @@
         '</div>' +
         '<div class="nb-actrow" style="margin:10px 0 2px">' +
         '<button class="nb-btn" id="nb-night">现在整理一次</button>' +
-        '<span class="nb-empty" id="nb-nightmsg">夜里那次整理；手动跑一次不写游标也行</span></div>' +
+        '<span class="nb-empty" id="nb-nightmsg">闲时整理（闲置 20 小时后自动跑）；手动跑一次不写游标也行</span></div>' +
         '<div class="nb-sec">§ 03 配方</div>' +
         ((sk.skills || []).length ? '<div class="nb-grid2">' + (sk.skills || []).slice(0, 6).map(function(x){
           return '<button class="nb-recipe" data-skill="' + esc(x.id) + '">' +
@@ -2125,6 +2125,8 @@
     if (v === 'board') { go('home'); setTimeout(function(){ Board(true); }, 120); return; }
     if (v === 'chat') { go('chat'); return; }
     if (['mem','docs','cap','git','cfg','gap','task','sess','approvals','logs','files'].indexOf(v) >= 0) { setTimeout(function(){ go(v); }, 120); return; }
+    // 没有 ?view= 时**默认进记录**：打开就该是「今天 + 最近一轮会话」，不是工作台
+    if (!v && location.search.indexOf("pal=1") < 0) { go('chat'); return; }
     go('home');
     if (location.search.indexOf("pal=1") >= 0) setTimeout(palOpen, 200);
   })();

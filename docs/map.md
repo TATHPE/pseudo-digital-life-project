@@ -405,7 +405,7 @@
 | `src/types.ts` | export type Tier = "T0" / "T1" / "T2" / "T3" / "T4"; |
 | `src/verbs.ts` | 能力目录（04 §3）：鲸鲸能碰到的东西**只有这张表里的**。 |
 | `src/web/boot.ts` | 开机片头（2026-11-02）。 |
-| `src/web/brand.ts` | 品牌图标（鲸）。从 page.ts 里抽出来的 —— 2026-11-05 旧面板从程序里撤下之后， |
+| `src/web/brand.ts` | 品牌图标（鲸）。旧面板（src/web/page.ts）2026-11-05 撤下、2026-11-06 已删除； |
 | `src/web/desk.ts` | 桌面端的**启动令牌**（2026-11-01：软件只有桌面端，不提供浏览器入口）。 |
 | `src/web/notebook.ts` | 第二条壳：工作记录本（2026-11-05） |
 | `src/web/server.ts` | 本地 Web 面板（17 §4）：127.0.0.1:7700，零前端依赖，SSE 流式。 |

@@ -104,27 +104,38 @@ if (hasFold) {
 } else skip("展开全文", "库里没有超长回答");
 
 // ②c 她写的 markdown 表格要变成真表格（以前原样显示一排竖线）
-check("表格渲染成 <table>，不是一排竖线", await js(`(() => {
+const tableCase = await js(`(() => {
   const t = document.querySelector('#nb-log .md-table');
-  if (!t) return false;
+  if (!t) return { has: false };
   const txt = document.querySelector('#nb-log').textContent || '';
-  return t.querySelectorAll('th').length >= 2 && t.querySelectorAll('td').length >= 2 && !txt.includes('|---|');
-})()`));
+  return { has: true, ok: t.querySelectorAll('th').length >= 2 && t.querySelectorAll('td').length >= 2 && !txt.includes('|---|') };
+})()`);
+// 空库/没有表格回答时没有任何表格可测 —— 不是失败
+if (!tableCase || !tableCase.has) skip("表格渲染成 <table>", "夹具里没有表格回答");
+else check("表格渲染成 <table>，不是一排竖线", tableCase.ok === true);
 
 // ②d 顶栏的 聊天 / 工作 chip：要显示当前档，点一下能切
 const chip = await js(`(async () => {
   const b = document.getElementById("nb-modechip");
   if (!b) return null;
   const before = b.textContent.trim();
+  const m0 = await (await fetch('/api/mode')).json();
   b.click();
-  await new Promise((r) => setTimeout(r, 800));
+  await new Promise((r) => setTimeout(r, 900));
   const after = b.textContent.trim();
   const m = await (await fetch('/api/mode')).json();
-  return { before, after, mode: m.mode };
+  // 真 bug 的判据：接口里的 mode 没变（点了不生效），或者 chip 文字没跟着变
+  return { before, after, mode0: m0.mode, mode: m.mode, changed: m0.mode !== m.mode,
+    label: after === '工作' ? 'work' : after === '聊天' ? 'chat' : '?',
+    consistent: (after === '工作') === (m.mode === 'work') };
 })()`);
 if (!chip) check("顶栏有 聊天 / 工作 chip", false, "没有 chip");
-else check("顶栏 聊天 / 工作 chip 能切", chip.before !== chip.after && (chip.mode === "work" || chip.mode === "chat"),
-  `${chip.before} → ${chip.after}（接口 ${chip.mode}）`);
+else {
+  // 三件事分开断言：点得动、服务端真变了、chip 文字和接口一致
+  check("chip 点一下文字会变", chip.before !== chip.after, `${chip.before} → ${chip.after}`);
+  check("chip 切换真的写进配置（不是只改外观）", chip.changed === true, JSON.stringify(chip));
+  check("chip 文字与接口一致", chip.consistent === true, JSON.stringify(chip));
+}
 
 // ③ 切口签能开合
 check("点切口签能展开面板", await js(`(async () => {
@@ -212,6 +223,7 @@ const latest = await js(`(async () => {
   p.scrollTop = 0;
   await new Promise((r) => setTimeout(r, 300));
   const shown = !b.hidden;
+  const scrollable = (p.scrollHeight - p.clientHeight) > 400;
 
   b.click();
   await new Promise((r) => setTimeout(r, 400));
@@ -221,9 +233,11 @@ const latest = await js(`(async () => {
   p.scrollTop = 0;
   await openChat();
   const todayAtBottom = p.scrollHeight - (p.scrollTop + p.clientHeight) < 40;
-  return { shown, atBottom, hiddenAfter, todayAtBottom };
+  return { shown, atBottom, hiddenAfter, todayAtBottom, scrollable };
 })()`);
-if (latest && latest.why) check("回到最新按钮", false, latest.why);
+if (latest && latest.why === 'no-btn') check("回到最新按钮", false, latest.why);
+else if (latest && latest.scrollable !== true) skip("回到最新按钮", "对话太短，滚不出 200px");
+else if (latest && latest.why) check("回到最新按钮", false, latest.why);
 else {
   check("滚上去露出「回到最新」", latest && latest.shown === true, JSON.stringify(latest));
   check("点它回到底（按钮随即隐藏）", latest && latest.atBottom === true && latest.hiddenAfter === true, JSON.stringify(latest));
@@ -250,9 +264,13 @@ const traceTab = await js(`(async () => {
   if (!p || p.hidden) return 'hidden';
   const box = document.getElementById('nb-trace');
   if (!box) return 'no-box';
-  return { text: box.textContent.slice(0, 120), steps: box.querySelectorAll('.nb-step').length };
+  const steps = box.querySelectorAll('.nb-step').length;
+  const text = box.textContent.trim().slice(0, 120);
+  if (!steps && text.indexOf('还没有过程') >= 0) return 'no-trace';
+  return { text, steps };
 })()`);
-if (traceTab === "no-tab" || traceTab === "hidden" || traceTab === "no-box") {
+if (traceTab === "no-trace") skip("过程签能开", "这一轮没有工具调用，本来就没有过程");
+else if (traceTab === "no-tab" || traceTab === "hidden" || traceTab === "no-box") {
   check("过程签能开", false, String(traceTab));
 } else {
   check("过程签能开（画出步数，不是空白）", traceTab.steps > 0 && (traceTab.text || "").length > 4,
@@ -334,7 +352,9 @@ const kb = await js(`(async () => {
 if (kb && kb.why) check("导航能键盘走", false, kb.why);
 else {
   check("左栏每个去处都能 Tab 聚焦（role+tabindex）", kb && kb.nav > 0 && kb.focusable === kb.nav, JSON.stringify(kb));
-  check("日期条目也能聚焦", kb && kb.days > 0 && kb.daysOk === true, JSON.stringify(kb));
+  // 空库（还没聊过）没有日期条目 —— 那不是失败，是没得测
+  if (kb && kb.days === 0) skip("日期条目也能聚焦", "空库，没有日期条目");
+  else check("日期条目也能聚焦", kb && kb.days > 0 && kb.daysOk === true, JSON.stringify(kb));
   check("Enter 键能触发导航", kb && kb.focused === true && /记忆/.test(kb.crumb || ''), JSON.stringify(kb));
 }
 
