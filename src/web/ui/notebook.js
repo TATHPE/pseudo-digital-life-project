@@ -332,6 +332,8 @@
 
   function paintTab(i){
     Array.prototype.forEach.call(document.querySelectorAll('.nb-tab'), function(b){
+      if (b.classList.contains('on')) b.setAttribute('aria-current', 'true');
+      else b.removeAttribute('aria-current');
       b.className = 'nb-tab' + (Number(b.getAttribute('data-t')) === 0 && Number($('nb-c0').textContent) > 0 ? ' wait' : '') +
         (Number(b.getAttribute('data-t')) === i ? ' on' : '');
     });
@@ -1027,6 +1029,9 @@
     VIEW = v;
     Array.prototype.forEach.call(document.querySelectorAll('.nb-go[data-v]'), function(x){
       x.className = 'nb-go' + (x.getAttribute('data-v') === v ? ' cur' : '');
+      // 选中态同时给念屏（a11y 审计 P2）
+      if (x.getAttribute('data-v') === v) x.setAttribute('aria-current', 'page');
+      else x.removeAttribute('aria-current');
     });
     var home = v === 'home';
     var chat = v === 'chat';

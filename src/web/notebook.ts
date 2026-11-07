@@ -34,6 +34,8 @@ export const NOTEBOOK = `<!doctype html>
   /* 叠加层：深色底上是白雾，浅色底上要反过来，否则一片隐形 */
   --tint1:rgba(233,240,242,.015);--tint2:rgba(233,240,242,.03);--tint3:rgba(233,240,242,.05);
   --ok:#3f7a3a;--warn:#8a6d1f;--err:#a8423a;
+  /* 危险动作与遮罩：以前散在各处硬写，现在收进 token（2026-11-07 a11y/主题审计 P2） */
+  --danger:#7a3b36;--danger-fg:#d08a85;--scrim:rgba(5,7,6,.9);--modal-scrim:rgba(0,0,0,.62);
   --mono:ui-monospace,"Cascadia Mono",Consolas,monospace;
   --sans:"HarmonyOS Sans SC","PingFang SC","Noto Sans SC","Source Han Sans SC","Microsoft YaHei UI","Microsoft YaHei",system-ui,sans-serif;
   /* 版式基准：两套完全一致，按 Hermes 来（2026-11-06） */
@@ -57,6 +59,7 @@ export const NOTEBOOK = `<!doctype html>
   --lh:1.75;
   /* 浅色底上的叠加层是**墨雾**，不是白雾 */
   --tint1:rgba(23,25,26,.02);--tint2:rgba(23,25,26,.035);--tint3:rgba(23,25,26,.06);
+  --danger:#a8423a;--danger-fg:#a8423a;--scrim:rgba(251,251,249,.92);--modal-scrim:rgba(23,25,26,.28);
 }
 /* 版式差异：左栏 248（Hermes 的 sidebar 宽） */
 /* 正文别跟着容器一起变宽：容器 1120 / 正文 720 */
@@ -64,14 +67,14 @@ export const NOTEBOOK = `<!doctype html>
 [data-theme="hermes"] .nb-sec{letter-spacing:.18em}
 [data-theme="hermes"] .nb-e .g .w{letter-spacing:.1em}
 /* 浅色下代码块与表格的底要更实一点，不然像没渲染 */
-[data-theme="hermes"] .nb-say pre{background:rgba(23,25,26,.04)}
-[data-theme="hermes"] .md-table th{background:rgba(23,25,26,.035)}
+[data-theme="hermes"] .nb-say pre{background:var(--tint2)}
+[data-theme="hermes"] .md-table th{background:var(--tint2)}
 /* 顶栏与输入区在浅色底上要有一条实线，不然糊在一起 */
-[data-theme="hermes"] .nb-top{border-bottom-color:rgba(23,25,26,.14)}
-[data-theme="hermes"] .nb-composer{border-top:1px solid rgba(23,25,26,.12)}
+[data-theme="hermes"] .nb-top{border-bottom-color:var(--line-dim)}
+[data-theme="hermes"] .nb-composer{border-top:1px solid var(--line-dim)}
 /* 滚动条：浅色底上用墨色滑块 */
-[data-theme="hermes"] ::-webkit-scrollbar-thumb{background:rgba(23,25,26,.18)}
-[data-theme="hermes"] ::-webkit-scrollbar-thumb:hover{background:rgba(23,25,26,.32)}
+[data-theme="hermes"] ::-webkit-scrollbar-thumb{background:var(--line-dim)}
+[data-theme="hermes"] ::-webkit-scrollbar-thumb:hover{background:var(--dim2)}
 
 
 /* ── 共用语汇（两套主题都用；颜色全部走变量）────────────────
@@ -208,8 +211,8 @@ body{background:var(--void);color:var(--ink);font:12.5px/1.75 var(--sans);
 .nb-btn{font:10px/1 var(--mono);letter-spacing:.08em;color:var(--ink);background:none;
   border:1px solid var(--line);padding:7px 10px;cursor:pointer;margin:2px 6px 2px 0}
 .nb-btn:hover{background:var(--ink);color:var(--void)}
-.nb-btn.danger{border-color:#7a3b36;color:#d08a85}
-.nb-btn.danger:hover{background:#7a3b36;color:var(--ink)}
+.nb-btn.danger{border-color:var(--danger);color:var(--danger-fg)}
+.nb-btn.danger:hover{background:var(--danger);color:var(--ink)}
 .nb-search{width:100%;max-width:420px;background:none;border:1px solid var(--line-dim);color:var(--ink);
   font:13px/1.6 var(--sans);padding:8px 10px;outline:none;margin:0 0 8px}
 .nb-search:focus{border-color:var(--line)}
@@ -237,7 +240,7 @@ body{background:var(--void);color:var(--ink);font:12.5px/1.75 var(--sans);
 .nb-actline .t{font:10px/1.6 var(--mono);color:var(--dim2);flex:none}
 .nb-actline .w{font:9px/1.6 var(--mono);color:var(--dim);flex:none}
 .nb-actline .x{color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.nb-pal{position:fixed;inset:0;z-index:50;background:rgba(5,7,6,.9);display:flex;align-items:flex-start;justify-content:center;padding-top:12vh}
+.nb-pal{position:fixed;inset:0;z-index:50;background:var(--scrim);display:flex;align-items:flex-start;justify-content:center;padding-top:12vh}
 .nb-pal[hidden]{display:none}
 .nb-palbox{width:min(620px,92vw);border:1px solid var(--line);background:var(--void)}
 .nb-palin{width:100%;background:none;border:0;border-bottom:1px solid var(--line-dim);color:var(--ink);font:14px/1.6 var(--sans);padding:12px 14px;outline:none}
@@ -245,7 +248,7 @@ body{background:var(--void);color:var(--ink);font:12.5px/1.75 var(--sans);
 .nb-palrow{display:flex;gap:10px;align-items:baseline;padding:8px 14px;cursor:pointer;border-bottom:1px solid var(--line-dim)}
 .nb-palrow.on{background:var(--ink);color:var(--void)}
 .nb-palrow .k{font:9px/1 var(--mono);letter-spacing:.12em;color:var(--dim2);flex:none;width:44px}
-.nb-palrow.on .k{color:rgba(11,14,11,.6)}
+.nb-palrow.on .k{color:var(--dim)}
 .nb-palrow .v{font:12.5px/1.5 var(--sans);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .nb-run{border-top:1px solid var(--line-dim);margin-bottom:6px}
 .nb-runrow{display:grid;grid-template-columns:84px 1fr auto;gap:12px;align-items:baseline;padding:9px 2px;border-bottom:1px solid var(--line-dim);font:12.5px/1.6 var(--sans)}
@@ -277,7 +280,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
 .nb-e:first-child{border-top:0}
 .nb-e .g{text-align:right;font:10px/1.7 var(--mono);color:var(--dim2);padding-top:5px}
 .nb-e .g .w{display:block;color:var(--dim);letter-spacing:.06em}
-.nb-modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.62);z-index:40}
+.nb-modal-bg{position:fixed;inset:0;background:var(--modal-scrim);z-index:40}
 .nb-modal{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:41;width:min(560px,92vw);max-height:80vh;overflow:auto;background:var(--void);border:1px solid var(--line);padding:16px 18px}
 .nb-step{border-left:1px solid var(--line-dim);padding:2px 0 6px 10px;margin:8px 0}
 .nb-step .hd{font:9px/1 var(--mono);letter-spacing:.16em;color:var(--dim2);margin-bottom:6px}
@@ -285,7 +288,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
 .nb-tr .w{display:inline-block;min-width:44px;color:var(--dim);margin-right:6px}
 .nb-tr.think{color:var(--dim)}
 .nb-tr.res{color:var(--dim2)}
-.nb-tr.err{color:#e06c6c}
+.nb-tr.err{color:var(--err)}
 /* 她写的 markdown 表格（榜单、对照表） */
 .md-table{border-collapse:collapse;margin:10px 0;font:12px/1.6 var(--mono)}
 .md-table th,.md-table td{border:1px solid var(--line-dim);padding:6px 9px;text-align:left;vertical-align:top}
@@ -335,7 +338,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
 .nb-spec{position:relative;border:1px solid var(--line-dim);padding:13px 13px 38px;min-height:132px;}
 .nb-spec:hover{border-color:var(--line);background:var(--tint2)}
 .nb-spec .k{font:9px/1 var(--mono);letter-spacing:.16em;color:var(--dim2);margin-bottom:8px}
-.nb-spec .v{font-size:14px;line-height:1.7;word-break:break-word}
+.nb-spec .v{font-size:12.5px;line-height:1.75;word-break:break-word}
 .nb-spec .lab{position:absolute;left:13px;right:13px;bottom:9px;display:flex;justify-content:space-between;
   gap:8px;font:9px/1.4 var(--mono);color:var(--dim2);border-top:1px solid var(--line-dim);padding-top:6px}
 .nb-spec.fade .v{color:var(--fade)}
@@ -361,7 +364,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
 .nb-panel[hidden]{display:none}
 .nb-panel h3{font:10px/1 var(--mono);letter-spacing:.16em;color:var(--dim2);margin:0 0 12px;font-weight:400}
 .nb-card{border:1px solid var(--line-dim);padding:10px 11px;margin-bottom:9px}
-.nb-card .t{font-size:13px;line-height:1.6}
+.nb-card .t{font-size:12.5px;line-height:1.75}
 .nb-card .s{font:10px/1.6 var(--mono);color:var(--dim2);margin-top:5px}
 .nb-card button{font:10px/1 var(--mono);background:none;color:var(--ink);border:1px solid var(--line);
   padding:6px 8px;margin-top:8px;cursor:pointer}
@@ -450,9 +453,9 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
 <body>
 <!--BOOT-->
 <div class="nb">
-  <div class="nb-cfgbar" id="nb-cfgbar" hidden></div>
+  <div class="nb-cfgbar" id="nb-cfgbar" role="status" aria-live="polite" hidden></div>
   <div class="nb-top">
-    <span><i class="nb-dot"></i><b id="nb-line">醒着</b></span>
+    <span><i class="nb-dot" aria-hidden="true"></i><b id="nb-line">醒着</b></span>
     <span id="nb-counts"></span>
     <span class="sp"></span>
     <button class="nb-modechip" id="nb-modechip" title="聊天：只靠记忆召回；工作：带上最近几轮 + 更宽的预算">聊天</button>
@@ -461,9 +464,9 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
   </div>
 
   <div class="nb-main">
-    <nav class="nb-index">
+    <nav class="nb-index" aria-label="记录与去处">
       <h2>记录</h2>
-      <div id="nb-days"></div>
+      <div id="nb-days" role="list" aria-label="按天"></div>
       <h2 style="margin-top:16px">去处</h2>
       <div class="nb-go" data-v="home" role="button" tabindex="0">工作台</div>
       <div class="nb-go" data-v="sess" role="button" tabindex="0">会话<span class="n" id="nb-nsess">…</span></div>
@@ -486,7 +489,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
       <div class="nb-sheet" id="nb-log"></div>
     </main>
 
-    <aside class="nb-tabs" id="nb-tabs">
+    <aside class="nb-tabs" id="nb-tabs" aria-label="卷宗">
       <div class="nb-rail">
         <button class="nb-tab" data-t="0" id="nb-t0">0<span class="c" id="nb-c0">0</span></button>
         <button class="nb-tab" data-t="1" id="nb-t1">I<span class="c" id="nb-c1">0</span></button>
@@ -501,7 +504,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
 
 <div class="nb-tick"><div id="nb-tickmsg"></div></div>
 <button class="nb-latest" id="nb-latest" hidden>回到最新 ↓</button>
-<div class="nb-pal" id="nb-pal" hidden>
+<div class="nb-pal" id="nb-pal" role="dialog" aria-modal="true" aria-label="调色板" hidden>
   <div class="nb-palbox">
     <input id="nb-palq" class="nb-palin" placeholder="搜会话 / 记忆 / 文档 / 页面　⌘K 或 Ctrl+K 打开，Esc 关掉" autocomplete="off">
     <div id="nb-palist"></div>
