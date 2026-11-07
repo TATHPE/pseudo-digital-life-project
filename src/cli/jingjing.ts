@@ -1384,6 +1384,67 @@ ${r.pass}/${r.total} 拦截/放行符合预期`);
       process.exitCode = r.pass === r.total ? 0 : 1;
       return;
     }
+    case "task": {
+      // 任务编排的最小切片（M7 起步，2026-11-07）：跨会话把一件事分几步做完。
+      // 用法：task add "目标" / task list / task show <id> / task tick <id> [--dry-run]
+      const sub = rest[0] || "list";
+      const { createTask, listTasks, getTask, setTaskStatus } = await import("../tasks.ts");
+      const d = openDb(dbFile);
+      if (sub === "add") {
+        const goal = rest.slice(1).join(" ").trim();
+        if (!goal) { console.log("用法: jingjing task add \"目标\""); process.exitCode = 1; return; }
+        const t = createTask(d.db, goal);
+        console.log(`已建任务 #${t.id}：${t.goal}`);
+        return;
+      }
+      if (sub === "list") {
+        const rows = listTasks(d.db);
+        if (!rows.length) { console.log("还没有任务。建一个：jingjing task add \"目标\""); return; }
+        for (const t of rows) {
+          const last = t.steps.length ? t.steps[t.steps.length - 1] : null;
+          console.log(`#${t.id} [${t.status}] ${t.goal}  （${t.steps.length} 步${t.stalled ? "，停滞 " + t.stalled : ""}）`);
+          if (last) console.log(`     上一步：${last.intent}${last.ok === false ? "（失败）" : ""}`);
+        }
+        return;
+      }
+      if (sub === "show") {
+        const t = getTask(d.db, Number(rest[1] ?? 0));
+        if (!t) { console.log("没有这个任务"); process.exitCode = 1; return; }
+        console.log(`#${t.id} [${t.status}] ${t.goal}`);
+        for (const s2 of t.steps) {
+          const mark = s2.ok === false ? "✗" : s2.verified === false ? "?" : "✓";
+          console.log(`  ${mark} ${s2.n}. ${s2.intent}${s2.verb ? "  ← " + s2.verb : ""}`);
+          if (s2.result) console.log(`       ${String(s2.result).slice(0, 160)}`);
+          if (s2.verifyWhy) console.log(`       验证：${s2.verifyWhy}`);
+        }
+        return;
+      }
+      if (sub === "tick") {
+        const t = getTask(d.db, Number(rest[1] ?? 0));
+        if (!t) { console.log("没有这个任务"); process.exitCode = 1; return; }
+        if (t.status !== "active") { console.log(`任务 #${t.id} 是 ${t.status}，不推进（先 task resume ${t.id}）`); return; }
+        const { tickOnce, localAsk, realRun } = await import("../taskrunner.ts");
+        const dry = rest.includes("--dry-run");
+        const deps = dry
+          ? { db: d.db, home: HOME, ask: async () => '{"intent":"（dry-run 不调模型）","done":true}', run: async () => ({ ok: true, out: "dry" }) }
+          : { db: d.db, home: HOME, ask: localAsk(HOME), run: realRun(HOME, d.db) };
+        const v = await tickOnce(deps, t);
+        if (v.kind === "finished") console.log(`任务 #${v.task.id} 完成：${v.task.steps[v.task.steps.length - 1]?.intent ?? ""}`);
+        else if (v.kind === "stalled") console.log(`任务 #${v.task.id} 连续两步没进展 → 已挂起，去问用户`);
+        else if (v.kind === "capped") console.log(`任务 #${v.task.id} 到步数上限 → 已挂起`);
+        else console.log(`第 ${v.step.n} 步：${v.step.intent} → ${v.step.ok ? "成功" : "失败"}${v.step.verified === false ? "（验证未过）" : ""}`);
+        return;
+      }
+      if (sub === "resume" || sub === "pause" || sub === "done" || sub === "abandon") {
+        const map = { resume: "active", pause: "paused", done: "done", abandon: "abandoned" } as const;
+        setTaskStatus(d.db, Number(rest[1] ?? 0), map[sub as keyof typeof map]);
+        console.log(`任务 #${rest[1]} → ${map[sub as keyof typeof map]}`);
+        return;
+      }
+      console.log("用法: task add \"目标\" | list | show <id> | tick <id> | resume/pause/done/abandon <id>");
+      process.exitCode = 1;
+      return;
+    }
     case "verb": {
       const name = rest[0];
       if (!name) { console.log("用法: jingjing verb <name> [jsonArgs]"); process.exitCode = 1; return; }

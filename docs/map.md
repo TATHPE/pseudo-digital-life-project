@@ -8,10 +8,10 @@
 
 | 项 | 数量 |
 |---|---|
-| 源文件（src/**/*.ts） | 116 |
-| 错误码 E_* | 231 |
+| 源文件（src/**/*.ts） | 118 |
+| 错误码 E_* | 235 |
 | verbs | 27 |
-| CLI 子命令 | 39 |
+| CLI 子命令 | 40 |
 
 ## 错误码 E_*
 
@@ -75,6 +75,7 @@
 | `E_EMBED_EMPTY` | `src/retrieve.ts` |
 | `E_EMPTY` | `src/agentguard.ts` `src/datadir.ts` `src/ingest.ts` `src/plugins.ts` `src/profile.ts` `src/selfupdate.ts` `src/store.ts` `src/web/server.ts` |
 | `E_EMPTY_EMBEDDING` | `src/embed.ts` |
+| `E_EMPTY_GOAL` | `src/tasks.ts` |
 | `E_EMPTY_PATCH` | `src/web/server.ts` |
 | `E_ENCODING` | `src/ingest.ts` `src/persona.ts` `src/web/server.ts` |
 | `E_EXISTS` | `src/plugins.ts` `src/verbs.ts` |
@@ -227,6 +228,9 @@
 | `E_SUPER_STILL_DENY` | `src/grant.ts` |
 | `E_TAINT_CONTRACT` | `src/store.ts` |
 | `E_TARGET_NOT_EMPTY` | `src/handoff.ts` |
+| `E_TASK_MODEL_HTTP_` | `src/taskrunner.ts` |
+| `E_TASK_PARSE` | `src/taskrunner.ts` |
+| `E_TASK_REPEAT` | `src/taskrunner.ts` |
 | `E_THREAD_CLOSED` | `src/cli/jingjing.ts` `src/web/server.ts` |
 | `E_TIMEOUT` | `src/verbs.ts` |
 | `E_TOKEN_EXPIRED` | `src/cli/redteam.ts` `src/shell.ts` |
@@ -283,7 +287,7 @@
 
 ## CLI 子命令
 
-`migrate` · `remember` · `search` · `verify` · `outage` · `serve` · `config` · `models` · `links` · `threads` · `proposal` · `grant` · `standing` · `persona` · `setup` · `capabilities` · `doctor` · `reembed` · `auth` · `usage` · `test` · `night` · `shell` · `ingest` · `docs` · `forget-doc` · `export` · `verify-export` · `import` · `smoke-tools` · `templates` · `redteam` · `verb` · `beat` · `eval` · `decay` · `bench` · `profile` · `bridge`
+`migrate` · `remember` · `search` · `verify` · `outage` · `serve` · `config` · `models` · `links` · `threads` · `proposal` · `grant` · `standing` · `persona` · `setup` · `capabilities` · `doctor` · `reembed` · `auth` · `usage` · `test` · `night` · `shell` · `ingest` · `docs` · `forget-doc` · `export` · `verify-export` · `import` · `smoke-tools` · `templates` · `redteam` · `verb` · `beat` · `eval` · `decay` · `bench` · `profile` · `bridge` · `task`
 
 ## 源文件
 
@@ -386,6 +390,8 @@
 | `src/store.ts` | 记忆读写（M0 最小面）：remember / 载入候选 / 批量衰减 */ |
 | `src/supergrant.ts` | 超级权限（2026-11-01，用户要的）： |
 | `src/surface.ts` | 浮现时机（J-4） |
+| `src/taskrunner.ts` | 任务编排的**执行器**（M7 最小切片的 tick）。 |
+| `src/tasks.ts` | 任务编排的最小切片（M7 起步，2026-11-07）。 |
 | `src/territory.ts` | 领地（16 §3.5）：它自己的那块磁盘。 |
 | `src/text.ts` | 中文 FTS5 必须用 bigram（12 §9.1 实测：unicode61 对中文完全失效） */ |
 | `src/threads.ts` | 线索层（借自衔枝 Twig 的 thread 概念，但**不新建表**）。 |
