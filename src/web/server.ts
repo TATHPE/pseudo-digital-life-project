@@ -131,6 +131,8 @@ export interface WebDeps {
   home: string;
   tools?: ToolRegistry;
   getChat?: () => ChatFn;
+  /** 云端能不能用（有 key 才算）。没有就整轮走本地、不给工具 */
+  cloudReady?: () => boolean;
 
   /** 启动时检测到的缺口（只报告一次，首轮后清空） */
   pendingOutage?: Outage | null;
@@ -2499,11 +2501,16 @@ export function createWebServer(deps: WebDeps) {
           skillIdx = sk.skillsIndexText(sk.indexableSkills(sk.scanSkills(deps.home))) || null;
         } catch { /* 没有技能不影响对话 */ }
         // 我现在的权限（P15）：不说这一句，她明明能跑命令也会说「我不能操作你的电脑」
+        // 这一轮是不是只能靠本地：云端 key 没有 → 直接用本地（也省掉一次 401 往返）
+        let localOnlyTurn = false;
+        try { localOnlyTurn = deps.cloudReady ? !deps.cloudReady() : false; } catch { localOnlyTurn = false; }
         let powers: string | null = null;
         try {
           const sg = await import("../supergrant.ts");
           const perm = currentPreset(deps.home, now());
-          powers = sg.powersLine(deps.home, perm.preset, egressStatus(deps.home, { now: now() }).until !== null);
+          powers = localOnlyTurn
+            ? "本次没有工具：只能说话，不能读文件、不能跑命令、不能调用任何工具。需要动手的事，告诉用户「这要云端模型，去设置里配 key」。"
+            : sg.powersLine(deps.home, perm.preset, egressStatus(deps.home, { now: now() }).until !== null);
         } catch { /* 读不到就不加这一槽 */ }
         const selfState = advance(deps.db, { turns: 1, silenceDays: last ? (now().getTime() - new Date(last.ts).getTime()) / 86400000 : 0 }, now());
         // 缺口：一天最多问一次（冷却写 meta，免得她每轮查户口）
@@ -2604,7 +2611,7 @@ export function createWebServer(deps: WebDeps) {
             // 真要防的只有两件事：无限循环和无限花钱 —— 所以保留上限、但放宽，并允许 env 覆盖。
             const envSteps = Number(process.env.JJ_MAX_STEPS ?? 0);
             const steps = envSteps > 0 ? Math.min(120, envSteps) : (mode === "work" ? (supOn ? 60 : 45) : (supOn ? 30 : 24));
-            const agent = runAgent({ chat, tools: deps.tools!, maxSteps: steps }, brief.text, text);
+            const agent = runAgent({ chat, tools: deps.tools!, maxSteps: steps, noTools: localOnlyTurn }, brief.text, text);
             for await (const ev of agent) {
               if (aborted) break;
               if (ev.type === "delta") {

@@ -69,6 +69,12 @@ export interface AgentDeps {
    * 不是「先列步骤、改完自己验」——那会把两轮变成三轮。
    */
   guards?: boolean;
+  /**
+   * 这一轮没有工具（本地兜底时用）。
+   * 不给 schema 的同时，简报里的「权限」也必须写成没有工具 —— 只做前半句会得到
+   * 「我跑了 npm test，结果 25/30 通过」这种编造（2026-11-07 探针实测）。
+   */
+  noTools?: boolean;
 }
 
 type Msg =
@@ -78,10 +84,11 @@ type Msg =
 
 export async function* runAgent(deps: AgentDeps, system: string, user: string): AsyncGenerator<AgentEvent, void, void> {
   const maxSteps = deps.maxSteps ?? 6;
-  const guards = deps.guards !== false;
+  // 没有工具时不该讨计划：C-1/C-2 那两条回路假设能动手，没工具时它只会把计划念两遍
+  const guards = deps.guards !== false && !deps.noTools;
   const cap = deps.maxToolChars ?? 4000;
   const messages: Msg[] = [{ role: "system", content: system }, { role: "user", content: user }];
-  const schema = deps.tools.schema();
+  const schema = deps.noTools ? [] : deps.tools.schema();
   const guard = newGuard();
 
   // C-2：像任务就先讨一个步骤清单（只讨一次）

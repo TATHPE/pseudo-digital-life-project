@@ -399,6 +399,16 @@ async function main(): Promise<void> {
         ...(deskToken ? { deskToken } : {}),
         db: d.db, inboxDir: inbox, home: HOME, getTransport, getEmbedder, getConfig,
         tools: registry, getChat: () => chatWithFallback, pendingOutage: boot1.outage,
+        // 云端有没有钥匙：没有就整轮按「本地、无工具」处理（不先撞一次 401）
+        cloudReady: () => {
+          try {
+            const c = resolveConfig(HOME);
+            const ex = (c.roles as Record<string, { provider?: string; kind?: string }>).express;
+            if (!ex) return false;
+            if (ex.kind === "local") return true;   // 本来就是本地，无需降级
+            return Boolean(store.get(ex.provider as Provider));
+          } catch { return true; }
+        },
         // running = 我这次启动实际加载的那份配置的指纹；磁盘后来改了就对不上
         mcpInfo: { servers: mcp.servers, tools: mcp.tools, errors: mcp.errors,
           running: (await import("../plugins.ts")).mcpFingerprint(HOME) },
