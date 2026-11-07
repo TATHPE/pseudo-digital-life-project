@@ -228,16 +228,16 @@ body{background:var(--void);color:var(--ink);font:12.5px/1.75 var(--sans);
 .nb-audit{font:11px/1.7 var(--mono);color:var(--dim);margin-top:6px}
 .nb-appr{border-top:1px solid var(--line-dim);padding:12px 2px}
 .nb-gapq{border-top:1px solid var(--line-dim);padding:12px 2px}
-.nb-gapt{font:14px/1.7 var(--sans);color:var(--ink)}
+.nb-gapt{font:15px/1.7 var(--sans);color:var(--ink)}
 .nb-gapt .m{display:block;font:10px/1.6 var(--mono);color:var(--dim2);margin-top:2px}
 .nb-grid2{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:6px}
 .nb-recipe{display:block;text-align:left;border:1px solid var(--line-dim);background:none;color:var(--ink);padding:10px 11px;cursor:pointer}
 .nb-recipe:hover{border-color:var(--line);background:var(--tint3)}
 .nb-recipe .n{display:block;font:12.5px/1.4 var(--sans)}
-.nb-recipe .d{display:block;font:10px/1.5 var(--mono);color:var(--dim2);margin-top:4px}
+.nb-recipe .d{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;font:9.5px/1.55 var(--mono);color:var(--dim2);margin-top:5px}
 .nb-actline{display:flex;gap:10px;align-items:baseline;padding:5px 2px;border-bottom:1px solid var(--line-dim);cursor:pointer;font:12px/1.6 var(--sans)}
 .nb-actline:hover{background:var(--tint2)}
-.nb-actline .t{font:10px/1.6 var(--mono);color:var(--dim2);flex:none}
+.nb-actline .t{font:9.5px/1.6 var(--mono);color:var(--dim2);flex:none;font-variant-numeric:tabular-nums}
 .nb-actline .w{font:9px/1.6 var(--mono);color:var(--dim);flex:none}
 .nb-actline .x{color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .nb-pal{position:fixed;inset:0;z-index:50;background:var(--scrim);display:flex;align-items:flex-start;justify-content:center;padding-top:12vh}
@@ -449,6 +449,30 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
 [role="button"]:focus-visible,button:focus-visible,a:focus-visible,textarea:focus-visible,input:focus-visible{
   outline:2px solid var(--ink);outline-offset:-2px}
 .nb-day:focus-visible,.nb-tab:focus-visible{outline-offset:0}
+
+/* 浏览器自带表面（2026-11-07 polish）：这些默认值不属于任何设计系统，得自己接管 */
+::selection{background:var(--ink);color:var(--void)}
+html{caret-color:var(--cyan)}
+/* 数字一律等宽对齐：时间戳、计数、花费、步骤号 */
+.nb-e .g,.nb-meta,.nb-counts,.nb-top,.nb-kv,.nb-runrow .v,.nb-row .m,.nb-logrow,.nb-audit,.nb-metric b{
+  font-variant-numeric:tabular-nums}
+/* 链接：偏移一点，别贴着字 */
+a{text-underline-offset:2px;text-decoration-thickness:1px}
+
+/* 间距节奏收成 8 的倍数：同一页面里 22/26/18/14 混着用会显脏 */
+.nb-sec{margin:24px 0 8px}
+.nb-cards{margin:16px 0 8px}
+.nb-kv{margin:8px 0 16px}
+.nb-pagehd{padding:16px 16px 8px}
+.nb-wrap{padding:0 16px 48px}
+
+/* 空状态：一句话 + 一句提示，别只丢一行灰字 */
+.nb-empty{line-height:1.7}
+
+/* 按钮的禁用态（做到一半的按钮会临时 disabled，没样式就像坏了） */
+.nb-btn:disabled,.nb-opt:disabled{opacity:.45;cursor:default}
+/* 输入框的焦点：底色不动，只把底边压深一格 */
+input:focus-visible,textarea:focus-visible{outline:none;border-bottom-color:var(--ink)}
 </style></head>
 <body>
 <!--BOOT-->
