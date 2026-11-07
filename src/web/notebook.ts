@@ -473,6 +473,38 @@ a{text-underline-offset:2px;text-decoration-thickness:1px}
 .nb-btn:disabled,.nb-opt:disabled{opacity:.45;cursor:default}
 /* 输入框的焦点：底色不动，只把底边压深一格 */
 input:focus-visible,textarea:focus-visible{outline:none;border-bottom-color:var(--ink)}
+
+/* ── 动效（2026-11-07）─────────────────────────────
+   Operate 模式：只做「状态变了」和「东西到了」这两类，不做入场编排。
+   签名动作：她的竖线从 0 长起来（1px 线是这套世界的记号）。 */
+@keyframes nb-line-grow{from{transform:scaleY(0)}to{transform:scaleY(1)}}
+@keyframes nb-rise{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+@keyframes nb-fade{from{opacity:0}to{opacity:1}}
+@keyframes nb-drop{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+@keyframes nb-blink{0%,49%{opacity:1}50%,100%{opacity:0}}
+
+/* 新落地的一条：抬起 4px 到位（只在刚追加时加 .fresh） */
+.nb-e.fresh{animation:nb-rise .18s cubic-bezier(.2,.8,.2,1) both}
+/* 她的那条：竖线从顶端长下来 */
+.nb-e.fresh .nb-say{transform-origin:top;animation:nb-line-grow .22s cubic-bezier(.2,.8,.2,1) both}
+/* 流式正文末尾的方块光标 */
+.nb-say .streaming::after{content:"";display:inline-block;width:6px;height:1em;vertical-align:-2px;
+  margin-left:3px;background:var(--ink);animation:nb-blink 1.05s steps(1) infinite}
+/* 过程追加：只让最新那一行淡进来（整栏重绘时不会重复演） */
+.nb-step:last-child{animation:nb-fade .14s ease-out both}
+/* 面板切换：内容在换，只做一次短淡入 */
+.nb-panel:not([hidden]){animation:nb-fade .12s ease-out both}
+/* 横幅从上面掉下来（它是「出现了」这件事本身） */
+.nb-cfgbar:not([hidden]){animation:nb-drop .16s ease-out both}
+/* 按压：按钮给一点手感，不做位移 */
+.nb-btn:active,.nb-opt:active,.nb-jump:active{transform:translateY(1px)}
+.nb-btn,.nb-opt,.nb-jump,.nb-tab{transition:background-color .12s,color .12s,border-color .12s}
+/* 关掉动效：不劫持状态变化，只去掉位移与闪烁 */
+@media (prefers-reduced-motion: reduce){
+  .nb-e.fresh,.nb-e.fresh .nb-say,.nb-step:last-child,.nb-panel:not([hidden]),.nb-cfgbar:not([hidden]){animation:none}
+  .nb-say .streaming::after{animation:none}
+  .nb-btn:active,.nb-opt:active,.nb-jump:active{transform:none}
+}
 </style></head>
 <body>
 <!--BOOT-->

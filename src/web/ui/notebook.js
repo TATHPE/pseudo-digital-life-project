@@ -467,15 +467,17 @@
     if (TAB === 4) paintTrace();
 
     var mine = document.createElement('article');
-    mine.className = 'nb-e me';
+    mine.className = 'nb-e me fresh';
     mine.innerHTML = '<div class="g">' + hhmm(new Date().toISOString()) + '<span class="w">你</span></div>' +
       '<div class="b"><div class="nb-say"><div>' + esc(text) + '</div></div></div>';
     $('nb-log').appendChild(mine);
 
     var her = document.createElement('article');
-    her.className = 'nb-e her';
+    her.className = 'nb-e her fresh';
     her.innerHTML = '<div class="g">' + hhmm(new Date().toISOString()) + '<span class="w">她</span></div>' +
       '<div class="b"><div class="nb-say"><div id="nb-live"></div></div></div>';
+    var liveBox = her.querySelector('#nb-live');
+    if (liveBox) liveBox.className = 'streaming';
     $('nb-log').appendChild(her);
     $('nb-page').scrollTop = $('nb-page').scrollHeight;
 
@@ -493,7 +495,9 @@
             if (line.indexOf('data: ') !== 0) return;
             var ev;
             try { ev = JSON.parse(line.slice(6)); } catch(e){ return; }
-            if (ev.type === 'reset') {
+            if (ev.type === 'done') {
+              var lb = $('nb-live'); if (lb) lb.className = '';
+            } else if (ev.type === 'reset') {
               var lv = $('nb-live'); if (lv) lv.textContent = '';
             } else if (ev.type === 'delta') {
               var live = $('nb-live'); if (live) live.textContent += ev.text;

@@ -383,7 +383,18 @@ else {
   check("能从页面建任务", taskPage && taskPage.created === true, JSON.stringify(taskPage));
 }
 
-// ⑦ 回到记录
+// ⑥h 动效：关键帧在、且带 reduced-motion 兜底（不然有人会因为动效难受）
+const motion = await js(`(() => {
+  const rules = [...document.styleSheets].flatMap((s) => { try { return [...s.cssRules]; } catch { return []; } });
+  const names = rules.filter((r) => r.type === 7).map((r) => r.name);
+  const hasReduce = JSON.stringify(rules.map((r) => r.cssText.slice(0, 80))).includes("prefers-reduced-motion");
+  return { names, hasReduce };
+})()`);
+check("动效关键帧在（rise/line-grow/fade/drop）",
+  ["nb-rise", "nb-line-grow", "nb-fade", "nb-drop"].every((n) => (motion.names || []).includes(n)), JSON.stringify(motion));
+check("动效有 reduced-motion 兜底", motion.hasReduce === true, JSON.stringify(motion));
+
+// ⑦ 回到记录// ⑦ 回到记录
 check("能回到记录页", await js(`(async () => {
   const b = document.getElementById('nb-board-btn');
   b.click();
