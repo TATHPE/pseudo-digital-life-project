@@ -72,7 +72,7 @@ export interface CapabilitiesDeps {
   home?: string;
 }
 
-const VERSION = "0.1.1";
+const VERSION = "0.1.0";
 
 export async function capabilities(deps: CapabilitiesDeps): Promise<Capabilities> {
   const cfg = deps.cfg ?? (deps.home ? resolveConfig(deps.home) : null);
