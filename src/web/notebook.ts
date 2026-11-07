@@ -473,7 +473,8 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
       <div class="nb-go" data-v="mem" role="button" tabindex="0">记忆<span class="n" id="nb-nmem">…</span></div>
       <div class="nb-go" data-v="docs" role="button" tabindex="0">文档<span class="n" id="nb-ndocs">…</span></div>
       <div class="nb-go" data-v="cap" role="button" tabindex="0">能力</div>
-      <div class="nb-go" data-v="logs" role="button" tabindex="0">日志</div>
+      <div class="nb-go" data-v="task" role="button" tabindex="0">任务<span class="n" id="nb-ntask">…</span></div>
+<div class="nb-go" data-v="logs" role="button" tabindex="0">日志</div>
       <div class="nb-go" data-v="files" role="button" tabindex="0">文件</div>
       <div class="nb-go" data-v="git" role="button" tabindex="0">校样</div>
       <div class="nb-go" data-v="cfg" role="button" tabindex="0">设置</div>

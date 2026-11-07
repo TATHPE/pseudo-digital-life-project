@@ -9,7 +9,7 @@
 | 项 | 数量 |
 |---|---|
 | 源文件（src/**/*.ts） | 118 |
-| 错误码 E_* | 235 |
+| 错误码 E_* | 237 |
 | verbs | 27 |
 | CLI 子命令 | 40 |
 
@@ -159,6 +159,7 @@
 | `E_NO_SHELL` | `src/verbs.ts` |
 | `E_NO_SKILL` | `src/skills.ts` |
 | `E_NO_TARGET` | `src/cli/deploy.ts` |
+| `E_NO_TASK` | `src/web/server.ts` |
 | `E_NO_TEMPLATE` | `src/shell.ts` |
 | `E_NO_TRASH` | `src/verbs.ts` |
 | `E_NO_TURN` | `src/web/server.ts` |
@@ -229,6 +230,7 @@
 | `E_TAINT_CONTRACT` | `src/store.ts` |
 | `E_TARGET_NOT_EMPTY` | `src/handoff.ts` |
 | `E_TASK_MODEL_HTTP_` | `src/taskrunner.ts` |
+| `E_TASK_NOT_ACTIVE` | `src/web/server.ts` |
 | `E_TASK_PARSE` | `src/taskrunner.ts` |
 | `E_TASK_REPEAT` | `src/taskrunner.ts` |
 | `E_THREAD_CLOSED` | `src/cli/jingjing.ts` `src/web/server.ts` |

@@ -435,7 +435,26 @@ async function main(): Promise<void> {
           }
           return out;
         };
+        // 任务推进：心跳每 10 分钟顺带推一步（她自己在闲时干活，不用人催）
+        // 只在有 active 任务、且最近 10 分钟没人说话时动 —— 别在对话中间插队
+        const TASK_EVERY = 10;
+        let beatN = 0;
+        const taskLoop = async () => {
+          if (process.env.JJ_TASK_TICK === "0") return;
+          try {
+            const { listTasks, getTask } = await import("../tasks.ts");
+            const { tickOnce, localAsk, realRun } = await import("../taskrunner.ts");
+            const active = listTasks(d.db, "active");
+            if (!active.length) return;
+            const t = getTask(d.db, active[0]!.id);
+            if (!t) return;
+            const v = await tickOnce({ db: d.db, home: HOME, ask: localAsk(HOME), run: realRun(HOME, d.db) }, t);
+            console.log(`[task] #${t.id} ${v.kind}` + ("step" in v ? ` 第 ${v.step.n} 步：${v.step.intent.slice(0, 40)}` : ""));
+          } catch (e) { console.log("[task] error", String(e).slice(0, 120)); }
+        };
         console.log("心跳已启动：每 60s 判定一次（静音 23:30–08:00，每日 ≤3 次）");
+        // 每 10 个心跳（10 分钟）推进一步
+        setInterval(() => { beatN++; if (beatN % TASK_EVERY === 0) void taskLoop(); }, 60_000);
         setInterval(() => {
           void beat({ db: d.db, inboxDir: inbox, draft }).then((r) => {
             const tag = r.decision.send ? "SEND" : `DROP(${r.decision.gate})`;

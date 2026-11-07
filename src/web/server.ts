@@ -1210,6 +1210,47 @@ export function createWebServer(deps: WebDeps) {
         return;
       }
 
+      // ── 任务编排（M7 最小切片）：列表 / 推进 / 改状态 / 新建 ──
+      if (req.method === "GET" && url.pathname === "/api/tasks") {
+        const tk = await import("../tasks.ts");
+        const all = tk.listTasks(deps.db);
+        json(res, 200, { tasks: all.map((t) => ({ id: t.id, goal: t.goal, status: t.status, stalled: t.stalled,
+          steps: t.steps.map((x) => ({ n: x.n, intent: x.intent, verb: x.verb ?? null, ok: x.ok ?? null,
+            verified: x.verified ?? null, result: (x.result ?? "").slice(0, 400), verifyWhy: x.verifyWhy ?? null, at: x.at })) })) });
+        return;
+      }
+      if (req.method === "POST" && url.pathname === "/api/tasks") {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
+        const body = JSON.parse(await readBody(req)) as { action?: string; id?: number; goal?: string };
+        const tk = await import("../tasks.ts");
+        if (body.action === "create") {
+          try {
+            const t = tk.createTask(deps.db, String(body.goal ?? ""));
+            json(res, 200, { ok: true, task: { id: t.id, goal: t.goal, status: t.status } });
+          } catch (e) { json(res, 400, { error: String((e as Error).message) }); }
+          return;
+        }
+        const id = Number(body.id ?? 0);
+        const t = tk.getTask(deps.db, id);
+        if (!t) { json(res, 404, { error: "E_NO_TASK" }); return; }
+        if (body.action === "pause" || body.action === "resume" || body.action === "done" || body.action === "abandon") {
+          const map = { pause: "paused", resume: "active", done: "done", abandon: "abandoned" } as const;
+          tk.setTaskStatus(deps.db, id, map[body.action as keyof typeof map]);
+          json(res, 200, { ok: true, status: map[body.action as keyof typeof map] });
+          return;
+        }
+        if (body.action === "tick") {
+          if (t.status !== "active") { json(res, 409, { error: "E_TASK_NOT_ACTIVE", status: t.status }); return; }
+          const { tickOnce, localAsk, realRun } = await import("../taskrunner.ts");
+          const verdict = await tickOnce({ db: deps.db, home: deps.home, ask: localAsk(deps.home), run: realRun(deps.home, deps.db) }, t);
+          json(res, 200, { ok: true, kind: verdict.kind, stalled: verdict.task.stalled, status: verdict.task.status,
+            step: "step" in verdict ? { n: verdict.step.n, intent: verdict.step.intent, ok: verdict.step.ok, verified: verdict.step.verified ?? null, result: (verdict.step.result ?? "").slice(0, 400) } : null });
+          return;
+        }
+        json(res, 400, { error: "E_BAD_ACTION", why: "create / tick / pause / resume / done / abandon" });
+        return;
+      }
+
       // ── 工作区域：数据放哪（2026-11-06 用户：不能全在 C 盘）──
       if (req.method === "GET" && url.pathname === "/api/where") {
         const dd = await import("../datadir.ts");

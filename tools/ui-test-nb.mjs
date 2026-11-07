@@ -338,6 +338,31 @@ else {
   check("Enter 键能触发导航", kb && kb.focused === true && /记忆/.test(kb.crumb || ''), JSON.stringify(kb));
 }
 
+// ⑥g 任务页（M7 最小切片）：能进、能建、卡片会出现
+const taskPage = await js(`(async () => {
+  const goBtn = [...document.querySelectorAll('.nb-go[data-v="task"]')][0];
+  if (!goBtn) return { why: 'no-nav' };
+  goBtn.click();
+  await new Promise((r) => setTimeout(r, 700));
+  const hasInput = !!document.getElementById('nb-taskgoal');
+  const hasAdd = !!document.getElementById('nb-taskadd');
+  const before = document.querySelectorAll('#nb-tasks .nb-card').length;
+  const r = await fetch('/api/tasks', { method: 'POST', headers: { 'x-jj': '1', 'content-type': 'application/json' },
+    body: JSON.stringify({ action: 'create', goal: 'UI 测试建的任务' }) });
+  const j = await r.json();
+  await new Promise((res) => setTimeout(res, 500));
+  const id = j && j.task ? j.task.id : 0;
+  // 收尾：别在测试库里留垃圾
+  if (id) await fetch('/api/tasks', { method: 'POST', headers: { 'x-jj': '1', 'content-type': 'application/json' },
+    body: JSON.stringify({ action: 'abandon', id }) });
+  return { hasInput, hasAdd, created: !!id, crumb: (document.getElementById('nb-crumb') || {}).textContent, before };
+})()`);
+if (taskPage && taskPage.why) check("任务页能进", false, taskPage.why);
+else {
+  check("任务页能进、有输入框和建任务按钮", taskPage && taskPage.hasInput && taskPage.hasAdd, JSON.stringify(taskPage));
+  check("能从页面建任务", taskPage && taskPage.created === true, JSON.stringify(taskPage));
+}
+
 // ⑦ 回到记录
 check("能回到记录页", await js(`(async () => {
   const b = document.getElementById('nb-board-btn');

@@ -24,7 +24,7 @@
 
   // 面包屑：现在的「在哪」。分两段，末段加粗。
   var CRUMB = { home: '工作台', chat: '记录', sess: '会话', mem: '记忆', docs: '文档', cap: '能力',
-    logs: '日志', files: '文件', git: '校样', cfg: '设置', gap: '还缺', approvals: '待你处理', board: '她收着的' };
+    logs: '日志', files: '文件', git: '校样', cfg: '设置', gap: '还缺', approvals: '待你处理', board: '她收着的', task: '任务' };
   function setCrumb(v, extra){
     var el = $('nb-crumb');
     if (!el) return;
@@ -1025,6 +1025,86 @@
       (extra || '') + '</div>';
   }
   function wrap(html){ return '<div class="nb-wrap">' + html + '</div>'; }
+  // ── 任务（M7 最小切片）：跨会话把一件事分几步做完 ───────────
+  function taskView(){
+    var el = $('nb-view');
+    el.innerHTML = head('任务', '<span class="nb-empty" id="nb-taskmsg"></span>') + wrap(
+      '<div class="nb-actrow"><input id="nb-taskgoal" class="nb-search" placeholder="要她做完什么？（一句话）">' +
+      '<button class="nb-btn" id="nb-taskadd">建任务</button></div>' +
+      '<div id="nb-tasks"><div class="nb-empty">读取中…</div></div>');
+
+    function paint(){
+      fetch('/api/tasks').then(function(r){ return r.json(); }).then(function(j){
+        var box = $('nb-tasks');
+        if (!box) return;
+        var items = (j && j.tasks) || [];
+        var n = $('nb-ntask'); if (n) n.textContent = String(items.filter(function(t){ return t.status === 'active'; }).length);
+        if (!items.length) { box.innerHTML = '<div class="nb-empty">还没有任务。上面写一句目标就能建一个 —— 她会一步一步做，卡住会来问你。</div>'; return; }
+        box.innerHTML = items.map(function(t){
+          var mark = t.status === 'active' ? '进行中' : t.status === 'paused' ? '挂起（等你）' : t.status === 'done' ? '完成' : '放弃';
+          var steps = (t.steps || []).map(function(x){
+            var sm = x.ok === false ? '✗' : x.verified === false ? '?' : '✓';
+            return '<div class="nb-row" style="padding:6px 2px"><span class="tag">' + sm + ' ' + x.n + '</span>' + esc(x.intent) +
+              (x.verb ? '<span class="m">' + esc(x.verb) + (x.verifyWhy ? ' · ' + esc(x.verifyWhy) : '') + '</span>' :
+                '<span class="m">' + esc(x.verifyWhy || '') + '</span>') + '</div>';
+          }).join('');
+          return '<div class="nb-card">' +
+            '<div class="t">#' + t.id + ' ' + esc(t.goal) + '</div>' +
+            '<div class="s">' + esc(mark) + (t.stalled ? ' · 连续没进展 ' + t.stalled : '') + ' · ' + (t.steps || []).length + ' 步</div>' +
+            (steps || '') +
+            '<div class="nb-actrow" style="margin-top:8px">' +
+              (t.status === 'active'
+                ? '<button class="nb-btn" data-tick="' + t.id + '">推进一步</button>' +
+                  '<button class="nb-btn" data-pause="' + t.id + '">挂起</button>'
+                : (t.status === 'paused' ? '<button class="nb-btn" data-resume="' + t.id + '">继续</button>' : '')) +
+              (t.status === 'done' || t.status === 'abandoned' ? '' : '<button class="nb-btn danger" data-abandon="' + t.id + '">放弃</button>') +
+            '</div></div>';
+        }).join('');
+
+        Array.prototype.forEach.call(box.querySelectorAll('[data-tick]'), function(b){
+          b.onclick = function(){
+            var m = $('nb-taskmsg'); if (m) m.textContent = '推进中…（要问一次模型再执行一步，可能十几秒）';
+            b.disabled = true;
+            fetch('/api/tasks', { method:'POST', headers:H, body: JSON.stringify({ action:'tick', id: Number(b.getAttribute('data-tick')) }) })
+              .then(function(r){ return r.json(); })
+              .then(function(j){
+                var m2 = $('nb-taskmsg');
+                if (m2) m2.textContent = j && j.error ? ('没推进：' + (j.why || j.error)) : ('第 ' + (j.step ? j.step.n : '?') + ' 步 → ' + (j.kind || ''));
+                paint();
+                checkSetup();
+              }).catch(function(){ var m3 = $('nb-taskmsg'); if (m3) m3.textContent = '推进失败'; });
+          };
+        });
+        Array.prototype.forEach.call(box.querySelectorAll('[data-pause],[data-resume],[data-abandon]'), function(b){
+          b.onclick = function(){
+            var act = b.hasAttribute('data-pause') ? 'pause' : b.hasAttribute('data-resume') ? 'resume' : 'abandon';
+            var id = Number(b.getAttribute('data-' + act));
+            fetch('/api/tasks', { method:'POST', headers:H, body: JSON.stringify({ action: act, id: id }) })
+              .then(function(r){ return r.json(); }).then(function(){ paint(); }).catch(function(){});
+          };
+        });
+      }).catch(function(){ var box = $('nb-tasks'); if (box) box.innerHTML = '<div class="nb-empty">读取失败。</div>'; });
+    }
+
+    var addBtn = $('nb-taskadd');
+    if (addBtn) addBtn.onclick = function(){
+      var i = $('nb-taskgoal'), m = $('nb-taskmsg');
+      var goal = String(i && i.value || '').trim();
+      if (!goal) { if (m) m.textContent = '先写一句目标'; return; }
+      fetch('/api/tasks', { method:'POST', headers:H, body: JSON.stringify({ action:'create', goal: goal }) })
+        .then(function(r){ return r.json(); })
+        .then(function(j){
+          if (j && j.error) { if (m) m.textContent = j.why || j.error; return; }
+          if (i) i.value = '';
+          if (m) m.textContent = '已建任务 #' + (j.task ? j.task.id : '?');
+          paint();
+        }).catch(function(){ if (m) m.textContent = '建任务失败'; });
+    };
+    var gi = $('nb-taskgoal');
+    if (gi) gi.onkeydown = function(e){ if (e.key === 'Enter') { var b = $('nb-taskadd'); if (b) b.click(); } };
+
+    paint();
+  }
   function go(v){
     VIEW = v;
     Array.prototype.forEach.call(document.querySelectorAll('.nb-go[data-v]'), function(x){
@@ -1061,6 +1141,7 @@
     else if (v === 'git') gitView();
     else if (v === 'cfg') cfgView();
     else if (v === 'gap') gapView();
+    else if (v === 'task') taskView();
     else if (v === 'sess') sessView();
     else if (v === 'approvals') approvalsView();
     else el.innerHTML = head('？') + wrap('<div class="nb-empty">没有这一页。</div>');
@@ -2037,13 +2118,13 @@
   loadMode();
   checkSetup();
   loadState(); loadTimeline(); loadTabs(); loadHome(); loadAvatars();
-  // 深链接：?view=home|chat|board|mem|docs|cap|git|gap|cfg（截图、书签、排障都靠它）
+  // 深链接：?view=home|chat|board|mem|docs|cap|git|gap|task|cfg（截图、书签、排障都靠它）
   (function(){
     var m = /[?&]view=([a-z]+)/.exec(location.search || '');
     var v = m ? m[1] : '';
     if (v === 'board') { go('home'); setTimeout(function(){ Board(true); }, 120); return; }
     if (v === 'chat') { go('chat'); return; }
-    if (['mem','docs','cap','git','cfg','gap','sess','approvals','logs','files'].indexOf(v) >= 0) { setTimeout(function(){ go(v); }, 120); return; }
+    if (['mem','docs','cap','git','cfg','gap','task','sess','approvals','logs','files'].indexOf(v) >= 0) { setTimeout(function(){ go(v); }, 120); return; }
     go('home');
     if (location.search.indexOf("pal=1") >= 0) setTimeout(palOpen, 200);
   })();
