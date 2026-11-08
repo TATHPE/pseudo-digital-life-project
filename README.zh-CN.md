@@ -100,12 +100,13 @@ SQLite：memories + chunks + FTS5 + 向量
 
 | 想知道 | 读 |
 |---|---|
-| 定义与验收口径（四条件 / L0–L4 / 五组指标） | [`docs/0-定义-数字生命.md`](docs/0-定义-数字生命.md) |
-| 衰减、生命周期、再巩固、心跳 | [`docs/01-记忆动力学.md`](docs/01-记忆动力学.md) |
-| 表结构、分块、两阶段检索 | [`docs/02-存储与索引层.md`](docs/02-存储与索引层.md) |
-| 能力分级 T0–T4、权限与审计 | [`docs/04-执行层与权限分级.md`](docs/04-执行层与权限分级.md) |
-| 界面与上下文的取舍 | [`docs/17-界面与上下文.md`](docs/17-界面与上下文.md) |
-| 基准与口径（能跟谁比、不能跟谁比） | [`docs/24-基准与口径.md`](docs/24-基准与口径.md) |
+| 定义与验收口径（四条件 / L0–L4 / 五组指标） | [`docs/design/0-定义-数字生命.md`](docs/design/0-定义-数字生命.md) |
+| 衰减、生命周期、再巩固、心跳 | [`docs/design/01-记忆动力学.md`](docs/design/01-记忆动力学.md) |
+| 表结构、分块、两阶段检索 | [`docs/design/02-存储与索引层.md`](docs/design/02-存储与索引层.md) |
+| 能力分级 T0–T4、权限与审计 | [`docs/runtime/04-执行层与权限分级.md`](docs/runtime/04-执行层与权限分级.md) |
+| 界面与上下文的取舍 | [`docs/design/17-界面与上下文.md`](docs/design/17-界面与上下文.md) |
+| 本地兜底、自动切档、任务编排 | [`docs/runtime/26-降级与编排.md`](docs/runtime/26-降级与编排.md) |
+| 基准与口径（能跟谁比、不能跟谁比） | [`docs/ops/24-基准与口径.md`](docs/ops/24-基准与口径.md) |
 | 我们读过的论文（含中文导读） | [`docs/papers/`](docs/papers/) |
 | 代码地图（一行一个文件） | [`AGENTS.md`](AGENTS.md) |
 

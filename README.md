@@ -102,6 +102,7 @@ Design documents (Chinese) live in `docs/`:
 | Schema, chunking, two-stage retrieval | [`docs/design/02-存储与索引层.md`](docs/design/02-存储与索引层.md) |
 | Capability tiers T0–T4, permissions | [`docs/runtime/04-执行层与权限分级.md`](docs/runtime/04-执行层与权限分级.md) |
 | UI and context trade-offs | [`docs/design/17-界面与上下文.md`](docs/design/17-界面与上下文.md) |
+| Local fallback, auto mode, task orchestration | [`docs/runtime/26-降级与编排.md`](docs/runtime/26-降级与编排.md) |
 | Benchmarks: what we can and cannot claim | [`docs/ops/24-基准与口径.md`](docs/ops/24-基准与口径.md) |
 | Papers we read while designing memory | [`docs/papers/`](docs/papers/) |
 | Code map (one line per file) | [`AGENTS.md`](AGENTS.md) |
