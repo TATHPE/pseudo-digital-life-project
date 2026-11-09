@@ -8,7 +8,7 @@
 
 | 项 | 数量 |
 |---|---|
-| 源文件（src/**/*.ts） | 121 |
+| 源文件（src/**/*.ts） | 123 |
 | 错误码 E_* | 237 |
 | verbs | 27 |
 | CLI 子命令 | 40 |
@@ -23,8 +23,8 @@
 | `E_AGENDA_FULL` | `src/agenda.ts` |
 | `E_AGENDA_NO_SOURCE` | `src/agenda.ts` |
 | `E_ALREADY` | `src/profile.ts` |
-| `E_BACKUP_FAILED` | `src/web/server.ts` |
-| `E_BAD_ACTION` | `src/web/server.ts` |
+| `E_BACKUP_FAILED` | `src/web/routes/config.ts` |
+| `E_BAD_ACTION` | `src/web/routes/config.ts` `src/web/routes/setup.ts` `src/web/server.ts` |
 | `E_BAD_ARG` | `src/plugins.ts` |
 | `E_BAD_ARG_VALUE` | `src/toolsmoke.ts` |
 | `E_BAD_ARGS` | `src/toolsmoke.ts` |
@@ -32,10 +32,10 @@
 | `E_BAD_COMMAND` | `src/plugins.ts` |
 | `E_BAD_ENDPOINT` | `src/transport.ts` |
 | `E_BAD_IMAGE` | `src/web/server.ts` |
-| `E_BAD_KEY` | `src/web/server.ts` |
+| `E_BAD_KEY` | `src/web/routes/config.ts` |
 | `E_BAD_LINK` | `src/web/server.ts` |
 | `E_BAD_MODE` | `src/web/server.ts` |
-| `E_BAD_MODEL` | `src/web/server.ts` |
+| `E_BAD_MODEL` | `src/web/routes/config.ts` |
 | `E_BAD_NAME` | `src/plugins.ts` `src/selfupdate.ts` `src/web/server.ts` |
 | `E_BAD_PATH` | `src/gitview.ts` `src/web/server.ts` |
 | `E_BAD_PRESET` | `src/web/server.ts` |
@@ -44,13 +44,13 @@
 | `E_BAD_RELEASE_ID` | `src/deploy/slot.ts` |
 | `E_BAD_ROLE` | `src/cli/jingjing.ts` `src/web/server.ts` |
 | `E_BAD_SENSITIVITY` | `src/web/server.ts` |
-| `E_BAD_SHELL` | `src/web/server.ts` |
+| `E_BAD_SHELL` | `src/web/routes/config.ts` |
 | `E_BAD_SLOT` | `src/shell.ts` |
-| `E_BAD_SPLASH` | `src/web/server.ts` |
-| `E_BAD_STEP` | `src/web/server.ts` |
+| `E_BAD_SPLASH` | `src/web/routes/config.ts` |
+| `E_BAD_STEP` | `src/web/routes/setup.ts` |
 | `E_BAD_TARGET` | `src/decayparams.ts` |
 | `E_BAD_TEMPLATE` | `src/shell.ts` |
-| `E_BAD_THEME` | `src/web/server.ts` |
+| `E_BAD_THEME` | `src/web/routes/config.ts` |
 | `E_BAD_WS` | `src/web/server.ts` |
 | `E_BRIDGE_HTTP_` | `src/bridge.ts` |
 | `E_CALL` | `src/toolsmoke.ts` |
@@ -76,8 +76,8 @@
 | `E_EMPTY` | `src/agentguard.ts` `src/datadir.ts` `src/ingest.ts` `src/plugins.ts` `src/profile.ts` `src/selfupdate.ts` `src/store.ts` `src/web/server.ts` |
 | `E_EMPTY_EMBEDDING` | `src/embed.ts` |
 | `E_EMPTY_GOAL` | `src/tasks.ts` |
-| `E_EMPTY_PATCH` | `src/web/server.ts` |
-| `E_ENCODING` | `src/ingest.ts` `src/persona.ts` `src/web/server.ts` |
+| `E_EMPTY_PATCH` | `src/web/routes/config.ts` |
+| `E_ENCODING` | `src/ingest.ts` `src/persona.ts` `src/web/routes/config.ts` `src/web/server.ts` |
 | `E_EXISTS` | `src/plugins.ts` `src/verbs.ts` |
 | `E_EXPORT_CORRUPT` | `src/handoff.ts` |
 | `E_EXPORT_DIR_NOT_EMPTY` | `src/handoff.ts` |
@@ -115,8 +115,8 @@
 | `E_MISSING` | `src/assert.ts` |
 | `E_MISSING_ARG` | `src/toolsmoke.ts` |
 | `E_MODEL` | `src/autobio.ts` `src/eval.ts` `src/provider.ts` `src/transport.ts` |
-| `E_MOVE_FAILED` | `src/web/server.ts` |
-| `E_NEED_CONFIRM` | `src/web/server.ts` |
+| `E_MOVE_FAILED` | `src/web/routes/config.ts` |
+| `E_NEED_CONFIRM` | `src/web/routes/config.ts` |
 | `E_NEED_WHY` | `src/selfupdate.ts` |
 | `E_NEEDS_CONFIRM` | `src/confirm.ts` `src/execute.ts` `src/posture.ts` |
 | `E_NEEDS_EGRESS` | `src/egress.ts` `src/posture.ts` `src/project.ts` `src/supergrant.ts` `src/verbs.ts` |
@@ -125,7 +125,7 @@
 | `E_NO_ARGV` | `src/shell.ts` |
 | `E_NO_ASSET` | `src/web/server.ts` |
 | `E_NO_AVATAR` | `src/web/server.ts` |
-| `E_NO_BASH` | `src/web/server.ts` |
+| `E_NO_BASH` | `src/web/routes/config.ts` |
 | `E_NO_CALL` | `src/toolsmoke.ts` |
 | `E_NO_CANDIDATES` | `src/agentguard.ts` |
 | `E_NO_CAPABILITY` | `src/execute.ts` `src/tools.ts` |
@@ -133,9 +133,9 @@
 | `E_NO_COMMAND` | `src/plugins.ts` |
 | `E_NO_CONVERTER` | `src/ingest.ts` |
 | `E_NO_DB` | `src/cli/jingjing.ts` `src/verbs.ts` |
-| `E_NO_DIR` | `src/web/server.ts` |
+| `E_NO_DIR` | `src/web/routes/config.ts` |
 | `E_NO_DOC` | `src/web/server.ts` |
-| `E_NO_DRAFT` | `src/interview.ts` `src/web/server.ts` |
+| `E_NO_DRAFT` | `src/interview.ts` `src/web/routes/setup.ts` |
 | `E_NO_EMBED_MODEL` | `src/cli/jingjing.ts` |
 | `E_NO_EMBEDDER` | `src/fillvec.ts` `src/verbs.ts` |
 | `E_NO_GIT` | `src/gitview.ts` |
@@ -159,7 +159,7 @@
 | `E_NO_SHELL` | `src/verbs.ts` |
 | `E_NO_SKILL` | `src/skills.ts` |
 | `E_NO_TARGET` | `src/cli/deploy.ts` |
-| `E_NO_TASK` | `src/web/server.ts` |
+| `E_NO_TASK` | `src/web/routes/config.ts` |
 | `E_NO_TEMPLATE` | `src/shell.ts` |
 | `E_NO_TRASH` | `src/verbs.ts` |
 | `E_NO_TURN` | `src/web/server.ts` |
@@ -170,13 +170,13 @@
 | `E_NOT_DIR` | `src/project.ts` |
 | `E_NOT_FILE` | `src/project.ts` |
 | `E_NOT_FOUND` | `src/agentguard.ts` `src/pathsafe.ts` `src/plugins.ts` `src/selfupdate.ts` `src/verbs.ts` `src/web/server.ts` |
-| `E_NOTHING_TO_DO` | `src/web/server.ts` |
+| `E_NOTHING_TO_DO` | `src/web/routes/config.ts` |
 | `E_NOTHING_TO_UNDO` | `src/web/server.ts` |
 | `E_OLLAMA_DOWN` | `src/cli/jingjing.ts` |
 | `E_ORIGIN` | `src/web/server.ts` |
 | `E_OUT_OF_PROJECT` | `src/agentguard.ts` `src/project.ts` |
 | `E_OUT_OF_RANGE` | `src/decayparams.ts` |
-| `E_OUTPUT_TRUNCATED` | `src/web/server.ts` |
+| `E_OUTPUT_TRUNCATED` | `src/web/routes/setup.ts` |
 | `E_OUTSIDE_HOME` | `src/web/server.ts` |
 | `E_PATH_DENIED` | `src/agentguard.ts` `src/pathsafe.ts` `src/project.ts` `src/shell.ts` `src/verbs.ts` |
 | `E_PENDING_` | `src/web/server.ts` |
@@ -212,7 +212,7 @@
 | `E_ROOT_DIR` | `src/datadir.ts` |
 | `E_SANDBOX_UNAVAILABLE` | `src/shell.ts` |
 | `E_SCHEMA_MISMATCH` | `src/startupcheck.ts` |
-| `E_SETUP_BUSY` | `src/web/server.ts` |
+| `E_SETUP_BUSY` | `src/web/routes/setup.ts` |
 | `E_SKILL_NAME` | `src/skills.ts` |
 | `E_SKILL_READ` | `src/skills.ts` |
 | `E_SMOKE` | `src/selfupdate.ts` |
@@ -230,7 +230,7 @@
 | `E_TAINT_CONTRACT` | `src/store.ts` |
 | `E_TARGET_NOT_EMPTY` | `src/handoff.ts` |
 | `E_TASK_MODEL_HTTP_` | `src/taskrunner.ts` |
-| `E_TASK_NOT_ACTIVE` | `src/web/server.ts` |
+| `E_TASK_NOT_ACTIVE` | `src/web/routes/config.ts` |
 | `E_TASK_PARSE` | `src/taskrunner.ts` |
 | `E_TASK_REPEAT` | `src/taskrunner.ts` |
 | `E_THREAD_CLOSED` | `src/cli/jingjing.ts` `src/web/server.ts` |
@@ -251,7 +251,7 @@
 | `E_UNSUPPORTED_CONTENT` | `src/mcp.ts` |
 | `E_UPLOAD` | `src/web/server.ts` |
 | `E_VERB` | `src/agentguard.ts` `src/execute.ts` |
-| `E_WIPE_MARK_FAILED` | `src/web/server.ts` |
+| `E_WIPE_MARK_FAILED` | `src/web/routes/config.ts` |
 | `E_WRITE` | `src/reembed.ts` |
 | `E_WRONG_TOOL` | `src/toolsmoke.ts` |
 
@@ -410,6 +410,8 @@
 | `src/web/brand.ts` | 品牌图标（鲸）。旧面板（src/web/page.ts）2026-11-05 撤下、2026-11-06 已删除； |
 | `src/web/desk.ts` | 桌面端的**启动令牌**（2026-11-01：软件只有桌面端，不提供浏览器入口）。 |
 | `src/web/notebook.ts` | 第二条壳：工作记录本（2026-11-05） |
+| `src/web/routes/config.ts` | 配置 / 诊断 / 项目 / 导出路由（从 web/server.ts 抽出，行为逐字不变）。 |
+| `src/web/routes/setup.ts` | 首次配置 / 人格访谈路由（从 web/server.ts 抽出，行为逐字不变）。 |
 | `src/web/routes/status.ts` | 状态 / 只读 GET 路由（从 web/server.ts 抽出，行为逐字不变）。 |
 | `src/web/server.ts` | 本地 Web 面板（17 §4）：127.0.0.1:7700，零前端依赖，SSE 流式。 |
 | `src/web/splash.ts` | 片头（完整档）：**在 dsh-550c-boot 的 550C 骨架上改出来的那一个**。 |

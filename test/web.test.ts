@@ -656,6 +656,35 @@ test("抽到 routes/status.ts 的只读端点仍能真实响应（2026-11-09）"
   } finally { srv.close(); }
 });
 
+test("抽到 routes/config.ts 与 routes/setup.ts 的端点仍能真实响应（2026-11-09）", async () => {
+  const { srv, base } = await start();
+  try {
+    // 只读端点：路由搬走后不能变成 404，也不能是"函数没命中"导致的挂起。
+    for (const path of [
+      "/api/tools", "/api/ui", "/api/where", "/api/super", "/api/plugins",
+      "/api/skills", "/api/persona", "/api/setup", "/api/setup/interview", "/api/deploy",
+    ]) {
+      const r = await fetch(`${base}${path}`);
+      assert.equal(r.status, 200, `${path} 要能正常响应`);
+      const body = await r.json() as Record<string, unknown>;
+      assert.ok(body && typeof body === "object", `${path} 要回 JSON 对象`);
+    }
+    // 写操作：writeGuarded / readBody 是通过 ctx 传进新模块的，必须仍然生效。
+    const H = { "x-jj": "1", "content-type": "application/json" };
+    const put = await fetch(`${base}/api/ui`, { method: "PUT", headers: H, body: JSON.stringify({ theme: "hermes" }) });
+    assert.equal(put.status, 200, await put.text());
+    const ui = await (await fetch(`${base}/api/ui`)).json() as { theme?: string };
+    assert.equal(ui.theme, "hermes", "PUT 要真的写进配置，不是只回 200");
+    const setup = await fetch(`${base}/api/setup`, { method: "POST", headers: H, body: JSON.stringify({ action: "start" }) });
+    assert.equal(setup.status, 200, await setup.text());
+    // 少了自定义头必须被挡：守卫不能因为抽走路由就绕过。
+    const noCsrf = await fetch(`${base}/api/ui`, {
+      method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ theme: "ledger" }),
+    });
+    assert.equal(noCsrf.status, 403, "跨站写必须仍被 writeGuarded 拦住");
+  } finally { srv.close(); }
+});
+
 test("头像：上传验收文件头（伪造 mime 也不行），SVG 一律拒，删除后回落默认", async () => {
   const dir = tmp();
   const d = openDb(join(dir, "m.db"));
