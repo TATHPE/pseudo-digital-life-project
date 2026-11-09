@@ -1251,20 +1251,20 @@ async function main(): Promise<void> {
       // jingjing shell                          → 列模板
       // jingjing shell git.status               → T0/T1 直接跑（只读）
       // jingjing shell node.run_script --slots '{"script":"a.mjs"}'          → 只预览（T3 不执行）
-      // jingjing shell node.run_script --slots '…' --yes                     → 签发一次性令牌并执行
-      // jingjing shell … --token cap_xxx                                      → 用已有令牌执行
+      // jingjing shell node.run_script --slots '…' --yes                     → 过授权窗口闸门并执行
+      // 2026-11-09：移除 --token 选项。确认层 11-04 起已不走 execute，
+      // 传了也只会被忽略，留着等于一个骗人的入口（令牌机制本身仍在 shell.ts）。
       const { renderTemplate, templateCatalog } = await import("../shell.ts");
       const flags = new Set(rest.filter((r) => r.startsWith("--")));
       const slotsArg = rest[rest.indexOf("--slots") + 1];
-      const tokenArg = rest.indexOf("--token") >= 0 ? rest[rest.indexOf("--token") + 1] : undefined;
       // 模板 id = 第一个「既不是 --flag，也不是某个 flag 的值」的参数
-      const takesValue = new Set(["--slots", "--token"]);
+      const takesValue = new Set(["--slots"]);
       const templateId = rest.find((r, i) => !r.startsWith("--") && !takesValue.has(rest[i - 1] ?? ""));
       if (!templateId) {
         for (const t of templateCatalog()) {
           console.log(`${t.id.padEnd(20)} [${t.tier}] ${t.description}`);
         }
-        console.log("用法: jingjing shell <template> [--slots '<json>'] [--yes] [--token cap_…]");
+        console.log("用法: jingjing shell <template> [--slots '<json>'] [--yes]");
         return;
       }
       let slots: Record<string, unknown> = {};
@@ -1275,15 +1275,15 @@ async function main(): Promise<void> {
       console.log(`将执行：${show}`);
       console.log(`目录：${preview.cwd}`);
       console.log(`指纹：${preview.digest}`);
-      if (preview.tier === "T3" && !flags.has("--yes") && !tokenArg) {
+      if (preview.tier === "T3" && !flags.has("--yes")) {
         console.log("（T3 不执行——确认没问题后加 --yes）");
         return;
       }
       const d = openDb(dbFile);
       const policy = await import("../policy.ts").then((m) => m.loadPolicy(HOME));
       const r = await execute({ db: d.db, policy, ctx: { home: HOME, now: () => new Date() } },
-        "shell.run", { template: templateId, slots }, { approved: flags.has("--yes"), token: tokenArg });
-      if (r.capability) console.log(`令牌：${r.capability}`);
+        "shell.run", { template: templateId, slots }, { approved: flags.has("--yes") });
+      if (r.capability) console.log(`授权窗口：${r.capability}`);
       console.log(r.output);
       process.exitCode = r.ok ? 0 : 1;
       return;

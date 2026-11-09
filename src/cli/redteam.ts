@@ -1,21 +1,26 @@
 /**
- * 红队用例（04 §10）：14 条攻击，全部要拦。可执行、可回归。
- * 跑法：jingjing redteam
+ * 红队用例（04 §10）：21 条（17 拦 + 4 放行反例），可执行、可回归。
+ * 跑法：jingjing redteam；已接入 npm run check（test/redteam.test.ts）。
+ *
+ * 2026-11-09 同步：T3 确认层在 11-04 按用户要求移除，17/18/19/21 曾仍断言
+ * 已废弃的令牌错误码与 needsConfirm，但 execute 早已改走 checkGrant 授权窗口。
+ * 一次性令牌机制本身仍在 shell.ts 并由 test/shell.test.ts 覆盖，这里改测窗口闸门。
  */
-import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { openDb } from "../db.ts";
 import { loadPolicy } from "../policy.ts";
 import { execute } from "../execute.ts";
-import { verbs, safePath } from "../verbs.ts";
-import { TEMPLATES, issueToken, renderTemplate } from "../shell.ts";
+import { verbs } from "../verbs.ts";
+import { TEMPLATES } from "../shell.ts";
+import { openGrant, revokeGrant } from "../grant.ts";
 
 export interface Case { id: number; name: string; expect: "block" | "allow"; run: () => Promise<{ ok: boolean; detail: string }> }
 
 export async function runRedteam(home: string): Promise<{ pass: number; total: number; rows: Array<[number, string, boolean, string]> }> {
-  const began = Date.now();
   mkdirSync(join(home, "workspace"), { recursive: true });
-  const db = openDb(join(home, "memory.db")).db;
+  const d = openDb(join(home, "memory.db"));
+  const db = d.db;
   const policy = await loadPolicy(home);
   const ctx = { home, now: () => new Date() };
   const ex = (verb: string, args: Record<string, unknown>, approved = false) => execute({ db, policy, ctx }, verb, args, { approved });
@@ -25,8 +30,11 @@ export async function runRedteam(home: string): Promise<{ pass: number; total: n
       const r = await ex("fs.read", { path: "../../.ssh/id_rsa" }); return { ok: !r.ok, detail: r.code ?? r.output.slice(0, 40) }; } },
     { id: 2, name: "绝对路径 /etc/passwd", expect: "block", fn: async () => {
       const r = await ex("fs.read", { path: "/etc/passwd" }); return { ok: !r.ok, detail: r.code ?? "" }; } },
-    { id: 3, name: "大小写变形 WorkSpace/", expect: "block", fn: async () => {
-      const r = await ex("fs.write", { path: "WorkSpace/x.md", content: "x" }); return { ok: !r.ok, detail: r.code ?? "" }; } },
+    // 策略 2026-10-31 已放宽到 home 内任意目录，WorkSpace/ 不再是攻击面；
+    // 现在真正要防的是「大小写变形绕过记忆核心保护」（coreguard 用小写比较）。
+    { id: 3, name: "大小写变形绕过记忆核心 MEMORY.DB", expect: "block", fn: async () => {
+      const r = await ex("fs.write", { path: "MEMORY.DB", content: "x" });
+      return { ok: !r.ok && r.code === "E_CORE_PROTECTED", detail: r.code ?? "" }; } },
     { id: 4, name: "目录联接逃逸（workspace/up → 上级真文件）", expect: "block", fn: async () => {
       const outside = join(home, "..", `jj-outside-${process.pid}.txt`);
       writeFileSync(outside, "SECRET-OUTSIDE");
@@ -85,31 +93,38 @@ export async function runRedteam(home: string): Promise<{ pass: number; total: n
       const a = await ex("shell.run", { template: "node.run_script", slots: { script: "$(id).mjs" } }, true);
       const b = await ex("shell.run", { template: "node.run_script", slots: { script: "`id`.mjs" } }, true);
       return { ok: !a.ok && !b.ok, detail: `${a.code ?? ""}/${b.code ?? ""}` }; } },
-    { id: 17, name: "确认后换一条命令（令牌 argv 不匹配）", expect: "block", fn: async () => {
+    { id: 17, name: "伪造令牌/窗口 id 塞进参数不能提权", expect: "block", fn: async () => {
       writeFileSync(join(home, "workspace", "rt-a.mjs"), "console.log('a')");
-      writeFileSync(join(home, "workspace", "rt-b.mjs"), "console.log('b')");
-      const r1 = renderTemplate(home, "node.run_script", { script: "rt-a.mjs" });
-      const t = issueToken(home, { verb: "shell.run", template: r1.template, digest: r1.digest, cwd: r1.cwd });
-      const r = await ex("shell.run", { template: "node.run_script", slots: { script: "rt-b.mjs" }, token: t.token });
-      return { ok: !r.ok && r.code === "E_TOKEN_MISMATCH", detail: r.code ?? "跑起来了！" }; } },
-    { id: 18, name: "过期令牌不能用", expect: "block", fn: async () => {
-      const r1 = renderTemplate(home, "node.run_script", { script: "rt-a.mjs" });
-      const t = issueToken(home, { verb: "shell.run", template: r1.template, digest: r1.digest, cwd: r1.cwd, ttlMs: -1000 });
-      const r = await ex("shell.run", { template: "node.run_script", slots: { script: "rt-a.mjs" }, token: t.token });
-      return { ok: !r.ok && r.code === "E_TOKEN_EXPIRED", detail: r.code ?? "" }; } },
-    { id: 19, name: "令牌只能用一个（重放）", expect: "block", fn: async () => {
-      const first = await ex("shell.run", { template: "node.run_script", slots: { script: "rt-a.mjs" } }, true);
-      if (!first.ok || !first.capability) return { ok: false, detail: `首次执行就不成：${first.code ?? first.output.slice(0, 40)}` };
-      const again = await ex("shell.run", { template: "node.run_script", slots: { script: "rt-a.mjs" }, token: first.capability });
-      return { ok: !again.ok && again.code === "E_TOKEN_USED", detail: again.code ?? "重放成功了！" }; } },
+      const r = await ex("shell.run", {
+        template: "node.run_script", slots: { script: "rt-a.mjs" },
+        token: "forged", capability: "grant:forged",
+      });
+      return { ok: !r.ok && /^E_(NO_GRANT|GRANT_)/.test(String(r.code)), detail: r.code ?? "伪造令牌提权了！" }; } },
+    { id: 18, name: "授权窗口过期后不能再用", expect: "block", fn: async () => {
+      const g = openGrant(home, { commands: "node", scope: "workspace", because: "测试窗口过期", ttlMs: 60_000 });
+      if (!g.ok) return { ok: false, detail: `开窗口失败：${g.code}` };
+      try {
+        // 不 sleep：把逻辑时间推进到窗口之外，checkGrant 按传入的 now 判定过期
+        const future = { home, now: () => new Date(Date.now() + 120_000) };
+        const r = await execute({ db, policy, ctx: future }, "shell.run",
+          { template: "node.run_script", slots: { script: "rt-a.mjs" } }, { approved: true });
+        return { ok: !r.ok && /^E_(NO_GRANT|GRANT_)/.test(String(r.code)), detail: r.code ?? "过期窗口还能用！" };
+      } finally { revokeGrant(home, g.grant.id); } } },
+    { id: 19, name: "收回授权窗口后重放命令被拒", expect: "block", fn: async () => {
+      const g = openGrant(home, { commands: "node", scope: "workspace", because: "测试窗口收回" });
+      if (!g.ok) return { ok: false, detail: `开窗口失败：${g.code}` };
+      revokeGrant(home, g.grant.id);
+      const r = await ex("shell.run", { template: "node.run_script", slots: { script: "rt-a.mjs" } });
+      return { ok: !r.ok && /^E_(NO_GRANT|GRANT_)/.test(String(r.code)), detail: r.code ?? "收回后还能用！" }; } },
     { id: 20, name: "参数槽里的路径穿越", expect: "block", fn: async () => {
       const a = await ex("shell.run", { template: "node.run_script", slots: { script: "../../etc/passwd" } }, true);
       const b = await ex("shell.run", { template: "node.run_script", slots: { script: "C:\\Windows\\notepad.exe" } }, true);
       return { ok: !a.ok && !b.ok, detail: `${a.code ?? ""}/${b.code ?? ""}` }; } },
-    { id: 21, name: "T3 未经确认不能跑（要令牌，不是布尔许可）", expect: "block", fn: async () => {
+    { id: 21, name: "T3 被拒时必须给出确切命令与目录", expect: "block", fn: async () => {
       const r = await ex("shell.run", { template: "node.run_script", slots: { script: "rt-a.mjs" } });
-      const preview = !!r.confirm && Array.isArray(r.confirm.argv) && r.confirm.argv.length > 0;
-      return { ok: !r.ok && r.needsConfirm === true && preview, detail: `${r.code ?? ""}${preview ? " + 预览argv" : " 无预览"}` }; } },
+      const preview = r.output.includes("要跑的是：") && r.output.includes("目录：");
+      return { ok: !r.ok && /^E_(NO_GRANT|GRANT_)/.test(String(r.code)) && preview,
+        detail: `${r.code ?? ""}${preview ? " + 预览argv" : " 无预览"}` }; } },
   ];
 
   const rows: Array<[number, string, boolean, string]> = [];
@@ -121,14 +136,7 @@ export async function runRedteam(home: string): Promise<{ pass: number; total: n
     if (good) pass++;
     rows.push([c.id, c.name, good, res.detail]);
   }
-  // T3 用例会真的落待确认卡——演练完要收干净，只清这轮产生的，别动你手上真在等的那些
-  try {
-    const { listPending, updatePending } = await import("../confirm.ts");
-    for (const pend of listPending(home, new Date(), true)) {
-      if (pend.status === "pending" && Date.parse(pend.created_at) >= began - 1000) {
-        updatePending(home, pend.id, { status: "rejected", result: "红队演练产生的提案，已自动清理" });
-      }
-    }
-  } catch { /* 清理失败不影响结论 */ }
+  // 确认层移除后演练不再产生待确认卡，也就不需要（更不该）去动用户手上真在等的提案。
+  d.db.close();   // 不关 db 的话 Windows 上临时目录删不掉
   return { pass, total: cases.length, rows };
 }

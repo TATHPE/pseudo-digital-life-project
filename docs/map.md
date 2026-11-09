@@ -60,7 +60,7 @@
 | `E_CONVERT` | `src/ingest.ts` |
 | `E_COOLDOWN` | `src/transport.ts` |
 | `E_COPY_SHORT` | `src/datadir.ts` |
-| `E_CORE_PROTECTED` | `src/verbs.ts` |
+| `E_CORE_PROTECTED` | `src/cli/redteam.ts` `src/verbs.ts` |
 | `E_CSRF` | `src/web/server.ts` |
 | `E_DECAY_PARAM` | `src/startupcheck.ts` |
 | `E_DENIED` | `src/agentguard.ts` `src/execute.ts` `src/policy.ts` `src/tools.ts` |
@@ -235,10 +235,10 @@
 | `E_TASK_REPEAT` | `src/taskrunner.ts` |
 | `E_THREAD_CLOSED` | `src/cli/jingjing.ts` `src/web/server.ts` |
 | `E_TIMEOUT` | `src/verbs.ts` |
-| `E_TOKEN_EXPIRED` | `src/cli/redteam.ts` `src/shell.ts` |
-| `E_TOKEN_MISMATCH` | `src/cli/redteam.ts` `src/shell.ts` |
+| `E_TOKEN_EXPIRED` | `src/shell.ts` |
+| `E_TOKEN_MISMATCH` | `src/shell.ts` |
 | `E_TOKEN_UNKNOWN` | `src/shell.ts` |
-| `E_TOKEN_USED` | `src/cli/redteam.ts` `src/shell.ts` |
+| `E_TOKEN_USED` | `src/shell.ts` |
 | `E_TOO_BIG` | `src/ingest.ts` `src/plugins.ts` `src/project.ts` `src/selfupdate.ts` `src/verbs.ts` `src/web/server.ts` |
 | `E_TOOL` | `src/mcp.ts` `src/tools.ts` |
 | `E_TOOL_FAILED` | `src/agent.ts` |
@@ -313,7 +313,7 @@
 | `src/cli/eval.ts` | CLI：eval —— 跑评估（19 §0.1 W-B）。 |
 | `src/cli/jingjing.ts` | !/usr/bin/env node |
 | `src/cli/night.ts` | CLI：night —— 跑一次闲时整理（抽取 + 冲突消解 + 归并 + 自传）。 |
-| `src/cli/redteam.ts` | 红队用例（04 §10）：14 条攻击，全部要拦。可执行、可回归。 |
+| `src/cli/redteam.ts` | 红队用例（04 §10）：21 条（17 拦 + 4 放行反例），可执行、可回归。 |
 | `src/commands.ts` | CLI 子命令表（B-0 用）。它必须与 `src/cli/jingjing.ts` 的 switch 分支一致 —— |
 | `src/config.ts` | 角色配置（13 §2） |
 | `src/configfile.ts` | 可持久化的配置（13 §2）：env > data/config.json > 默认值 |
