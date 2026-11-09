@@ -685,6 +685,35 @@ test("抽到 routes/config.ts 与 routes/setup.ts 的端点仍能真实响应（
   } finally { srv.close(); }
 });
 
+test("抽到 routes/memory.ts 与 routes/control.ts 的端点仍能真实响应（2026-11-09）", async () => {
+  const { srv, base } = await start();
+  try {
+    for (const path of [
+      "/api/memories", "/api/memories/summary", "/api/docs", "/api/profile/gaps",
+      "/api/proposals", "/api/egress", "/api/night/due", "/api/mode", "/api/permission",
+      "/api/receipts", "/api/standing", "/api/grants", "/api/threads",
+      "/api/surface/review", "/api/pending", "/api/dossier",
+    ]) {
+      const r = await fetch(`${base}${path}`);
+      assert.equal(r.status, 200, `${path} 要能正常响应`);
+      await r.json();
+    }
+    const dossier = await (await fetch(`${base}/api/dossier`)).json() as Record<string, unknown>;
+    assert.ok(dossier.plan && dossier.changes && dossier.context, "卷宗的 Plan / Changes / Context 三块不能丢");
+    // 写操作：readBody / writeGuarded / lastMode 都经 ctx 传进新模块，必须仍然生效。
+    const H = { "x-jj": "1", "content-type": "application/json" };
+    const post = await fetch(`${base}/api/mode`, { method: "POST", headers: H, body: JSON.stringify({ mode: "work" }) });
+    assert.equal(post.status, 200, await post.text());
+    const mode = await (await fetch(`${base}/api/mode`)).json() as { mode?: string; resolved?: string };
+    assert.equal(mode.mode, "work", "POST 要真的写进配置");
+    assert.ok(mode.resolved !== undefined, "lastMode 粘性档位要经 ctx 传进来");
+    const noCsrf = await fetch(`${base}/api/mode`, {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mode: "chat" }),
+    });
+    assert.equal(noCsrf.status, 403, "跨站写必须仍被 writeGuarded 拦住");
+  } finally { srv.close(); }
+});
+
 test("头像：上传验收文件头（伪造 mime 也不行），SVG 一律拒，删除后回落默认", async () => {
   const dir = tmp();
   const d = openDb(join(dir, "m.db"));

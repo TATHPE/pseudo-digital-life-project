@@ -8,7 +8,7 @@
 
 | 项 | 数量 |
 |---|---|
-| 源文件（src/**/*.ts） | 123 |
+| 源文件（src/**/*.ts） | 125 |
 | 错误码 E_* | 237 |
 | verbs | 27 |
 | CLI 子命令 | 40 |
@@ -24,7 +24,7 @@
 | `E_AGENDA_NO_SOURCE` | `src/agenda.ts` |
 | `E_ALREADY` | `src/profile.ts` |
 | `E_BACKUP_FAILED` | `src/web/routes/config.ts` |
-| `E_BAD_ACTION` | `src/web/routes/config.ts` `src/web/routes/setup.ts` `src/web/server.ts` |
+| `E_BAD_ACTION` | `src/web/routes/config.ts` `src/web/routes/control.ts` `src/web/routes/setup.ts` |
 | `E_BAD_ARG` | `src/plugins.ts` |
 | `E_BAD_ARG_VALUE` | `src/toolsmoke.ts` |
 | `E_BAD_ARGS` | `src/toolsmoke.ts` |
@@ -33,17 +33,17 @@
 | `E_BAD_ENDPOINT` | `src/transport.ts` |
 | `E_BAD_IMAGE` | `src/web/server.ts` |
 | `E_BAD_KEY` | `src/web/routes/config.ts` |
-| `E_BAD_LINK` | `src/web/server.ts` |
+| `E_BAD_LINK` | `src/web/routes/control.ts` |
 | `E_BAD_MODE` | `src/web/server.ts` |
 | `E_BAD_MODEL` | `src/web/routes/config.ts` |
 | `E_BAD_NAME` | `src/plugins.ts` `src/selfupdate.ts` `src/web/server.ts` |
-| `E_BAD_PATH` | `src/gitview.ts` `src/web/server.ts` |
-| `E_BAD_PRESET` | `src/web/server.ts` |
+| `E_BAD_PATH` | `src/gitview.ts` `src/web/routes/control.ts` |
+| `E_BAD_PRESET` | `src/web/routes/control.ts` |
 | `E_BAD_RANGE` | `src/decayparams.ts` |
 | `E_BAD_REGEX` | `src/project.ts` |
 | `E_BAD_RELEASE_ID` | `src/deploy/slot.ts` |
 | `E_BAD_ROLE` | `src/cli/jingjing.ts` `src/web/server.ts` |
-| `E_BAD_SENSITIVITY` | `src/web/server.ts` |
+| `E_BAD_SENSITIVITY` | `src/web/routes/memory.ts` |
 | `E_BAD_SHELL` | `src/web/routes/config.ts` |
 | `E_BAD_SLOT` | `src/shell.ts` |
 | `E_BAD_SPLASH` | `src/web/routes/config.ts` |
@@ -105,7 +105,7 @@
 | `E_INTERP_SHORT` | `src/interpret.ts` |
 | `E_INTERP_UNGROUNDED` | `src/interpretnight.ts` |
 | `E_IS_DIR` | `src/verbs.ts` |
-| `E_JSON` | `src/web/server.ts` |
+| `E_JSON` | `src/web/routes/memory.ts` |
 | `E_MAX_STEPS` | `src/agent.ts` `src/web/server.ts` |
 | `E_MCP` | `src/mcp.ts` |
 | `E_MCP_CLOSED` | `src/mcp.ts` |
@@ -120,7 +120,7 @@
 | `E_NEED_WHY` | `src/selfupdate.ts` |
 | `E_NEEDS_CONFIRM` | `src/confirm.ts` `src/execute.ts` `src/posture.ts` |
 | `E_NEEDS_EGRESS` | `src/egress.ts` `src/posture.ts` `src/project.ts` `src/supergrant.ts` `src/verbs.ts` |
-| `E_NIGHT` | `src/web/server.ts` |
+| `E_NIGHT` | `src/web/routes/control.ts` |
 | `E_NIGHTLOG` | `src/web/routes/status.ts` |
 | `E_NO_ARGV` | `src/shell.ts` |
 | `E_NO_ASSET` | `src/web/server.ts` |
@@ -134,19 +134,19 @@
 | `E_NO_CONVERTER` | `src/ingest.ts` |
 | `E_NO_DB` | `src/cli/jingjing.ts` `src/verbs.ts` |
 | `E_NO_DIR` | `src/web/routes/config.ts` |
-| `E_NO_DOC` | `src/web/server.ts` |
+| `E_NO_DOC` | `src/web/routes/memory.ts` |
 | `E_NO_DRAFT` | `src/interview.ts` `src/web/routes/setup.ts` |
 | `E_NO_EMBED_MODEL` | `src/cli/jingjing.ts` |
 | `E_NO_EMBEDDER` | `src/fillvec.ts` `src/verbs.ts` |
 | `E_NO_GIT` | `src/gitview.ts` |
-| `E_NO_GRANT` | `src/grant.ts` `src/web/server.ts` |
+| `E_NO_GRANT` | `src/grant.ts` `src/web/routes/control.ts` |
 | `E_NO_HOME` | `src/handoff.ts` |
 | `E_NO_HUB` | `src/web/server.ts` |
 | `E_NO_KEY` | `src/web/server.ts` |
 | `E_NO_LINK` | `src/cli/jingjing.ts` |
 | `E_NO_MEMORY` | `src/store.ts` `src/web/server.ts` |
 | `E_NO_MODEL` | `src/cli/night.ts` |
-| `E_NO_NIGHT` | `src/web/server.ts` |
+| `E_NO_NIGHT` | `src/web/routes/control.ts` |
 | `E_NO_NOTE` | `src/web/server.ts` |
 | `E_NO_PATH` | `src/project.ts` `src/web/server.ts` |
 | `E_NO_PREV` | `src/selfupdate.ts` |
@@ -166,10 +166,10 @@
 | `E_NO_WHERE_FILE` | `src/datadir.ts` |
 | `E_NOT_A_REPO` | `src/gitview.ts` |
 | `E_NOT_ABS` | `src/datadir.ts` |
-| `E_NOT_DELETED` | `src/web/server.ts` |
+| `E_NOT_DELETED` | `src/web/routes/memory.ts` |
 | `E_NOT_DIR` | `src/project.ts` |
 | `E_NOT_FILE` | `src/project.ts` |
-| `E_NOT_FOUND` | `src/agentguard.ts` `src/pathsafe.ts` `src/plugins.ts` `src/selfupdate.ts` `src/verbs.ts` `src/web/server.ts` |
+| `E_NOT_FOUND` | `src/agentguard.ts` `src/pathsafe.ts` `src/plugins.ts` `src/selfupdate.ts` `src/verbs.ts` `src/web/routes/memory.ts` `src/web/server.ts` |
 | `E_NOTHING_TO_DO` | `src/web/routes/config.ts` |
 | `E_NOTHING_TO_UNDO` | `src/web/server.ts` |
 | `E_OLLAMA_DOWN` | `src/cli/jingjing.ts` |
@@ -179,10 +179,10 @@
 | `E_OUTPUT_TRUNCATED` | `src/web/routes/setup.ts` |
 | `E_OUTSIDE_HOME` | `src/web/server.ts` |
 | `E_PATH_DENIED` | `src/agentguard.ts` `src/pathsafe.ts` `src/project.ts` `src/shell.ts` `src/verbs.ts` |
-| `E_PENDING_` | `src/web/server.ts` |
-| `E_PENDING_EXPIRED` | `src/web/server.ts` |
+| `E_PENDING_` | `src/web/routes/control.ts` |
+| `E_PENDING_EXPIRED` | `src/web/routes/control.ts` |
 | `E_PENDING_ID` | `src/confirm.ts` |
-| `E_PENDING_NOT_FOUND` | `src/confirm.ts` `src/web/server.ts` |
+| `E_PENDING_NOT_FOUND` | `src/confirm.ts` `src/web/routes/control.ts` |
 | `E_PERSONA_FILE` | `src/persona.ts` |
 | `E_PERSONA_TOO_BIG` | `src/persona.ts` |
 | `E_POLICY_CORRUPT` | `src/startupcheck.ts` |
@@ -193,7 +193,7 @@
 | `E_PROPOSAL_ARGV_PIPE` | `src/proposals.ts` |
 | `E_PROPOSAL_BACKLOG` | `src/proposals.ts` |
 | `E_PROPOSAL_ID` | `src/proposals.ts` |
-| `E_PROPOSAL_NOT_FOUND` | `src/cli/jingjing.ts` `src/web/server.ts` |
+| `E_PROPOSAL_NOT_FOUND` | `src/cli/jingjing.ts` `src/web/routes/control.ts` |
 | `E_PROPOSAL_TITLE` | `src/proposals.ts` |
 | `E_PROPOSAL_TOUCH_ABS` | `src/proposals.ts` |
 | `E_PROPOSAL_TOUCH_DOTDOT` | `src/proposals.ts` |
@@ -202,7 +202,7 @@
 | `E_PROVIDER` | `src/cooldown.ts` `src/transport.ts` |
 | `E_READING_CONTRACT` | `src/store.ts` |
 | `E_RECEIPT_ID` | `src/notify.ts` |
-| `E_RECEIPT_NOT_FOUND` | `src/cli/jingjing.ts` `src/web/server.ts` |
+| `E_RECEIPT_NOT_FOUND` | `src/cli/jingjing.ts` `src/web/routes/control.ts` |
 | `E_RECONNECT` | `src/web/server.ts` |
 | `E_RELEASE_CORRUPT` | `src/deploy/slot.ts` |
 | `E_RELEASE_EXISTS` | `src/deploy/slot.ts` |
@@ -219,7 +219,7 @@
 | `E_SPLASH` | `src/web/server.ts` |
 | `E_STANDING_BECAUSE` | `src/standing.ts` |
 | `E_STANDING_ID` | `src/standing.ts` |
-| `E_STANDING_NOT_FOUND` | `src/cli/jingjing.ts` `src/web/server.ts` |
+| `E_STANDING_NOT_FOUND` | `src/cli/jingjing.ts` `src/web/routes/control.ts` |
 | `E_STANDING_NOTIFY` | `src/standing.ts` |
 | `E_STANDING_TEMPLATE` | `src/cli/jingjing.ts` `src/standing.ts` |
 | `E_STANDING_WHEN` | `src/standing.ts` |
@@ -233,7 +233,7 @@
 | `E_TASK_NOT_ACTIVE` | `src/web/routes/config.ts` |
 | `E_TASK_PARSE` | `src/taskrunner.ts` |
 | `E_TASK_REPEAT` | `src/taskrunner.ts` |
-| `E_THREAD_CLOSED` | `src/cli/jingjing.ts` `src/web/server.ts` |
+| `E_THREAD_CLOSED` | `src/cli/jingjing.ts` `src/web/routes/control.ts` |
 | `E_TIMEOUT` | `src/verbs.ts` |
 | `E_TOKEN_EXPIRED` | `src/shell.ts` |
 | `E_TOKEN_MISMATCH` | `src/shell.ts` |
@@ -411,6 +411,8 @@
 | `src/web/desk.ts` | 桌面端的**启动令牌**（2026-11-01：软件只有桌面端，不提供浏览器入口）。 |
 | `src/web/notebook.ts` | 第二条壳：工作记录本（2026-11-05） |
 | `src/web/routes/config.ts` | 配置 / 诊断 / 项目 / 导出路由（从 web/server.ts 抽出，行为逐字不变）。 |
+| `src/web/routes/control.ts` | 面板控制路由（从 web/server.ts 抽出，行为逐字不变）：提议 / 外发 / 闲时整理 / |
+| `src/web/routes/memory.ts` | 记忆 / 文档视图与增删改路由（从 web/server.ts 抽出，行为逐字不变）。 |
 | `src/web/routes/setup.ts` | 首次配置 / 人格访谈路由（从 web/server.ts 抽出，行为逐字不变）。 |
 | `src/web/routes/status.ts` | 状态 / 只读 GET 路由（从 web/server.ts 抽出，行为逐字不变）。 |
 | `src/web/server.ts` | 本地 Web 面板（17 §4）：127.0.0.1:7700，零前端依赖，SSE 流式。 |
