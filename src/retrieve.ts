@@ -31,6 +31,8 @@ export interface Hit {
   taint?: "trusted" | "external";
   /** 记忆种类（沿边过来时也要带上，否则简报里会全显示成 episode） */
   kind?: string;
+  /** 写下时间（P10 要显示「多久以前」，权重不能代替它） */
+  createdAt?: string;
   bm25Rank?: number; cosRank?: number; cosine?: number;
 }
 
@@ -379,7 +381,7 @@ export function expandByLinks(
   const cap = opts.k ?? 2;
   const ids = hits.map((h) => h.id);
   const rows = db.prepare(`
-    SELECT l.src_id, l.dst_id, l.why, m.id, m.text, m.kind, m.stage, m.weight, m.sensitivity, m.quote, m.layer, m.taint
+    SELECT l.src_id, l.dst_id, l.why, m.id, m.text, m.kind, m.stage, m.weight, m.sensitivity, m.quote, m.layer, m.taint, m.created_at
     FROM memory_links l
     JOIN memories m ON m.id = CASE WHEN l.src_id IN (SELECT value FROM json_each(?)) THEN l.dst_id ELSE l.src_id END
     WHERE (l.src_id IN (SELECT value FROM json_each(?)) OR l.dst_id IN (SELECT value FROM json_each(?)))
@@ -392,7 +394,7 @@ export function expandByLinks(
   ) as Array<{
     src_id: number; dst_id: number; why: string; id: number;
     text: string; kind: string; stage: Stage; weight: number; sensitivity?: string; quote?: string | null;
-    layer: string; taint: string;
+    layer: string; taint: string; created_at?: string;
   }>;
 
   const seen = new Set(ids);
@@ -406,6 +408,7 @@ export function expandByLinks(
       cite: `mem:${r.id}`, relevance: 0, via: r.stage === "fading" ? "fading" : "active",
       ...(r.sensitivity ? { sensitivity: r.sensitivity as "local_only" | "shareable" } : {}),
       ...(r.quote ? { quote: r.quote } : {}),
+      ...(r.created_at ? { createdAt: r.created_at } : {}),
       kind: r.kind,
       layer: r.layer === "contract" ? "contract" : "narrative",
       taint: (r.taint === "external" ? "external" : "trusted") as "trusted" | "external",

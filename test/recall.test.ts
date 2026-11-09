@@ -111,3 +111,24 @@ test("复审 #7：expandByLinks 带回 kind/layer/taint（调用方不再 N+1 �
   assert.equal(near[0]?.layer, "narrative");
   assert.equal(near[0]?.taint, "trusted");
 });
+
+test("P10 的时间来自 created_at：45 天前的约定要看得出来（2026-11-09）", async () => {
+  const home = H();
+  const db = openDb(join(home, "memory.db")).db;
+  const emb = createEmbedder("fake");
+  const text = "交接本用蓝色封皮";
+  remember(db, {
+    layer: "contract", kind: "promise", text, sensitivity: "shareable",
+    embedding: (await emb.embed([text]))[0]!, now: new Date(Date.now() - 45 * 86400000),
+  });
+  const r = await recallForBrief(db, emb, text, { rerankMode: "off" });
+  const line = r.recalled.find((x) => x.text === text);
+  assert.ok(line, "应该召回这条约定：" + JSON.stringify(r.recalled.map((x) => x.text)));
+  assert.ok(line.createdAt, "createdAt 必须从库里带出来（否则 P10 只能靠权重猜新旧）");
+  const brief = buildBrief({
+    now: new Date(), persona: loadPersona(), contracts: [], threads: [],
+    recalled: r.recalled, user: text,
+  });
+  const row = brief.text.split(String.fromCharCode(10)).find((l) => l.includes("cite:"));
+  assert.ok(row && row.includes("1 个月前"), "45 天前应渲染成「1 个月前」：" + row);
+});

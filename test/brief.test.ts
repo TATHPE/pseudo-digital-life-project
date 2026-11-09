@@ -272,3 +272,24 @@ test("P4 的工具清单来自能力表：真实名字都在，过时的四个�
     assert.ok(!t.includes(ghost), "过时的工具名还在：" + ghost);
   }
 });
+
+test("P10 带上「多久以前」：权重不是时间（2026-11-09）", () => {
+  const day = 86400000;
+  const mk = (createdAt?: string): MemoryLine[] => [{
+    id: "mem:1", layer: "contract", kind: "promise", stage: "active",
+    weight: 1, text: "交班前把值班表拍照发到群里", ...(createdAt ? { createdAt } : {}),
+  }];
+  const threeDaysAgo = new Date(NOW.getTime() - 3 * day).toISOString();
+  const lines = (l: MemoryLine[]) => buildBrief(base({ recalled: l })).text
+    .split(String.fromCharCode(10)).filter((x) => x.includes("cite:"));
+
+  const one = (l: MemoryLine[]) => lines(l)[0] ?? "";
+  assert.ok(one(mk(threeDaysAgo)).includes("3 天前"), one(mk(threeDaysAgo)));
+  assert.ok(one(mk(NOW.toISOString())).includes("今天"), one(mk(NOW.toISOString())));
+  // 45 天前 → 粗到「1 个月前」：太精确反而像在假装记得清楚
+  const old = new Date(NOW.getTime() - 45 * day).toISOString();
+  assert.ok(one(mk(old)).includes("1 个月前"), one(mk(old)));
+  // 没有 created_at 的旧数据不许多出一个空标签
+  assert.ok(!one(mk()).includes("·  ·"), "不许渲染空的时间段");
+  assert.ok(!/\d+ 天前|今天|个月前/.test(lines(mk())[0]!), "没有时间就不写");
+});

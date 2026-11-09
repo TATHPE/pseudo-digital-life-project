@@ -65,7 +65,22 @@ function input0Eroded(m: MemoryLine): string {
   return renderEroded(m.text, st);
 }
 
-function recallLine(m: MemoryLine): string {
+/**
+ * 「多久以前」：粗粒度就够（今天 / 3 天前 / 2 个月前）。
+ * 越精确越像在假装记得清楚 —— 她要的是「新旧能不能分」，不是秒表。
+ */
+function fmtAge(iso: string | undefined, now: Date): string {
+  if (!iso) return "";
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return "";
+  const days = Math.floor((now.getTime() - t) / 86400000);
+  if (days < 1) return "今天";
+  if (days < 30) return `${days} 天前`;
+  if (days < 365) return `${Math.floor(days / 30)} 个月前`;
+  return `${Math.floor(days / 365)} 年前`;
+}
+
+function recallLine(m: MemoryLine, now: Date): string {
   // 文档块：不是“我记得”，是“书里写着”——两种来源在提示里必须一眼能分
   if (m.source === "doc") {
     const where = m.headingPath ? " · " + m.headingPath : "";
@@ -80,7 +95,11 @@ function recallLine(m: MemoryLine): string {
   // 侵蚀过的记忆按 stage 渲染模糊版（原文仍在库里）：她能想起「有这么件事」，但细节记不清。
   const shown = input0Eroded(m);
   const worn = m.eraseStage ? " · 细节模糊" : "";
-  return `- [${tag} · ${m.kind} · ${m.stage} ${m.weight.toFixed(2)}${worn}] ${q}${shown}（cite: ${m.id}）${via}`;
+  // 「多久以前」：weight 不是时间（契约层恒 1.00，从不衰减），只能靠 created_at 直说。
+  // 少了这一项，「上周说的」和「上个月说的」在简报里长得一样，答时间就只能猜。
+  const age = fmtAge(m.createdAt, now);
+  const when = age ? ` · ${age}` : "";
+  return `- [${tag} · ${m.kind} · ${m.stage} ${m.weight.toFixed(2)}${worn}${when}] ${q}${shown}（cite: ${m.id}）${via}`;
 }
 
 function fit<T>(items: T[], max: number, budget: number, render: (x: T) => string) {
@@ -146,7 +165,7 @@ export function buildBrief(input: BriefInput): BriefOutput {
   const p9 = input.delta ? `【这次变了】${input.delta}` : "";
   slots.push({ id: "P9", label: "增量", tokens: estimateTokens(p9), stable: false });
 
-  const r = fit(input.recalled, MAX_RECALLED, b.recalled, recallLine);
+  const r = fit(input.recalled, MAX_RECALLED, b.recalled, (m) => recallLine(m, input.now));
   // ── 没有真召回时，把话说死（2026-11-02，来自她自己的第 3 条自检）──
   //
   // 她的原话：「我分不清『我记着』和『我觉得应该记得』……契约第一条写在最前面，

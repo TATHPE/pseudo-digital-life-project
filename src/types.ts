@@ -9,6 +9,15 @@ export interface MemoryLine {
   stage: Stage;
   weight: number;      // 0..1，由 decay.ts 算出（01 §4）
   text: string;
+  /**
+   * 写下的时间（ISO）。
+   *
+   * 为什么要带进 P10：weight 不是时间。契约层权重恒 1.00、永不衰减，
+   * 一条 45 天前的约定和一条今天的约定在简报里长得一模一样，
+   * 于是「上周说的」和「上个月说的」全糊在一起，答「什么时候」时只能猜。
+   * 这一项让「多久以前」变成看得见的事实，而不是让她从权重里推断。
+   */
+  createdAt?: string;
   sensitivity?: "local_only" | "shareable";
   /** 来自记忆还是文档块（P10 里两种来源要能区分：一个是我认定的，一个是书上写的） */
   source?: "memory" | "doc";

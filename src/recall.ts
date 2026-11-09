@@ -101,17 +101,18 @@ export async function recallForBrief(
   const poolHits = embedder ? (await search(db, embedder, query, { k: poolK })).hits : [];
 
   // 敏感度、层、种类都从库里现取——别猜（契约层在 P10 里也不能被显示成叙事）
-  const metaById = new Map<number, { layer: "narrative" | "contract"; kind: string; sensitivity?: string; taint?: string; quote?: string | null }>();
+  const metaById = new Map<number, { layer: "narrative" | "contract"; kind: string; sensitivity?: string; taint?: string; quote?: string | null; createdAt?: string }>();
   if (poolHits.length) {
     const got = db.prepare(
-      `SELECT id, layer, kind, sensitivity, taint, quote FROM memories WHERE id IN (SELECT value FROM json_each(?))`,
-    ).all(JSON.stringify(poolHits.map((h) => h.id))) as Array<{ id: number; layer: string; kind: string; sensitivity?: string; taint?: string; quote?: string | null }>;
+      `SELECT id, layer, kind, sensitivity, taint, quote, created_at FROM memories WHERE id IN (SELECT value FROM json_each(?))`,
+    ).all(JSON.stringify(poolHits.map((h) => h.id))) as Array<{ id: number; layer: string; kind: string; sensitivity?: string; taint?: string; quote?: string | null; created_at?: string }>;
     for (const g of got) {
       metaById.set(Number(g.id), {
         layer: g.layer === "contract" ? "contract" : "narrative", kind: g.kind,
         ...(g.sensitivity ? { sensitivity: g.sensitivity } : {}),
         ...(g.taint ? { taint: g.taint } : {}),
         ...(g.quote ? { quote: g.quote } : {}),
+        ...(g.created_at ? { createdAt: g.created_at } : {}),
       });
     }
   }
@@ -152,6 +153,7 @@ export async function recallForBrief(
       id: `mem:${h.id}`, layer: m.layer, kind: m.kind, stage: h.stage, weight: h.weight, text: h.text,
       sensitivity: "shareable", source: "memory",
       ...(m.quote ? { quote: m.quote } : {}),
+      ...(m.createdAt ? { createdAt: m.createdAt } : {}),
     });
   }
 
@@ -169,6 +171,7 @@ export async function recallForBrief(
         stage: h.stage, weight: h.weight, text: h.text,
         sensitivity: "shareable", source: "memory",
         ...(h.quote ? { quote: h.quote } : {}),
+        ...(h.createdAt ? { createdAt: h.createdAt } : {}),
         ...(h.viaLink ? { viaLink: h.viaLink } : {}),
       });
     }

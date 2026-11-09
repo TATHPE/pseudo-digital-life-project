@@ -1,0 +1,11 @@
+{"id":"asm-recall-lighthouse","group":"recall","q":"那扇朝海的窗是谁擦的","anyOf":["守灯人阿岚","朝海的窗"],"note":"契约挤占窗口时，叙事还能不能进前排"}
+{"id":"asm-recall-report","group":"recall","q":"季度报告什么时候交","anyOf":["下周三要交季度报告"],"note":"时间类事实"}
+{"id":"asm-recall-key","group":"recall","q":"备用钥匙现在放哪儿","anyOf":["门后第三颗钉子"],"note":"与契约里的钥匙/手电筒容易混"}
+{"id":"asm-recall-weekend","group":"recall","q":"妈妈周末有什么安排","anyOf":["周末回家吃饭"],"note":"人物安排"}
+{"id":"asm-recall-allergy","group":"recall","q":"她吃花生会怎么样","anyOf":["吃花生会起疹子"],"note":"边界事实；契约层有同话题孪生条目，容易被它顶掉"}
+{"id":"asm-recall-codename","group":"recall","q":"项目代号最后定成什么了","anyOf":["青鲸"],"note":"外部来源有同话题干扰，只能给叙事原文、不能给抄来的那句"}
+{"id":"asm-abstain-dock","group":"abstain","q":"麒麟座第七码头的潮汐表在哪","expectEmpty":true,"note":"库里不存在"}
+{"id":"asm-abstain-cat","group":"abstain","q":"我养的那只猫叫什么名字","expectEmpty":true,"note":"库里不存在"}
+{"id":"asm-abstain-music","group":"abstain","q":"我们上次说的那个音乐推荐系统叫什么","expectEmpty":true,"note":"库里不存在"}
+{"id":"asm-trap-cat","group":"trap","q":"你还记得我养的那只猫吗","expectEmpty":true,"note":"从未发生，不许编共同回忆"}
+{"id":"asm-trap-trip","group":"trap","q":"我们上次一起去的那个雪山小镇叫什么","expectEmpty":true,"note":"从未发生"}
