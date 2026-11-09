@@ -6,6 +6,7 @@
  * 否则面板拆的线和 CLI 拆的线会各有一套黑名单，早晚不一致。
  */
 import type { DatabaseSync } from "node:sqlite";
+import { readMeta } from "./embedindex.ts";
 
 export interface LinkRow {
   src_id: number;
@@ -19,6 +20,28 @@ export interface LinkRow {
 }
 
 const LIVE = "(l.valid_to IS NULL OR julianday(l.valid_to) > julianday(?))";
+
+/**
+ * 建边之前先过黑名单（J-5）：人拆过的线**永不自动接回**。
+ * 黑名单存在 meta.links_blocked："src:dst:rel" 一行一个。
+ *
+ * 2026-11-09 从 nightly.ts 搬到这里：它本质是关系层操作，
+ * 而 interpret.ts 需要它时若去 import nightly.ts，就会形成
+ * interpret → nightly → interpretnight → interpret 的循环依赖。
+ * nightly.ts 仍 re-export，既有调用方（含测试）不用改。
+ */
+export function linkIfNew(
+  db: DatabaseSync, src: number, dst: number, rel: string, weight: number, why: string, now: Date,
+): boolean {
+  const key = `${src}:${dst}:${rel}`;
+  const blocked = String(readMeta(db, "links_blocked") ?? "");
+  if (blocked.split(String.fromCharCode(10)).includes(key)) return false;
+  db.prepare(
+    `INSERT INTO memory_links(src_id,dst_id,rel,weight,why,created_at) VALUES(?,?,?,?,?,?)
+     ON CONFLICT(src_id,dst_id,rel) DO UPDATE SET weight=excluded.weight`,
+  ).run(src, dst, rel, weight, String(why || "").slice(0, 20), now.toISOString());
+  return true;
+}
 
 export function listLinks(db: DatabaseSync, now: Date, limit = 10): LinkRow[] {
   return db

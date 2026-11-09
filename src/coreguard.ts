@@ -13,7 +13,7 @@
  * 其余一切（workspace、docs、项目源码、配置、临时目录）都可以动。
  */
 import { relative } from "node:path";
-import { realpathish } from "./verbs.ts";
+import { realpathish } from "./pathsafe.ts";
 
 /** 相对 home 的受保护前缀（小写比较、正斜杠） */
 export const CORE_PROTECTED = [

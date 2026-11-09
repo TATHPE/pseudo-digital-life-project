@@ -637,6 +637,25 @@ test("接口：/api/audit 只回字段不泄漏，/api/search 空查询直接返
 
 
 
+test("抽到 routes/status.ts 的只读端点仍能真实响应（2026-11-09）", async () => {
+  const { srv, base } = await start();
+  try {
+    // 之前只有源码字符串断言覆盖 /api/nightlog；路由抽走后改成真发请求。
+    for (const path of ["/health", "/api/nightlog", "/api/activity?limit=3", "/api/logs?limit=3", "/api/audit?limit=3", "/api/usage"]) {
+      const r = await fetch(`${base}${path}`);
+      assert.equal(r.status, 200, `${path} 要能正常响应`);
+      const body = await r.json() as Record<string, unknown>;
+      assert.ok(body && typeof body === "object", `${path} 要回 JSON 对象`);
+    }
+    const h = await (await fetch(`${base}/health`)).json() as any;
+    assert.equal(h.ok, true);
+    assert.ok(Array.isArray(h.degraded), "/health 的 degraded 不能丢");
+    assert.ok("local" in h, "/health 的本地模型状态不能丢");
+    const n = await (await fetch(`${base}/api/nightlog`)).json() as any;
+    assert.ok(Array.isArray(n.runs), "nightlog 要回 runs 数组");
+  } finally { srv.close(); }
+});
+
 test("头像：上传验收文件头（伪造 mime 也不行），SVG 一律拒，删除后回落默认", async () => {
   const dir = tmp();
   const d = openDb(join(dir, "m.db"));
@@ -879,8 +898,11 @@ test("闲时整理留痕：每次一条 events，成功失败都记，面板能�
   // （一开始只接了两处，于是「点了按钮跑了但没记录」查不到）
   assert.equal(nightly.split("recordNight(deps.db, report, now").length - 1, 4, "四条路径都要留痕");
 
+  // 2026-11-09：状态类只读路由抽到了 src/web/routes/status.ts，
+  // 接口没消失、只是换了文件。两个位置都认，免得以后继续拆路由又误报。
   const server = readFileSync(join(process.cwd(), "src/web/server.ts"), "utf8");
-  assert.ok(server.includes('"/api/nightlog"'), "要有接口");
+  const status = readFileSync(join(process.cwd(), "src/web/routes/status.ts"), "utf8");
+  assert.ok(server.includes("handleStatus") && status.includes('"/api/nightlog"'), "要有接口");
 });
 
 test("插件可以单独重连：不用重启整个程序（学 Coopanion 的 World 单独重启）", () => {

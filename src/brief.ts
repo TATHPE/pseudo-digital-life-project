@@ -3,7 +3,9 @@
  *
  * 三条不变量（test/brief.test.ts 守着）：
  *  1) P1–P4 逐字不变 → 前缀 hash 稳定 → 可命中缓存（0.1x）
- *  2) 总预算 ≤ budget.total（默认 2000），且**不随轮数增长**
+ *  2) 总预算 ≤ budget.total，且**不随轮数增长**。
+ *     DEFAULT_BUDGET 是 2000；聊天档放宽到 2600、工作档 5200（见 buildBrief 里的 b）。
+ *     2026-11-09 前 b.total 只被赋值从未被读取，这条不变量实际没实现，现在按槽位优先级真收口。
  *  3) 槽位集合与顺序固定，缺内容时留空标记而不是消失
  */
 import { createHash } from "node:crypto";
@@ -277,16 +279,45 @@ export function buildBrief(input: BriefInput): BriefOutput {
   const confidence: BriefOutput["confidence"] =
     narrativeHits === 0 ? (contractOnly ? "need_evidence" : "abstain") : narrativeHits < 2 ? "need_evidence" : "answer";
 
-  const body = [p5, p6, p7, p8, p9, p10, p12, p13, p14, p15, NO_FAKE_ACK, p16, p17, p18, p19].filter(Boolean).join("\n\n");
-  const text = [prefixText, body, p11].filter(Boolean).join("\n\n");
+  // ── 总预算：真的按 b.total 收口（2026-11-09）────────────────
+  // 以前 b.total 只被赋值、从未被读取：各槽位的 fit() 只管自己的分项预算，
+  // 最终 text 直接拼起来就返回，头注释里「总量 ≤ budget.total」其实是空话。
+  // 现在按可丢弃优先级逐槽让位直到达标；稳定前缀(P1–P4)、P5 时刻、P6 契约、
+  // P10 召回与反编造硬提示、NO_FAKE_ACK、P11 用户输入一律不动。
+  const parts: Array<{ id: string; text: string }> = [
+    { id: "P5", text: p5 }, { id: "P6", text: p6 }, { id: "P7", text: p7 },
+    { id: "P8", text: p8 }, { id: "P9", text: p9 }, { id: "P10", text: p10 },
+    { id: "P12", text: p12 }, { id: "P13", text: p13 }, { id: "P14", text: p14 },
+    { id: "P15", text: p15 }, { id: "NO_FAKE_ACK", text: NO_FAKE_ACK },
+    { id: "P16", text: p16 }, { id: "P17", text: p17 }, { id: "P18", text: p18 },
+    { id: "P19", text: p19 },
+  ];
+  const assemble = () => {
+    const body = parts.filter((x) => x.text).map((x) => x.text).join("\n\n");
+    return [prefixText, body, p11].filter(Boolean).join("\n\n");
+  };
+  // 先丢装饰性 / 可重算的槽，最后才动与回答直接相关的线头、增量、状态。
+  const DROP_ORDER = ["P18", "P19", "P17", "P16", "P14", "P13", "P12", "P9", "P8", "P7"];
+  const droppedSlots: string[] = [];
+  let text = assemble();
+  for (const id of DROP_ORDER) {
+    if (estimateTokens(text) <= b.total) break;
+    const part = parts.find((x) => x.id === id);
+    if (!part || !part.text) continue;
+    part.text = "";
+    droppedSlots.push(id);
+    text = assemble();
+  }
   const tokens = estimateTokens(text);
 
   return {
     text, tokens, prefixHash, slots, confidence,
+    overBudget: tokens > b.total,
     dropped: {
       recalled: input.recalled.length - r.kept.length,
       contracts: input.contracts.length - c.kept.length,
       threads: (input.threads ?? []).length - th.length,
+      slots: droppedSlots,
     },
   };
 }

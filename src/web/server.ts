@@ -36,15 +36,13 @@ import { runStep } from "../setupsteps.ts";
 import { listReceipts, markSeen, unseenCount } from "../notify.ts";
 import { listStanding, disableStanding } from "../standing.ts";
 import { cutLink, linkKey } from "../links.ts";
-import { readStateSafe } from "../deploy/slot.ts";
 import { listDocs, forgetDoc, setDocSensitivity, ingestPath, collectFiles } from "../ingest.ts";
 import { bigramText } from "../text.ts";
 import { atomicWriteFile } from "../fsx.ts";
-import { safePath } from "../verbs.ts";
+import { safePath } from "../pathsafe.ts";
 import { listProject } from "../project.ts";
 import { SUPPORTED_EXTS, MAX_INGEST_BYTES } from "../ingest.ts";
 import { createTransport, routerFrom } from "../transport.ts";
-import { spentToday } from "../budget.ts";
 import { recallForBrief, omissionNote } from "../recall.ts";
 import { toolHuman } from "../toolhint.ts";
 import { mcpFingerprint } from "../plugins.ts";
@@ -58,6 +56,7 @@ import { createStore, fingerprint, type Provider } from "../auth.ts";
 import type { ToolRegistry } from "../tools.ts";
 import { runAgent, type ChatFn } from "../agent.ts";
 import { resolveMode, type Mode } from "../mode.ts";
+import { handleStatus } from "./routes/status.ts";
 
 /** 上一轮实际用的档：自动判定靠它做粘性（**每个 server 一份**，不是进程级） */
 import { renderMarkdown, esc } from "../md.ts";
@@ -516,22 +515,8 @@ export function createWebServer(deps: WebDeps) {
         return;
       }
 
-      // ── 最近几晚闲时整理干了什么（用户：本地 LLM 完全未知）──
-      if (req.method === "GET" && url.pathname === "/api/nightlog") {
-        try {
-          const rows = deps.db.prepare("SELECT ts,ok,payload FROM events WHERE kind='night' ORDER BY ts DESC LIMIT 14").all() as Array<{ ts: string; ok: number; payload?: string }>;
-          json(res, 200, {
-            runs: rows.map((r) => {
-              let p: Record<string, unknown> = {};
-              try { p = JSON.parse(String(r.payload ?? "{}")) as Record<string, unknown>; } catch { /* 坏数据当空 */ }
-              return { ts: r.ts, ok: r.ok === 1, ...p };
-            }),
-          });
-        } catch (e) {
-          json(res, 500, { error: "E_NIGHTLOG", why: String((e as Error).message ?? e).slice(0, 120) });
-        }
-        return;
-      }
+      // ── 状态 / 只读 GET 路由（已抽到 ./routes/status.ts）──
+      if (await handleStatus({ req, res, url, deps, now, json })) return;
 
       // ── 完整档片头：550C 骨架上改出来的那份，数据现取（拿不到的显示 —）──
       if ((req.method === "GET" || req.method === "HEAD") && url.pathname === "/splash") {
@@ -586,31 +571,6 @@ export function createWebServer(deps: WebDeps) {
         json(res, 200, { ok: true, bye: true });
         // 先把响应发出去，再退（否则壳那边拿到的是连接被重置）
         setTimeout(() => process.exit(0), 60);
-        return;
-      }
-      // ── 活动：跨会话的最近几条（2026-11-05）──
-      if (req.method === "GET" && url.pathname === "/api/activity") {
-        try {
-          const limit = Math.min(30, Math.max(1, Number(url.searchParams.get("limit") ?? 8)));
-          const { events } = readEvents(deps.inboxDir);
-          const titles = new Map<string, string>();
-          const rows = events
-            .filter((e) => e.kind === "utterance" || e.kind === "agent_reply")
-            .map((e) => {
-              const p = (e.payload ?? {}) as { text?: string; session?: string };
-              return { ts: e.ts, role: e.kind === "utterance" ? "user" : "agent", text: String(p.text ?? ""), session: String(p.session ?? "") };
-            })
-            .filter((r) => r.text.trim())
-            .sort((a, b) => b.ts.localeCompare(a.ts))
-            .slice(0, limit);
-          for (const r of rows) {
-            if (!r.session || titles.has(r.session)) continue;
-            titles.set(r.session, getSession(deps.db, r.session)?.title ?? "");
-          }
-          json(res, 200, {
-            items: rows.map((r) => ({ ...r, text: r.text.slice(0, 120), title: titles.get(r.session) ?? "" })),
-          });
-        } catch (e) { json(res, 500, { error: String((e as Error)?.message ?? e).slice(0, 160) }); }
         return;
       }
       // ── QQ 接入（OneBot 11）：读写 data/bridge.json + 报桥的运行状态 ──
@@ -713,29 +673,6 @@ export function createWebServer(deps: WebDeps) {
         }
         const shown = keep == null ? msgs : msgs.slice(0, keep);
         json(res, 200, { session: row, messages: shown, tools });
-        return;
-      }
-      // ── 日志：执行层的审计（2026-11-05）。按时间倒序，可按 verb/decision 过滤 ──
-      if (req.method === "GET" && url.pathname === "/api/logs") {
-        try {
-          const limit = Math.min(300, Math.max(1, Number(url.searchParams.get("limit") ?? 100)));
-          const q = String(url.searchParams.get("q") ?? "").trim();
-          const rows = deps.db.prepare(
-            "SELECT ts,verb,tier,decision,exit_code,duration_ms,argv_json,deny_reason,capability FROM exec_audit ORDER BY ts DESC LIMIT ?",
-          ).all(limit) as Array<Record<string, unknown>>;
-          const items = rows.map((r) => ({
-            ts: String(r.ts ?? ""),
-            verb: String(r.verb ?? ""),
-            tier: r.tier == null ? null : Number(r.tier),
-            decision: String(r.decision ?? ""),
-            exit: r.exit_code == null ? null : Number(r.exit_code),
-            ms: r.duration_ms == null ? null : Number(r.duration_ms),
-            argv: String(r.argv_json ?? "").slice(0, 400),
-            why: r.deny_reason == null ? null : String(r.deny_reason).slice(0, 200),
-            capability: r.capability == null ? null : String(r.capability),
-          })).filter((x) => !q || (x.verb + " " + x.argv + " " + x.decision).toLowerCase().includes(q.toLowerCase()));
-          json(res, 200, { items, count: items.length });
-        } catch (e) { json(res, 500, { error: String((e as Error)?.message ?? e).slice(0, 160) }); }
         return;
       }
       // ── 轮次：一问一答 = 一轮（2026-11-05）。能单独撤回、重问、看这一轮的审计 ──
@@ -845,94 +782,7 @@ export function createWebServer(deps: WebDeps) {
         else json(res, 200, { ok: true, interrupted: false });
         return;
       }
-      if (req.method === "GET" && url.pathname === "/health") {
-        const dep = readStateSafe(deps.home);
-        const degraded: string[] = [];
-        if (dep.corrupt) degraded.push("deploy_state_corrupt");
-        let memories = 0;
-        try { memories = Number((deps.db.prepare("SELECT count(*) c FROM memories WHERE status='active'").get() as { c?: number })?.c ?? 0); }
-        catch { degraded.push("db_unreadable"); }
-        // 闲时整理降级是**可见状态**，不是日志里的一行（E-6：否则 energy 滑到 0 也没人知道为什么）
-        try { if (meta(deps.db, "nightly_skipped")) degraded.push("nightly-skipped"); } catch { /* ignore */ }
-        // 索引身份（C-2）：换了 embedding 模型却没重建 → 召回不可信，必须让探针看得见
-        try {
-          const cfgNow0 = deps.getConfig();
-          const localRoles0 = Object.values(cfgNow0.roles).filter((r) => String((r as { kind?: string }).kind) === "local");
-          if (localRoles0.length) {
-            // 只读缓存，不在这里探头（探针不该拉长探针）
-            const st = lastPreflight(cfgNow0.ollama);
-            if (st && !st.online) degraded.push("ollama-unreachable");
-          }
-        } catch { /* ignore */ }
-        try {
-          const cfgNow = deps.getConfig();
-          const cur = modelKeyOf(cfgNow.roles["embed"]);
-          const cg = coolGate(cfgNow.roles["express"]?.provider ?? "");
-          if (cg.blocked) degraded.push("cloud-cooldown");
-          const ix = indexState(deps.db, cur);
-          if (ix.stale) degraded.push("embed-index-stale");
-          // 覆盖率：模型没换也可能"有记忆没向量"（实测 157 条里只有 29 条有）——
-          // 那时检索会静默漏掉一多半记忆，而 /health 一直说一切正常。
-          if (ix.missing > 0) degraded.push("embed-index-incomplete:" + ix.missing);
-        } catch { /* ignore */ }
-        // 本地模型到底在干什么：这一块之前完全没有出口（用户原话：完全未知）。
-        let localInfo: Record<string, unknown> = {};
-        try {
-          const cfgL = deps.getConfig();
-          const { probeOllama } = await import("../ollama.ts");
-          const { embedStats } = await import("../embed.ts");
-          const pf = await probeOllama(cfgL.ollama ?? "http://127.0.0.1:11434", 700).catch(() => null);
-          const anyCfg = cfgL as unknown as { local?: { default?: string; night?: string } };
-          const loc = anyCfg.local ?? {};
-          let running: string[] = [];
-          try {
-            const ps = await fetch((cfgL.ollama ?? "http://127.0.0.1:11434") + "/api/ps", { signal: AbortSignal.timeout(700) });
-            const j = (await ps.json()) as { models?: Array<{ name?: string }> };
-            running = (j.models ?? []).map((m) => String(m.name ?? "")).filter(Boolean);
-          } catch { /* 没在跑就是空的 */ }
-          localInfo = {
-            endpoint: cfgL.ollama ?? "http://127.0.0.1:11434",
-            online: Boolean(pf && pf.online),
-            installed: pf?.names ?? [],
-            running,
-            roles: { embed: cfgL.roles["embed"]?.model ?? null, night: loc.night ?? loc.default ?? null, shared: loc.default ?? null },
-            embed: { calls: embedStats.calls, texts: embedStats.texts, ms: embedStats.ms, failed: embedStats.failed, lastAt: embedStats.lastAt || null },
-          };
-          if (meta(deps.db, "reembed_error")) degraded.push("reembed-failed");
-        } catch { /* ignore */ }
-        json(res, 200, {
-          ok: true,
-          schema: meta(deps.db, "schema_version") ?? null,
-          release: dep.state.active,
-          frozen: dep.state.freezeUntil && Date.parse(dep.state.freezeUntil) > now().getTime() ? dep.state.freezeUntil : null,
-          memories,
-          uptimeS: Math.round(process.uptime()),
-          degraded,
-          // 本地模型的状态（用户：「我根本就不知道它在干什么，它的工作状态完全未知」）
-          local: localInfo,
-        });
-        return;
-      }
       // ── P0/P1 的支撑接口：动作审计 / 搜索 / 记忆纠错 / 面板内摄入 / 测连接 / 用量 ──
-      if (req.method === "GET" && url.pathname === "/api/audit") {
-        const limit = Math.min(200, Number(url.searchParams.get("limit") ?? 60) || 60);
-        const rows = deps.db.prepare(
-          `SELECT ts,verb,tier,decision,deny_reason,duration_ms,capability,host_profile,cwd
-             FROM exec_audit ORDER BY rowid DESC LIMIT ?`,
-        ).all(limit) as Array<Record<string, unknown>>;
-        // 带上总数：只回“最近 N 条”却让人以为是全部，也是一种说谎
-        const total = Number((deps.db.prepare("SELECT count(*) c FROM exec_audit").get() as { c?: number })?.c ?? 0);
-        json(res, 200, {
-          total,
-          rows: rows.map((r) => ({
-            ts: String(r.ts), verb: String(r.verb), tier: String(r.tier), decision: String(r.decision),
-            reason: r.deny_reason ? String(r.deny_reason) : null,
-            ms: Number(r.duration_ms ?? 0), capability: r.capability ? String(r.capability) : null,
-            host: r.host_profile ? String(r.host_profile) : null,
-          })),
-        });
-        return;
-      }
 
       if (req.method === "GET" && url.pathname === "/api/search") {
         const q = (url.searchParams.get("q") ?? "").trim();
@@ -1107,20 +957,6 @@ export function createWebServer(deps: WebDeps) {
         return;
       }
 
-      if (req.method === "GET" && url.pathname === "/api/usage") {
-        const spent = spentToday(deps.db);
-        const row = deps.db.prepare(
-          `SELECT count(*) n, sum(in_tokens) i, sum(out_tokens) o FROM usage WHERE ts >= date('now','localtime')`,
-        ).get() as { n?: number; i?: number; o?: number };
-        json(res, 200, {
-          todayUsd: +spent.toFixed(6),
-          calls: Number(row.n ?? 0),
-          inTokens: Number(row.i ?? 0),
-          outTokens: Number(row.o ?? 0),
-          budgetUsd: deps.budgetUsd ?? 2,
-        });
-        return;
-      }
       if (req.method === "GET" && url.pathname === "/api/state") {
         const msgs = messages(deps.db, deps.inboxDir);
         const last = msgs.length ? msgs[msgs.length - 1]! : null;

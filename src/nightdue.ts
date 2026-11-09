@@ -24,7 +24,7 @@ export interface DueInfo {
   due: boolean;
   /** 上次整理时间（events 里最后一条 night，没有就用游标） */
   lastAt: string | null;
-  /** 待整理的事件条数（游标之后） */
+  /** 待整理条数。dueInfo 只拿到 db、拿不到 inboxDir，恒为 0；真实计数由调用方按 inbox 判断 */
   pending: number;
   why?: string;
 }
@@ -47,15 +47,12 @@ export function dueInfo(db: DatabaseSync, now = new Date(), opts: { hours?: numb
   const cursor = readMeta(db, "nightly_cursor_ts");
   const since = lastAt ?? cursor;
 
-  // 待整理：游标之后还有没有 utterance/agent_reply
-  let pending = 0;
-  try {
-    const r = db.prepare("SELECT count(*) c FROM events").get() as { c?: number } | undefined;
-    void r;
-  } catch { /* ignore */ }
-  // events 表不存对话（对话在 inbox 文件里），所以「有没有新东西」由调用方按 inbox 判断；
-  // 这里只报时间，pending 给 1 表示"由调用方决定"。
-  pending = 1;
+  // 2026-11-09 修：以前这里查了 events 的 count 却 `void r` 丢掉，再硬编码 pending = 1，
+  // 等于对面板假报「有 1 条待整理」。events 表不存对话（对话在 inbox 的 JSONL 里），
+  // 本函数只拿到 db、拿不到 inboxDir，本来就数不出真实条数。
+  // 诚实做法：恒为 0，「有没有新东西」由调用方按 inbox 判断；
+  // kickNightIfDue 只看 due / lastAt / why，不看 pending，行为不受影响。
+  const pending = 0;
 
   if (!since) return { due: true, lastAt: null, pending, why: "从没整理过" };
   const gapH = (now.getTime() - Date.parse(since)) / 3600_000;

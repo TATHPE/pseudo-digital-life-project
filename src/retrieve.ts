@@ -39,7 +39,6 @@ export interface SearchOpts {
   candidates?: number;
   /** E-8：有几个候选是从向量召回进来的（FTS 一个都没命中时就是它们的全部） */
   vecHits?: number;      // 第一段候选数，默认 1000
-  activeMin?: number;       // active 注入门槛（保留给调用方覆盖，默认 0.35 生效于 stage）
   fadingMin?: number;       // fading 最低权重，默认 0.15
   fadingRelevance?: number; // fading 需"话题直接命中"，默认 0.45
   flashbackCap?: number;    // dormant 强线索唤醒上限，默认 2
@@ -121,7 +120,6 @@ export async function search(
 ): Promise<{ hits: Hit[]; meta: SearchMeta }> {
   const k = opts.k ?? 8;
   const lim = opts.candidates ?? 1000;
-  const activeMin = opts.activeMin ?? 0.35;
   const fadingMin = opts.fadingMin ?? 0.15;
   const fadingRel = opts.fadingRelevance ?? 0.45;
   const flashCap = opts.flashbackCap ?? 2;
@@ -196,6 +194,8 @@ export async function search(
   // 默认**总是**跑改写（2026-11-03 用难用例量出来的）：
   //   只在「候选 < 2」时触发 → R@1 7/10；总是触发 → 8/10，且三个夹具都没回归。
   //   代价是每个查询多跑 1-2 次 FTS（每次 < 5ms）。JJ_REWRITE_MIN_CANDS 可回调。
+  // 注意：默认值 999 是**刻意让条件恒真**（=永远改写），不是忘了启用；
+  // A/B 对照时设 JJ_REWRITE_MIN_CANDS=2 就能退回旧的「候选不足才改写」。
   const rewriteMin = Number(process.env.JJ_REWRITE_MIN_CANDS ?? 999);
   if (rewriteOn && metaById.size < rewriteMin) {
     let added = 0;
@@ -301,6 +301,7 @@ export async function search(
   // 只靠向量进来、且**与查询一个 bigram 都不共享**的候选，不可信 —— 那是看起来像。
   // **默认关**：它能挡住 abstain 的误召回（2/2），但会误杀「纯语义」的真命中
   // （实测：把「我对花生过敏」从命中 2 条杀成 0 条）。这个矛盾留给 reranker。
+  // 注意：默认 0（关）是量出来的结论、是有意的实验开关，不是没接线的死参数。
   const COVER_MIN = Number(process.env.JJ_COVER_MIN ?? 0);
   let fused2 = fused;
   if (COVER_MIN > 0) {

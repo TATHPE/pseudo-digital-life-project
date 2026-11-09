@@ -39,6 +39,19 @@ test("从没整理过 → 该跑；刚跑过 → 不该跑；超过 20 小时 �
   } finally { try { rmSync(home, { recursive: true, force: true }); } catch { /* ignore */ } }
 });
 
+test("pending 不许假报（2026-11-09）：events 里塞再多事件也恒为 0，交给调用方按 inbox 判断", () => {
+  const home = mkdtempSync(join(tmpdir(), "jj-nd-pending-"));
+  try {
+    const { db } = openDb(join(home, "memory.db"));
+    const now = new Date("2026-11-03T09:00:00Z");
+    assert.equal(dueInfo(db, now).pending, 0, "以前硬编码 1，是对面板假报一条待整理");
+    writeNight(db, "2026-11-03T08:00:00Z");
+    db.prepare("INSERT INTO events(ts,kind,actor,target,payload,ok) VALUES('2026-11-03T07:00:00Z','utterance','user','x','{}',1)").run();
+    db.prepare("INSERT INTO events(ts,kind,actor,target,payload,ok) VALUES('2026-11-03T07:10:00Z','agent_reply','agent','x','{}',1)").run();
+    assert.equal(dueInfo(db, now).pending, 0, "查不到 inbox 就不许编数字");
+  } finally { try { rmSync(home, { recursive: true, force: true }); } catch { /* ignore */ } }
+});
+
 test("kick：到期才起，且在跑的时候不会起第二个（同一批事件被抽两遍就完了）", async () => {
   const home = mkdtempSync(join(tmpdir(), "jj-nd3-"));
   try {

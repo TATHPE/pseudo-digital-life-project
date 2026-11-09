@@ -29,6 +29,8 @@ test("不变量 1b：人格变了 → prefixHash 必须变", () => {
   const b = buildBrief(base({ persona: { ...persona, core: persona.core + "\n新增一句。" } }));  assert.notEqual(a.prefixHash, b.prefixHash);
 });
 
+// 这两条是「夹具刚好没超」的历史断言，守的是不随轮数增长这一半；
+// 「总量 ≤ budget.total」真正由下面 2026-11-09 的两条用例守（会构造真超预算的输入）。
 test("不变量 2：总量 ≤2000，且第 1 轮 ≤ 第 100 轮（不随轮数增长）", () => {
   const t1 = buildBrief(base());
   const t100 = buildBrief(base({
@@ -207,6 +209,54 @@ test("P19 我还不知道的：有缺口才出现，且明说「没聊到别硬�
   assert.ok(ask.text.includes("几点之后不想被打扰"));
   assert.ok(ask.text.includes("没聊到别硬问"), "要压住查户口感");
   assert.ok(ask.tokens <= 2000, "加了这一槽也不能破预算");
+});
+
+/** 一大堆易变槽都塞满，用来把总预算真的顶到上限（不是靠夹具刚好没超） */
+const fatVolatile: Partial<BriefInput> = {
+  history: Array.from({ length: 30 }, (_, i) => ({
+    role: (i % 2 === 0 ? "user" : "agent") as "user" | "agent",
+    text: `第 ${i + 1} 句：这句话有点长度，用来占预算，也用来验证最近几轮会被优先让位。`,
+  })),
+  skills: "【可用的说明书】deploy（上线跑一遍）／note（写周报）／abc／def。要看正文用 skill_read。",
+  powers: "完全权限窗口：可以跑命令，但记忆核心与回收站仍拒",
+  plugins: { running: ["markitdown"], errors: ["firecrawl: connect ECONNREFUSED"], pending: true },
+  gapAsk: "你一般几点之后不想被打扰？",
+  capacity: { memories: 162, docs: 1, chunks: 7, recallMax: 8, searchMax: 20 },
+  agenda: ["先把 docs/ops/24 的数字对一遍", "看看夜间整理的游标"],
+  interpretations: ["她对数字很敏感", "她不喜欢被追问"],
+  delta: "你昨天提过论文太多，今天想先看代码",
+  lastName: "停在「先写 decay.ts」上",
+  state: { energy: 0.62, closeness: 0.41, mood: "有点沉" },
+  threads: ["1", "2", "3", "4", "5"],
+};
+
+test("总预算 2026-11-09：收紧到 1300 时逐槽让位，必留内容一个不丢", () => {
+  const plain = buildBrief(base());
+  const tight = buildBrief(base({ budget: { total: 1300 }, ...fatVolatile }));
+  assert.ok(tight.tokens <= 1300, `tight=${tight.tokens}`);
+  assert.ok(tight.dropped.slots.length > 0, "必须真的丢掉一些易变槽，而不是假装达标");
+  assert.equal(tight.overBudget, false);
+  assert.equal(tight.prefixHash, plain.prefixHash, "P1–P4 稳定前缀不许动");
+  assert.ok(tight.text.includes("在吗"), "P11 用户输入不许动");
+  assert.ok(tight.text.includes("已按你的确认执行"), "NO_FAKE_ACK 硬规矩不许动");
+  assert.ok(tight.text.includes("这一轮没有与你问的这件事相关的记忆"), "P10 反编造硬提示不许动");
+  assert.ok(tight.text.includes("【现在】"), "P5 时刻不许动（相对日期推理靠它）");
+});
+
+test("总预算 2026-11-09：聊天档 2600 / 工作档 5200 各自收口，再收紧就继续让位", () => {
+  const chat = buildBrief(base({ mode: "chat", ...fatVolatile }));
+  const work = buildBrief(base({ mode: "work", ...fatVolatile }));
+  assert.ok(chat.tokens <= 2600, `chat=${chat.tokens}`);
+  assert.ok(work.tokens <= 5200, `work=${work.tokens}`);
+  assert.equal(chat.overBudget, false);
+  assert.equal(work.overBudget, false);
+
+  // 同一个肥输入，把聊天档 total 硬压到 1100：应该丢更多槽，且不假装达标
+  const capped = buildBrief(base({ mode: "chat", budget: { total: 1100 }, ...fatVolatile }));
+  assert.ok(capped.tokens <= 1100, `capped=${capped.tokens}`);
+  assert.ok(capped.dropped.slots.length > chat.dropped.slots.length,
+    `预算更紧就该丢更多槽：capped=${capped.dropped.slots.length} chat=${chat.dropped.slots.length}`);
+  assert.ok(capped.text.includes("在吗"), "再紧也不能把用户输入丢了");
 });
 
 test("P4 的工具清单来自能力表：真实名字都在，过时的四个不许再出现（2026-11-06）", async () => {

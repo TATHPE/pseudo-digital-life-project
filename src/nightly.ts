@@ -12,7 +12,6 @@ import { readEvents, type Event } from "./journal.ts";
 import { remember, tickDecay } from "./store.ts";
 import type { Embedder } from "./embed.ts";
 import { NIGHTLY_KINDS, type Layer } from "./decay.ts";
-import { readMeta } from "./embedindex.ts";
 
 export interface Candidate {
   kind: string;
@@ -174,22 +173,11 @@ function bigramsFor(s: string): string[] {
   return out;
 }
 
-/**
- * 建边之前先过黑名单（J-5）：人拆过的线**永不自动接回**。
- * 黑名单存在 meta.links_blocked："src:dst:rel" 一行一个。
- */
-export function linkIfNew(
-  db: DatabaseSync, src: number, dst: number, rel: string, weight: number, why: string, now: Date,
-): boolean {
-  const key = `${src}:${dst}:${rel}`;
-  const blocked = String(readMeta(db, "links_blocked") ?? "");
-  if (blocked.split(String.fromCharCode(10)).includes(key)) return false;
-  db.prepare(
-    `INSERT INTO memory_links(src_id,dst_id,rel,weight,why,created_at) VALUES(?,?,?,?,?,?)
-     ON CONFLICT(src_id,dst_id,rel) DO UPDATE SET weight=excluded.weight`,
-  ).run(src, dst, rel, weight, String(why || "").slice(0, 20), now.toISOString());
-  return true;
-}
+// 建边（含黑名单 J-5）的实现已移到 links.ts：它是关系层操作，
+// 留在 nightly.ts 会让 interpret.ts 反向依赖夜间整理，形成循环。
+// 这里 re-export 保持 `import { linkIfNew } from "./nightly.ts"` 的既有调用方不变。
+import { linkIfNew } from "./links.ts";
+export { linkIfNew };
 
 
 

@@ -16,9 +16,10 @@
  * 这是 H-7（按次授权）的临时形态，等 K-3 的 grant 上线后换成按次。
  */
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { basename, dirname, isAbsolute, join, normalize, relative, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-import { realpathish } from "./verbs.ts";
+import { basename, isAbsolute, join, normalize, relative, resolve } from "node:path";
+// 2026-11-09：路径原语改从叶子模块取，切断 project ↔ verbs 的循环依赖。
+import { realpathish, projectHome } from "./pathsafe.ts";
+export { projectHome } from "./pathsafe.ts";
 
 /** 可读的根（相对项目根）。第二条是文档仓（`D:/LLM/docs`），因为它不在 jingjing/ 里 */
 export const PROJECT_ROOTS = [".", "docs"] as const;   // 仓库自身 + 它的 docs/（原来写 jingjing，是因为项目根在老布局的上一层）
@@ -32,12 +33,7 @@ const MAX_BYTES = 64 * 1024;
 
 export interface ProjectFile { path: string; text: string; bytes: number; truncated: boolean }
 
-/** 项目根：默认取仓库自身（src/..），不再写死 D:/LLM；可用 JJ_PROJECT_HOME 覆盖。 */
-export function projectHome(env: Record<string, string | undefined> = process.env): string {
-  if (env.JJ_PROJECT_HOME) return normalize(env.JJ_PROJECT_HOME);
-  return normalize(join(dirname(fileURLToPath(import.meta.url)), ".."));
-}
-
+/** 项目根的实现已移到 pathsafe.ts（见顶部 re-export），此处保留注释说明语义不变。 */
 function roots(env?: Record<string, string | undefined>): string[] {
   const h = projectHome(env);
   return PROJECT_ROOTS.map((r) => (r === "." ? h : join(h, r))).filter((p) => existsSync(p));

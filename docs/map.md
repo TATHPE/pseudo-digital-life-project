@@ -8,7 +8,7 @@
 
 | 项 | 数量 |
 |---|---|
-| 源文件（src/**/*.ts） | 119 |
+| 源文件（src/**/*.ts） | 121 |
 | 错误码 E_* | 237 |
 | verbs | 27 |
 | CLI 子命令 | 40 |
@@ -121,7 +121,7 @@
 | `E_NEEDS_CONFIRM` | `src/confirm.ts` `src/execute.ts` `src/posture.ts` |
 | `E_NEEDS_EGRESS` | `src/egress.ts` `src/posture.ts` `src/project.ts` `src/supergrant.ts` `src/verbs.ts` |
 | `E_NIGHT` | `src/web/server.ts` |
-| `E_NIGHTLOG` | `src/web/server.ts` |
+| `E_NIGHTLOG` | `src/web/routes/status.ts` |
 | `E_NO_ARGV` | `src/shell.ts` |
 | `E_NO_ASSET` | `src/web/server.ts` |
 | `E_NO_AVATAR` | `src/web/server.ts` |
@@ -169,7 +169,7 @@
 | `E_NOT_DELETED` | `src/web/server.ts` |
 | `E_NOT_DIR` | `src/project.ts` |
 | `E_NOT_FILE` | `src/project.ts` |
-| `E_NOT_FOUND` | `src/agentguard.ts` `src/plugins.ts` `src/selfupdate.ts` `src/verbs.ts` `src/web/server.ts` |
+| `E_NOT_FOUND` | `src/agentguard.ts` `src/pathsafe.ts` `src/plugins.ts` `src/selfupdate.ts` `src/verbs.ts` `src/web/server.ts` |
 | `E_NOTHING_TO_DO` | `src/web/server.ts` |
 | `E_NOTHING_TO_UNDO` | `src/web/server.ts` |
 | `E_OLLAMA_DOWN` | `src/cli/jingjing.ts` |
@@ -178,7 +178,7 @@
 | `E_OUT_OF_RANGE` | `src/decayparams.ts` |
 | `E_OUTPUT_TRUNCATED` | `src/web/server.ts` |
 | `E_OUTSIDE_HOME` | `src/web/server.ts` |
-| `E_PATH_DENIED` | `src/agentguard.ts` `src/project.ts` `src/shell.ts` `src/verbs.ts` |
+| `E_PATH_DENIED` | `src/agentguard.ts` `src/pathsafe.ts` `src/project.ts` `src/shell.ts` `src/verbs.ts` |
 | `E_PENDING_` | `src/web/server.ts` |
 | `E_PENDING_EXPIRED` | `src/web/server.ts` |
 | `E_PENDING_ID` | `src/confirm.ts` |
@@ -364,6 +364,7 @@
 | `src/notify.ts` | 回执通道（D-3 的前置，`docs/ops/25 §4`）。 |
 | `src/ollama.ts` | Ollama 探测（C-4）：一次 /api/tags + 两个最小调用探针。 |
 | `src/onebot.ts` | OneBot 11 适配器（2026-11-05）：把 QQ 消息接进来，把她的回话发出去。 |
+| `src/pathsafe.ts` | 路径安全与项目根（叶子模块，2026-11-09 从 verbs.ts / project.ts 抽出）。 |
 | `src/persona.ts` | import { readFileSync, mkdirSync, existsSync, readdirSync } from "node |
 | `src/plugins.ts` | 插件（MCP）与技能的**增删**（2026-11-01，用户："现在只能看，等于借来的手脚是死数据"）。 |
 | `src/policy.ts` | 策略层（04 §4 / 12 §9.2）：唯一有权说"不"的地方。 |
@@ -409,6 +410,7 @@
 | `src/web/brand.ts` | 品牌图标（鲸）。旧面板（src/web/page.ts）2026-11-05 撤下、2026-11-06 已删除； |
 | `src/web/desk.ts` | 桌面端的**启动令牌**（2026-11-01：软件只有桌面端，不提供浏览器入口）。 |
 | `src/web/notebook.ts` | 第二条壳：工作记录本（2026-11-05） |
+| `src/web/routes/status.ts` | 状态 / 只读 GET 路由（从 web/server.ts 抽出，行为逐字不变）。 |
 | `src/web/server.ts` | 本地 Web 面板（17 §4）：127.0.0.1:7700，零前端依赖，SSE 流式。 |
 | `src/web/splash.ts` | 片头（完整档）：**在 dsh-550c-boot 的 550C 骨架上改出来的那一个**。 |
 | `src/web/state.ts` | 状态行（17 §4.1）：一句话，不是数字仪表盘 */ |

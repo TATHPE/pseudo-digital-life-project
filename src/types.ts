@@ -142,6 +142,14 @@ export interface BriefOutput {
   tokens: number;
   prefixHash: string;
   slots: BriefSlot[];
-  dropped: { recalled: number; contracts: number; threads: number };
+  dropped: {
+    recalled: number;
+    contracts: number;
+    threads: number;
+    /** 为了守住总预算而被整体让位的易变槽位 id（按丢弃顺序） */
+    slots: string[];
+  };
+  /** 稳定前缀 + 必留槽本身就超预算时为 true：调用方要能看见，不许假装没超 */
+  overBudget: boolean;
   confidence: "answer" | "clarify" | "abstain" | "need_evidence";
 }

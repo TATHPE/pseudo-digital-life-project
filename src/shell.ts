@@ -26,7 +26,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, unlinkSync } from "node:fs";
 import { join, normalize, sep } from "node:path";
 import { atomicWriteFile } from "./fsx.ts";
-import { safePath } from "./verbs.ts";
+import { safePath } from "./pathsafe.ts";
 import type { Tier } from "./types.ts";
 
 // ── 模板表：能跑的命令**只有**这里的 ──────────────────────────

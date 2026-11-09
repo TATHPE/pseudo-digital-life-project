@@ -17,7 +17,7 @@
  */
 import type { DatabaseSync } from "node:sqlite";
 import { remember, patchMemoryMeta } from "./store.ts";
-import { linkIfNew } from "./nightly.ts";
+import { linkIfNew } from "./links.ts";
 
 export interface Interpretation {
   id: number;
