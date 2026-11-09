@@ -73,37 +73,70 @@ export function policyPath(home: string): string { return join(home, "policy.csv
 export function modelPath(home: string): string { return join(home, "policy.model.conf"); }
 
 /** 模型与策略都落盘：casbin 的 newEnforcer 只接受「文件路径 / 适配器」，不接受内存 Model + 路径混搭 */
-/** 老库升级时要补的行：只在「该 verb 一行都没有」时追加，不覆盖人写的 deny */
-const REQUIRED_RULES: Array<[string, string]> = [
-  ["shell.exec", "p, allow, T3, shell.exec, shell:exec, enforce"],
-  ["script.run", "p, allow, T3, script.run, script:*, enforce"],
-  ["shell.run-T0", "p, allow, T0, shell.run, shell:*, advise"],
-  ["shell.run-T1", "p, allow, T1, shell.run, shell:*, advise"],
-  ["git.status", "p, allow, T1, git.status, *, advise"],
-  ["git.diff", "p, allow, T1, git.diff, *, advise"],
-  ["git.log", "p, allow, T0, git.log, *, advise"],
-  ["skill.list", "p, allow, T0, skill.list, *, advise"],
-  ["skill.read", "p, allow, T0, skill.read, *, advise"],
+/**
+ * 老库升级时要补的行。**单一事实源就是这一行本身**，不再另写「检测键」：
+ * 以前键写成 "shell.run-T0"，而 CSV 里是 `p, allow, T0, shell.run, ...`，
+ * includes 永远为假 → 每次启动都追加两行（实测 policy.csv 涨到 447 行 / 421 条 shell.run）。
+ */
+const REQUIRED_RULES: readonly string[] = [
+  "p, allow, T3, shell.exec, shell:exec, enforce",
+  "p, allow, T3, script.run, script:*, enforce",
+  "p, allow, T0, shell.run, shell:*, advise",
+  "p, allow, T1, shell.run, shell:*, advise",
+  "p, allow, T1, git.status, *, advise",
+  "p, allow, T1, git.diff, *, advise",
+  "p, allow, T0, git.log, *, advise",
+  "p, allow, T0, skill.list, *, advise",
+  "p, allow, T0, skill.read, *, advise",
 ];
+
+/** 解析一条 casbin 策略行；注释 / 空行 / 列数不足的行返回 null */
+function policyKey(line: string): { tier: string; verb: string } | null {
+  const t = line.trim();
+  if (!t.startsWith("p,")) return null;
+  const cols = t.slice(2).split(",").map((x) => x.trim());
+  if (cols.length < 3) return null;
+  return { tier: cols[1]!, verb: cols[2]! };
+}
 
 export function ensurePolicy(home: string): string {
   mkdirSync(home, { recursive: true });
   const p = policyPath(home);
-  if (!existsSync(p)) atomicWriteFile(p, DEFAULT_POLICY);
-  else {
+  if (!existsSync(p)) {
+    atomicWriteFile(p, DEFAULT_POLICY);
+  } else {
     try {
       const cur = readFileSync(p, "utf8");
-      // 语义升级（2026-10-31）：fs.* 从 workspace/* 放宽到 *（记忆核心由 coreguard 挡）
+      // ① 语义升级（2026-10-31）：fs.* 从 workspace/* 放宽到 *（记忆核心由 coreguard 挡）
       const upgraded = cur.replace(
         /^p, allow, T1, (fs\.(?:write|mkdir|move|trash)), workspace\/\*, enforce$/gm,
         "p, allow, T1, $1, *, enforce",
       );
-      if (upgraded !== cur) atomicWriteFile(p, upgraded);
-      const cur2 = upgraded;
-      const missing = REQUIRED_RULES.filter(([verb]) => !cur2.includes(verb)).map(([, line]) => line);
-      if (missing.length) {
-        atomicWriteFile(p, cur.replace(/\n?$/, String.fromCharCode(10)) + missing.join(String.fromCharCode(10)) + String.fromCharCode(10));
+      // ② 收敛历史脏数据：只去掉**完全相同**的策略行，保留首次出现顺序；
+      //    注释、空行原样保留，人写的 deny / 改过 target 的规则一律不动。
+      const seen = new Set<string>();
+      const deduped = upgraded.split(String.fromCharCode(10)).filter((line) => {
+        const t = line.trim();
+        if (!t.startsWith("p,")) return true;
+        if (seen.has(t)) return false;
+        seen.add(t);
+        return true;
+      }).join(String.fromCharCode(10));
+      // ③ 按 (tier, verb) 判断是否已存在，而不是拿键去全文 includes。
+      //    不看 eft：人写了 deny 也算「这条已有」，绝不追加一条 allow 去覆盖它。
+      const have = new Set<string>();
+      for (const line of deduped.split(String.fromCharCode(10))) {
+        const k = policyKey(line);
+        if (k) have.add(`${k.tier}\u0000${k.verb}`);
       }
+      const missing = REQUIRED_RULES.filter((line) => {
+        const k = policyKey(line);
+        return k !== null && !have.has(`${k.tier}\u0000${k.verb}`);
+      });
+      // 全部改写都基于 upgraded → deduped 这条链，不再拿原始 cur 写回（那会丢掉 ① 的升级）。
+      const body = deduped.replace(/\n+$/, "");
+      const next = body + (missing.length ? String.fromCharCode(10) + missing.join(String.fromCharCode(10)) : "") + String.fromCharCode(10);
+      if (next !== cur) atomicWriteFile(p, next);   // 内容相同就不写，保证幂等
     } catch { /* 补不上就按原样，不阻塞启动 */ }
   }
   const m = modelPath(home);
