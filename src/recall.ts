@@ -13,7 +13,7 @@
  * "只报个数"这件事本身是设计的一部分：它知道"我还记得别的，但这里不能说"，
  * 而不是假装那些东西不存在（07 §3 的诚实条款）。
  */
-import { rerank as rerankHits, rerankModeFromConfig } from "./rerank.ts";
+import { rerank as rerankHits, rerankModeFromConfig, type RerankHit, type RerankResult, type RerankMode } from "./rerank.ts";
 import type { DatabaseSync } from "node:sqlite";
 import type { Embedder } from "./embed.ts";
 import type { MemoryLine } from "./types.ts";
@@ -30,7 +30,12 @@ export interface RecallOpts {
   /** 数据目录（重排要读 config 里的 ollama 端点） */
   home?: string;
   /** 重排模式：默认按配置（ui.rerank，auto） */
-  rerankMode?: "off" | "auto" | "always";
+  rerankMode?: RerankMode;
+  /** 测试可注入：替换重排器（生产不传，走 rerank.ts 的本地 7B） */
+  rerankFn?: (
+    home: string, query: string, hits: RerankHit[],
+    o: { mode?: RerankMode; timeoutMs?: number; model?: string },
+  ) => Promise<RerankResult>;
 }
 
 export interface RecallResult {
@@ -38,7 +43,37 @@ export interface RecallResult {
   /** 有内容但没发送的条数——简报里要如实说 */
   omittedMem: number;
   omittedDocs: number;
-  meta: { memCandidates: number; docCandidates: number; ms: number };
+  /** 重排器说「都没有」但按保守回退保留了候选：简报据此把 confidence 降到 need_evidence */
+  rerankNone: boolean;
+  meta: { memCandidates: number; docCandidates: number; ms: number; memPool?: number };
+}
+
+/**
+ * 层配额：契约层权重恒为 1、永不衰减（store.ts:60），夜间抽取会大量产出它们，
+ * 固定 k 窗口会被契约独占，叙事证据被系统性挤出。
+ * P1 实测（24 题分层抽样）：pool 15/24 → quota 17/24，净 +2 且零退化，证据命中 51%→55%。
+ *
+ * 做法照 P1：按原排名遍历，contract 最多 cap 条，其余名额留给 narrative；
+ * 叙事不足时用被跳过的契约补位，最后仍按原排名排序（不改相关度顺序）。
+ * cap < 0 = 关闭配额（退回「直接取前 k 条」）。
+ */
+export function applyLayerQuota<T extends { id: number }>(
+  ordered: T[], layerOf: (id: number) => "narrative" | "contract", k: number, cap: number,
+): { chosen: T[]; skipped: T[] } {
+  if (cap < 0 || k <= 0) return { chosen: ordered.slice(0, k), skipped: [] };
+  const chosen: T[] = [], skipped: T[] = [];
+  let nContract = 0;
+  for (const h of ordered) {
+    if (chosen.length >= k) break;
+    if (layerOf(h.id) === "contract") {
+      if (nContract < cap) { chosen.push(h); nContract++; }
+      else skipped.push(h);
+    } else chosen.push(h);
+  }
+  while (chosen.length < k && skipped.length) chosen.push(skipped.shift()!);
+  const rank = new Map(ordered.map((h, i) => [h.id, i]));
+  chosen.sort((a, b) => (rank.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (rank.get(b.id) ?? Number.MAX_SAFE_INTEGER));
+  return { chosen, skipped };
 }
 
 export async function recallForBrief(
@@ -49,27 +84,28 @@ export async function recallForBrief(
   const docK = o.docK ?? 4;
   const recalled: MemoryLine[] = [];
 
+  // ── 层配额开关（P1 实测 +2、零退化）────────────────────
+  // JJ_CONTRACT_CAP < 0 = 关闭（回到原来的 search(k=memK)）；默认 2。
+  // 只在配额开启时放大候选池：否则「限额」只是把契约丢掉，叙事证据根本没机会补进来。
+  const cap = Number(process.env.JJ_CONTRACT_CAP ?? 2);
+  const quotaOn = Number.isFinite(cap) && cap >= 0;
+  // 池大小与配额是**两个独立开关**：关掉配额默认回到旧的 search(k=memK)；
+  // 但做 A/B 时要能保持同一个大池、只切配额，故 JJ_RECALL_POOL_K 可单独覆盖。
+  const poolK = Math.max(memK, Number(process.env.JJ_RECALL_POOL_K ?? (quotaOn ? Math.max(memK * 4, 24) : memK)));
+  // JJ_RERANK_NONE_FALLBACK=0 = 回到旧行为（NONE 时清空候选），供 A/B 与回滚。
+  const noneFallback = process.env.JJ_RERANK_NONE_FALLBACK !== "0";
+  const home = o.home ?? process.cwd();
+
   // ── 记忆 ────────────────────────────────────────────
-  // 先拿一批候选，再决定要不要让本地模型重排（只在模糊/全空时跑，见 src/rerank.ts）
-  let hits = embedder ? (await search(db, embedder, query, { k: memK })).hits : [];
-  // 重排：本地 7B 在候选里挑一条（或说 NONE）。失败/超时一律退回基线，绝不让回答卡住。
-  let rerankedNone = false;
-  if (hits.length >= 1) {
-    const rr = await rerankHits(o.home ?? process.cwd(), query,
-      hits.map((h) => ({ id: h.id, text: h.text, score: h.score })),
-      { mode: o.rerankMode ?? rerankModeFromConfig(o.home ?? process.cwd()) });
-    if (rr.none) { rerankedNone = true; hits = []; }
-    else if (rr.ran) {
-      const byId = new Map(hits.map((h) => [h.id, h]));
-      hits = rr.order.map((x) => byId.get(x.id)!).filter(Boolean);
-    }
-  }
+  // 先拿候选池，再决定要不要让本地模型重排（只在模糊/全空时跑，见 src/rerank.ts）
+  const poolHits = embedder ? (await search(db, embedder, query, { k: poolK })).hits : [];
+
   // 敏感度、层、种类都从库里现取——别猜（契约层在 P10 里也不能被显示成叙事）
   const metaById = new Map<number, { layer: "narrative" | "contract"; kind: string; sensitivity?: string; taint?: string; quote?: string | null }>();
-  if (hits.length) {
+  if (poolHits.length) {
     const got = db.prepare(
       `SELECT id, layer, kind, sensitivity, taint, quote FROM memories WHERE id IN (SELECT value FROM json_each(?))`,
-    ).all(JSON.stringify(hits.map((h) => h.id))) as Array<{ id: number; layer: string; kind: string; sensitivity?: string; taint?: string; quote?: string | null }>;
+    ).all(JSON.stringify(poolHits.map((h) => h.id))) as Array<{ id: number; layer: string; kind: string; sensitivity?: string; taint?: string; quote?: string | null }>;
     for (const g of got) {
       metaById.set(Number(g.id), {
         layer: g.layer === "contract" ? "contract" : "narrative", kind: g.kind,
@@ -82,11 +118,35 @@ export async function recallForBrief(
   // D-1 的注入侧：不可信来源（taint=external）不进简报。
   // 它可以存在、可以被显式搜到，但不能自己跑到模型眼前 —— “quarantine by tier”。
   // 这就是 taint 那个列之前**零处参与逻辑**的那个缺口（docs/ops/22 D-1）。
-  const shareable = hits.filter((h) => {
+  const shareablePool = poolHits.filter((h) => {
     const m = metaById.get(h.id);
     return m?.sensitivity === "shareable" && (m.taint ?? "trusted") === "trusted";
   });
-  for (const h of shareable) {
+  const { chosen } = applyLayerQuota(
+    shareablePool, (id) => metaById.get(id)?.layer ?? "narrative", memK, quotaOn ? cap : -1,
+  );
+  let hits = chosen;
+
+  // 重排：本地 7B 在候选里挑一条（或说 NONE）。失败/超时一律退回基线，绝不让回答卡住。
+  let rerankedNone = false;
+  if (hits.length >= 1) {
+    const cand = hits.map((h) => ({ id: h.id, text: h.text, score: h.score }));
+    const mode = o.rerankMode ?? rerankModeFromConfig(home);
+    const rr = o.rerankFn
+      ? await o.rerankFn(home, query, cand, { mode })
+      : await rerankHits(home, query, cand, { mode });
+    if (rr.none) {
+      rerankedNone = true;
+      // 保守回退（P1）：模型说「都没有」时**不清空**候选。
+      // 实测 nightly 有 3 题整轮召回被 NONE 清空，答案变成「我没有相关记录」的错误否认。
+      // 保留基线顺序，只是把 confidence 降到 need_evidence，不假装证据充足。
+      if (!noneFallback) hits = [];
+    } else if (rr.ran) {
+      const byId = new Map(hits.map((h) => [h.id, h]));
+      hits = rr.order.map((x) => byId.get(x.id)!).filter(Boolean);
+    }
+  }
+  for (const h of hits) {
     const m = metaById.get(h.id)!;
     recalled.push({
       id: `mem:${h.id}`, layer: m.layer, kind: m.kind, stage: h.stage, weight: h.weight, text: h.text,
@@ -133,10 +193,13 @@ export async function recallForBrief(
 
   return {
     recalled,
-    omittedMem: hits.length - shareable.length + omittedLink,
+    // 只报「被隐私闸门挡下的」+ 关系邻居挡下的。被层配额跳过的契约不是隐私遗漏
+    // （P6 每轮另有契约层），不计入这句提示，免得把 shareable 的内容说成「本地记忆」。
+    omittedMem: (poolHits.length - shareablePool.length) + omittedLink,
     omittedDocs,
+    rerankNone: rerankedNone,
     meta: {
-      memCandidates: hits.length, docCandidates,
+      memCandidates: hits.length, docCandidates, memPool: poolHits.length,
       ms: +(performance.now() - t0).toFixed(1),
     },
   };

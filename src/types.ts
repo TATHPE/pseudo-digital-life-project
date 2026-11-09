@@ -120,6 +120,8 @@ export interface BriefInput {
   /** 技能索引（P14）：只有名字 + 一句描述，正文要模型自己 skill.read 取 */
   skills?: string | null;
   user: string;              // P11
+  /** 重排器说「都没有」但按保守回退保留了候选：confidence 不许标成 answer */
+  rerankNone?: boolean;
   budget?: Partial<BriefBudget>;
 }
 

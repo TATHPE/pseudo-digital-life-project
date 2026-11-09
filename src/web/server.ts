@@ -1097,6 +1097,7 @@ export function createWebServer(deps: WebDeps) {
           mode,
           ...(history ? { history } : {}),
           ...(gapAsk ? { gapAsk } : {}),
+          ...(rc.rerankNone ? { rerankNone: true } : {}),
           user: (() => { const note = omissionNote(omitted, rc.omittedDocs); return note ? note + String.fromCharCode(10) : ""; })() + text,
         });
 

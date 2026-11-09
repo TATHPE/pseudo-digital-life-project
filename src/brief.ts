@@ -276,8 +276,11 @@ export function buildBrief(input: BriefInput): BriefOutput {
 
   // confidence 四态（01 §6.2）：召回为空时必须能说"不知道"
   // 只有契约条目 → "need_evidence"：不是"没有证据"，是"证据不在叙事层"（2026-11-04）
-  const confidence: BriefOutput["confidence"] =
+  let confidence: BriefOutput["confidence"] =
     narrativeHits === 0 ? (contractOnly ? "need_evidence" : "abstain") : narrativeHits < 2 ? "need_evidence" : "answer";
+  // 重排器说「都没有」时按保守回退保留了候选：召回不为空，但证据并不强。
+  // 不许标成 answer（那是假装确定）；也不动 abstain（真的没召回时仍要能拒答）。
+  if (input.rerankNone && confidence === "answer") confidence = "need_evidence";
 
   // ── 总预算：真的按 b.total 收口（2026-11-09）────────────────
   // 以前 b.total 只被赋值、从未被读取：各槽位的 fit() 只管自己的分项预算，
