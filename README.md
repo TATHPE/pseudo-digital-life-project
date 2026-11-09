@@ -117,6 +117,7 @@ node src/cli/jingjing.ts eval         # the four retrieval gates
 node src/cli/jingjing.ts redteam      # interception cases
 node src/cli/jingjing.ts night        # run consolidation once, manually
 npm run eval:hard                     # 20 hand-written hard cases
+npm run eval:assembly                 # assembly layer: leak / label / age / budget / abstain (needs Ollama)
 ```
 
 CI runs only `check` and `map:check` (UI tests need Edge, evals need Ollama).
@@ -128,6 +129,7 @@ CI runs only `check` and `map:check` (UI tests need Edge, evals need Ollama).
 - Task orchestration advances one step per tick and stops after two steps without progress; there is no planning tree, no parallelism
 - `memory.db` is plain SQLite; secrets are sealed with DPAPI and do not survive a machine move
 - No auto-update, no system integration beyond the tray, single user
+- P10 still lets 1–2 weakly related memories in: vector candidates have no relevance floor (cos 0.49–0.60 lands next to a true hit at 0.72). A threshold would cut the true hits too; the fix is a cross-encoder (see `docs/ops/24`)
 ## License
 
 [MIT](LICENSE)
