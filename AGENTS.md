@@ -44,8 +44,10 @@ node src/cli/jingjing.ts serve 0      # 壳用的：随机端口，端口与令�
 ## 3. 代码地图（一行一个，只写"找什么去哪"）
 
 ```
-cli/jingjing.ts   入口（38 个命令；CLI_COMMANDS 表与 switch 必须一致，有测试盯）
-web/server.ts     HTTP + SSE；/health 的 degraded 是全部状态的汇合点
+cli/jingjing.ts   入口（40 个命令；CLI_COMMANDS 表与 switch 必须一致，有测试盯）
+web/server.ts     HTTP + SSE 的骨架与 /api/say（路由按族拆到 web/routes/ 下）
+web/routes/       路由按族拆开：config（配置/诊断）、control（面板控制）、memory（记忆/文档）、
+                  setup（首次配置）、status（状态/健康）；server.ts 只留骨架与对话流
 web/ui/notebook.js 记录本的界面脚本（真文件：能 node --check、能 import 测试）
 verbs.ts          **唯一**的能力表（tools.ts 只是适配层）
 execute/policy    策略与审计（casbin，deny-overrides）

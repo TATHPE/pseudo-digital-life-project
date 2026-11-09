@@ -110,7 +110,7 @@ Design documents (Chinese) live in `docs/`:
 ## Development
 
 ```bash
-npm run check        # types + 673 tests (failed tests are retried; pass-on-retry is reported as FLAKY)
+npm run check        # types + 696 tests (failed tests are retried; pass-on-retry is reported as FLAKY)
 npm run ui:test      # headless Edge, real clicks (needs the server running)
 npm run map          # generate/verify docs/map.md (files · error codes · verbs · commands)
 node src/cli/jingjing.ts eval         # the four retrieval gates
