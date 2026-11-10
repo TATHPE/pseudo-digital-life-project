@@ -27,7 +27,8 @@
     "eval:rank": "node --experimental-strip-types tools/eval-rank.ts",
     "ui:test:nb": "node tools/ui-test-nb.mjs",
     "eval:hard": "node tools/eval-hard2.ts",
-    "eval:assembly": "node --experimental-strip-types tools/eval-assembly.ts"
+    "eval:assembly": "node --experimental-strip-types tools/eval-assembly.ts",
+    "eval:assembly:ci": "node --experimental-strip-types tools/eval-assembly.ts --offline"
   },
   "dependencies": {
     "casbin": "^5.51.1",

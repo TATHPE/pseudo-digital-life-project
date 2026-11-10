@@ -113,7 +113,7 @@ SQLite：memories + chunks + FTS5 + 向量
 ## 开发
 
 ```bash
-npm run check        # 类型 + 全部测试（715 条；失败的会自动重跑，通过则标 FLAKY）
+npm run check        # 类型 + 全部测试（720 条；失败的会自动重跑，通过则标 FLAKY）
 npm run ui:test      # headless Edge 真点真发（需要面板在跑）
 npm run map          # 生成/校验 docs/map.md（文件·错误码·能力·命令）
 node src/cli/jingjing.ts eval         # 检索四道门
@@ -121,11 +121,13 @@ node src/cli/jingjing.ts redteam      # 拦截用例
 node src/cli/jingjing.ts night        # 手动跑一次闲时整理
 npm run eval:hard                     # 20 条手写难用例（改写/否定/该拒答/中英混/时间挪位）
 npm run eval:assembly                 # 装配层：泄漏/标签/时间/预算/拒答/契约挤窗口（需 Ollama）
+npm run eval:assembly:ci              # 同上但查预计算向量表，无需 Ollama（CI 用这一步）
 node src/cli/jingjing.ts doctor --perms       # 权限自查表：为什么这个不能用（--strict 卡结构问题）
 node src/cli/jingjing.ts decay --history 1    # 这条记忆的权重变过几次 / 从多少到多少
 ```
 
-CI 只跑 `check` 与 `map:check`（不跑 UI 测试与 eval：它们需要 Edge 和 Ollama）。
+CI 跑 `check`、`map:check` 与 `eval:assembly:ci`；UI 测试和需要实时 Ollama 的 eval 仍只在本地验收。
+改了装配层夹具或换了 embed 模型，要跑一次 `--refresh-embeddings` 并把 `embeddings.json` 一起提交（表带指纹，不重生成 CI 会红）。
 
 ## 已知边界
 

@@ -1,6 +1,7 @@
 # H-2：别人 clone 下来会不会挂，靠这条流水线回答。
-# 只跑 check（类型 + 全部测试）—— 不跑 UI 测试（它要 Edge + 面板进程），
-# 也不跑 eval（它要 ollama）。那些是本地验收，不是 PR 门。
+# 不跑 UI 测试（要 Edge + 面板进程），也不跑需要实时 Ollama 的 eval —— 那些是本地验收。
+# 装配层基准例外：它查仓里预计算的 bge-m3 向量表，语义与真模型一致，所以能当 PR 门。
+# 改夹具 / 换模型 / 改 JJ_EMBED_DIM 而不重生成表，指纹校验会先判红（见 tools/assembly-vectors.ts）。
 name: ci
 on:
   push:
@@ -21,3 +22,5 @@ jobs:
         run: npm run check
       - name: 项目地图一致性（H-3）
         run: npm run map:check
+      - name: 装配层基准（离线向量表，不需要 Ollama）
+        run: npm run eval:assembly:ci

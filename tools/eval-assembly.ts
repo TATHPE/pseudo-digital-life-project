@@ -22,20 +22,26 @@
  * 时间跨度 0–45 天，用来同时压「契约挤窗口」和「新旧混淆」两件事。
  *
  * 用法：
- *   node --experimental-strip-types tools/eval-assembly.ts                 # 从夹具重建后跑（重排关）
+ *   node --experimental-strip-types tools/eval-assembly.ts                 # 从夹具重建后跑（重排关，需 Ollama）
+ *   node --experimental-strip-types tools/eval-assembly.ts --offline       # CI：查预计算向量表，无需 Ollama
+ *   node --experimental-strip-types tools/eval-assembly.ts --refresh-embeddings  # 改夹具/换模型后重生成表
  *   node --experimental-strip-types tools/eval-assembly.ts --rerank auto   # 走真重排（慢，7B）
  *   JJ_CONTRACT_CAP=-1 ... tools/eval-assembly.ts                          # A/B：关掉层配额
  */
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { openDb } from "../src/db.ts";
-import { createEmbedder } from "../src/embed.ts";
+import { createEmbedder, DIM } from "../src/embed.ts";
 import { remember, openContracts } from "../src/store.ts";
 import { recallForBrief } from "../src/recall.ts";
 import { buildBrief } from "../src/brief.ts";
 import { loadPersona } from "../src/persona.ts";
 import { readFileConfig } from "../src/configfile.ts";
 import type { RerankMode } from "../src/rerank.ts";
+import {
+  DEFAULT_FIXTURE_DIR, fixtureTexts, loadVectors, refreshVectors,
+  tableEmbedder, verifyVectors,
+} from "./assembly-vectors.ts";
 
 const NL = String.fromCharCode(10);
 const DAY = 86400000;
@@ -52,16 +58,25 @@ interface Case {
 /** 夹具里那几条「不许出网」的独有词：只要出现就是泄漏（2 条 local_only + 1 条 taint=external） */
 const LEAK_MARKERS = ["不能外发的衰减笔记", "服务器密码", "从网页抄来"];
 
-function embedFor(home: string) {
+function embedFor(home: string, offline = false, fixtureDir = DEFAULT_FIXTURE_DIR) {
   const cfg = readFileConfig(home);
+  const model = String((cfg.local as { embed?: string } | undefined)?.embed ?? "bge-m3");
+  if (offline) {
+    const t = loadVectors(fixtureDir);
+    const issues = verifyVectors(t, fixtureTexts(fixtureDir), `${model}@${DIM}`, DIM);
+    if (issues.length) throw new Error(`E_ASSEMBLY_VECTORS:${NL}  · ${issues.join(`${NL}  · `)}`);
+    return tableEmbedder(t);
+  }
   return createEmbedder("ollama", {
     baseUrl: String(cfg.ollama ?? "http://127.0.0.1:11434"),
-    model: String((cfg.local as { embed?: string } | undefined)?.embed ?? "bge-m3"),
+    model,
   });
 }
 
 /** 从夹具现场重建库：daysAgo 落成真实时间，否则「新旧」这件事根本测不出来 */
-export async function rebuildAssembly(fixtureDir = "tools/fixtures/assembly", out = "tmp/eval-assembly"): Promise<string> {
+export async function rebuildAssembly(
+  fixtureDir = DEFAULT_FIXTURE_DIR, out = "tmp/eval-assembly", o: { offline?: boolean } = {},
+): Promise<string> {
   const home = join(out, "data");
   rmSync(out, { recursive: true, force: true });
   mkdirSync(join(home, "eval"), { recursive: true });
@@ -70,7 +85,10 @@ export async function rebuildAssembly(fixtureDir = "tools/fixtures/assembly", ou
   const mems = readFileSync(join(fixtureDir, "memories.jsonl"), "utf8").split(NL).filter((l) => l.trim())
     .map((l) => JSON.parse(l) as MemRow);
   const d = openDb(join(home, "memory.db"));
-  const embed = embedFor(home);
+  // vec0 加载失败时 db.ts 会静默退化成 BM25。那样基准照样跑得绿，但判的已不是同一套语义；
+  // CI 里 --ignore-scripts 若漏装原生扩展，宁可红也不要假绿。
+  if (!d.vecLoaded) throw new Error("E_ASSEMBLY_NO_VEC: sqlite-vec 未加载 → 向量检索退化为 BM25，请先装好运行时依赖");
+  const embed = embedFor(home, o.offline ?? false, fixtureDir);
   const vs = await embed.embed(mems.map((m) => m.text));
   const t0 = Date.now();
   for (let i = 0; i < mems.length; i++) {
@@ -113,12 +131,13 @@ export interface AsmReport {
 }
 
 export async function runAssembly(
-  home: string, o: { rerankMode?: RerankMode } = {},
+  home: string, o: { rerankMode?: RerankMode; offline?: boolean; fixtureDir?: string } = {},
 ): Promise<AsmReport> {
   const cases = readFileSync(join(home, "eval", "cases.jsonl"), "utf8").split(NL).filter((l) => l.trim())
     .map((l) => JSON.parse(l) as Case);
   const d = openDb(join(home, "memory.db"));
-  const embed = embedFor(home);
+  if (!d.vecLoaded) throw new Error("E_ASSEMBLY_NO_VEC: sqlite-vec 未加载 → 向量检索退化为 BM25，请先装好运行时依赖");
+  const embed = embedFor(home, o.offline ?? false, o.fixtureDir ?? DEFAULT_FIXTURE_DIR);
   const persona = loadPersona();
   // 契约 id 从库里现取：判「标签对不对」不能靠比对文案（夹具一改就静默失效）
   const contractIds = new Set(
@@ -208,12 +227,37 @@ export async function runAssembly(
 
 // ── CLI ──────────────────────────────────────────────────────────
 if (process.argv[1]?.endsWith("eval-assembly.ts")) {
-  const i = process.argv.indexOf("--home");
-  const home = i > 0 ? process.argv[i + 1]! : await rebuildAssembly();
-  const j = process.argv.indexOf("--rerank");
-  const rerankMode = (j > 0 ? process.argv[j + 1] : "off") as RerankMode;
-  const r = await runAssembly(home, { rerankMode });
+  const args = process.argv.slice(2);
+  // 改夹具 / 换 embed 模型 / 改 JJ_EMBED_DIM 之后，在本机重算一次表并提交
+  if (args.includes("--refresh-embeddings")) {
+    const { table, count } = await refreshVectors(DEFAULT_FIXTURE_DIR, {
+      ...(process.env.JJ_OLLAMA_URL ? { baseUrl: process.env.JJ_OLLAMA_URL } : {}),
+      ...(process.env.JJ_EMBED_MODEL ? { model: process.env.JJ_EMBED_MODEL } : {}),
+    });
+    console.log(`✅ 已写入 ${DEFAULT_FIXTURE_DIR}/embeddings.json：${count} 条 · ${table.model} · 指纹 ${table.fixtureHash}`);
+    console.log("   记得把表一起提交；CI 靠它复现同一套语义。");
+    process.exit(0);
+  }
+  const offline = args.includes("--offline");
+  const i = args.indexOf("--home");
+  const home = i >= 0 ? args[i + 1]! : await rebuildAssembly(DEFAULT_FIXTURE_DIR, "tmp/eval-assembly", { offline });
+  const j = args.indexOf("--rerank");
+  const rerankMode = (j >= 0 ? args[j + 1] : "off") as RerankMode;
+  if (!offline) {
+    // 在线模式先探一次端点：retrieve.ts 在 embed 失败时会 catch 并降级成 FTS-only
+    //（E_EMBED_DOWN）。那是产品该有的韧性，但基准若拿降级结果判绿就是假绿：
+    // 实测 Ollama 挂掉时召回条目变少、峰值 1288→1165 token，六道闸门却照样全过。
+    try {
+      await embedFor(home, false).embed(["装配层基准连通性探测"]);
+    } catch (e) {
+      console.error("❌ E_ASSEMBLY_NO_OLLAMA: 在线模式连不上 embedding 端点；CI 请用 --offline（查预计算向量表）");
+      console.error("   " + String((e as Error).message ?? e).slice(0, 160));
+      process.exit(1);
+    }
+  }
+  const r = await runAssembly(home, { rerankMode, offline });
 
+  console.log(offline ? "模式：离线向量表（CI，无需 Ollama）" : "模式：Ollama 实时 embedding");
   for (const row of r.rows) {
     const tag = row.ok ? "✅" : "❌";
     const at = row.group === "recall" ? `rank=${String(row.rank ?? "-").padEnd(2)}` : `conf=${row.confidence.padEnd(13)}`;

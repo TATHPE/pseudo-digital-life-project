@@ -110,7 +110,7 @@ Design documents (Chinese) live in `docs/`:
 ## Development
 
 ```bash
-npm run check        # types + 715 tests (failed tests are retried; pass-on-retry is reported as FLAKY)
+npm run check        # types + 720 tests (failed tests are retried; pass-on-retry is reported as FLAKY)
 npm run ui:test      # headless Edge, real clicks (needs the server running)
 npm run map          # generate/verify docs/map.md (files · error codes · verbs · commands)
 node src/cli/jingjing.ts eval         # the four retrieval gates
@@ -118,11 +118,13 @@ node src/cli/jingjing.ts redteam      # interception cases
 node src/cli/jingjing.ts night        # run consolidation once, manually
 npm run eval:hard                     # 20 hand-written hard cases
 npm run eval:assembly                 # assembly layer: leak / label / age / budget / abstain (needs Ollama)
+npm run eval:assembly:ci              # same, but replays pre-computed vectors; no Ollama (the CI step)
 node src/cli/jingjing.ts doctor --perms       # permission audit: why is this verb unavailable?
 node src/cli/jingjing.ts decay --history 1    # weight change history for one memory
 ```
 
-CI runs only `check` and `map:check` (UI tests need Edge, evals need Ollama).
+CI runs `check`, `map:check` and `eval:assembly:ci`; UI tests and the Ollama-backed evals stay local.
+After changing the assembly fixtures or the embed model, run `--refresh-embeddings` and commit `embeddings.json` with them (the table is fingerprinted, CI goes red otherwise).
 
 ## Known limits
 
