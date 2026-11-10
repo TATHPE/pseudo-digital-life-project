@@ -9,6 +9,7 @@ import { createEmbedder } from "../src/embed.ts";
 import { search, expandByLinks } from "../src/retrieve.ts";
 import { decideSurface, pickSurface, noteSurfaced, usedToday, SURFACE_LIMITS } from "../src/surface.ts";
 import { linkIfNew, pickQuote } from "../src/nightly.ts";
+import { WHY_MAX } from "../src/links.ts";
 import { indexState } from "../src/embedindex.ts";
 
 const H = () => mkdtempSync(join(tmpdir(), "jj-j-"));
@@ -78,14 +79,19 @@ test("J-2 pickQuote：从真实对话里逐字取原话，取不到就 null", as
 });
 
 // ── J-3 关系带 why + 黑名单 ────────────────────────────────
-test("J-3 linkIfNew：why 截到 20 字；拆过的线永不自动接回", async () => {
+test("J-3 linkIfNew：why 存得下可核对的判据（J-3b 放宽到 60 字）；拆过的线永不自动接回", async () => {
   const d = openDb(join(H(), "m.db"));
   const v = (await emb.embed(["x"]))[0]!;
   const a = remember(d.db, { layer: "narrative", kind: "episode", text: "甲", embedding: v });
   const b = remember(d.db, { layer: "narrative", kind: "episode", text: "乙", embedding: v });
-  linkIfNew(d.db, a, b, "related", 1, "这是一个很长很长的理由超过二十个字了应该被截断", now);
+  // 原来上限 20 字，连 `cos 0.94 / 字面 0.60 · 同槽 contract≥0.85` 都塞不下，
+  // 于是关系说明只能退化成「同一段经历」这种判不了的空话。
+  const evidential = "cos 0.94 / 字面 0.60 · 跨层同件事(P1-2 ≥0.35 / 0.92) 这条判据故意超过二十个字";
+  linkIfNew(d.db, a, b, "related", 1, evidential, now);
   const row = d.db.prepare("SELECT why FROM memory_links WHERE src_id=?").get(a) as { why: string };
-  assert.ok([...row.why].length <= 20, "why 必须 ≤20 字");
+  assert.ok([...row.why].length <= WHY_MAX, `why 必须 ≤${WHY_MAX} 字`);
+  assert.ok([...row.why].length > 20, "不许再砍回 20 字，否则数值判据又没了");
+  assert.ok(row.why.startsWith("cos 0.94 / 字面 0.60"), "数字要在最前面（P10 只留前 20 字）");
 
   d.db.prepare("INSERT INTO meta(key,value) VALUES('links_blocked',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value")
     .run(`${a}:${b}:related`);

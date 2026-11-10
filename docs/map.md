@@ -8,7 +8,7 @@
 
 | 项 | 数量 |
 |---|---|
-| 源文件（src/**/*.ts） | 125 |
+| 源文件（src/**/*.ts） | 127 |
 | 错误码 E_* | 237 |
 | verbs | 27 |
 | CLI 子命令 | 40 |
@@ -28,7 +28,7 @@
 | `E_BAD_ARG` | `src/plugins.ts` |
 | `E_BAD_ARG_VALUE` | `src/toolsmoke.ts` |
 | `E_BAD_ARGS` | `src/toolsmoke.ts` |
-| `E_BAD_ARGV` | `src/agentguard.ts` `src/execute.ts` `src/shell.ts` `src/verbs.ts` |
+| `E_BAD_ARGV` | `src/agentguard.ts` `src/execute.ts` `src/permcheck.ts` `src/shell.ts` `src/verbs.ts` |
 | `E_BAD_COMMAND` | `src/plugins.ts` |
 | `E_BAD_ENDPOINT` | `src/transport.ts` |
 | `E_BAD_IMAGE` | `src/web/server.ts` |
@@ -48,7 +48,7 @@
 | `E_BAD_SLOT` | `src/shell.ts` |
 | `E_BAD_SPLASH` | `src/web/routes/config.ts` |
 | `E_BAD_STEP` | `src/web/routes/setup.ts` |
-| `E_BAD_TARGET` | `src/decayparams.ts` |
+| `E_BAD_TARGET` | `src/decayparams.ts` `src/permcheck.ts` |
 | `E_BAD_TEMPLATE` | `src/shell.ts` |
 | `E_BAD_THEME` | `src/web/routes/config.ts` |
 | `E_BAD_WS` | `src/web/server.ts` |
@@ -63,7 +63,7 @@
 | `E_CORE_PROTECTED` | `src/cli/redteam.ts` `src/verbs.ts` |
 | `E_CSRF` | `src/web/server.ts` |
 | `E_DECAY_PARAM` | `src/startupcheck.ts` |
-| `E_DENIED` | `src/agentguard.ts` `src/execute.ts` `src/policy.ts` `src/tools.ts` |
+| `E_DENIED` | `src/agentguard.ts` `src/execute.ts` `src/permcheck.ts` `src/policy.ts` `src/tools.ts` |
 | `E_DEPLOY_FROZEN` | `src/deploy/watchdog.ts` |
 | `E_DEPLOY_NO_REASON` | `src/deploy/slot.ts` |
 | `E_DEPLOY_STATE` | `src/deploy/slot.ts` |
@@ -118,7 +118,7 @@
 | `E_MOVE_FAILED` | `src/web/routes/config.ts` |
 | `E_NEED_CONFIRM` | `src/web/routes/config.ts` |
 | `E_NEED_WHY` | `src/selfupdate.ts` |
-| `E_NEEDS_CONFIRM` | `src/confirm.ts` `src/execute.ts` `src/posture.ts` |
+| `E_NEEDS_CONFIRM` | `src/confirm.ts` `src/execute.ts` `src/permcheck.ts` `src/posture.ts` |
 | `E_NEEDS_EGRESS` | `src/egress.ts` `src/posture.ts` `src/project.ts` `src/supergrant.ts` `src/verbs.ts` |
 | `E_NIGHT` | `src/web/routes/control.ts` |
 | `E_NIGHTLOG` | `src/web/routes/status.ts` |
@@ -128,7 +128,7 @@
 | `E_NO_BASH` | `src/web/routes/config.ts` |
 | `E_NO_CALL` | `src/toolsmoke.ts` |
 | `E_NO_CANDIDATES` | `src/agentguard.ts` |
-| `E_NO_CAPABILITY` | `src/execute.ts` `src/tools.ts` |
+| `E_NO_CAPABILITY` | `src/execute.ts` `src/permcheck.ts` `src/tools.ts` |
 | `E_NO_CMD` | `src/cli/deploy.ts` |
 | `E_NO_COMMAND` | `src/plugins.ts` |
 | `E_NO_CONVERTER` | `src/ingest.ts` |
@@ -139,7 +139,7 @@
 | `E_NO_EMBED_MODEL` | `src/cli/jingjing.ts` |
 | `E_NO_EMBEDDER` | `src/fillvec.ts` `src/verbs.ts` |
 | `E_NO_GIT` | `src/gitview.ts` |
-| `E_NO_GRANT` | `src/grant.ts` `src/web/routes/control.ts` |
+| `E_NO_GRANT` | `src/grant.ts` `src/permcheck.ts` `src/web/routes/control.ts` |
 | `E_NO_HOME` | `src/handoff.ts` |
 | `E_NO_HUB` | `src/web/server.ts` |
 | `E_NO_KEY` | `src/web/server.ts` |
@@ -153,7 +153,7 @@
 | `E_NO_REASON` | `src/decayparams.ts` |
 | `E_NO_RELEASE` | `src/cli/deploy.ts` `src/deploy/slot.ts` `src/deploy/watchdog.ts` |
 | `E_NO_ROLE` | `src/cli/jingjing.ts` |
-| `E_NO_RULE` | `src/policy.ts` |
+| `E_NO_RULE` | `src/permcheck.ts` `src/policy.ts` |
 | `E_NO_SERVER` | `src/mcphub.ts` |
 | `E_NO_SESSION` | `src/web/server.ts` |
 | `E_NO_SHELL` | `src/verbs.ts` |
@@ -365,6 +365,7 @@
 | `src/ollama.ts` | Ollama 探测（C-4）：一次 /api/tags + 两个最小调用探针。 |
 | `src/onebot.ts` | OneBot 11 适配器（2026-11-05）：把 QQ 消息接进来，把她的回话发出去。 |
 | `src/pathsafe.ts` | 路径安全与项目根（叶子模块，2026-11-09 从 verbs.ts / project.ts 抽出）。 |
+| `src/permcheck.ts` | 权限自查（docs/ops/22 §0.4「权限自查」）：回答「**这个能力现在为什么不能用**」。 |
 | `src/persona.ts` | import { readFileSync, mkdirSync, existsSync, readdirSync } from "node |
 | `src/plugins.ts` | 插件（MCP）与技能的**增删**（2026-11-01，用户："现在只能看，等于借来的手脚是死数据"）。 |
 | `src/policy.ts` | 策略层（04 §4 / 12 §9.2）：唯一有权说"不"的地方。 |
@@ -420,3 +421,4 @@
 | `src/web/state.ts` | 状态行（17 §4.1）：一句话，不是数字仪表盘 */ |
 | `src/web/timeline.ts` | 时间轴渲染（17 §4）：**没有"会话"，只有时间；空白要可见** */ |
 | `src/web/welcome.ts` | 首次配置引导页（`/welcome`）。 |
+| `src/weighthistory.ts` | 权重变更历史（E-3b，2026-11-10）。 |

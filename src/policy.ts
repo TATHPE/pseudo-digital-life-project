@@ -43,6 +43,9 @@ p, allow, T1, fs.restore, *, enforce
 p, allow, T0, time.now, *, advise
 p, allow, T0, memory.search, *, advise
 p, allow, T1, memory.remember, *, advise
+# 提案（提一个想法等你看）：工具表里早就有，测试却把 policy mock 成恒放行，
+# 于是「T1 没有通配 allow」这件事一直没暴露 —— doctor --perms 查出真实调用会 E_NO_RULE。
+p, allow, T1, proposal.create, *, advise
 p, allow, T2, msg.notify, *, enforce
 p, allow, T2, mcp__*, *, advise
 p, allow, T2, net.fetch, *, enforce
@@ -81,6 +84,7 @@ export function modelPath(home: string): string { return join(home, "policy.mode
 const REQUIRED_RULES: readonly string[] = [
   "p, allow, T3, shell.exec, shell:exec, enforce",
   "p, allow, T3, script.run, script:*, enforce",
+  "p, allow, T1, proposal.create, *, advise",
   "p, allow, T0, shell.run, shell:*, advise",
   "p, allow, T1, shell.run, shell:*, advise",
   "p, allow, T1, git.status, *, advise",

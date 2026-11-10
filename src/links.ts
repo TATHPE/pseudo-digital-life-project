@@ -22,6 +22,18 @@ export interface LinkRow {
 const LIVE = "(l.valid_to IS NULL OR julianday(l.valid_to) > julianday(?))";
 
 /**
+ * 「为什么连」的上限（J-3b，2026-11-10）。
+ * 原来写死 20 字，连 `cos 0.94 / 字面 0.60` 这种**可核对的判据**都塞不下，
+ * 于是关系说明只能退化成 `reason` 截字 —— 抽检时人根本没法判断这根线该不该有。
+ * 放宽到 60；库里存全，展示层（P10 的 viaLink）仍按自己的预算截断。
+ */
+export const WHY_MAX = 60;
+
+/** 简报 P10 的 `viaLink.why` 只留前 20 字：每行都要挤进 recalled 的 600 token 预算。
+ *  所以关系判据必须以 `cos … / 字面 …` 开头（截完仍是可核对的数字，不会是半句话）。 */
+export const WHY_BRIEF = 20;
+
+/**
  * 建边之前先过黑名单（J-5）：人拆过的线**永不自动接回**。
  * 黑名单存在 meta.links_blocked："src:dst:rel" 一行一个。
  *
@@ -36,10 +48,11 @@ export function linkIfNew(
   const key = `${src}:${dst}:${rel}`;
   const blocked = String(readMeta(db, "links_blocked") ?? "");
   if (blocked.split(String.fromCharCode(10)).includes(key)) return false;
+  // 冲突时连 why 一起刷新：新证据算出来了，边上的判据不该还留着上一次的旧话。
   db.prepare(
     `INSERT INTO memory_links(src_id,dst_id,rel,weight,why,created_at) VALUES(?,?,?,?,?,?)
-     ON CONFLICT(src_id,dst_id,rel) DO UPDATE SET weight=excluded.weight`,
-  ).run(src, dst, rel, weight, String(why || "").slice(0, 20), now.toISOString());
+     ON CONFLICT(src_id,dst_id,rel) DO UPDATE SET weight=excluded.weight, why=excluded.why`,
+  ).run(src, dst, rel, weight, String(why || "").slice(0, WHY_MAX), now.toISOString());
   return true;
 }
 

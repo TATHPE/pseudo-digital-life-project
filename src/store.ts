@@ -2,6 +2,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import { bigramText } from "./text.ts";
 import { paramsFor, recompute, reconsolidate, weight, w0FromImportance, isKnownKind, isReadingKind, type Layer, type Stage } from "./decay.ts";
+import { logWeightChange } from "./weighthistory.ts";
 
 export interface NewMemory {
   layer: Layer; kind: string; text: string;
@@ -121,7 +122,7 @@ export function openContracts(db: DatabaseSync, now: Date, limit = 15): Array<{ 
  */
 export function reinforce(db: DatabaseSync, ids: readonly number[], now = new Date()): number {
   if (!ids.length) return 0;
-  const sel = db.prepare("SELECT id,layer,kind,w0,recall_count,last_decay_at,stage,taint FROM memories WHERE id=? AND status='active'");
+  const sel = db.prepare("SELECT id,layer,kind,w0,weight,recall_count,last_decay_at,stage,taint FROM memories WHERE id=? AND status='active'");
   const upd = db.prepare("UPDATE memories SET w0=?,recall_count=?,last_decay_at=?,stage=?,weight=?,updated_at=? WHERE id=?");
   const ts = now.toISOString();
   let n = 0;
@@ -129,7 +130,7 @@ export function reinforce(db: DatabaseSync, ids: readonly number[], now = new Da
   try {
     for (const id of ids) {
       const r = sel.get(id) as
-        | { id: number; layer: Layer; kind: string; w0: number; recall_count: number; last_decay_at: string; stage: Stage; taint: string }
+        | { id: number; layer: Layer; kind: string; w0: number; weight: number; recall_count: number; last_decay_at: string; stage: Stage; taint: string }
         | undefined;
       if (!r) continue;
       const before = {
@@ -139,7 +140,14 @@ export function reinforce(db: DatabaseSync, ids: readonly number[], now = new Da
       };
       const after = reconsolidate(before, now);
       if (after.w0 === before.w0 && after.recallCount === before.recallCount && after.lastDecayAt.getTime() === before.lastDecayAt.getTime()) continue;
-      upd.run(after.w0, after.recallCount, after.lastDecayAt.toISOString(), after.stage, r3(weight(after, now)), ts, id);
+      const w1 = r3(weight(after, now));
+      upd.run(after.w0, after.recallCount, after.lastDecayAt.toISOString(), after.stage, w1, ts, id);
+      // E-3b：只有锚点真的移动了才记一条；external 来源在上面的 continue 已被挡掉
+      logWeightChange(db, {
+        id, cause: "reconsolidate", by: "rule:reinforce", now,
+        from: { w0: r.w0, weight: r.weight, recallCount: r.recall_count, stage: r.stage },
+        to: { w0: after.w0, weight: w1, recallCount: after.recallCount, stage: after.stage },
+      });
       n++;
     }
     db.exec("COMMIT");
@@ -147,6 +155,12 @@ export function reinforce(db: DatabaseSync, ids: readonly number[], now = new Da
   return n;
 }
 
+/**
+ * ⚠️ 这里**故意不写** weight 变更事件（E-3b）。
+ * 普通 tick 不动锚点，只是把 `w = f(w0, now − 锚点, n)` 按新的 now 重算一遍；
+ * 它是时间推移的结果，不是一次「变更」。记了会让「变过几次」变成「过了几天」，
+ * 还会每条叙事记忆每半天灌一条 events。要回溯某个时刻的权重，直接 recompute(m, at)。
+ */
 export function tickDecay(db: DatabaseSync, now = new Date(), minGapDays = 0.5): number {
   const rows = db.prepare(`SELECT id,layer,kind,weight,stage,recall_count,last_decay_at,w0
     FROM memories WHERE status='active' AND layer='narrative'
@@ -244,11 +258,68 @@ export function patchMemoryMeta(
   if (bad.length) throw new Error(`E_METADATA_ONLY: ${by} 不许改 ${bad.join(",")}（正文/文本索引只能人改）`);
   if (!keys.length) return { ok: true, applied: [] };
   const ts = now.toISOString();
+  // E-3b：涉及权重字段时，改前先把数值读出来 —— 老事件只有 `keys`，答不出「从多少变到多少」。
+  // 只改 status/sensitivity 这类字段就不记，免得把历史灌水。
+  const touchesWeight = keys.some((k) => k === "weight" || k === "w0" || k === "importance");
+  const before = touchesWeight
+    ? db.prepare("SELECT w0,weight,importance,recall_count,stage FROM memories WHERE id=?").get(id) as
+      | { w0: number; weight: number; importance: number; recall_count: number; stage: string }
+      | undefined
+    : undefined;
   db.prepare(`UPDATE memories SET ${keys.map((k) => `${k}=?`).join(",")}, updated_at=? WHERE id=?`)
     .run(...(keys.map((k) => patch[k] as never) as never[]), ts as never, id as never);
   db.prepare("INSERT INTO events(ts,kind,actor,target,payload,ok) VALUES(?,?,?,?,?,1)")
     .run(ts, "memory_meta_changed", by, String(id), JSON.stringify({ keys }));
+  if (before) {
+    const num = (k: string) => typeof patch[k] === "number" ? patch[k] as number : undefined;
+    logWeightChange(db, {
+      id, cause: "meta_patch", by, now,
+      from: { w0: before.w0, weight: before.weight, importance: before.importance, recallCount: before.recall_count, stage: before.stage },
+      to: {
+        w0: num("w0") ?? before.w0, weight: num("weight") ?? before.weight,
+        importance: num("importance") ?? before.importance,
+        ...(keys.includes("stage") ? { stage: String(patch.stage) } : {}),
+      },
+    });
+  }
   return { ok: true, applied: keys };
+}
+
+/**
+ * E-2 / E-3b：把已有记忆的 w0 按 importance 重算一遍（CLI `decay --reweight`）。
+ *
+ * 2026-11-10 从 `cli/jingjing.ts` 搬进来：那段在 CLI 里裸写 UPDATE，
+ * 既绕过「写入单入口」，又不会留任何审计 —— 改历史却查不出改了谁，正是 E-3b 的缺口。
+ * 默认 dry-run：`apply=false` 只给计划，一个字都不写。
+ */
+export function reweightAll(
+  db: DatabaseSync, now = new Date(), apply = false,
+): { dryRun: boolean; changed: number; of: number; plan: Array<{ id: number; from: number; to: number }> } {
+  const rows = db.prepare("SELECT id,layer,importance,w0,weight FROM memories WHERE status='active'").all() as
+    Array<{ id: number; layer: string; importance: number; w0: number; weight: number }>;
+  const plan = rows.map((r) => ({
+    id: r.id, from: r.w0,
+    to: r.layer === "contract" ? 1 : w0FromImportance(r.importance, "narrative"),
+  })).filter((x) => Math.abs(x.to - x.from) > 1e-9);
+  if (!apply) return { dryRun: true, changed: plan.length, of: rows.length, plan };
+
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const ts = now.toISOString();
+  const upd = db.prepare("UPDATE memories SET w0=?, weight=?, updated_at=? WHERE id=?");
+  db.exec("BEGIN");
+  try {
+    for (const x of plan) {
+      const r = byId.get(x.id)!;
+      upd.run(x.to, x.to, ts, x.id);
+      logWeightChange(db, {
+        id: x.id, cause: "reweight", by: "human:cli", now,
+        from: { w0: r.w0, weight: r.weight, importance: r.importance },
+        to: { w0: x.to, weight: x.to, importance: r.importance },
+      });
+    }
+    db.exec("COMMIT");
+  } catch (e) { db.exec("ROLLBACK"); throw e; }
+  return { dryRun: false, changed: plan.length, of: rows.length, plan };
 }
 
 function hash8(s: string): string {

@@ -21,6 +21,8 @@ import { preflight } from "./preflight.ts";
 import { capabilities, type Capabilities } from "./capabilities.ts";
 import { resolveConfig } from "./configfile.ts";
 import { modelKeyOf } from "./config.ts";
+import { permsReport } from "./permcheck.ts";
+import type { PermReport } from "./permcheck.ts";
 
 export interface Check {
   name: string;
@@ -34,6 +36,8 @@ export interface DoctorReport {
   checks: Check[];
   degraded: string[];
   capabilities?: Capabilities;
+  /** `doctor --perms` 才填：默认体检不跑这段，保持 <1 s */
+  perms?: PermReport;
 }
 
 export interface DoctorDeps {
@@ -43,6 +47,8 @@ export interface DoctorDeps {
   skipPreflight?: boolean;
   /** 带上真实 MCP 结果 */
   mcp?: { servers: string[]; tools: string[]; errors: string[] };
+  /** 附一张权限自查表（逐 verb 真跑策略与授权窗口，比默认体检慢一点） */
+  withPerms?: boolean;
 }
 
 export async function doctor(deps: DoctorDeps): Promise<DoctorReport> {
@@ -93,6 +99,16 @@ export async function doctor(deps: DoctorDeps): Promise<DoctorReport> {
     ...(deps.skipPreflight ? { ollama: null } : {}),
   });
 
+  // ⑥ 权限自查（`--perms` 才跑）。单独 try：策略文件写坏时体检本身仍要出得来。
+  let perms: PermReport | undefined;
+  if (deps.withPerms) {
+    try {
+      perms = await permsReport({ home: deps.home });
+    } catch (e) {
+      checks.push({ name: "perms", ok: false, detail: String((e as Error).message).slice(0, 120) });
+    }
+  }
+
   return {
     // ok 只看 checks：degraded 里有些是"已知缺口"（没装本地模型、hooks 未实现），
     // 它们不该让体检永远退 1 —— 那就没法定成门。要卡它们用 --strict。
@@ -101,6 +117,7 @@ export async function doctor(deps: DoctorDeps): Promise<DoctorReport> {
     checks,
     degraded: cap.degraded,
     capabilities: cap,
+    ...(perms ? { perms } : {}),
   };
 }
 
@@ -129,6 +146,8 @@ export function exportDiag(report: DoctorReport, home: string, db: DatabaseSync,
   };
 
   put("doctor.json", JSON.stringify(report, null, 2));
+  // --perms：单独出一份，便于直接转发（doctor.json 里也有一份，会与体检报告一起变大）
+  if (report.perms) put("perms.json", JSON.stringify(report.perms, null, 2));
   put("env.json", JSON.stringify({
     node: process.version, platform: process.platform, arch: process.arch,
     cwd: process.cwd(), home, ...extra,

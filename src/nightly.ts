@@ -176,8 +176,24 @@ function bigramsFor(s: string): string[] {
 // 建边（含黑名单 J-5）的实现已移到 links.ts：它是关系层操作，
 // 留在 nightly.ts 会让 interpret.ts 反向依赖夜间整理，形成循环。
 // 这里 re-export 保持 `import { linkIfNew } from "./nightly.ts"` 的既有调用方不变。
-import { linkIfNew } from "./links.ts";
+import { linkIfNew, WHY_MAX } from "./links.ts";
 export { linkIfNew };
+
+/**
+ * 关系边的「为什么连」（J-3b，2026-11-10）。
+ *
+ * 原先 `supersedes` 写死「同一件事的新说法」、`derived_from` 抄
+ * `(c.reason || c.subject).slice(0,20)` —— 那是**模型的转述**，不是判据：
+ * 抽检时人看到一句漂亮话，没法判断这根线该不该有（也看不出是哪条规则连的）。
+ *
+ * 现在统一写当场算出来的可核对数值 + 触发它的规则。数字刻意排在开头：
+ * P10 的 `viaLink.why` 只留前 20 字（简报有 token 预算），截完仍剩 `cos … / 字面 …`；
+ * 人看的抽检卡 / `links` 命令则能读到 WHY_MAX 全文。
+ * 不写「同一件事」这种结论 —— 那是判断，cos/字面 才是证据。
+ */
+export function relationWhy(cos: number, sim: number, rule: string): string {
+  return `cos ${cos.toFixed(2)} / 字面 ${sim.toFixed(2)} · ${rule}`.slice(0, WHY_MAX);
+}
 
 
 
@@ -693,6 +709,8 @@ export async function runNightly(deps: NightlyDeps): Promise<NightlyReport> {
 
       let verdict: Verdict | null = null;
       let target: number | null = null;
+      /** J-3b：判「同一件事」时当场留下的证据，写边时直接复用，不再回头猜 reason */
+      let evidence: { cos: number; sim: number; rule: string } | null = null;
 
       for (const s of same) {
         if (normalize(s.text) === normalize(c.text)) { verdict = "duplicate"; target = s.id; break; }
@@ -702,6 +720,7 @@ export async function runNightly(deps: NightlyDeps): Promise<NightlyReport> {
           if (cos >= th) {
             verdict = deps.verdict ? await deps.verdict({ oldText: s.text, newText: c.text }) : "supersede";
             target = s.id;
+            evidence = { cos, sim: bigramSim(s.text, c.text), rule: `同槽 cos≥${th}${deps.verdict ? "＋模型裁决" : ""}` };
             break;
           }
           // 同一个槽位只能有一个真相（2026-11-04）。
@@ -717,9 +736,13 @@ export async function runNightly(deps: NightlyDeps): Promise<NightlyReport> {
           if (c.layer === "contract" && cos >= 0.85) {
             verdict = deps.verdict ? await deps.verdict({ oldText: s.text, newText: c.text }) : "supersede";
             target = s.id;
+            evidence = { cos, sim: bigramSim(s.text, c.text), rule: "同槽 contract≥0.85" };
             break;
           }
-          if (cos >= 0.75) { verdict = "refine"; target = s.id; }
+          if (cos >= 0.75) {
+            verdict = "refine"; target = s.id;
+            evidence = { cos, sim: bigramSim(s.text, c.text), rule: "同话题 cos≥0.75" };
+          }
         }
       }
 
@@ -732,6 +755,8 @@ export async function runNightly(deps: NightlyDeps): Promise<NightlyReport> {
             // 新的是强层（contract）→ 覆盖掉旧的弱层版本
             verdict = "supersede";
             target = cross.id;
+            // P1-2 已经把「同一件事」判成 cos + 字面双闸门，直接把这两个数带进关系边
+            evidence = { cos: cross.cos, sim: cross.sim, rule: `跨层同件事(P1-2 ≥0.35 / ${th})` };
             notes.push(`MERGE↑ ${c.layer}>${cross.layer} 覆盖 #${cross.id}（cos ${cross.cos.toFixed(2)} 字面 ${cross.sim.toFixed(2)}）`);
         } else if (cross) {
           // 弱层版本或同层另一个槽位 → 不插，只抬旧条 confidence（同一件事不该有第二份）
@@ -776,7 +801,7 @@ export async function runNightly(deps: NightlyDeps): Promise<NightlyReport> {
       if (counter) {
         // 两条都留、都降一点信心，建一根 contradicts —— 然后它会自己出现在抽检卡上
         linkIfNew(deps.db, id, counter.id, "contradicts", 0.6,
-          `反证：极性相反（cos ${counter.cos.toFixed(2)} / 字面 ${counter.sim.toFixed(2)}）`.slice(0, 60), now);
+          relationWhy(counter.cos, counter.sim, "极性相反·反证（两条都留）"), now);
         for (const mid of [id, counter.id]) {
           deps.db.prepare("UPDATE memories SET confidence=MAX(0.3, confidence-0.1) WHERE id=?").run(mid);
         }
@@ -793,11 +818,13 @@ export async function runNightly(deps: NightlyDeps): Promise<NightlyReport> {
       } else if (verdict === "supersede" && target != null) {
         deps.db.prepare("UPDATE memories SET superseded_by=?, status='archived', updated_at=? WHERE id=?")
           .run(id, now.toISOString(), target);
-        linkIfNew(deps.db, id, target, "supersedes", 1, "同一件事的新说法", now);
+        linkIfNew(deps.db, id, target, "supersedes", 1,
+          evidence ? relationWhy(evidence.cos, evidence.sim, evidence.rule) : "同槽字面冲突·无向量证据", now);
         report.superseded++;
         notes.push(`SUPERSEDE ${c.text.slice(0, 20)}`);
       } else if (verdict === "refine" && target != null) {
-        linkIfNew(deps.db, id, target, "derived_from", 0.8, (c.reason || c.subject || "同一段经历").slice(0, 20), now);
+        linkIfNew(deps.db, id, target, "derived_from", 0.8,
+          evidence ? relationWhy(evidence.cos, evidence.sim, evidence.rule) : "同话题·无向量证据", now);
         report.refined++;
         report.added++;
       } else {

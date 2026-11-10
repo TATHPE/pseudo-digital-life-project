@@ -112,7 +112,7 @@ CREATE TABLE IF NOT EXISTS memory_links (
   dst_id INTEGER NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
   rel TEXT NOT NULL CHECK (rel IN ('supersedes','derived_from','related','contradicts')),
   weight REAL NOT NULL DEFAULT 1.0,
-  /** 为什么连（J-3）：≤20 字，说不出来的边不该建 */
+  /** 为什么连（J-3）：≤60 字（J-3b 放宽，要放得下 cos/字面 双判据），说不出来的边不该建 */
   why TEXT,
   /** 止期（J-3）：作废写止期而不删边，历史仍查得到 */
   valid_to TEXT,

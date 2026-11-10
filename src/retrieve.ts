@@ -14,6 +14,7 @@ import { queryVariants, onlyStopwordHits } from "./queryrewrite.ts";
 import { at } from "./assert.ts";
 import { bigrams } from "./text.ts";
 import type { Stage } from "./decay.ts";
+import { WHY_BRIEF } from "./links.ts";
 
 export interface Hit {
   id: number; text: string; score: number;
@@ -412,7 +413,8 @@ export function expandByLinks(
       kind: r.kind,
       layer: r.layer === "contract" ? "contract" : "narrative",
       taint: (r.taint === "external" ? "external" : "trusted") as "trusted" | "external",
-      viaLink: { from, why: String(r.why).slice(0, 20) },
+      // P10 有 token 预算，只留开头；关系判据（J-3b）刻意以 cos/字面 数字起头，截完仍成立
+      viaLink: { from, why: String(r.why).slice(0, WHY_BRIEF) },
     });
     if (out.length >= cap) break;
   }

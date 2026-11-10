@@ -4,7 +4,7 @@ import { mkdirSync, appendFileSync, readFileSync, writeFileSync, rmSync, existsS
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { openDb, selfCheck, meta, setMeta } from "../db.ts";
-import { remember, tickDecay, getRow } from "../store.ts";
+import { remember, tickDecay, getRow, reweightAll } from "../store.ts";
 import { search } from "../retrieve.ts";
 import { at } from "../assert.ts";
 import { createEmbedder, fakeEmbed } from "../embed.ts";
@@ -35,12 +35,14 @@ import { resolveConfig, configSources, readFileConfig, writeFileConfig } from ".
 import { probeChat, probeEmbed, isInstalled } from "../ollama.ts";
 import { preflight, missingFrom } from "../preflight.ts";
 import { indexState, ensureIndexModel } from "../embedindex.ts";
-import { w0FromImportance, DECAY_PARAMS_VERSION, KIND_PARAMS, T, RECONSOLIDATION, ACCESS } from "../decay.ts";
+import { DECAY_PARAMS_VERSION, KIND_PARAMS, T, RECONSOLIDATION, ACCESS } from "../decay.ts";
 import { modelKeyOf } from "../config.ts";
 import { applyDecayConfig, effectiveParams, currentOverrides, decayVersion, setDecayParam, resetDecayParams, readAudit } from "../decayparams.ts";
 import { reembed as reembedBuild } from "../reembed.ts";
 import { capabilities, summarize } from "../capabilities.ts";
 import { doctor, exportDiag } from "../doctor.ts";
+import { formatPerms } from "../permcheck.ts";
+import { weightHistory, formatWeightHistory } from "../weighthistory.ts";
 import { checkConfig, describeProblems, EXIT_CONFIG } from "../startupcheck.ts";
 import { CLI_COMMANDS } from "../commands.ts";
 import { reset as coolReset } from "../cooldown.ts";
@@ -997,9 +999,13 @@ async function main(): Promise<void> {
     }
 
     case "doctor": {
-      // D-6：体检。默认只做结构检查；--full 才跑四条完整自检；--export 出脱敏诊断包。
+      // D-6：体检。默认只做结构检查；--perms 附权限自查表；--export 出脱敏诊断包。
       const d = openDb(dbFile);
-      const rep = await doctor({ db: d.db, home: HOME, ...(has(rest, "--no-net") ? { skipPreflight: true } : {}) });
+      const rep = await doctor({
+        db: d.db, home: HOME,
+        ...(has(rest, "--no-net") ? { skipPreflight: true } : {}),
+        ...(has(rest, "--perms") ? { withPerms: true } : {}),
+      });
       if (has(rest, "--export")) {
         const ex = exportDiag(rep, HOME, d.db, { release: readStateSafe(HOME).state.active ?? null });
         console.log(JSON.stringify({ exported: ex.dir.replace(HOME, "<home>"), files: ex.files, bytes: ex.bytes }, null, 2));
@@ -1009,8 +1015,10 @@ async function main(): Promise<void> {
         for (const c of rep.checks) console.log((c.ok ? "✅" : "❌") + " " + c.name.padEnd(9) + " " + c.detail);
         console.log(rep.degraded.length ? "⚠ 降级 " + rep.degraded.length + " 项：" + rep.degraded.join(", ") : "✅ 无降级");
         console.log(rep.ok ? String.fromCharCode(10) + "✅ 体检通过" : String.fromCharCode(10) + "❌ 有项目不通过");
+        if (rep.perms) console.log(String.fromCharCode(10) + formatPerms(rep.perms));
       }
-      process.exitCode = (!rep.ok || (has(rest, "--strict") && rep.degraded.length > 0)) ? 1 : 0;
+      const strictIssues = has(rest, "--strict") && (rep.perms?.issues.length ?? 0) > 0;
+      process.exitCode = (!rep.ok || strictIssues || (has(rest, "--strict") && rep.degraded.length > 0)) ? 1 : 0;
       return;
     }
 
@@ -1620,30 +1628,29 @@ ${r.pass}/${r.total} 拦截/放行符合预期`);
         console.log(JSON.stringify({ ok: true, version: v, note: "已恢复默认参数（审计里留了一条）" }, null, 2));
         return;
       }
+      // E-3b：查一条记忆的权重变更史（只记离散变更，普通 tick 不算）
+      if (has(rest, "--history")) {
+        const id = Number(rest[rest.indexOf("--history") + 1] ?? "");
+        if (!Number.isFinite(id) || id <= 0) {
+          console.error("用法: jingjing decay --history <记忆 id>");
+          process.exitCode = 2; return;
+        }
+        console.log(formatWeightHistory(weightHistory(d.db, id)));
+        return;
+      }
       // E-2：把已有记忆的 w0 按 importance 重算一遍。
       // 为什么要单独一个开关：这是**改历史**（旧行写入时 w0 恒 0.55），必须显式触发；
       // 默认 dry-run，看清楚要动多少行再 --apply。
+      // 2026-11-10 起改走 store.reweightAll：CLI 里裸写 UPDATE 会绕过写入单入口，且不留审计。
       if (has(rest, "--reweight")) {
-        const apply = has(rest, "--apply");
-        const rows = d.db.prepare("SELECT id,layer,importance,w0 FROM memories WHERE status='active'").all() as
-          Array<{ id: number; layer: string; importance: number; w0: number }>;
-        const plan = rows.map((r) => ({
-          id: r.id,
-          from: r.w0,
-          to: r.layer === "contract" ? 1 : w0FromImportance(r.importance, "narrative"),
-        })).filter((x) => Math.abs(x.to - x.from) > 1e-9);
-        if (!apply) {
-          console.log(JSON.stringify({ dryRun: true, wouldChange: plan.length, of: rows.length, first5: plan.slice(0, 5),
+        const r = reweightAll(d.db, new Date(), has(rest, "--apply"));
+        if (r.dryRun) {
+          console.log(JSON.stringify({ dryRun: true, wouldChange: r.changed, of: r.of, first5: r.plan.slice(0, 5),
             note: "加 --apply 才会写库（改历史需要显式确认）" }, null, 2));
           return;
         }
-        const upd = d.db.prepare("UPDATE memories SET w0=?, weight=?, updated_at=? WHERE id=?");
-        d.db.exec("BEGIN");
-        try {
-          for (const x of plan) upd.run(x.to, x.to, new Date().toISOString(), x.id);
-          d.db.exec("COMMIT");
-        } catch (e) { d.db.exec("ROLLBACK"); throw e; }
-        console.log(JSON.stringify({ ok: true, changed: plan.length, of: rows.length, paramsVersion: DECAY_PARAMS_VERSION }, null, 2));
+        console.log(JSON.stringify({ ok: true, changed: r.changed, of: r.of, paramsVersion: DECAY_PARAMS_VERSION,
+          note: "每条改动已写 memory_weight_changed，用 decay --history <id> 查" }, null, 2));
         return;
       }
       console.log(JSON.stringify({ recomputed: tickDecay(d.db), paramsVersion: DECAY_PARAMS_VERSION }));

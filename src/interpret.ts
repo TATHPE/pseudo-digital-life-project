@@ -17,7 +17,7 @@
  */
 import type { DatabaseSync } from "node:sqlite";
 import { remember, patchMemoryMeta } from "./store.ts";
-import { linkIfNew } from "./links.ts";
+import { linkIfNew, WHY_MAX } from "./links.ts";
 
 export interface Interpretation {
   id: number;
@@ -95,7 +95,10 @@ export function writeInterpretation(
     now,
   });
 
-  for (const b of basis) linkIfNew(db, id, b, "derived_from", 0.8, "解释的证据", now);
+  // J-3b：原来是句「解释的证据」——人抽检时看不出依据是哪几条。
+  // 改成把**已核过存在性**的证据 id 写进边上，判据可回查（函数开头 ① 已逐条验过 active）。
+  const whyBasis = `证据 #${basis.join("、#")}（${basis.length} 条，已核 active）`.slice(0, WHY_MAX);
+  for (const b of basis) linkIfNew(db, id, b, "derived_from", 0.8, whyBasis, now);
 
   // ③ 同一 subject 的旧解释：取代（不删）
   let replaced: number | null = null;
@@ -105,7 +108,8 @@ export function writeInterpretation(
     ).get(INTERPRET_KIND, subject, id) as { id: number } | undefined;
     if (old) {
       patchMemoryMeta(db, old.id, { status: "archived", superseded_by: id }, "interpret", now);
-      linkIfNew(db, id, old.id, "supersedes", 1, "同一个话题的新理解", now);
+      linkIfNew(db, id, old.id, "supersedes", 1,
+        `同 subject「${subject}」取代 #${old.id} · 证据 #${basis.join("、#")}`.slice(0, WHY_MAX), now);
       replaced = old.id;
     }
   }

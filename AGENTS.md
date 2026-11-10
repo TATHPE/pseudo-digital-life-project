@@ -51,8 +51,10 @@ web/routes/       路由按族拆开：config（配置/诊断）、control（面
 web/ui/notebook.js 记录本的界面脚本（真文件：能 node --check、能 import 测试）
 verbs.ts          **唯一**的能力表（tools.ts 只是适配层）
 execute/policy    策略与审计（casbin，deny-overrides）
-store.ts          remember / reinforce / tickDecay / updateMemoryText / patchMemoryMeta
+store.ts          remember / reinforce / tickDecay / updateMemoryText / patchMemoryMeta / reweightAll
 decay.ts          纯函数：weight / classify / reconsolidate / w0FromImportance
+weighthistory.ts  权重变更史（E-3b）：只记离散变更；tickDecay 是时间纯函数，故意不记
+permcheck.ts      doctor --perms：逐 verb 真跑授权，回答「这个能力为什么不能用」
 decayparams.ts    参数白名单 + 版本号 + 审计（config.json 的 decay 段）
 retrieve.ts       两阶段检索 + 一跳扩展（expandByLinks）
 recall.ts         P10 装配 + 隐私闸门（shareable 才进简报）
@@ -80,7 +82,7 @@ agenda.ts         她自己在惦记的事（必须带出处、上限 5、可了
 interpret.ts      意义层（解释必须挂 derived_from；复述原文不算）
 interpretnight.ts 把它接进闲时整理（五道防线：basis 真实/不许复述/排除系统日志/至少 2 条/可解释性）
 threads.ts        未闭合的线（承诺/待办，aging）
-links.ts          记忆之间的边（why + 止期 + 黑名单；抽检断线共用）
+links.ts          记忆之间的边（why 上限 60：放得下 cos/字面 判据；止期 + 黑名单；抽检断线共用）
 proposals.ts      「它想做但需要人点头」的提议卡（写 data/pending，不执行）
 notify.ts         回执通道（送达≠已读；3 天没人读就停用对应常驻指令）
 standing.ts       常驻指令（只收模板、必须指定通知通道、每次触发现开 60 秒窗口）

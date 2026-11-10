@@ -12,6 +12,7 @@
  */
 import type { DatabaseSync } from "node:sqlite";
 import { bigrams } from "./text.ts";
+import { WHY_MAX } from "./links.ts";
 
 export interface SurfaceInput {
   now: Date;
@@ -80,7 +81,8 @@ export function pickSurface(db: DatabaseSync, now: Date): SurfacePick | null {
   for (const r of rows) {
     const key = `${Math.min(r.src_id, r.id)}-${Math.max(r.dst_id, r.id)}`;
     if (!cooled(key)) continue;
-    return { id: r.id, text: r.text, quote: r.quote ?? null, why: String(r.why).slice(0, 20), from: r.id === r.src_id ? r.dst_id : r.src_id };
+    // 抽检卡是**给人看**的：判据要全文，截到 20 字会把 cos/字面 砍掉（J-3b）
+    return { id: r.id, text: r.text, quote: r.quote ?? null, why: String(r.why).slice(0, WHY_MAX), from: r.id === r.src_id ? r.dst_id : r.src_id };
   }
   return null;
 }
