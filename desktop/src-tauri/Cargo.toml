@@ -1,6 +1,6 @@
 [package]
 name = "jingjing-desktop"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "鲸鲸 · 桌面壳（只做四件事：拉起 sidecar / 健康探测与回落 / 托盘 / 退出杀进程）"
 license = "MIT"

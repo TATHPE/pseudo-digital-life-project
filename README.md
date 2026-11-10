@@ -26,7 +26,7 @@ There is exactly one interface, a **notebook**: days down the left, prose in the
 
 - **Not a cloud service**: everything runs on loopback; the memory store is a local SQLite file
 - **Not a general assistant**: no web search, no plugin marketplace; the 27 tools are local read/write/exec
-- **Not a mature product**: 0.1.0, built and used by one person; the rough edges are documented in `docs/` (Chinese)
+- **Not a mature product**: 0.1.1, built and used by one person; the rough edges are documented in `docs/` (Chinese)
 
 ## Today
 
