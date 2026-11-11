@@ -1,69 +1,80 @@
-# 开发测试版（不打包、直接改源码）
+# 开发测试版（桌面那份直读源码，不打包）
 
-> 2026-11-11 新增。给「改一行代码就想看到效果」用的形态，**不是发布物**。
-> 正式安装包仍由 `npm run desktop:build` 生成，两者互不干扰。
+> 2026-11-11。**主用形态就是已安装的桌面应用本身**：双击桌面图标，Tauri 窗口照常弹出，
+> 但它跑的是仓库 `src/`。不用浏览器、不用新启动器、不用重新打 NSIS 包。
+> 正式发布包仍由 `npm run desktop:build` 生成。
 
-## 为什么需要它
+## 本机当前配置（已生效）
 
-正式包把 `src/`、`persona/`、`package.json` 拷进 `desktop/bundle-src/app`（手工快照，且被 `.gitignore` 排除），
-再连同 `node.exe` 打进 NSIS。改了仓库源码 → 要同步快照 → 重新 `cargo tauri build` → 重装，才能看到。
-测试版把这条链整段跳过：**进程直接读仓库 `src/`**。
+| 项 | 值 |
+|---|---|
+| 安装目录 | `D:\Apps\PDLP` |
+| 链接 | `D:\Apps\PDLP\app\src` → `D:\LLM\jingjing\src`（Windows 目录 junction） |
+| 原快照 | `D:\Apps\PDLP\app\src.release-20261111`（129 文件，完整保留） |
+| 额外备份 | `D:\Apps\PDLP\app\src.backup-20261111`（129 文件，复制备份） |
+| 壳的 exe | `jingjing-desktop.exe`（11-10 18:46 构建，**未改动**） |
+| 运行时 | `D:\Apps\PDLP\node\node.exe`（Node `v24.21.0`，**未改动**） |
 
-## 两种形态
+原理：壳的 `bundled_app_dir()` 只检查 `app/src/cli/jingjing.ts` 是否存在；链接让这个文件仍在，
+所以壳照旧把 `JJ_PROJECT_ROOT` 指向 `D:\Apps\PDLP\app`，但 `app/src` 实际是仓库源码。
+exe、node、桌面快捷方式、一次性令牌机制全部不动。
 
-| 命令 | 形态 | 编译 | 说明 |
-|---|---|---|---|
-| `npm run dev:test` | 浏览器窗口 | **零编译** | 直连 `http://127.0.0.1:7799/`，最快 |
-| `npm run desktop:dev:test` | Tauri 原生窗口 | 首次增量编译 Rust | 和正式版一样的窗口 / 托盘，之后不再打包 |
+检查链接是否还在（**别用 Python 的 `is_symlink()`**，它不认 junction，会误报 False）：
 
-两者都：读仓库 `src/`、数据隔离在 `data2test/`、只绑 `127.0.0.1`。
-
-参数跟在 `--` 后面：
-
-```
-npm run dev:test -- --no-open             # 不自动开浏览器
-npm run dev:test -- --port=7800           # 换端口
-npm run dev:test -- --home=tmp/my-home    # 换测试数据目录（相对项目根）
-npm run dev:test -- --no-watch            # 关掉后端自动重启
+```powershell
+Get-Item 'D:\Apps\PDLP\app\src' | Select-Object LinkType, Target
 ```
 
 ## 改了什么，怎么生效
 
 | 改的文件 | 生效方式 |
 |---|---|
-| `src/web/ui/*.js` 等静态资源 | **刷新浏览器即可**：服务端每次请求读盘 + `cache-control: no-store` |
-| `src/**/*.ts`（路由、检索、简报…） | `--watch` 自动重启 node，重启完刷新页面 |
-| `desktop/src-tauri/src/*.rs` | 仅桌面形态：重新跑 `npm run desktop:dev:test`（增量编译，不是打 NSIS 包） |
-| `persona/`、配置文件 | 刷新或重启，取决于读它的模块 |
+| `src/web/ui/*.js` 等静态资源 | **在应用里刷新页面即可**（服务端每次读盘 + `cache-control: no-store`） |
+| `src/**/*.ts`（路由、检索、简报…） | **关掉应用再双击图标重开**：安装版壳 spawn 的 node 不带 `--watch`，这点无法在不重编译 exe 的前提下改 |
+| `persona/`、配置 | 重启应用；注意 `app/persona` 仍是安装版快照，没做链接 |
+| `desktop/src-tauri/src/*.rs` | 只有它能改壳行为，需要重新编译并替换 exe，不属于「不打包」范围 |
 
-## 三条边界
+## 三条风险
 
-1. **数据隔离**：`JJ_HOME` 默认指向 `data2test/`（已被 `.gitignore` 排除），不碰 `data/`、不碰 Roaming
-   里的真实用户数据。
-2. **只在本机**：`JJ_BIND=127.0.0.1` 写死。浏览器形态用 `JJ_NO_DESK_TOKEN=1` 关掉「只有桌面端」的
-   一次性令牌闸门 —— **这是本地回环专用的开发开关**，不要配 `0.0.0.0`，也不要用这个形态对外提供服务。
-   桌面形态保留令牌，壳照常从 `.desk.json` 读。
-3. **不碰已安装版**：这两个命令都不写 `D:\Apps\PDLP`、不写 `desktop/bundle-src/`。正式包该怎么打还怎么打。
+1. **卸载器可能沿链接递归删到仓库 `src`**：NSIS 按文件清单卸载，junction 会被当成普通目录。
+   仓库在 git 里可恢复、两份快照也在，但**卸载前务必先按下面回滚成实体目录**。
+2. **数据目录仍是真实的**：双击图标不带 `JJ_HOME`，壳走 `install_home()` → Roaming 里的真实记忆库。
+   改代码试功能会写真实数据，别在测试时乱删记忆。
+3. **覆盖安装 / 重装会把链接冲回快照**：之后要重新做一次链接。
 
-## 运行时
+## 回滚成正式版（零删除，纯改名）
 
-项目 `engines` 要求 **Node >= 24**（`node:sqlite` 在 22 仍是实验性）。启动器会自动探测：
-`JJ_NODE` → `C:\Program Files\nodejs\node.exe` → `desktop/bundle-src/node/node.exe` → 当前 node，
-挑第一个 ≥24 的；找不到就报错退出。桌面形态还会把 `~/.cargo/bin` 加进 PATH，以便 `cargo` 找到 `cargo-tauri`。
+```powershell
+Rename-Item -LiteralPath 'D:\Apps\PDLP\app\src' -NewName 'src.test-link'
+Rename-Item -LiteralPath 'D:\Apps\PDLP\app\src.release-20261111' -NewName 'src'
+```
 
-`desktop/src-tauri/src/main.rs` 里加了一条：**调用方显式设了 `JJ_PROJECT_ROOT` / `JJ_NODE` 时，
-不再用包内快照覆盖**。正式安装包不设这两个变量，行为不变。
+再切回测试版，把两步反过来即可。**不要用 `Remove-Item -Recurse` 删 junction** ——
+PowerShell 5.1 会沿链接把仓库源码删掉；纯改名最安全，两份备份也始终留着。
+
+## 备用：命令行启动器（不是主用方式）
+
+`npm run dev:test` / `npm run desktop:dev:test` 是同日先做的一版通用启动器，读仓库源码、隔离数据、
+可选 `--watch`；**主用桌面那份时不需要它们**，保留作备用或无安装环境时用。
+参数：`-- --no-open` / `-- --port=7800` / `-- --home=tmp/my-home` / `-- --no-watch`。
+浏览器形态用 `JJ_NO_DESK_TOKEN=1` 关掉桌面令牌闸门、只绑 `127.0.0.1`；没有 Tauri 壳，
+DPAPI 云端密钥读不到，走本地 Ollama。
+
+`desktop/src-tauri/src/main.rs` 里那条「显式 `JJ_PROJECT_ROOT` / `JJ_NODE` 优先」只对**新编译的 exe** 生效；
+当前安装的 exe 是旧逻辑，所以本机方案用的是目录链接而不是环境变量。
 
 ## 已知限制
 
-- 浏览器形态没有 Tauri 壳，因此 **DPAPI 解密的云端密钥读不到**，云端模型不可用；本地 Ollama（含 embed）正常。
-  测试 home 是全新配置，要用本地模型先配一次：
-  `JJ_HOME=data2test node --experimental-strip-types src/cli/jingjing.ts models use qwen2.5:7b-instruct`
-- 测试 home 是空库，首次打开会进引导页（`/welcome`）。
-- 桌面形态首次仍要编译 Rust（几秒到几分钟，取决于缓存）；这跟「每次改 TS 都重打包 NSIS」不是一回事。
-- `desktop/bundle-src/` 手工快照**仍然没有自动化**，正式发版前还得手工同步。测试版只是让开发态绕开它。
+- `desktop/bundle-src/` 手工快照的**发布链路自动化仍未做**；正式发版前还得手工同步再打 NSIS。
+- 后端 `.ts` 改动需要重启应用，不是「保存即热更新」。
+- `app/persona`、`app/package.json`、`app/node_modules` 仍是安装版内容；新增 npm 依赖不会自动可见。
 
-## 验证口径（2026-11-11）
+## 验证口径（2026-11-11 实测）
 
-`npm run dev:test` 实测：首页与 `/health` 均返回 200，`/health` 为 `ok:true / schema 12`，
-`/ui/notebook.js` 返回 200 且带 `cache-control: no-store`。
+- `LinkType=Junction`，`realpath = D:\LLM\jingjing\src`，壳判据 `app/src/cli/jingjing.ts` 存在。
+- 仓库里新建探针文件 → 安装版路径立刻可见；删除后同步消失（129 文件、1,419,365 字节，备份逐字一致）。
+- 用安装版 `node.exe` 从 `app/` 跑 `src/cli/jingjing.ts serve 7799`：启动正常、无 Node 22 警告，
+  `/health` = `ok:true / schema 12`。
+- 仓库 `src/web/ui/` 临时放一个 `.js` → 安装版启动的服务返回 200 且 `cache-control: no-store`，
+  证明它读的确实是仓库文件。
+- 没有实际双击图标弹窗口（避免干扰）；壳的导航逻辑未改动。
