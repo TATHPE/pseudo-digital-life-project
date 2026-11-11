@@ -15,10 +15,13 @@
 mod dpapi;
 mod sidecar;
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
+use std::time::Duration;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    webview::PageLoadEvent,
     Manager, WindowEvent,
 };
 
@@ -144,8 +147,54 @@ fn js_escape(s: &str) -> String {
 }
 
 /// 全局只持有一个 sidecar 句柄：退出/托盘都要能杀掉它。
+///
+/// 另外四个字段是**启动握手**（2026-11-11 修「3–4 秒黑屏」）：
+/// 原来 `wait_healthy()` 同步跑在 `setup()` 里，最多阻塞 10 秒（实测 3–4 秒），
+/// Tauri 主线程被卡住 → WebView2 根本没机会画 `assets/index.html`；
+/// health 一好又立刻 `navigate`，用户看到的就是一段纯黑，预热页等于白写。
+/// 现在 sidecar 探测挪到后台线程，等**预热页加载完**且**sidecar 就绪**才换页。
 struct AppState {
     sidecar: Mutex<Option<Sidecar>>,
+    /// 后台线程算好的带令牌地址；None = sidecar 还没好
+    pending_url: Mutex<Option<String>>,
+    /// 初始预热页是否已加载完（`on_page_load` / Finished）
+    first_frame: AtomicBool,
+    /// 兜底：`on_page_load` 万一没触发，也不能把用户永远留在预热页
+    force_ready: AtomicBool,
+    /// 只导航一次（预热页与 sidecar 两条线都会调 maybe_navigate）
+    navigated: AtomicBool,
+}
+
+/// 双条件就绪判定抽成纯函数：单测盯住「不许退回 health 一好就换页」。
+fn can_navigate(first_frame: bool, force_ready: bool, has_url: bool, navigated: bool) -> bool {
+    !navigated && has_url && (first_frame || force_ready)
+}
+
+/// 两个条件都齐了才把窗口从预热页换到面板。任一条线先到都先存着，后到的那条来触发。
+fn maybe_navigate(app: &tauri::AppHandle) {
+    let st = app.state::<AppState>();
+    let Some(url) = st.pending_url.lock().unwrap().clone() else { return; };
+    if !can_navigate(
+        st.first_frame.load(Ordering::SeqCst),
+        st.force_ready.load(Ordering::SeqCst),
+        true,
+        st.navigated.load(Ordering::SeqCst),
+    ) {
+        return;
+    }
+    let Ok(parsed) = url.parse() else { return; };
+    // CAS 保证预热页加载事件与后台线程同时到达时只换一次页
+    if st.navigated
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
+        return;
+    }
+    if let Some(w) = app.get_webview_window("main") {
+        // 带令牌进来：服务端种 cookie 后一直有效；没令牌的页面请求一律 403
+        // （这就是"只有桌面端"的机制 —— 知道端口也打不开）
+        let _ = w.navigate(parsed);
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -159,7 +208,13 @@ pub fn run() {
             }
         }))
         .plugin(tauri_plugin_opener::init())
-        .manage(AppState { sidecar: Mutex::new(None) })
+        .manage(AppState {
+            sidecar: Mutex::new(None),
+            pending_url: Mutex::new(None),
+            first_frame: AtomicBool::new(false),
+            force_ready: AtomicBool::new(false),
+            navigated: AtomicBool::new(false),
+        })
         .setup(|app| {
             // 数据目录：JJ_HOME 优先（开发/自测用现有库），否则用 AppData 下的独立目录
             // 安装包自带运行环境时，先把它指给 sidecar（node 与项目根都从 resources 来）
@@ -183,33 +238,45 @@ pub fn run() {
                     }
                 }
             };
-            // 1) 拉起 sidecar：开发时 `node src/cli/jingjing.ts serve 7700`
-            // 先把密钥解出来（DPAPI 在壳里做，Node 不用起 PowerShell → 不会再闪黑框）
+            // 1) 先把密钥解出来（DPAPI 在壳里做，Node 不用起 PowerShell → 不会再闪黑框）
             let secrets = dpapi::read_all(&home);
             if !secrets.is_empty() {
                 shell_note(&home, &format!("解密了 {} 个 provider 的 key", secrets.len()));
             }
-            let mut sc = Sidecar::start(&home, &secrets);
-            // 2) 健康探测：不通就重启，三次失败 → 落回浏览器（记忆不丢，只是回到网页）
-            match sc.wait_healthy() {
-                Ok(()) => {
-                    // 窗口加载时 sidecar 还没起来，会停在占位页；这里主动导航一次
-                    if let Some(w) = app.get_webview_window("main") {
-                        // 带令牌进来：服务端种 cookie 后一直有效；没令牌的页面请求一律 403
-                        // （这就是"只有桌面端"的机制 —— 知道端口也打不开）
+            // 2) 启动 + 健康探测放后台线程：setup 立刻返回，WebView2 才有机会画预热页。
+            //    「预热页加载完」与「sidecar 就绪」都齐了才换页，见 maybe_navigate。
+            let boot_app: tauri::AppHandle = (*app.handle()).clone();
+            let boot_home = home.clone();
+            std::thread::spawn(move || {
+                let mut sc = Sidecar::start(&boot_home, &secrets);
+                match sc.wait_healthy() {
+                    Ok(()) => {
                         let token = sc.token();
                         let url = format!("http://127.0.0.1:{}/?k={}", sc.port(), token);
-                        let _ = w.navigate(url.parse().unwrap());
+                        // 句柄先交给全局状态：退出/托盘才能杀进程树，别让 Sidecar 在这里 Drop
+                        *boot_app.state::<AppState>().sidecar.lock().unwrap() = Some(sc);
+                        *boot_app.state::<AppState>().pending_url.lock().unwrap() = Some(url);
+
+                        // 正常情况下 on_page_load 早就把 first_frame 置位了；
+                        // 万一它没触发，最多等 500ms 后兜底放行，绝不把用户永远留在预热页。
+                        let st = boot_app.state::<AppState>();
+                        for _ in 0..25 {
+                            if st.first_frame.load(Ordering::SeqCst) { break; }
+                            std::thread::sleep(Duration::from_millis(20));
+                        }
+                        if !st.first_frame.load(Ordering::SeqCst) {
+                            st.force_ready.store(true, Ordering::SeqCst);
+                        }
+                        maybe_navigate(&boot_app);
+                    }
+                    Err(e) => {
+                        // 只弹报错：不做浏览器回落，也不做接 API 自修。
+                        // 说清两件事就够了 —— 哪一步失败、日志在哪。
+                        eprintln!("[shell] sidecar 起不来：{e}");
+                        show_boot_error(&boot_app, &e, &boot_home);
                     }
                 }
-                Err(e) => {
-                    // 只弹报错：不做浏览器回落，也不做接 API 自修。
-                    // 说清两件事就够了 —— 哪一步失败、日志在哪。
-                    eprintln!("[shell] sidecar 起不来：{e}");
-                    show_boot_error(app.handle(), &e, &home);
-                }
-            }
-            *app.state::<AppState>().sidecar.lock().unwrap() = Some(sc);
+            });
 
             // 3) 托盘四项
             let toggle = MenuItem::with_id(app, "toggle", "暂停 / 继续心跳", true, None::<&str>)?;
@@ -261,6 +328,17 @@ pub fn run() {
 
             Ok(())
         })
+        // 预热页的首帧信号：初始页 Finished 才算画完；换到 127.0.0.1 之后还会触发，
+        // 用 host 过滤掉，别把正式面板的加载事件当成首帧。
+        .on_page_load(|webview, payload| {
+            let is_boot_page =
+                !matches!(payload.url().host_str(), Some(h) if h.starts_with("127.0.0.1"));
+            if is_boot_page && matches!(payload.event(), PageLoadEvent::Finished) {
+                let app = webview.app_handle();
+                app.state::<AppState>().first_frame.store(true, Ordering::SeqCst);
+                maybe_navigate(app);
+            }
+        })
         .on_window_event(|window, ev| {
             if let WindowEvent::CloseRequested { .. } = ev {
                 // 关窗 = 真的退出（含杀 sidecar）。不允许"窗口关了但进程还在偷偷跑"。
@@ -280,4 +358,20 @@ pub fn node_bin() -> String {
 
 fn main() {
     run();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::can_navigate;
+
+    /// 守住启动握手：不许退回「health 一好就换页」，也不许没有地址就换页。
+    #[test]
+    fn navigate_needs_both_signals() {
+        assert!(!can_navigate(false, false, true, false), "只有 sidecar 就绪，预热页还没画完");
+        assert!(!can_navigate(true, false, false, false), "只有首帧，sidecar 还没好");
+        assert!(can_navigate(true, false, true, false), "两个条件齐了才换页");
+        assert!(!can_navigate(true, false, true, true), "已经换过页就不许再换");
+        assert!(can_navigate(false, true, true, false), "兜底放行：不能永远停在预热页");
+        assert!(!can_navigate(false, true, false, false), "兜底也不能没有地址就换页");
+    }
 }
