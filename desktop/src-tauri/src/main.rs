@@ -220,8 +220,14 @@ pub fn run() {
             // 安装包自带运行环境时，先把它指给 sidecar（node 与项目根都从 resources 来）
             let bundled = bundled_app_dir(app.handle());
             if let Some(root) = &bundled {
-                std::env::set_var("JJ_PROJECT_ROOT", root);
-                if let Some(n) = bundled_node(app.handle()) { std::env::set_var("JJ_NODE", n); }
+                // 开发测试版会显式指定项目根 / node：这时优先用仓库源码，别被包内快照覆盖
+                // （见 desktop/DEV.md）。正式安装包不设这两个变量，行为与原来一致。
+                if std::env::var_os("JJ_PROJECT_ROOT").is_none() {
+                    std::env::set_var("JJ_PROJECT_ROOT", root);
+                }
+                if std::env::var_os("JJ_NODE").is_none() {
+                    if let Some(n) = bundled_node(app.handle()) { std::env::set_var("JJ_NODE", n); }
+                }
             }
             // where.json 交给 Node 侧读写（设置里换工作区域）
             if let Some(w) = where_file(app.handle()) { std::env::set_var("JJ_WHERE_FILE", w); }

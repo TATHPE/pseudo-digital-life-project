@@ -23,6 +23,8 @@
     "desktop:check": "node tools/desktop-check.mjs",
     "desktop:dev": "cd desktop/src-tauri && cargo tauri dev",
     "desktop:build": "cd desktop/src-tauri && cargo tauri build",
+    "dev:test": "node tools/dev-test.mjs",
+    "desktop:dev:test": "node tools/dev-test.mjs --desktop",
     "eval:about": "node --experimental-strip-types tools/eval-about.ts",
     "eval:rank": "node --experimental-strip-types tools/eval-rank.ts",
     "ui:test:nb": "node tools/ui-test-nb.mjs",
