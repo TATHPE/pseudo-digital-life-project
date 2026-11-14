@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { atomicWriteFile } from "./fsx.ts";
 import type { PersonaFiles } from "./types.ts";
 import { verbCatalog } from "./verbs.ts";
+import { localDay } from "./localday.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..");
@@ -114,8 +115,9 @@ export function savePersonaFile(
   // versions/：append-only，记"改了什么 + 因为什么"
   const vdir = join(dir, "versions");
   mkdirSync(vdir, { recursive: true });
-  const n = readdirSync(vdir).filter((f) => f.startsWith(now.toISOString().slice(0, 10))).length + 1;
-  const vfile = join(vdir, `${now.toISOString().slice(0, 10)}-${n}.md`);
+  const day = localDay(now);
+  const n = readdirSync(vdir).filter((f) => f.startsWith(day)).length + 1;
+  const vfile = join(vdir, `${day}-${n}.md`);
   const diff = summarize(before, content);
   atomicWriteFile(vfile, [
     `# ${now.toISOString()} · persona/${file}.md`,

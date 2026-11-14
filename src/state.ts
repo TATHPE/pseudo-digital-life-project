@@ -64,11 +64,51 @@ export function saveState(db: DatabaseSync, s: SelfState, ts = new Date().toISOS
     .run(ts, r3(s.energy), r3(s.closeness), s.mood ?? null, s.attention ?? null, null, source);
 }
 
-/** 更新一步并落库（服务端每轮调用） */
+/**
+ * 追加式状态快照（2026-11-14，学自 dsh-world 的 mood 快照）。
+ *
+ * `self_state` 表本来就是 append-only，但 `advance()` 以前**每轮都写一行**，状态没变也写，
+ * 历史里全是重复的当前值；简报也只给「现在是多少」，没有「以最新一条为准」这句话。
+ * 这里补两条，都不碰 P1–P4 稳定前缀：
+ *   ① 只有状态真的变了才落库 —— 历史里每一行都是一次变化，而不是一次轮询
+ *   ② 变化时产出一条可追加进 P7 的文本，明确上一条不再算数（只追加、不替换）
+ */
+export interface StateSnapshot {
+  /** 追加到 P7 第二行的文本；null 时 P7 保持原样 */
+  text: string;
+  /** 逐字段的变化描述，顺序固定，便于测试与排障 */
+  changes: string[];
+}
+
+const normalized = (s: SelfState) => ({
+  energy: r3(s.energy), closeness: r3(s.closeness),
+  mood: s.mood ?? null, attention: s.attention ?? null,
+});
+
+/** 纯函数：没变化返回 null（调用方据此跳过写库与追加行）。 */
+export function stateSnapshot(prev: SelfState, next: SelfState): StateSnapshot | null {
+  const a = normalized(prev), b = normalized(next);
+  const changes: string[] = [];
+  if (a.closeness !== b.closeness) changes.push(`closeness ${a.closeness.toFixed(3)} → ${b.closeness.toFixed(3)}`);
+  if (a.energy !== b.energy) changes.push(`energy ${a.energy.toFixed(3)} → ${b.energy.toFixed(3)}`);
+  if (a.mood !== b.mood) changes.push(`心情 ${a.mood ?? "（空）"} → ${b.mood ?? "（空）"}`);
+  if (a.attention !== b.attention) changes.push(`在意 ${a.attention ?? "（空）"} → ${b.attention ?? "（空）"}`);
+  if (!changes.length) return null;
+  return { text: `【状态变化】${changes.join("；")}（以最新一条为准，之前那条不再算数）`, changes };
+}
+
+/** 更新一步并落库（服务端每轮调用）；状态没变就不写新行 */
 export function advance(db: DatabaseSync, input: StepInput, now = new Date()): SelfState {
-  const next = step(loadState(db), input);
-  saveState(db, next, now.toISOString(), input.night ? "night" : "turn");
-  return next;
+  return advanceWithSnapshot(db, input, now).state;
+}
+
+/** 同上，但把「这一轮状态真的变了吗」一起交回，供简报追加快照行。 */
+export function advanceWithSnapshot(db: DatabaseSync, input: StepInput, now = new Date()): { state: SelfState; snapshot: StateSnapshot | null } {
+  const prev = loadState(db);
+  const next = step(prev, input);
+  const snapshot = stateSnapshot(prev, next);
+  if (snapshot) saveState(db, next, now.toISOString(), input.night ? "night" : "turn");
+  return { state: next, snapshot };
 }
 
 /** 给界面的一句话（不显示数字，显示语气） */

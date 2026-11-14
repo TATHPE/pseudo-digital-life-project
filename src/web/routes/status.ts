@@ -4,6 +4,7 @@
  * 只通过 StatusCtx 拿闭包量，不与 server.ts 形成运行期循环依赖。
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { intParam } from "../query.ts";
 import type { DatabaseSync } from "node:sqlite";
 import { readEvents } from "../../journal.ts";
 import { getSession } from "../../sessions.ts";
@@ -14,6 +15,7 @@ import { modelKeyOf } from "../../config.ts";
 import { gate as coolGate } from "../../cooldown.ts";
 import { indexState } from "../../embedindex.ts";
 import { spentToday } from "../../budget.ts";
+import { releaseInfo, checkLocalUpdate, workspaceRoot } from "../../release.ts";
 
 /**
  * 只声明本模块真正用到的 deps 字段（结构化类型，WebDeps 天然可赋值）。
@@ -26,6 +28,8 @@ export interface StatusDeps {
   home: string;
   getConfig: () => { roles: Record<string, { provider: string; model: string; baseUrl?: string }>; ollama: string };
   budgetUsd?: number;
+  /** 测试可注入：/api/update-check 读哪份 release.json；不传就用工作区根目录。 */
+  releaseRoot?: string;
 }
 
 export interface StatusCtx {
@@ -39,6 +43,21 @@ export interface StatusCtx {
 
 export async function handleStatus(ctx: StatusCtx): Promise<boolean> {
   const { req, res, url, deps, now, json } = ctx;
+
+  // 「我装的到底是哪版」：版本 / 运行时 / 更新策略。只读 package.json，不碰 DB、不联网。
+  // 更新走人工校验覆盖安装，不在这里检查新版本（见 docs/ops/26）。
+  if (req.method === "GET" && url.pathname === "/api/version") {
+    json(res, 200, releaseInfo());
+    return true;
+  }
+
+  // 只读：读工作区根目录的 release.json → 纯函数比版本（docs/ops/26 §1）。
+  // 绝不联网 / 下载 / 安装；前端只把 notes / downloadUrl / sha256 当文本展示。
+  // 没有清单或坏清单时回 hasUpdate:false + 中文说明，不让设置页被一份坏文件带崩。
+  if (req.method === "GET" && url.pathname === "/api/update-check") {
+    json(res, 200, checkLocalUpdate(deps.releaseRoot ?? workspaceRoot()));
+    return true;
+  }
 
   // ── 最近几晚闲时整理干了什么（用户：本地 LLM 完全未知）──
   if (req.method === "GET" && url.pathname === "/api/nightlog") {
@@ -60,7 +79,7 @@ export async function handleStatus(ctx: StatusCtx): Promise<boolean> {
   // ── 活动：跨会话的最近几条（2026-11-05）──
   if (req.method === "GET" && url.pathname === "/api/activity") {
     try {
-      const limit = Math.min(30, Math.max(1, Number(url.searchParams.get("limit") ?? 8)));
+      const limit = intParam(url, "limit", 8, 1, 30);
       const { events } = readEvents(deps.inboxDir);
       const titles = new Map<string, string>();
       const rows = events
@@ -86,7 +105,7 @@ export async function handleStatus(ctx: StatusCtx): Promise<boolean> {
   // ── 日志：执行层的审计（2026-11-05）。按时间倒序，可按 verb/decision 过滤 ──
   if (req.method === "GET" && url.pathname === "/api/logs") {
     try {
-      const limit = Math.min(300, Math.max(1, Number(url.searchParams.get("limit") ?? 100)));
+      const limit = intParam(url, "limit", 100, 1, 300);
       const q = String(url.searchParams.get("q") ?? "").trim();
       const rows = deps.db.prepare(
         "SELECT ts,verb,tier,decision,exit_code,duration_ms,argv_json,deny_reason,capability FROM exec_audit ORDER BY ts DESC LIMIT ?",
@@ -177,7 +196,7 @@ export async function handleStatus(ctx: StatusCtx): Promise<boolean> {
   }
 
   if (req.method === "GET" && url.pathname === "/api/audit") {
-    const limit = Math.min(200, Number(url.searchParams.get("limit") ?? 60) || 60);
+    const limit = intParam(url, "limit", 60, 1, 200);
     const rows = deps.db.prepare(
       `SELECT ts,verb,tier,decision,deny_reason,duration_ms,capability,host_profile,cwd
          FROM exec_audit ORDER BY rowid DESC LIMIT ?`,

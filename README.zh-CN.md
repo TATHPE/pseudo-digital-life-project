@@ -1,5 +1,7 @@
 # Pseudo Digital Life Project
 
+> **命名约定**：项目名 = **Pseudo Digital Life Project（PDLP）**；**「鲸鲸」只是预置人格的名字**（`agent.name` 默认值，设置里可改），不是项目名；目录 / CLI / 包里的 `jingjing` 是历史遗留的内部标识，同样不是项目名。
+
 > 跑在自己电脑上的数字生命原型：**记忆会遗忘、人格会分代、数据不出本机。**
 
 [![ci](https://github.com/TATHPE/pseudo-digital-life-project/actions/workflows/ci.yml/badge.svg)](https://github.com/TATHPE/pseudo-digital-life-project/actions/workflows/ci.yml)
@@ -80,7 +82,7 @@ node src/cli/jingjing.ts serve 7700     # 打开 http://127.0.0.1:7700
 | 里面的东西 | `memory.db`（记忆库）、`persona/`（人格六块）、`inbox/`（原始事件）、`secrets/`（API key） |
 | 密钥怎么存 | Windows 用 DPAPI 加密后落盘，只有这台机器能解；换机器解不开 |
 | 会出网吗 | 默认只连本机 Ollama；用云端模型时，标了 `local_only` 的记忆原文**不出网** |
-| 卸载会删数据吗 | **不会**。要清干净用「设置 → 工作区域 → 清空重来」（会先自动备份） |
+| 卸载会删数据吗 | **不会**。要清干净用「设置 → 工作区域 → 清空重来」（会先自动备份）；开发测试版卸载前先跑 `npm run uninstall:guard`（见 [`docs/ops/26`](docs/ops/26-更新与卸载策略.md)） |
 
 ## 它是怎么运转的
 
@@ -113,7 +115,7 @@ SQLite：memories + chunks + FTS5 + 向量
 ## 开发
 
 ```bash
-npm run check        # 类型 + 全部测试（720 条；失败的会自动重跑，通过则标 FLAKY）
+npm run check        # 类型 + 全部测试（771 条；失败的会自动重跑，通过则标 FLAKY）
 npm run ui:test      # headless Edge 真点真发（需要面板在跑）
 npm run map          # 生成/校验 docs/map.md（文件·错误码·能力·命令）
 node src/cli/jingjing.ts eval         # 检索四道门
@@ -135,7 +137,7 @@ CI 跑 `check`、`map:check` 与 `eval:assembly:ci`；UI 测试和需要实时 O
 - 跳过引导后，只有本机装了对话模型才能说话：会走本地兜底，那一档**不能调用工具**，顶栏会标出来。一个本地模型都没有时，横幅会一直提示去配置
 - 任务编排一次只推进一步，连续两步没进展就挂起；没有计划树，没有并行
 - `memory.db` 是明文 SQLite；密钥用 DPAPI 封着，换机器解不开
-- 没有自动更新，除了托盘没有系统集成，单机单人
+- 不做**静默**自动更新：新版本需人工下载、校验 SHA-256 后覆盖安装（`/api/version` 可查当前版本，见 [`docs/ops/26`](docs/ops/26-更新与卸载策略.md)）；除了托盘没有系统集成，单机单人
 - P10 里仍会混进 1–2 条弱相关叙事：向量候选没有相关性下限（cos 0.49–0.60 与真命中 0.72 一起进窗口）。加阈值会把真命中一起砍掉；cross-encoder 已于 2026-11-10 评估后放弃（见 `docs/ops/24` 的决策），此项按已知边界接受
 ## 许可
 

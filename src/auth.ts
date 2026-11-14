@@ -11,7 +11,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync, existsSync, chmodSync, readdirSync, unlinkSync, statSync } from "node:fs";
 import { dirname } from "node:path";
 
-export type Provider = "deepseek" | "anthropic" | "openai";
+export type Provider = "deepseek" | "anthropic" | "openai" | "vision";
 
 export interface SecretStore {
   kind: "dpapi" | "libsecret" | "file";

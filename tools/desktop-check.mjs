@@ -11,7 +11,7 @@
  * 跑法：npm run desktop:check
  */
 import { spawn } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, readdirSync } from "node:fs";
 import { createServer } from "node:net";
 import { join } from "node:path";
 
@@ -46,6 +46,24 @@ ok("起不来只弹报错（不回落浏览器）", /show_boot_error/.test(rs) &
 ok("托盘四项齐全", ["暂停 / 继续心跳", "打开数据目录", "导出备份", "退出"].every((s) => rs.includes(s)));
 ok("关闭窗口会 stop() sidecar", /CloseRequested/.test(rs));
 
+/** ③b 卸载安全（2026-11-14）：NSIS 会沿 junction 递归删目录，发布快照里不许有链接。
+ *  CI 上没打包快照时跳过（发布侧另有 release:check 守同一条）。 */
+function linksUnder(dir, depth = 0) {
+  if (depth > 8) return [];
+  const out = [];
+  for (const name of readdirSync(dir)) {
+    const p = join(dir, name);
+    const st = lstatSync(p);
+    if (st.isSymbolicLink()) out.push(p);
+    else if (st.isDirectory()) out.push(...linksUnder(p, depth + 1));
+  }
+  return out;
+}
+const bundleApp = join(ROOT, "desktop", "bundle-src", "app");
+ok("打包快照不含链接（防卸载递归删源码）",
+  !existsSync(bundleApp) || linksUnder(bundleApp).length === 0);
+ok("更新与卸载策略文档存在", existsSync(join(ROOT, "docs", "ops", "26-更新与卸载策略.md")));
+
 /** ④ 契约：真起一个 serve，能连上；杀掉后端口释放 */
 const PORT = 7711;
 const server = spawn(process.execPath, ["--experimental-strip-types", "src/cli/jingjing.ts", "serve", String(PORT)], {
@@ -79,5 +97,5 @@ for (const [n, pass, d] of checks) {
   if (!pass) bad++;
 }
 console.log("");
-console.log(bad ? `❌ ${bad} 项失败` : "✅ 壳与 sidecar 的契约成立（真正的窗口/托盘要等 msvc 工具链）");
+console.log(bad ? `❌ ${bad} 项失败` : "✅ 壳与 sidecar 的契约成立（窗口/托盘真机行为另看 cargo test 与实机验收）");
 process.exitCode = bad ? 1 : 0;

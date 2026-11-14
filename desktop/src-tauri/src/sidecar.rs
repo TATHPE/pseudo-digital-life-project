@@ -1,6 +1,7 @@
-// sidecar：壳唯一被允许"碰"的东西。三次纪律：
-//   ① 端口被占就先探活（可能上次没杀干净）——能连上就复用，不再起第二个
-//   ② 探测最多 3 次，每次间隔 500ms；仍不通就落回浏览器
+// sidecar：壳唯一被允许"碰"的东西。三条纪律：
+//   ① 端口交给 OS 分配（serve 0），从 data/.desk.json 读回真实端口与一次性令牌
+//   ② 探测**持续**进行，只区分「慢」和「子进程真退了」；不设一次性预算、不回落浏览器
+//      （2026-11-14：开机冷加载曾因 12 秒预算到点被误判，还把刚要监听的 node 杀掉）
 //   ③ stop() 必须杀**进程树**（Windows 上 node 会派生子进程；只杀父进程会留孤儿）
 
 use std::net::TcpStream;
@@ -86,14 +87,24 @@ impl Sidecar {
         } else {
             eprintln!("[shell] 找不到项目根（src/cli/jingjing.ts）—— 试着设 JJ_PROJECT_ROOT");
         }
+        // 日志落盘（2026-11-14）：以前 stdout/stderr 全丢进 null()，
+        // 而 show_boot_error 让去看 data/logs/serve.log —— 那个文件从来不存在，排障全靠猜。
+        // 每次启动把上一份留作 serve.prev.log，避免日志无限增长。
+        let log_dir = home.join("logs");
+        let _ = std::fs::create_dir_all(&log_dir);
+        let log_path = log_dir.join("serve.log");
+        if log_path.exists() { let _ = std::fs::rename(&log_path, log_dir.join("serve.prev.log")); }
+        let open_log = || std::fs::OpenOptions::new().create(true).append(true)
+            .open(&log_path).map(Stdio::from).unwrap_or_else(|_| Stdio::null());
+        let out = open_log();
+        let err = open_log();
         cmd.args(["--experimental-strip-types", "src/cli/jingjing.ts", "serve", "0"])
             .env("JJ_HOME", home)
             // 看门狗：壳被硬杀（任务管理器/崩溃）时，node 也要跟着退，不能变孤儿占着 7700
             .env("JJ_PARENT_PID", std::process::id().to_string())
             // 密钥从壳传进来（DPAPI 已在 Rust 侧解开）—— Node 侧优先读这些环境变量
             .envs(secrets.iter().map(|(p, k)| (format!("JJ_SECRET_{}", p.to_uppercase()), k.clone())))
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
+            .stdout(out).stderr(err);
         // 不弹黑框：Windows 上加 CREATE_NO_WINDOW
         #[cfg(windows)]
         {
@@ -108,37 +119,23 @@ impl Sidecar {
         Self { child, port, home: home.to_path_buf() }
     }
 
-    /// 等它活过来：读 data/.desk.json 拿端口，再探 /health。
-    ///
-    /// 预算是 **10 秒**（20 × 500ms），不是 1.5 秒 —— 实测 Node 起 serve 要 3–4 秒，
-    /// 原来 3 × 500ms 会把它误判成「起不来」，然后白白打开一次浏览器（踩过）。
-    /// 但如果子进程已经退出（真崩了），就别傻等。
-    pub fn wait_healthy(&mut self) -> Result<(), String> {
-        for _ in 0..24 {
-            // node 起来后会写 data/.desk.json（端口 + 令牌）。先看文件，再探活。
-            if self.port == 0 {
-                if let Some((port, _)) = read_desk(self.home.as_path()) { self.port = port; }
+    /// 单次探测：读到 .desk.json 且端口能连上就返回 (port, token)。
+    /// 壳的后台线程每 500ms 调一次，**不再有「一次预算用完就判死」**——
+    /// 开机冷加载（Defender 扫 node.exe / venv 里的 Python 进程）可能十几秒，
+    /// 以前 24×500ms 一到就报「起不来」，还把刚要监听的 node 一起杀掉。
+    pub fn try_ready(&mut self) -> Option<(u16, String)> {
+        if let Some((port, token)) = read_desk(&self.home) {
+            if !token.is_empty() && healthy(port) {
+                self.port = port;
+                return Some((port, token));
             }
-            if self.port != 0 && healthy(self.port) {
-                shell_log(&self.home, &format!("healthy port={} token_len={}", self.port, self.token().len()));
-                return Ok(());
-            }
-            if let Some(c) = self.child.as_mut() {
-                if matches!(c.try_wait(), Ok(Some(_))) {
-                    return Err("sidecar 进程已退出（看桌面/终端里的报错）".to_string());
-                }
-            }
-            std::thread::sleep(Duration::from_millis(500));
         }
-        Err("10 秒内端口都没通".to_string())
+        None
     }
 
-    /// 端口号（main 导航窗口时要用）
-    pub fn port(&self) -> u16 { self.port }
-
-    /// 本轮的一次性令牌（main 拼 `/?k=` 用）。读不到就返回空串。
-    pub fn token(&self) -> String {
-        read_desk(&self.home).map(|(_, t)| t).unwrap_or_default()
+    /// 子进程是否已经退出：用来区分「只是慢」和「真崩了」。
+    pub fn exited(&mut self) -> bool {
+        self.child.as_mut().and_then(|c| c.try_wait().ok().flatten()).is_some()
     }
 
     /// 杀进程树。Windows 用 taskkill /T /F；其他平台 kill 子进程。
@@ -149,7 +146,9 @@ impl Sidecar {
             {
                 // 先礼：调一次 /api/shutdown，让它把 data/.desk.json 清掉再退。
                 // 原来直接 /T /F，node 的 exit 钩子来不及跑 —— 令牌文件就留在磁盘上（2026-11-05）。
-                let _ = settle_shutdown(&self.port, &self.token());
+                // 端口/令牌现从 .desk.json 取：启动很慢或超时后才就绪时 self.port 可能没赋值。
+                let (port, token) = read_desk(&self.home).unwrap_or((self.port, String::new()));
+                let _ = settle_shutdown(&port, &token);
                 let _ = Command::new("taskkill")
                     .args(["/PID", &pid.to_string(), "/T", "/F"])
                     .stdout(Stdio::null())

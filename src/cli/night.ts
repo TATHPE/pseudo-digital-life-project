@@ -152,6 +152,13 @@ export async function runNightCli(opts: NightOptions): Promise<number> {
   // 无论抽没抽，这一句都要执行：能量、closeness、silenceDays 全靠它推进
   advance(d.db, { night: true, silenceDays: 1 }, now);
 
+  // WSL 快照（2026-11-12）：闲时整理末尾顺手拍一份她的 Linux 小房子（>20h 才拍，失败只记一句）。
+  try {
+    const { snapshotIfDue } = await import("../wsl.ts");
+    const snap = snapshotIfDue(opts.home, now);
+    if (snap.ran) console.log("[wsl] 已拍快照");
+  } catch { /* 快照失败不影响整备 */ }
+
   if (skipReason) {
     console.error("⚠ 闲时整理降级：" + skipReason);
     console.error("   已做：衰减补算 + 状态推进。未做：抽取 / 冲突消解 / 自传。游标未推进，这轮对话没丢。");

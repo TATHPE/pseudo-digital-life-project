@@ -65,7 +65,7 @@ export function sameToken(a: string | null, b: string): boolean {
   return diff === 0;
 }
 
-/** 放行的路径：健康探测与 favicon（都不含隐私，壳/浏览器都能取） */
+/** 放行的路径：健康探测、favicon、界面脚本与静态资源（都不含隐私，壳/浏览器都能取） */
 export function tokenExempt(pathname: string): boolean {
-  return pathname === "/health" || pathname === "/icon.svg" || pathname.startsWith("/ui/");
+  return pathname === "/health" || pathname === "/icon.svg" || pathname.startsWith("/ui/") || pathname.startsWith("/static/") || pathname.startsWith("/pal/");
 }

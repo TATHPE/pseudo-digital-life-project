@@ -15,6 +15,7 @@ import { routerFrom, createTransport, assertAllLoopback } from "../transport.ts"
 import { validateRouter, PrivacyError } from "../provider.ts";
 import { createStore, fingerprint, type Provider } from "../auth.ts";
 import { record, checkBudget, estimateCost, spentToday } from "../budget.ts";
+import { localDay } from "../localday.ts";
 import { listLinks, cutLink } from "../links.ts";
 import { listProposals, getProposal, setProposalStatus } from "../proposals.ts";
 import { openThreads, closeThread } from "../threads.ts";
@@ -29,7 +30,7 @@ import { createToolRegistry } from "../tools.ts";
 import { attachMcp, loadMcpConfig } from "../mcp.ts";
 import { startup } from "../startup.ts";
 import { applyRelease, hasRelease, readStateSafe } from "../deploy/slot.ts";
-import { bootAttempt, markHealthy } from "../deploy/watchdog.ts";
+import { bootAttempt, markHealthy, tick as deployTick, policyFromEnv } from "../deploy/watchdog.ts";
 import { createStore as createSecretStore } from "../auth.ts";
 import { resolveConfig, configSources, readFileConfig, writeFileConfig } from "../configfile.ts";
 import { probeChat, probeEmbed, isInstalled } from "../ollama.ts";
@@ -48,6 +49,9 @@ import { CLI_COMMANDS } from "../commands.ts";
 import { reset as coolReset } from "../cooldown.ts";
 
 const HOME = process.env.JJ_HOME ?? join(process.cwd(), "data");
+
+/** [boot] 打点的零点：进程启动（本模块加载）时刻。只在 serve 路径用，观测层数据，不进 CI 闸门。 */
+const BOOT_T0 = Date.now();
 
 const dbFile = join(HOME, "memory.db");
 const inbox = join(HOME, "inbox");
@@ -192,7 +196,8 @@ async function main(): Promise<void> {
       let failed = 0;
       for (let i = 0; i < times; i++) {
         appendEvent(inbox, { v: 1, id: newEventId(), ts: new Date().toISOString(), kind: "utterance", actor: "user", payload: { text: `断电前第 ${i} 句` } });
-        const f = join(inbox, `${new Date().toISOString().slice(0, 10)}.jsonl`);
+        // 文件名要和 journal.ts 一样按本地日取，否则凌晨的坏行会落到「昨天」那份里
+        const f = join(inbox, `${localDay()}.jsonl`);
         appendFileSync(f, '{"v":1,"id":"trunc","ts":"2026-10-27T10:0');
         const r = readEvents(inbox, { quarantine: true });
         if (!(r.quarantined >= 1 && r.corrupted === 0 && r.events.length >= i + 1)) {
@@ -290,9 +295,17 @@ async function main(): Promise<void> {
       // 用 McpHub：能**单独重连**某个 server（学 Coopanion 的 World 可单独重启）
       const { McpHub } = await import("../mcphub.ts");
       const hub = new McpHub(HOME, externals);
-      const mcp = await hub.startAll();
-      if (mcp.tools.length) console.log(`MCP 工具: ${mcp.tools.join(", ")}`);
-      if (mcp.errors.length) console.log(`MCP 未连上: ${mcp.errors.join(" | ")}`);
+      // 启动闸（2026-11-14）：MCP server 是外部进程（本机 venv 里的 Python），开机冷加载可能十几秒。
+      // 桌面壳只给约 12 秒探测预算，以前 `await hub.startAll()` 卡在这里 —— 慢一次壳就判「起不来」
+      // 并把刚要监听的 node 杀掉，用户开机第一次点必弹「找不到服务」。现在面板先可用，MCP 后台连。
+      // mcpInfo 是**可变引用**：server.ts 读它渲染 capabilities，连好后原地更新即可（见 582 行）。
+      const mcpInfo = {
+        servers: Object.keys(mcpCfg.servers),
+        tools: [] as string[],
+        errors: [] as string[],
+        running: (await import("../plugins.ts")).mcpFingerprint(HOME),
+      };
+      let mcpBooting: Promise<void> = Promise.resolve();
 
       // 本地兜底（2026-11-07）：云端接不上时用**本机那个角色**顶上，不给工具。
       // 为什么用 route/night 而不是自造一个 express@ollama：
@@ -423,8 +436,7 @@ async function main(): Promise<void> {
         // 云端有没有钥匙：没有就整轮按「本地、无工具」处理（不先撞一次 401）
         cloudReady,
         // running = 我这次启动实际加载的那份配置的指纹；磁盘后来改了就对不上
-        mcpInfo: { servers: mcp.servers, tools: mcp.tools, errors: mcp.errors,
-          running: (await import("../plugins.ts")).mcpFingerprint(HOME) },
+        mcpInfo,
         // 重连（面板按钮 / API 调用）。registry 同步换掉 MCP 那半。
         // 面板「现在整理一次」：走 CLI 同一条路（同一份闸门、同一份报告）
         runNight: async () => {
@@ -432,6 +444,7 @@ async function main(): Promise<void> {
           return runNightCli({ home: HOME, dbFile, inbox });
         },
         reconnectMcp: async (server?: string) => {
+          await mcpBooting;   // 启动那次连接没完就先等它，别两个 connect 抢同一个 server
           const st = await hub.reconnect(server);
           registry.refresh(externals);
           return st;
@@ -441,15 +454,70 @@ async function main(): Promise<void> {
       // 因为容器的 127.0.0.1 不是宿主的 127.0.0.1）；而 compose 只把 0.0.0.0 映射到
       // **宿主回环** 127.0.0.1:7700，所以对外仍然进不来。两步一起才是安全的。
       const bind = process.env.JJ_BIND ?? "127.0.0.1";
+      // ── [boot] 启动四段耗时打点（观测层；只记时间点，不改启动顺序、不阻塞任何一步）──
+      // 一行日志要等后台 MCP startAll settle 才凑得齐四段，所以先在这里收集时间点，
+      // 到 .then/.catch 里一次性输出；格式见 tools/boot-timing.ts。
+      const bootMark: { listen: number | null; desk: number | null; health: number | null } = {
+        listen: null, desk: null, health: null,
+      };
+      const sinceBoot = (): number => Date.now() - BOOT_T0;
+      let bootLineDone = false;
+      const emitBootLine = (mcpOk: boolean): void => {
+        if (bootLineDone) return;
+        bootLineDone = true;
+        const nowMs = sinceBoot();
+        console.log(`[boot] listen=${bootMark.listen ?? nowMs}ms desk=${bootMark.desk ?? nowMs}ms health=${bootMark.health ?? nowMs}ms mcp=${nowMs}ms mcpOk=${mcpOk}`);
+      };
       srv.listen(port, bind, () => {
+        bootMark.listen = sinceBoot();                    // ① listen 回调
         // 端口可能是 0（OS 分配）：从 server.address() 取真实端口，再写 .desk.json
         try {
           const addr = srv.address();
           const real = typeof addr === "object" && addr ? addr.port : port;
           if (deskToken) writeDeskRuntime(HOME, { port: real, token: deskToken, pid: process.pid });
         } catch { /* 写不了就只在日志里说 */ }
+        finally { bootMark.desk = sinceBoot(); }         // ② .desk.json 写完（写失败也记这一步结束）
+        // 面板已经能访问了，再连外部 MCP：连好原地更新状态 + 刷新工具目录。
+        // 这一段**不 await**，冷启动时它慢到 30 秒也不会拖住 .desk.json / 壳的探测。
+        try {
+          mcpBooting = hub.startAll().then((st) => {
+            mcpInfo.servers = st.servers; mcpInfo.tools = st.tools; mcpInfo.errors = st.errors;
+            registry.refresh(externals);
+            if (st.tools.length) console.log(`MCP 工具: ${st.tools.join(", ")}`);
+            if (st.errors.length) console.log(`MCP 未连上: ${st.errors.join(" | ")}`);
+            emitBootLine(true);                          // ④ MCP startAll 完成 → 输出那一行
+          }).catch((e) => {
+            console.error("[mcp] 后台连接失败：" + String(e).slice(0, 120));
+            emitBootLine(false);                         // ④ 异常路径也输出（mcpOk=false）
+          });
+        } catch (e) {
+          // startAll 同步抛的兜底：同样让 [boot] 行落地，别让观测缺一行
+          console.error("[mcp] 后台连接失败（同步）：" + String(e).slice(0, 120));
+          emitBootLine(false);
+        }
         console.log(`Pseudo Digital Life Project: http://${bind === "0.0.0.0" ? "127.0.0.1" : bind}:${port}  (store=${store.kind}, express=${cfg.roles.express!.provider}/${cfg.roles.express!.model})`);
         if (release) { try { markHealthy(HOME, release); } catch { /* 单槽模式 */ } }
+        bootMark.health = sinceBoot();                  // ③ /health 可用（markHealthy 这一步完成）
+        // 看门狗巡检（18 §4.3）：桌面壳直接 spawn serve、不经 deploy supervise，所以这里自己挂 tick。
+        // persona/skills 是数据文件，回滚 = applyRelease 即时生效，不用重启进程（Rust 零改动）。
+        if (release) {
+          const pol = policyFromEnv();
+          const wd = setInterval(() => {
+            try {
+              const dec = deployTick(HOME, new Date(), pol);
+              if (dec.action === "rollback") {
+                const w = applyRelease(HOME, dec.to);
+                console.log(`[watchdog] 回滚 ${dec.failed} → ${dec.to}（应用 ${w.written.length} 个文件）`);
+                try {
+                  d.db.prepare("INSERT INTO events(ts,kind,actor,target,payload,ok) VALUES(?,?,?,?,?,1)")
+                    .run(new Date().toISOString(), "deploy_rollback", "system", dec.to,
+                      JSON.stringify({ from: dec.failed, to: dec.to, written: w.written.length }));
+                } catch { /* 留痕失败不影响回滚 */ }
+              }
+            } catch { /* 巡检失败不影响服务 */ }
+          }, 60_000);
+          wd.unref();
+        }
         // QQ 桥：bridge.json 里 enabled=true 就跟着面板一起起（关窗即退，不用另开终端）
         void import("../bridge.ts").then((m) => {
           if (!m.readBridgeConfig(HOME).enabled) return;
@@ -621,7 +689,7 @@ async function main(): Promise<void> {
           const w = parseWhen(o.when);
           console.log(`${o.id}  ${o.when}  ${o.template}  ${o.enabled ? "启用" : "已停用"}`);
           console.log(`    为什么：${o.because}`);
-          console.log(`    到期：${o.expiresAt.slice(0, 16)}  今天已跑 ${o.lastDay === new Date().toISOString().slice(0, 10) ? 0 : (o.countToday ?? 0)} 次` +
+          console.log(`    到期：${o.expiresAt.slice(0, 16)}  今天已跑 ${o.lastDay === localDay() ? 0 : (o.countToday ?? 0)} 次` +
             (o.disabledReason ? `  停用原因：${o.disabledReason}` : ""));
           void w;
         });
@@ -1068,6 +1136,83 @@ async function main(): Promise<void> {
         return;
       }
       console.error("用法: selfupdate list | new <id> <文件> --because … | smoke <id> | promote <id> | revert <id> [理由] | drop <id>");
+      process.exitCode = 2;
+      return;
+    }
+    case "wsl": {
+      // WSL 之手（2026-11-12）：她自己的 Linux 小房子。setup/restore 由人跑（装软件/破坏性恢复不自主）。
+      const w = await import("../wsl.ts");
+      const sub = rest[0] ?? "status";
+      if (sub === "status") { console.log(JSON.stringify(w.status(HOME), null, 2)); return; }
+      if (sub === "setup") {
+        const r = w.setup(HOME, (s) => console.log(s));
+        console.log(JSON.stringify(r, null, 2));
+        if (!r.ok) process.exitCode = 1;
+        return;
+      }
+      if (sub === "snapshot") {
+        const r = w.snapshot(HOME);
+        console.log(JSON.stringify(r, null, 2));
+        if (!r.ok) process.exitCode = 1;
+        return;
+      }
+      if (sub === "restore") {
+        const file = rest[1];
+        if (!file) { console.error("用法: wsl restore <快照文件名.tar>（破坏性：先 unregister 再 import）"); process.exitCode = 2; return; }
+        const r = w.restore(HOME, file);
+        console.log(JSON.stringify(r, null, 2));
+        if (!r.ok) process.exitCode = 1;
+        return;
+      }
+      console.error("用法: wsl status | setup | snapshot | restore <文件.tar>");
+      process.exitCode = 2;
+      return;
+    }
+    case "tts": {
+      // TTS（2026-11-12，陪伴视图 P2）：本地 sherpa-onnx / 云 msedge-tts，音色可选。
+      const t = await import("../tts.ts");
+      const sub = rest[0] ?? "status";
+      if (sub === "status") { console.log(JSON.stringify(await t.ttsStatus(HOME), null, 2)); return; }
+      if (sub === "voices") { console.log(JSON.stringify(await t.listVoices(HOME), null, 2)); return; }
+      if (sub === "use") {
+        const b = rest[1];
+        if (b !== "local" && b !== "cloud") { console.error("用法: tts use local|cloud"); process.exitCode = 2; return; }
+        writeFileConfig(HOME, { tts: { backend: b } });
+        console.log(JSON.stringify(await t.ttsStatus(HOME), null, 2));
+        return;
+      }
+      if (sub === "setup") {
+        const mi = rest.indexOf("--model");
+        if (mi > 0 && rest[mi + 1]) {
+          writeFileConfig(HOME, { tts: { modelPath: rest[mi + 1] } });
+          console.log("已指向模型目录：" + rest[mi + 1]);
+        }
+        console.log([
+          "本地 TTS（sherpa-onnx）模型需自行下载（数百 MB）：",
+          "  推荐中文多音色 VITS：vits-zh-hf（174 音色）或 vits-melo-tts-zh_en",
+          "  下载页：https://k2-fsa.github.io/sherpa/onnx/tts/pretrained_models/vits.html",
+          "  解压后把 model.onnx / tokens.txt / lexicon.txt 放进 <home>/tts/model，",
+          "  或 jingjing tts setup --model <目录> 指向它；另需 npm i sherpa-onnx。",
+          "  Node 24 预构建二进制若不可用，可先用云后端：jingjing tts use cloud。",
+          "云后端（msedge-tts，免 key，需网络）：npm i msedge-tts 后 jingjing tts use cloud。",
+        ].join(String.fromCharCode(10)));
+        return;
+      }
+      if (sub === "say") {
+        const text = rest.slice(1).join(" ");
+        if (!text) { console.error("用法: tts say <文本>"); process.exitCode = 2; return; }
+        try {
+          const r = await t.synthesize(HOME, text);
+          const { mkdirSync, writeFileSync } = await import("node:fs");
+          const ext = r.mime === "audio/wav" ? "wav" : "mp3";
+          mkdirSync(join(HOME, "workspace"), { recursive: true });
+          const out = join(HOME, "workspace", "tts-test." + ext);
+          writeFileSync(out, r.data);
+          console.log("已生成：" + out + "（" + r.data.length + " 字节，" + r.mime + "）");
+        } catch (e) { console.error(String((e as Error).message ?? e)); process.exitCode = 1; }
+        return;
+      }
+      console.error("用法: tts status | voices | setup [--model <目录>] | use local|cloud | say <文本>");
       process.exitCode = 2;
       return;
     }

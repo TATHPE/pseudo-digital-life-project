@@ -3,6 +3,7 @@
  * expressComplete 与 jobState 原本是 server.ts 的模块级状态，整块搬来保持语义。
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { readJson } from "../body.ts";
 import type { DatabaseSync } from "node:sqlite";
 import { readFileConfig } from "../../configfile.ts";
 import { readSession, startSetup, skipSetup, pauseSetup, resumeSetup, backSetup, undoSetup, detect, SETUP_STEPS, type SetupStep } from "../../setup.ts";
@@ -81,7 +82,7 @@ export async function handleSetup(ctx: SetupCtx): Promise<boolean> {
       if (req.method === "POST" && url.pathname === "/api/setup/interview") {
         const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return true; }
         const iv = await import("../../interview.ts");
-        const body = JSON.parse(await readBody(req)) as {
+        const body = await readJson(req) as {
           action?: string; answers?: Record<string, string>; blocks?: Record<string, Array<{ text: string; source: string }>>; because?: string;
         };
         if (body.action === "draft") {
@@ -216,7 +217,7 @@ export async function handleSetup(ctx: SetupCtx): Promise<boolean> {
       }
       if (req.method === "POST" && url.pathname === "/api/setup") {
         const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return true; }
-        const body = JSON.parse(await readBody(req)) as { action?: string; step?: string; confirm?: boolean };
+        const body = await readJson(req) as { action?: string; step?: string; confirm?: boolean };
         if (body.action === "start") { json(res, 200, { ok: true, session: startSetup(deps.home) }); return true; }
         if (body.action === "pause") { json(res, 200, { ok: true, session: pauseSetup(deps.home) }); return true; }
         if (body.action === "skip") { json(res, 200, { ok: true, session: skipSetup(deps.home) }); return true; }

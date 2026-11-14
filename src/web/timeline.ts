@@ -3,7 +3,7 @@ export interface Msg { ts: string; role: "user" | "agent"; text: string }
 export type Block =
   | { type: "day"; label: string; gapMs?: number }
   | { type: "gap"; label: string }
-  | { type: "msg"; role: "user" | "agent"; text: string; ts: string };
+  | { type: "msg"; role: "user" | "agent"; text: string; ts: string; unanswered?: boolean };
 
 export const GAP_MS = 30 * 60 * 1000;   // 超过 30 分钟就显式标出空白
 
@@ -36,6 +36,15 @@ export function groupTimeline(msgs: Msg[], gapMs = GAP_MS): Block[] {
     } else if (lastTs && t - lastTs >= gapMs) out.push({ type: "gap", label: gapLabel(t - lastTs) });
     out.push({ type: "msg", role: m.role, text: m.text, ts: m.ts });
     lastTs = t;
+  }
+  // 只发出去、后面没有回答的一轮（2026-11-13：客户端中途断开/点了停止，回复不会落盘）。
+  // 不标出来的话，记录本里就是「你的话后面什么都没有」，看起来像被吞了。
+  for (let i = 0; i < out.length; i++) {
+    const b = out[i]!;
+    if (b.type !== "msg" || b.role !== "user") continue;
+    let j = i + 1;
+    while (j < out.length && out[j]!.type !== "msg") j++;
+    if (j >= out.length || (out[j] as { role?: string }).role !== "agent") b.unanswered = true;
   }
   return out;
 }

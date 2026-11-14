@@ -18,9 +18,24 @@ jobs:
           node-version: "24"
       - name: 装依赖（不跑脚本：本项目没有构建步骤，但 e2e 测试会 spawn node）
         run: npm ci --ignore-scripts
+      # 可选原生依赖（sherpa-onnx / msedge-tts / sqlite-vec）在 Linux 上是否真的加载得到，
+      # 光看「启动没报错」看不出来 —— 应用有 try/catch 降级。这一步只把真实状态打进日志，
+      # 不判红（缺原生二进制是允许的降级路径），但推完必须在 Actions 日志里核对这一行。
+      - name: 可选原生依赖在 Linux 的真实状态（信息性）
+        run: |
+          node --input-type=module -e '
+          for (const m of ["sherpa-onnx", "msedge-tts", "sqlite-vec"]) {
+            try { await import(m); console.log(`[optional-dep] ${m}: loaded`); }
+            catch (e) { console.log(`[optional-dep] ${m}: unavailable (${String(e.message).slice(0,140)})`); }
+          }
+          '
       - name: 类型 + 测试
         run: npm run check
       - name: 项目地图一致性（H-3）
         run: npm run map:check
       - name: 装配层基准（离线向量表，不需要 Ollama）
         run: npm run eval:assembly:ci
+      - name: 发布元数据一致性（六处版本号 / 发布说明 / 快照无链接）
+        run: npm run release:check
+      - name: 性能基线闸门（纯函数热路径）
+        run: npm run bench:baseline:ci

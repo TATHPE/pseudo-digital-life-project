@@ -4,6 +4,8 @@
  * 命中任一路由就自己写响应并 return true；没命中 return false。
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { readJson } from "../body.ts";
+import { dayRange } from "../../budget.ts";
 import type { DatabaseSync } from "node:sqlite";
 import type { ToolRegistry } from "../../tools.ts";
 import type { Mode } from "../../mode.ts";
@@ -56,7 +58,7 @@ export async function handleControl(ctx: ControlCtx): Promise<boolean> {
       const propId = url.pathname.match(/^\/api\/proposals\/(prp_[0-9a-z]{6,40})$/);
       if (req.method === "POST" && propId) {
         const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return true; }
-        const body = JSON.parse(await readBody(req)) as { action?: string; reason?: string };
+        const body = await readJson(req) as { action?: string; reason?: string };
         const p = getProposal(deps.home, String(propId[1]));
         if (!p) { json(res, 404, { error: "E_PROPOSAL_NOT_FOUND" }); return true; }
         if (body.action !== "accept" && body.action !== "reject") { json(res, 400, { error: "E_BAD_ACTION" }); return true; }
@@ -80,7 +82,7 @@ export async function handleControl(ctx: ControlCtx): Promise<boolean> {
       }
       if (req.method === "POST" && url.pathname === "/api/egress") {
         const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return true; }
-        const body = JSON.parse(await readBody(req)) as { action?: string; path?: string; ttlMin?: number };
+        const body = await readJson(req) as { action?: string; path?: string; ttlMin?: number };
         if (body.action === "once") {
           if (!body.path) { json(res, 400, { error: "E_BAD_PATH" }); return true; }
           allowOnce(deps.home, body.path);
@@ -134,7 +136,7 @@ export async function handleControl(ctx: ControlCtx): Promise<boolean> {
       }
       if (req.method === "POST" && url.pathname === "/api/mode") {
         const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return true; }
-        const body = JSON.parse(await readBody(req)) as { mode?: string };
+        const body = await readJson(req) as { mode?: string };
         const mode = body.mode === "work" ? "work" : body.mode === "chat" ? "chat" : "auto";
         writeFileConfig(deps.home, { mode });
         json(res, 200, { ok: true, mode });
@@ -148,7 +150,7 @@ export async function handleControl(ctx: ControlCtx): Promise<boolean> {
       }
       if (req.method === "POST" && url.pathname === "/api/permission") {
         const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return true; }
-        const body = JSON.parse(await readBody(req)) as { preset?: string; because?: string; ttlMin?: number };
+        const body = await readJson(req) as { preset?: string; because?: string; ttlMin?: number };
         const preset = String(body.preset ?? "") as Preset;
         if (!PRESETS.some((x) => x.id === preset)) { json(res, 400, { error: "E_BAD_PRESET" }); return true; }
         const r = setPreset(deps.home, preset, {
@@ -189,7 +191,7 @@ export async function handleControl(ctx: ControlCtx): Promise<boolean> {
       const standingOff = url.pathname.match(/^\/api\/standing\/([a-z][a-z0-9-]{2,30})\/disable$/);
       if (req.method === "POST" && standingOff) {
         const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return true; }
-        const body = JSON.parse(await readBody(req)) as { reason?: string };
+        const body = await readJson(req) as { reason?: string };
         const o = disableStanding(deps.home, String(standingOff[1]), String(body.reason ?? "面板上停用"), now());
         json(res, o ? 200 : 404, o ? { ok: true, enabled: o.enabled } : { error: "E_STANDING_NOT_FOUND" });
         return true;
@@ -201,7 +203,7 @@ export async function handleControl(ctx: ControlCtx): Promise<boolean> {
       }
       if (req.method === "POST" && url.pathname === "/api/grants") {
         const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return true; }
-        const body = JSON.parse(await readBody(req)) as { commands?: string; scope?: string; ttlMin?: number; because?: string; full?: boolean };
+        const body = await readJson(req) as { commands?: string; scope?: string; ttlMin?: number; because?: string; full?: boolean };
         const r = openGrant(deps.home, {
           full: body.full === true,
           commands: String(body.commands ?? "node").split(","),
@@ -258,7 +260,8 @@ export async function handleControl(ctx: ControlCtx): Promise<boolean> {
         const memAll = mem.reduce((a, b) => a + b.c, 0);
         const docs = (deps.db.prepare("SELECT count(*) c FROM documents WHERE deleted_at IS NULL").get() as { c: number }).c;
         const chunks = (deps.db.prepare("SELECT count(*) c FROM chunks").get() as { c: number }).c;
-        const usage = deps.db.prepare("SELECT coalesce(sum(in_tokens),0) p, coalesce(sum(out_tokens),0) c, coalesce(sum(usd),0) u FROM usage WHERE substr(ts,1,10)=?").get(nowD.toISOString().slice(0, 10)) as { p: number; c: number; u: number };
+        const dr = dayRange(nowD);
+        const usage = deps.db.prepare("SELECT coalesce(sum(in_tokens),0) p, coalesce(sum(out_tokens),0) c, coalesce(sum(usd),0) u FROM usage WHERE ts >= ? AND ts < ?").get(dr.start, dr.end) as { p: number; c: number; u: number };
         let skillsN = 0;
         try { const sk = await import("../../skills.ts"); skillsN = sk.scanSkills(deps.home).length; } catch { /* 没装技能 */ }
         let mcpServers = 0, mcpTools = 0;
@@ -304,7 +307,7 @@ export async function handleControl(ctx: ControlCtx): Promise<boolean> {
       const threadClose = url.pathname.match(/^\/api\/threads\/(\d+)\/close$/);
       if (req.method === "POST" && threadClose) {
         const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return true; }
-        const body = JSON.parse(await readBody(req)) as { note?: string };
+        const body = await readJson(req) as { note?: string };
         const ok = closeThread(deps.db, Number(threadClose[1]), String(body.note ?? ""), now());
         json(res, ok ? 200 : 409, ok ? { ok: true } : { error: "E_THREAD_CLOSED" });
         return true;
@@ -317,7 +320,7 @@ export async function handleControl(ctx: ControlCtx): Promise<boolean> {
       }
       if (req.method === "POST" && url.pathname === "/api/surface/review") {
         const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return true; }
-        const body = JSON.parse(await readBody(req)) as { src_id?: number; dst_id?: number; rel?: string; ok?: boolean };
+        const body = await readJson(req) as { src_id?: number; dst_id?: number; rel?: string; ok?: boolean };
         if (!body.src_id || !body.dst_id || !body.rel) { json(res, 400, { error: "E_BAD_LINK" }); return true; }
         const key = linkKey(body.src_id, body.dst_id, body.rel);
         noteReviewed(deps.db, now(), key);
@@ -340,7 +343,7 @@ export async function handleControl(ctx: ControlCtx): Promise<boolean> {
       const pendId = url.pathname.match(/^\/api\/pending\/(pnd_[0-9a-z]+)$/);
       if (req.method === "POST" && pendId) {
         const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return true; }
-        const body = JSON.parse(await readBody(req)) as { action?: string };
+        const body = await readJson(req) as { action?: string };
         const p = getPending(deps.home, String(pendId[1]));
         if (!p) { json(res, 404, { error: "E_PENDING_NOT_FOUND" }); return true; }
         if (p.status !== "pending") { json(res, 409, { error: `E_PENDING_${p.status.toUpperCase()}` }); return true; }

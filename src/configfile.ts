@@ -71,6 +71,57 @@ export interface FileConfig {
     /** Git Bash 的 bash.exe 绝对路径（安装位置五花八门，探测不到就让用户填） */
     gitbashPath?: string;
   };
+  /**
+   * WSL 之手（2026-11-12）：她自己的 Linux 小房子（docs/design/00 爆炸半径 1）。
+   * autonomous 只能人开（config 写入没有模型 verb）；开了她在里面完全自主，
+   * 兜底 = 逐条审计 + 定期快照 + 硬禁区（见 src/wsl.ts）。
+   */
+  wsl?: {
+    /** 发行版名（默认 Ubuntu） */
+    distro?: string;
+    /** 完全自主开关：true 时 wsl.exec 不逐次问（持久，人开） */
+    autonomous?: boolean;
+  };
+  /**
+   * 眼（2026-11-12）：截图 + 视觉理解，本地/云双路。
+   * 屏幕内容默认只走本地（provider=ollama）；cloudEnabled 是人开的隐私闸，
+   * 开了才允许把截图发云端 OpenAI 兼容视觉 API（key 走 SecretStore 的 vision 槽）。
+   */
+  vision?: {
+    /** ollama（本地，默认）| cloud（OpenAI 兼容） */
+    provider?: "ollama" | "cloud";
+    /** 本地默认 qwen2.5vl:3b；云端填厂商模型名 */
+    model?: string;
+    /** 云端 OpenAI 兼容 baseUrl（如 https://open.bigmodel.cn/api/paas/v4） */
+    baseUrl?: string;
+    /** 屏幕内容可发云端（隐私闸，默认关） */
+    cloudEnabled?: boolean;
+  };
+  /**
+   * TTS（2026-11-12，陪伴视图 P2）：她开口说话。本地为主、云备选、音色可选。
+   * local = sherpa-onnx（ONNX 无 Python，模型由人下载）；cloud = msedge-tts（免 key，需网络）。
+   * 声音克隆（GPT-SoVITS）留作后续可插拔后端。
+   */
+  tts?: {
+    /** local（默认）| cloud */
+    backend?: "local" | "cloud";
+    /** 音色：local 是 speaker id（如 "0"），cloud 是 edge 音色名（如 zh-CN-XiaoxiaoNeural） */
+    voice?: string;
+    /** 语速（0.5–2.0） */
+    speed?: number;
+    /** 本地 sherpa 模型目录（默认 <home>/tts/model） */
+    modelPath?: string;
+  };
+  /**
+   * 陪伴形象与背景（2026-11-13）：设置页里点选，素材本体在 <home>/pal/（见 src/pal.ts）。
+   * 这里只存「选了哪个」；指向不存在的素材时 palState 会退回内置，不会白屏。
+   */
+  pal?: {
+    /** 形象 id：内置 whale，或导入的 u-xxxxxxxx */
+    avatar?: string;
+    /** 背景 id：内置 ocean / room，或上传图的 slug */
+    bg?: string;
+  };
 }
 
 /**
@@ -118,6 +169,10 @@ export function writeFileConfig(home: string, patch: FileConfig): FileConfig {
     ui: { ...(cur.ui ?? {}), ...(patch.ui ?? {}) },
     agent: { ...(cur.agent ?? {}), ...(patch.agent ?? {}) },
     host: { ...(cur.host ?? {}), ...(patch.host ?? {}) },
+    wsl: { ...(cur.wsl ?? {}), ...(patch.wsl ?? {}) },
+    vision: { ...(cur.vision ?? {}), ...(patch.vision ?? {}) },
+    tts: { ...(cur.tts ?? {}), ...(patch.tts ?? {}) },
+    pal: { ...(cur.pal ?? {}), ...(patch.pal ?? {}) },
   };
   atomicWriteFile(join(home, "config.json"), JSON.stringify(next, null, 2) + "\n");
   cache = null;

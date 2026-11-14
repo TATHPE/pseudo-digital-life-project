@@ -31,9 +31,23 @@ export function record(db: DatabaseSync, r: UsageRow): void {
     .run(r.ts, r.role, r.provider, r.model, r.inTokens, r.cachedTokens, r.outTokens, r.usd);
 }
 
+/**
+ * 「今天」的日界按**本机时区**算（2026-11-14）。
+ * 以前用 `toISOString().slice(0,10)` 取 UTC 日：东八区等于早上 8 点换日 ——
+ * 凌晨 4 点看「今日花费」，会把昨天白天的钱一起算进来（实测差 $0.50），
+ * 每日预算也会提前 8 小时清零。
+ */
+export function dayRange(now = new Date()): { start: string; end: string } {
+  const y = now.getFullYear(), m = now.getMonth(), d = now.getDate();
+  return {
+    start: new Date(y, m, d, 0, 0, 0, 0).toISOString(),
+    end: new Date(y, m, d + 1, 0, 0, 0, 0).toISOString(),
+  };
+}
+
 export function spentToday(db: DatabaseSync, now = new Date()): number {
-  const day = now.toISOString().slice(0, 10);
-  const row = db.prepare("SELECT coalesce(sum(usd),0) s FROM usage WHERE substr(ts,1,10)=?").get(day) as { s: number };
+  const { start, end } = dayRange(now);
+  const row = db.prepare("SELECT coalesce(sum(usd),0) s FROM usage WHERE ts >= ? AND ts < ?").get(start, end) as { s: number };
   return row.s;
 }
 

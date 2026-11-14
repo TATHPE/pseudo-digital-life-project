@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "generatedAt": "2026-11-14T10:35:20.668Z",
+  "node": "v22.22.2",
+  "platform": "win32",
+  "arch": "x64",
+  "note": "纯函数指标是 CI 闸门（跨机器绝对上限）；启动指标来自本机真实日志，CI 不判，仅供发版前后对照。",
+  "limits": {
+    "brief_p95_ms": 40,
+    "tokens_p95_ms": 5
+  },
+  "pure": {
+    "buildBrief": {
+      "p50": 0.0534,
+      "p95": 0.152,
+      "max": 0.6902,
+      "iters": 300
+    },
+    "estimateTokens": {
+      "p50": 0.0287,
+      "p95": 0.0589,
+      "max": 0.4088,
+      "iters": 1500
+    },
+    "briefTokens": 394
+  },
+  "startup": {
+    "source": "D:/Pseudo Digital Life Project/data/logs/shell.log",
+    "samples": 82,
+    "p50_s": 4,
+    "p95_s": 7,
+    "max_s": 10,
+    "missing_healthy": 2
+  }
+}

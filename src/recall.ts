@@ -45,6 +45,8 @@ export interface RecallResult {
   omittedDocs: number;
   /** 重排器说「都没有」但按保守回退保留了候选：简报据此把 confidence 降到 need_evidence */
   rerankNone: boolean;
+  /** coverage: partial —— 这一轮没读到的来源（空 = 完整）。简报据此把「没读到」和「没发生过」分开。 */
+  incomplete?: string[];
   meta: { memCandidates: number; docCandidates: number; ms: number; memPool?: number };
 }
 
@@ -83,6 +85,10 @@ export async function recallForBrief(
   const memK = o.memK ?? 6;
   const docK = o.docK ?? 4;
   const recalled: MemoryLine[] = [];
+  // coverage: partial（2026-11-14，学自 dsh-world）：把「没读到」和「没发生过」分开。
+  // 缺 embedder 时只有字面检索，向量那一半根本没查；文档检索失败也不该让整轮静默少一路证据。
+  const incomplete: string[] = [];
+  if (!embedder) incomplete.push("向量检索不可用（缺 embedder，本轮只有字面检索）");
 
   // ── 层配额开关（P1 实测 +2、零退化）────────────────────
   // JJ_CONTRACT_CAP < 0 = 关闭（回到原来的 search(k=memK)）；默认 2。
@@ -98,7 +104,7 @@ export async function recallForBrief(
 
   // ── 记忆 ────────────────────────────────────────────
   // 先拿候选池，再决定要不要让本地模型重排（只在模糊/全空时跑，见 src/rerank.ts）
-  const poolHits = embedder ? (await search(db, embedder, query, { k: poolK })).hits : [];
+  const poolHits = (await search(db, embedder, query, { k: poolK })).hits;
 
   // 敏感度、层、种类都从库里现取——别猜（契约层在 P10 里也不能被显示成叙事）
   const metaById = new Map<number, { layer: "narrative" | "contract"; kind: string; sensitivity?: string; taint?: string; quote?: string | null; createdAt?: string }>();
@@ -180,17 +186,21 @@ export async function recallForBrief(
   // ── 文档块 ──────────────────────────────────────────
   let docCandidates = 0;
   let omittedDocs = 0;
-  if (o.includeDocs !== false && embedder) {
-    const docs = await searchDocs(db, embedder, query, { k: docK * 2 });
-    docCandidates = docs.hits.length;
-    const sendable = docs.hits.filter((h) => h.sensitivity === "shareable").slice(0, docK);
-    omittedDocs = docCandidates - sendable.length;
-    for (const h of sendable) {
-      recalled.push({
-        id: h.cite, layer: "narrative", kind: "doc", stage: "active", weight: 1,
-        text: h.text, sensitivity: "shareable", source: "doc",
-        headingPath: dedupeTitle(h.headingPath, h.title),
-      });
+  if (o.includeDocs !== false) {
+    try {
+      const docs = await searchDocs(db, embedder, query, { k: docK * 2 });
+      docCandidates = docs.hits.length;
+      const sendable = docs.hits.filter((h) => h.sensitivity === "shareable").slice(0, docK);
+      omittedDocs = docCandidates - sendable.length;
+      for (const h of sendable) {
+        recalled.push({
+          id: h.cite, layer: "narrative", kind: "doc", stage: "active", weight: 1,
+          text: h.text, sensitivity: "shareable", source: "doc",
+          headingPath: dedupeTitle(h.headingPath, h.title),
+        });
+      }
+    } catch {
+      incomplete.push("文档块检索失败（本轮没有文档证据）");
     }
   }
 
@@ -201,6 +211,7 @@ export async function recallForBrief(
     omittedMem: (poolHits.length - shareablePool.length) + omittedLink,
     omittedDocs,
     rerankNone: rerankedNone,
+    incomplete,
     meta: {
       memCandidates: hits.length, docCandidates, memPool: poolHits.length,
       ms: +(performance.now() - t0).toFixed(1),

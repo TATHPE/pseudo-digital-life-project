@@ -42,6 +42,9 @@ Get-Item 'D:\Apps\PDLP\app\src' | Select-Object LinkType, Target
 
 1. **卸载器可能沿链接递归删到仓库 `src`**：NSIS 按文件清单卸载，junction 会被当成普通目录。
    仓库在 git 里可恢复、两份快照也在，但**卸载前务必先按下面回滚成实体目录**。
+   2026-11-14 起有只读守卫替你检查：`npm run uninstall:guard -- "D:\Apps\PDLP"`
+   （列出所有链接 / 内嵌数据、给回滚步骤，退出码 1 就是先别卸）。策略见
+   `../docs/ops/26-更新与卸载策略.md`，`npm run release:check` 也会检查发布快照不含链接。
 2. **数据目录仍是真实的**：双击图标不带 `JJ_HOME`，壳走 `install_home()` → Roaming 里的真实记忆库。
    改代码试功能会写真实数据，别在测试时乱删记忆。
 3. **覆盖安装 / 重装会把链接冲回快照**：之后要重新做一次链接。
@@ -58,11 +61,19 @@ PowerShell 5.1 会沿链接把仓库源码删掉；纯改名最安全，两份�
 
 ## 已知限制
 
-- `desktop/bundle-src/` 手工快照的**发布链路自动化仍未做**；正式发版前还得手工同步再打 NSIS。
+- 发布快照已自动化（2026-11-11）：Tauri 构建前运行 `tools/sync-desktop.ts`，`npm run desktop:sync:check` 可只读核对。**这不会替换已安装 exe，也不改变本页的 junction 方案。**
 - 后端 `.ts` 改动需要重启应用，不是「保存即热更新」；这是「不挂后台服务」的必然代价。
 - `app/persona`、`app/package.json`、`app/node_modules` 仍是安装版内容；新增 npm 依赖不会自动可见。
 - `desktop/src-tauri/src/main.rs` 里「显式 `JJ_PROJECT_ROOT` / `JJ_NODE` 优先」是同批保留的独立改动，
   只对未来新编译的 exe 生效；当前安装版是旧逻辑，用的就是上面的目录链接。
+
+## 发布快照验证（2026-11-11）
+
+- `npm run desktop:sync` 同步源码、人格、package 与 lock，按锁安装生产依赖；构建钩子自动调用，直接 `cargo tauri build` 也覆盖。
+- 实际旧 `desktop/bundle-src/app` 含 `data`，默认安全检查已拒绝；经用户明确同意，用 `--archive-existing` 整份保留旧 app。
+- 备份：`D:\LLM\jingjing\tmp\desktop-bundle-previous-Qny8rS\app`。**含旧数据，不要当普通 tmp 清理**；后续同步不改它，新快照不包含这些数据。
+- 138 个载荷文件 SHA-256 一致；内置 Node 24.21.0 真加载 casbin 与 sqlite-vec v0.1.9；同步回归测试 7 条。
+- 没有重打 NSIS、没有触碰安装目录/junction，也没有启动新的常驻服务。发布步骤见 `../docs/ops/23-发布-桌面端-首次配置.md`。
 
 ## 验证口径（2026-11-11 实测）
 

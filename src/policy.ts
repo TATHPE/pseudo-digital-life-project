@@ -70,6 +70,16 @@ p, allow, T3, shell.run, shell:*, enforce
 p, allow, T3, shell.exec, shell:exec, enforce
 # 跑脚本文件（解释器由 config.host.shell 决定：默认 PowerShell，可换 pwsh / Git Bash）
 p, allow, T3, script.run, script:*, enforce
+# WSL 之手（2026-11-12）：她自己的 Linux 小房子。自主开关在 config.wsl.autonomous（人开），
+# 闸门见 grant.ts；硬禁区与快照见 wsl.ts。
+p, allow, T3, wsl.exec, wsl:*, enforce
+p, allow, T0, wsl.status, *, advise
+# 眼（2026-11-12）：截图 + 视觉理解（屏幕默认只走本地，云闸在 config.vision.cloudEnabled）
+p, allow, T1, screen.capture, *, advise
+p, allow, T1, vision.see, *, advise
+# 自我更新接回路（2026-11-12）：她自己提技能草稿 / 冒烟后上岗（A/B 槽可回滚）
+p, allow, T1, skill.propose, *, advise
+p, allow, T1, skill.promote, *, enforce
 `;
 
 export function policyPath(home: string): string { return join(home, "policy.csv"); }
@@ -92,6 +102,12 @@ const REQUIRED_RULES: readonly string[] = [
   "p, allow, T0, git.log, *, advise",
   "p, allow, T0, skill.list, *, advise",
   "p, allow, T0, skill.read, *, advise",
+  "p, allow, T3, wsl.exec, wsl:*, enforce",
+  "p, allow, T0, wsl.status, *, advise",
+  "p, allow, T1, screen.capture, *, advise",
+  "p, allow, T1, vision.see, *, advise",
+  "p, allow, T1, skill.propose, *, advise",
+  "p, allow, T1, skill.promote, *, enforce",
 ];
 
 /** 解析一条 casbin 策略行；注释 / 空行 / 列数不足的行返回 null */

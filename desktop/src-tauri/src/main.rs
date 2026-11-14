@@ -1,6 +1,6 @@
 // 壳的全部逻辑（H-6）。**一行业务逻辑都不许在这里** —— 见 desktop/README.md。
 //
-// 四件事：拉起 sidecar · 健康探测（起不来就**只弹报错**）· 托盘四项 · 退出时杀掉进程树。
+// 四件事：拉起 sidecar · 持续健康探测（真失败才**只弹报错**，慢就继续等）· 托盘四项 · 退出时杀掉进程树。
 //
 // 2026-11-01 用户定：① 只有桌面端，不做浏览器入口；② 崩了只弹报错；
 // ③ 「接 API 让 agent 修程序」那条路**不做**。所以这里没有回落浏览器，也没有自修。
@@ -17,7 +17,7 @@ mod sidecar;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -126,11 +126,11 @@ fn install_home(app: &tauri::AppHandle) -> std::path::PathBuf {
 }
 
 
-fn show_boot_error(app: &tauri::AppHandle, err: &str, home: &std::path::Path) {
+fn show_boot_page(app: &tauri::AppHandle, title: &str, err: &str, home: &std::path::Path) {
     let log = home.join("logs").join("serve.log");
     let text = format!(
-        "Pseudo Digital Life Project 没能启动\n\n{}\n\n日志：{}\n\n可以试的：\n  1. 确认 node 在 PATH 上（node --version）\n  2. 手动跑一次看报错：node src/cli/jingjing.ts serve 7700\n  3. 数据目录：{}",
-        err, log.display(), home.display()
+        "{}\n\n{}\n\n日志：{}\n\n可以试的：\n  1. 确认 node 在 PATH 上（node --version）\n  2. 手动跑一次看报错：node src/cli/jingjing.ts serve 7700\n  3. 数据目录：{}",
+        title, err, log.display(), home.display()
     );
     let js = format!(
         "document.body.style.cssText='background:#0b0e0b;color:#e9f0f2;font:13px ui-monospace,Consolas,monospace;padding:36px;white-space:pre-wrap;line-height:1.7';document.body.textContent=\"{}\"",
@@ -141,6 +141,19 @@ fn show_boot_error(app: &tauri::AppHandle, err: &str, home: &std::path::Path) {
     }
 }
 
+/// 真失败（子进程已退出）：留一页排障说明。不做浏览器回落，也不做接 API 自修。
+fn show_boot_error(app: &tauri::AppHandle, err: &str, home: &std::path::Path) {
+    show_boot_page(app, "Pseudo Digital Life Project 没能启动", err, home);
+}
+
+/// 只是慢：把预热页那行小字换掉，不判失败、不杀进程。
+fn show_boot_waiting(app: &tauri::AppHandle) {
+    let js = "var e=document.querySelector('.sub');if(e)e.textContent='首次启动比较慢，还在准备…';";
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.eval(js);
+    }
+}
+
 /// 把要注入 JS 字符串的文本转义（不做 HTML，只用 textContent）
 fn js_escape(s: &str) -> String {
     s.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n").replace('\r', "")
@@ -148,11 +161,12 @@ fn js_escape(s: &str) -> String {
 
 /// 全局只持有一个 sidecar 句柄：退出/托盘都要能杀掉它。
 ///
-/// 另外四个字段是**启动握手**（2026-11-11 修「3–4 秒黑屏」）：
-/// 原来 `wait_healthy()` 同步跑在 `setup()` 里，最多阻塞 10 秒（实测 3–4 秒），
+/// 另外四个字段是**启动握手**（2026-11-11 修「3–4 秒黑屏」、2026-11-14 修冷启动误判）：
+/// 原来探测同步跑在 `setup()` 里，最多阻塞 10 秒（实测 3–4 秒），
 /// Tauri 主线程被卡住 → WebView2 根本没机会画 `assets/index.html`；
 /// health 一好又立刻 `navigate`，用户看到的就是一段纯黑，预热页等于白写。
-/// 现在 sidecar 探测挪到后台线程，等**预热页加载完**且**sidecar 就绪**才换页。
+/// 现在探测在后台线程**持续**跑（慢就一直等，不设一次性预算），
+/// 等**预热页加载完**且**sidecar 就绪**才换页。
 struct AppState {
     sidecar: Mutex<Option<Sidecar>>,
     /// 后台线程算好的带令牌地址；None = sidecar 还没好
@@ -251,21 +265,33 @@ pub fn run() {
             }
             // 2) 启动 + 健康探测放后台线程：setup 立刻返回，WebView2 才有机会画预热页。
             //    「预热页加载完」与「sidecar 就绪」都齐了才换页，见 maybe_navigate。
+            //
+            // 2026-11-14 修「开机第一次点必弹找不到服务」：
+            //   · 句柄**先**托管给 AppState。以前只在成功分支交，失败时 sc 在线程末尾 Drop
+            //     → stop() → taskkill，把刚要监听的 node 杀掉，于是第二次点才正常。
+            //   · 不再有「12 秒预算一到就判死」。冷开机 Defender 扫 node.exe / venv 里的
+            //     Python 进程，十几秒很常见：只区分「慢」和「子进程真退了」，慢就继续等，
+            //     一旦就绪自动换页（哪怕已经显示了排障页）。
             let boot_app: tauri::AppHandle = (*app.handle()).clone();
             let boot_home = home.clone();
             std::thread::spawn(move || {
-                let mut sc = Sidecar::start(&boot_home, &secrets);
-                match sc.wait_healthy() {
-                    Ok(()) => {
-                        let token = sc.token();
-                        let url = format!("http://127.0.0.1:{}/?k={}", sc.port(), token);
-                        // 句柄先交给全局状态：退出/托盘才能杀进程树，别让 Sidecar 在这里 Drop
-                        *boot_app.state::<AppState>().sidecar.lock().unwrap() = Some(sc);
-                        *boot_app.state::<AppState>().pending_url.lock().unwrap() = Some(url);
+                let st = boot_app.state::<AppState>();
+                *st.sidecar.lock().unwrap() = Some(Sidecar::start(&boot_home, &secrets));
 
+                let started = Instant::now();
+                let mut slow_notice = false;
+                let mut wait_notice = false;
+                loop {
+                    // ① 就绪：拿到端口 + 令牌 → 拼 URL → 等预热页首帧 → 换页
+                    let ready = st.sidecar.lock().unwrap().as_mut().and_then(|s| s.try_ready());
+                    if let Some((port, token)) = ready {
+                        shell_note(&boot_home, &format!(
+                            "ready port={} token_len={} after {}s", port, token.len(), started.elapsed().as_secs()
+                        ));
+                        *st.pending_url.lock().unwrap() =
+                            Some(format!("http://127.0.0.1:{}/?k={}", port, token));
                         // 正常情况下 on_page_load 早就把 first_frame 置位了；
-                        // 万一它没触发，最多等 500ms 后兜底放行，绝不把用户永远留在预热页。
-                        let st = boot_app.state::<AppState>();
+                        // 万一没触发，最多等 500ms 后兜底放行，绝不把用户永远留在预热页。
                         for _ in 0..25 {
                             if st.first_frame.load(Ordering::SeqCst) { break; }
                             std::thread::sleep(Duration::from_millis(20));
@@ -274,13 +300,36 @@ pub fn run() {
                             st.force_ready.store(true, Ordering::SeqCst);
                         }
                         maybe_navigate(&boot_app);
+                        return;
                     }
-                    Err(e) => {
-                        // 只弹报错：不做浏览器回落，也不做接 API 自修。
-                        // 说清两件事就够了 —— 哪一步失败、日志在哪。
-                        eprintln!("[shell] sidecar 起不来：{e}");
-                        show_boot_error(&boot_app, &e, &boot_home);
+                    // ② 子进程真退了 → 真失败，留排障页
+                    let exited = st.sidecar.lock().unwrap().as_mut().map(|s| s.exited()).unwrap_or(false);
+                    if exited {
+                        let msg = "sidecar 进程已退出（看 data/logs/serve.log 与 shell.log）";
+                        shell_note(&boot_home, &format!("BOOT FAIL after {}s: {}", started.elapsed().as_secs(), msg));
+                        eprintln!("[shell] sidecar 起不来：{msg}");
+                        show_boot_error(&boot_app, msg, &boot_home);
+                        return;
                     }
+                    // ③ 只是慢：给提示、记日志，但绝不判失败、绝不杀进程
+                    let secs = started.elapsed().as_secs();
+                    if secs >= 8 && !slow_notice {
+                        slow_notice = true;
+                        shell_note(&boot_home, "BOOT SLOW 8s: 继续等，不杀 sidecar");
+                        show_boot_waiting(&boot_app);
+                    }
+                    if secs >= 30 && !wait_notice {
+                        wait_notice = true;
+                        shell_note(&boot_home, "BOOT SLOW 30s: 已显示排障页，继续等就绪后自动进入");
+                        show_boot_page(&boot_app, "还在启动，请稍候",
+                            "服务仍在后台启动，就绪后会自动进入，不用重开软件。\n若一直停在这里，看 data/logs/serve.log 与 shell.log。",
+                            &boot_home);
+                    }
+                    if secs >= 300 {
+                        shell_note(&boot_home, "BOOT TIMEOUT 300s: 停止探测（sidecar 仍由窗口托管，关窗会一起退出）");
+                        return;
+                    }
+                    std::thread::sleep(Duration::from_millis(500));
                 }
             });
 

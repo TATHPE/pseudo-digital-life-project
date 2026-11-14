@@ -77,6 +77,20 @@ test("P10 渲染：文档块用「文档 · 章节」标签，和我自己的记
   assert.ok(brief.tokens <= 2000, `tokens=${brief.tokens}`);
 });
 
+test("E-12 接线：无 embedder 的前缀召回也进 P10，仍守隐私与来源闸门", async (t) => {
+  const db = openDb(join(H(), "memory.db")).db;
+  t.after(() => db.close());
+  remember(db, { text: "不要叫我助手", kind: "boundary", layer: "contract", sensitivity: "shareable" });
+  remember(db, { text: "别叫我隐私昵称", kind: "episode", layer: "narrative", sensitivity: "local_only" });
+  remember(db, { text: "有人叫我外部昵称", kind: "episode", layer: "narrative", sensitivity: "shareable", taint: "external" });
+  const r = await recallForBrief(db, null, "她不喜欢我怎么称呼", { rerankMode: "off" });
+  assert.deepEqual(r.recalled.map((x) => x.text), ["不要叫我助手"]);
+  assert.equal(r.omittedMem, 2);
+  const brief = buildBrief({ now: new Date(), persona: loadPersona(), contracts: [], recalled: r.recalled, user: "怎么称呼" });
+  assert.ok(brief.text.includes("不要叫我助手"));
+  assert.ok(!brief.text.includes("隐私昵称") && !brief.text.includes("外部昵称"));
+});
+
 test("omissionNote：没有遗漏就不写一句话（别在提示里制造噪声）", () => {
   assert.equal(omissionNote(0, 0), "");
   assert.match(omissionNote(2, 0), /2 条本地记忆/);
@@ -131,4 +145,17 @@ test("P10 的时间来自 created_at：45 天前的约定要看得出来（2026-
   });
   const row = brief.text.split(String.fromCharCode(10)).find((l) => l.includes("cite:"));
   assert.ok(row && row.includes("1 个月前"), "45 天前应渲染成「1 个月前」：" + row);
+});
+
+// coverage: partial（2026-11-14）：缺 embedder 时只查了字面那一半，不能让模型当成「没发生过」
+test("coverage: partial：缺 embedder 标出检索不完整，并一路进 P10", async () => {
+  const { db } = await rig();
+  const r = await recallForBrief(db, null, "衰减 锚点", { rerankMode: "off" });
+  assert.ok(r.incomplete?.some((x) => x.includes("向量检索不可用")), JSON.stringify(r.incomplete));
+  const brief = buildBrief({
+    now: new Date(), persona: loadPersona(), contracts: [], threads: [],
+    recalled: r.recalled, retrievalIncomplete: r.incomplete, user: "在吗",
+  });
+  assert.ok(brief.text.includes("检索不完整"));
+  assert.ok(brief.text.includes("零命中不等于没发生过"));
 });

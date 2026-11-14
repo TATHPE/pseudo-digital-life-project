@@ -100,6 +100,18 @@ test("沉默太久 → silence 理由（低优先级）", async () => {
   assert.match(r.decision.reason.text, /3 天/);
 });
 
+test("每日配额按本地 0 点切：凌晨不把昨天算进今天（2026-11-14）", () => {
+  const { db } = fresh();
+  const insert = (t: Date) => db.prepare(
+    `INSERT INTO intents(ts,decision,reason_kind,reason_text,message) VALUES(?,?,?,?,?)`,
+  ).run(t.toISOString(), "send", "explicit", "手工造的", "你好");
+  insert(new Date(2026, 9, 27, 23, 0));   // 本地昨天夜里
+  insert(new Date(2026, 9, 28, 1, 0));    // 本地今天凌晨
+  // 东八区此刻 UTC 日期还是 10-27：旧的 `substr(ts,1,10)` + UTC 日期会把两条都算成今天。
+  const d = decide(db, new Date(2026, 9, 28, 2, 0), P);
+  assert.equal(d.ctx.sentToday, 1, "本地今天只发了凌晨那 1 次");
+});
+
 test("起草失败：理由仍然成立，退回模板发出去，并记录 draftError", async () => {
   const { db, inbox } = fresh();
   remember(db, { layer: "contract", kind: "promise", text: "提醒他交房租", now: at(9) });

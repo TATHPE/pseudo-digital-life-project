@@ -3,6 +3,8 @@
  * 不提供"新对话"——只有"忘记"（需要确认，走 memories 面板）。
  */
 import { createServer as httpCreateServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { intParam } from "./query.ts";
+import { BadJsonError, readJson } from "./body.ts";
 import type { DatabaseSync } from "node:sqlite";
 import { whaleSvg } from "./brand.ts";
 import * as deskT from "./desk.ts";
@@ -48,7 +50,7 @@ import { handleControl } from "./routes/control.ts";
 
 /** 上一轮实际用的档：自动判定靠它做粘性（**每个 server 一份**，不是进程级） */
 import { renderMarkdown, esc } from "../md.ts";
-import { loadState, advance, describe } from "../state.ts";
+import { loadState, advanceWithSnapshot, describe } from "../state.ts";
 import type { Outage } from "../types.ts";
 import { dirname, extname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -88,6 +90,8 @@ export interface WebDeps {
   budgetUsd?: number;
   /** T3 确认要过策略；不传就现加载（测试里省事） */
   policy?: Policy;
+  /** 测试可注入：/api/update-check 读哪份 release.json；不传就用工作区根目录。 */
+  releaseRoot?: string;
 }
 
 const readBody = (req: IncomingMessage): Promise<string> =>
@@ -355,8 +359,78 @@ export function createWebServer(deps: WebDeps) {
         return;
       }
 
+      // ── 静态资源（2026-11-12，陪伴视图）：vendored 库 / Live2D 模型 / 音频 ──
+      // 从 src/web/static 伺服子目录；realpath 校验落在 STATIC 内（防穿越，照 /ui 的白名单思路）。
+      const staticM = url.pathname.match(/^\/static\/(.+)$/);
+      if ((req.method === "GET" || req.method === "HEAD") && staticM) {
+        const { resolve, extname, sep } = await import("node:path");
+        const { realpathSync } = await import("node:fs");
+        const MIME: Record<string, string> = {
+          ".js": "application/javascript; charset=utf-8", ".mjs": "application/javascript; charset=utf-8",
+          ".wasm": "application/wasm", ".json": "application/json; charset=utf-8",
+          ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+          ".moc3": "application/octet-stream", ".mp3": "audio/mpeg", ".wav": "audio/wav",
+          ".txt": "text/plain; charset=utf-8", ".physics3.json": "application/json",
+        };
+        try {
+          const rel = decodeURIComponent(String(staticM[1]));
+          if (rel.includes("\u0000")) { json(res, 400, { error: "E_BAD_PATH" }); return; }
+          const root = realpathSync(STATIC);
+          const real = realpathSync(resolve(STATIC, rel));
+          if (real !== root && !real.startsWith(root + sep)) { json(res, 403, { error: "E_PATH_DENIED" }); return; }
+          const body = readFileSync(real);
+          res.writeHead(200, {
+            "content-type": MIME[extname(real).toLowerCase()] ?? "application/octet-stream",
+            "content-length": String(body.length),
+            // manifest 是模型/背景指针，换模型要立刻生效，不能长缓存；其余资源按内容缓存
+            "cache-control": real.endsWith("manifest.json") ? "no-store" : "public, max-age=3600",
+            "x-content-type-options": "nosniff",
+          });
+          res.end(req.method === "HEAD" ? undefined : body);
+        } catch {
+          json(res, 404, { error: "E_NO_ASSET" });
+        }
+        return;
+      }
+
+      // ── 用户自定义陪伴素材（2026-11-13）：<home>/pal 下的背景图与导入形象 ──
+      // 与 /static 同一套防穿越思路，但根在数据目录；全部 no-store（换图/换包要立刻生效）。
+      const palM = url.pathname.match(/^\/pal\/(.+)$/);
+      if ((req.method === "GET" || req.method === "HEAD") && palM) {
+        const { resolve, extname, sep } = await import("node:path");
+        const { realpathSync } = await import("node:fs");
+        const MIME: Record<string, string> = {
+          ".json": "application/json; charset=utf-8", ".png": "image/png",
+          ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp",
+        };
+        try {
+          const rel = decodeURIComponent(String(palM[1]));
+          if (rel.includes("\u0000")) { json(res, 400, { error: "E_BAD_PATH" }); return; }
+          const root0 = joinDir(deps.home, "pal");
+          const root = realpathSync(root0);
+          const real = realpathSync(resolve(root0, rel));
+          if (real !== root && !real.startsWith(root + sep)) { json(res, 403, { error: "E_PATH_DENIED" }); return; }
+          const body = readFileSync(real);
+          res.writeHead(200, {
+            "content-type": MIME[extname(real).toLowerCase()] ?? "application/octet-stream",
+            "content-length": String(body.length),
+            "cache-control": "no-store",
+            "x-content-type-options": "nosniff",
+          });
+          res.end(req.method === "HEAD" ? undefined : body);
+        } catch {
+          json(res, 404, { error: "E_NO_ASSET" });
+        }
+        return;
+      }
+
       if ((req.method === "GET" || req.method === "HEAD") && (url.pathname === "/" || url.pathname === "/notebook")) {
-        const { NOTEBOOK } = await import("./notebook.ts");
+        // 模板热重载：notebook.ts 是 ES 模块，Node 会缓存 import，改了模板不重启侧车就不生效（测试版「改动没生效」的根因）。
+        // 按文件 mtime 做缓存键：文件一变就重新 import，平时命中缓存，零开销。
+        const { statSync } = await import("node:fs");
+        const { fileURLToPath } = await import("node:url");
+        const nbVer = statSync(fileURLToPath(new URL("./notebook.ts", import.meta.url))).mtimeMs;
+        const { NOTEBOOK } = await import("./notebook.ts?v=" + nbVer);
         // 片头仍然按配置播（ui.splash：off / simple / full），记录本里留了 <!--BOOT--> 占位
         const bootMod = await import("./boot.ts");
         const splash = bootMod.splashMode(readFileConfig(deps.home).ui);
@@ -410,7 +484,7 @@ export function createWebServer(deps: WebDeps) {
       }
       if (req.method === "POST" && url.pathname === "/api/avatar") {
         const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
-        const body = JSON.parse(await readBody(req)) as { role?: string; dataUrl?: string };
+        const body = await readJson(req) as { role?: string; dataUrl?: string };
         const role = body.role === "user" ? "user" : body.role === "agent" ? "agent" : null;
         if (!role) { json(res, 400, { error: "E_BAD_ROLE" }); return; }
         const parsed = parseImageDataUrl(String(body.dataUrl ?? ""));
@@ -436,12 +510,75 @@ export function createWebServer(deps: WebDeps) {
         return;
       }
 
+      // ── 陪伴形象与背景（2026-11-13）：设置页点选 / 上传 / 导入，素材在 <home>/pal ──
+      if (req.method === "GET" && url.pathname === "/api/pal") {
+        const pal = await import("../pal.ts");
+        json(res, 200, pal.palState(deps.home));
+        return;
+      }
+      if (req.method === "PUT" && url.pathname === "/api/pal") {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
+        const body = await readJson(req) as { avatar?: string; bg?: string };
+        const pal = await import("../pal.ts");
+        try { json(res, 200, { ok: true, ...pal.setPal(deps.home, body) }); }
+        catch (e) { json(res, 400, { error: String((e as Error).message ?? e).replace(/^Error: /, "") }); }
+        return;
+      }
+      if (req.method === "POST" && url.pathname === "/api/pal/bg") {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
+        const pal = await import("../pal.ts");
+        let buf: Buffer;
+        try { buf = await readRawBody(req, pal.MAX_BG_BYTES); }
+        catch (e) { json(res, String((e as Error).message) === "E_TOO_BIG" ? 413 : 400, { error: "E_TOO_BIG", hint: "背景图 ≤8MB" }); return; }
+        try {
+          const b = pal.saveBackground(deps.home, url.searchParams.get("name") || "background", buf);
+          json(res, 200, { ok: true, ...pal.setPal(deps.home, { bg: b.id }) });
+        } catch (e) {
+          const code = String((e as Error).message ?? e).replace(/^Error: /, "");
+          json(res, 400, { error: code, hint: code === "E_BAD_IMAGE" ? "只收 PNG / JPG / WebP，且要真的是图片" : "背景图 ≤8MB" });
+        }
+        return;
+      }
+      const palBgDel = url.pathname.match(/^\/api\/pal\/bg\/([a-z0-9-]+)$/);
+      if (req.method === "DELETE" && palBgDel) {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
+        const pal = await import("../pal.ts");
+        json(res, pal.removeBackground(deps.home, palBgDel[1]!) ? 200 : 400, { ok: true, ...pal.palState(deps.home) });
+        return;
+      }
+      if (req.method === "POST" && url.pathname === "/api/pal/avatar") {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
+        const pal = await import("../pal.ts");
+        let buf: Buffer;
+        try { buf = await readRawBody(req, pal.MAX_AVATAR_BYTES); }
+        catch { json(res, 413, { error: "E_TOO_BIG", hint: "形象包 ≤24MB" }); return; }
+        try {
+          const a = pal.importAvatar(deps.home, url.searchParams.get("name") || "", buf);
+          json(res, 200, { ok: true, ...pal.setPal(deps.home, { avatar: a.id }) });
+        } catch (e) {
+          const code = String((e as Error).message ?? e).replace(/^Error: /, "");
+          const hint = code === "E_BAD_AVATAR" ? "这不是形象包：要含 rig.json 与 built/（RuiC-2D 导出的 .yxavatar / .zip）"
+            : code === "E_NOT_ZIP" || code === "E_BAD_ZIP" ? "文件不是 zip（.yxavatar 就是 zip，别解压后再传）"
+            : "形象包 ≤24MB";
+          json(res, 400, { error: code, hint });
+        }
+        return;
+      }
+      const palAvDel = url.pathname.match(/^\/api\/pal\/avatar\/([a-z0-9-]+)$/);
+      if (req.method === "DELETE" && palAvDel) {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
+        const pal = await import("../pal.ts");
+        json(res, pal.removeAvatar(deps.home, palAvDel[1]!) ? 200 : 400, { ok: true, ...pal.palState(deps.home) });
+        return;
+      }
+
       // ── 插件重连：不用重启整个 sidecar（学 Coopanion 的 World 单独重启）──
       if (req.method === "POST" && url.pathname === "/api/plugins/reconnect") {
         const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
         if (!deps.reconnectMcp) { json(res, 400, { error: "E_NO_HUB", why: "这个进程没有 MCP 连接中心" }); return; }
         let body: { server?: string } = {};
-        try { body = JSON.parse(await readBody(req)) as { server?: string }; } catch { /* 空 body = 全部 */ }
+        try { body = await readJson(req) as { server?: string }; }
+        catch (e) { if (!(e instanceof BadJsonError && e.empty)) throw e; /* 空 body = 重连全部 */ }
         try {
           const st = await deps.reconnectMcp(body.server);
           if (deps.mcpInfo) { deps.mcpInfo.servers = st.servers; deps.mcpInfo.tools = st.tools; deps.mcpInfo.errors = st.errors; }
@@ -522,7 +659,7 @@ export function createWebServer(deps: WebDeps) {
       if (req.method === "PUT" && url.pathname === "/api/bridge") {
         const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
         try {
-          const body = JSON.parse(await readBody(req)) as Record<string, unknown>;
+          const body = await readJson(req) as Record<string, unknown>;
           const b = await import("../bridge.ts");
           const cur = b.readBridgeConfig(deps.home);
           const str = (v: unknown, d: string) => (typeof v === "string" ? v.trim() : d);
@@ -547,7 +684,10 @@ export function createWebServer(deps: WebDeps) {
             else if (b.bridgeState().running) b.stopBridge();
           } catch { /* 起不来不影响保存 */ }
           json(res, 200, { ok: true, config: next, state: b.bridgeState() });
-        } catch (e) { json(res, 500, { error: String((e as Error)?.message ?? e).slice(0, 160) }); }
+        } catch (e) {
+          if (e instanceof BadJsonError) throw e;   // 坏 JSON 交给全局处理器回 400，不是 500
+          json(res, 500, { error: String((e as Error)?.message ?? e).slice(0, 160) });
+        }
         return;
       }
       // ── 待你处理：提议 + 代码外发，合成一个列表（2026-11-05）──
@@ -577,7 +717,7 @@ export function createWebServer(deps: WebDeps) {
       }
       // ── 会话：一次可指认的对话（2026-11-05）──
       if (req.method === "GET" && url.pathname === "/api/sessions") {
-        try { json(res, 200, { sessions: listSessions(deps.db, Number(url.searchParams.get("limit") ?? 30)) }); }
+        try { json(res, 200, { sessions: listSessions(deps.db, intParam(url, "limit", 30, 1, 500)) }); }
         catch (e) { json(res, 500, { error: String((e as Error)?.message ?? e).slice(0, 160) }); }
         return;
       }
@@ -637,7 +777,7 @@ export function createWebServer(deps: WebDeps) {
         if (what === "steer") {
           // 真的重答：同一句用户原话 + 一条补充要求，模型重新生成一次，
           // 新回答作为这一轮的最新答复（readTurns 取最后一条）。
-          const body = JSON.parse(await readBody(req)) as { note?: string };
+          const body = await readJson(req) as { note?: string };
           const note = String(body.note ?? "").trim().slice(0, 300);
           if (!note) { json(res, 400, { error: "E_NO_NOTE" }); return; }
           const t = turns[idx]!;
@@ -709,7 +849,7 @@ export function createWebServer(deps: WebDeps) {
           return;
         }
         if (what === "rename") {
-          const body = JSON.parse(await readBody(req)) as { title?: string };
+          const body = await readJson(req) as { title?: string };
           touchSession(deps.db, id, { title: String(body.title ?? "") });
           json(res, 200, { ok: true });
           return;
@@ -751,7 +891,7 @@ export function createWebServer(deps: WebDeps) {
       const memEdit = url.pathname.match(/^\/api\/memories\/(\d+)$/);
       if (req.method === "PUT" && memEdit) {
         const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
-        const body = JSON.parse(await readBody(req)) as {
+        const body = await readJson(req) as {
           text?: string; importance?: number; sensitivity?: string;
         };
         const id = Number(memEdit[1]);
@@ -850,7 +990,7 @@ export function createWebServer(deps: WebDeps) {
       }
       if (req.method === "POST" && url.pathname === "/api/ingest") {
         const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
-        const body = JSON.parse(await readBody(req)) as { path?: string; shareable?: boolean };
+        const body = await readJson(req) as { path?: string; shareable?: boolean };
         const target = String(body.path ?? "").trim();
         // 编码闸（和 /api/say 同一条）：GBK 请求体解出来是 U+FFFD，
         // 不拦的话会变成"查一个乱码路径 → E_NOT_FOUND"，让人以为是文件不存在
@@ -939,7 +1079,7 @@ export function createWebServer(deps: WebDeps) {
       if (await handleSetup({ req, res, url, deps, now, json, readBody, writeGuarded, secrets })) return;
       if (await handleControl({ req, res, url, deps, now, json, readBody, writeGuarded, lastMode })) return;
       if (req.method === "POST" && url.pathname === "/api/say") {
-        const body = JSON.parse(await readBody(req)) as { text?: string };
+        const body = await readJson(req) as { text?: string };
         const text = (body.text ?? "").trim();
         if (!text) { json(res, 400, { error: "E_EMPTY" }); return; }
         if (looksMojibake(text)) {
@@ -1074,7 +1214,8 @@ export function createWebServer(deps: WebDeps) {
           const perm = currentPreset(deps.home, now());
           powers = sg.powersLine(deps.home, perm.preset, egressStatus(deps.home, { now: now() }).until !== null, { noTools: localOnlyTurn });
         } catch { /* 读不到就不加这一槽 */ }
-        const selfState = advance(deps.db, { turns: 1, silenceDays: last ? (now().getTime() - new Date(last.ts).getTime()) / 86400000 : 0 }, now());
+        // 追加式状态快照：状态没变就不落新行；变了才把「以最新一条为准」那行追加进 P7
+        const { state: selfState, snapshot: stateSnapshot } = advanceWithSnapshot(deps.db, { turns: 1, silenceDays: last ? (now().getTime() - new Date(last.ts).getTime()) / 86400000 : 0 }, now());
         // 缺口：一天最多问一次（冷却写 meta，免得她每轮查户口）
         let gapAsk: string | null = null;
         try {
@@ -1088,6 +1229,8 @@ export function createWebServer(deps: WebDeps) {
           lastSeenAt: last ? new Date(last.ts) : null,
           outage: pending,
           state: { energy: selfState.energy, closeness: selfState.closeness, mood: selfState.mood ?? undefined },
+          ...(stateSnapshot ? { stateNote: stateSnapshot.text } : {}),
+          retrievalIncomplete: rc.incomplete,
           agenda: agendaLines,
           interpretations: interpLines,
           skills: skillIdx,
@@ -1347,6 +1490,12 @@ export function createWebServer(deps: WebDeps) {
       }
       json(res, 404, { error: "E_NOT_FOUND" });
     } catch (e) {
+      // 请求体不是合法 JSON：客户端的问题，回 400，别当 500，也别把 SyntaxError 文本漏出去（2026-11-14）
+      if (e instanceof BadJsonError) {
+        if (!res.headersSent) json(res, 400, { error: "E_BAD_JSON", why: "请求体不是合法 JSON" });
+        else { try { res.end(); } catch { /* 已断开 */ } }
+        return;
+      }
       // 这里必须看 headersSent：/api/say 是 SSE，一旦开始吐字就不能再写头。
       // 以前不管这个 —— 一次失败的聊天就能让 json() 抛 ERR_HTTP_HEADERS_SENT，
       // 而那个抛是在 catch 里，直接**打死整个面板进程**（实测：无 key + 无本地模型即可复现）。

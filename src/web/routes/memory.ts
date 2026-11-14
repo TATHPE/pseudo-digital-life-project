@@ -4,6 +4,8 @@
  * 只通过 MemoryCtx 拿闭包量，不与 server.ts 形成运行期循环依赖。
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { intParam } from "../query.ts";
+import { readJson } from "../body.ts";
 import type { DatabaseSync } from "node:sqlite";
 import { search } from "../../retrieve.ts";
 import { listDocs, forgetDoc, setDocSensitivity } from "../../ingest.ts";
@@ -60,8 +62,8 @@ export async function handleMemory(ctx: MemoryCtx): Promise<boolean> {
             `SELECT id,text,stage,weight,kind FROM memories WHERE status='active'${scopeSql}
              ORDER BY weight DESC, updated_at DESC LIMIT ? OFFSET ?`)
             .all(
-              Math.min(200, Math.max(1, Number(url.searchParams.get("limit") ?? 40))),
-              Math.max(0, Number(url.searchParams.get("offset") ?? 0)),
+              intParam(url, "limit", 40, 1, 200),
+              intParam(url, "offset", 0, 0),
             ) as Array<{ id: number; text: string; stage: string; weight: number; kind: string }>);
         json(res, 200, rows);
         return true;
@@ -79,7 +81,7 @@ export async function handleMemory(ctx: MemoryCtx): Promise<boolean> {
       if (req.method === "POST" && url.pathname === "/api/profile/answer") {
         const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return true; }
         let body: { key?: unknown; text?: unknown } = {};
-        try { body = JSON.parse(await readBody(req)) as typeof body; } catch { json(res, 400, { error: "E_JSON" }); return true; }
+        try { body = await readJson(req) as typeof body; } catch { json(res, 400, { error: "E_JSON" }); return true; }
         const { answerGap } = await import("../../profile.ts");
         const r = answerGap(deps.db, String(body.key ?? ""), String(body.text ?? ""), now());
         json(res, r.ok ? 200 : 400, r.ok ? { ok: true, id: r.id } : r);
@@ -202,7 +204,7 @@ export async function handleMemory(ctx: MemoryCtx): Promise<boolean> {
       const docSens = url.pathname.match(/^\/api\/docs\/(doc_[0-9a-f]+)\/sensitivity$/);
       if ((req.method === "POST" || req.method === "PUT") && docSens) {
         const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return true; }
-        const body = JSON.parse(await readBody(req)) as { value?: string };
+        const body = await readJson(req) as { value?: string };
         if (body.value !== "shareable" && body.value !== "local_only") {
           json(res, 400, { error: "E_BAD_SENSITIVITY" }); return true;
         }

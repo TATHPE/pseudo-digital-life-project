@@ -15,6 +15,7 @@ import { join } from "node:path";
 import { atomicWriteFile } from "./fsx.ts";
 import { templateById, TEMPLATES } from "./shell.ts";
 import { listReceipts, pushReceipt, staleUnseen } from "./notify.ts";
+import { localDay } from "./localday.ts";
 
 export interface StandingOrder {
   id: string;
@@ -134,9 +135,6 @@ export function disableStanding(home: string, id: string, reason: string, now = 
   atomicWriteFile(pathOf(home, id), JSON.stringify(next, null, 2));
   return next;
 }
-
-const localDay = (d: Date): string =>
-  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
 /** 现在该不该跑？只看时间与配额，不看授权（授权在 runStanding 里现开现收） */
 export function isDue(o: StandingOrder, now = new Date()): boolean {

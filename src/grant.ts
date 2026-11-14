@@ -79,6 +79,7 @@ export const FULL_MAX_TTL_MS = 15 * 60 * 1000;
  *  · 解释器/壳：一条 -e / -Command 就能绕过整套闸门，等于全权变无限全权
  */
 import { isDiskFormatting, isRescuePath, superEnabled } from "./supergrant.ts";
+import { wslAutonomous, wslHardDeny, innerArgv } from "./wsl.ts";
 
 /** 超级权限开启时，这些"仍然拒"（见 supergrant.ts 的第 3 条约束）
  *  上面那条 import 已经把 SUPER_STILL_DENY / SUPER_KEEP_DIRS 的判断收在两个函数里 */
@@ -318,7 +319,9 @@ export function checkGrant(
   home: string, req: { argv: readonly string[]; cwd: string; verb?: string; asInterpreter?: boolean }, now = new Date(),
 ): GrantDecision {
   const perHome = store.get(home);
-  if (!perHome || !perHome.size) return { ok: false, code: "E_NO_GRANT", why: "没有打开任何授权窗口" };
+  // WSL 自主是持久开关（人开），不依赖授权窗口 —— 没开窗也能进她自己的 Linux 小房子。
+  const wslAuto = req.verb === "wsl.exec" && wslAutonomous(home);
+  if ((!perHome || !perHome.size) && !wslAuto) return { ok: false, code: "E_NO_GRANT", why: "没有打开任何授权窗口" };
 
   const argv = req.argv.map(String);
   if (!argv.length) return { ok: false, code: "E_GRANT_ARGV", why: "空命令" };
@@ -346,6 +349,14 @@ export function checkGrant(
   // 理由同上：写文件再跑是等价能力，禁内联只增加步骤与 token，不增加安全。
   // 留痕靠的是 exec_audit（argv + 退出码 + 时长），不是靠「必须落文件」。
 
+  // WSL 自主（2026-11-12）：她自己的 Linux 小房子，爆炸半径 1（docs/design/00）。
+  // 持久开关、人开；不逐次问，但仍过硬禁区，仍逐条审计（capability = grant:wsl-auto）。
+  if (wslAuto) {
+    const deny = wslHardDeny(innerArgv(argv));
+    if (deny) return { ok: false, code: "E_WSL_DENY", why: deny };
+    return { ok: true, id: "wsl-auto", commands: [], scope: "wsl", expiresAt: null, full: true };
+  }
+
   const wantFull = req.verb === "shell.exec";
   // ── 超级权限：绕过窗口，但**不绕过**兜底本身 ──
   // 1) 格式化磁盘：那是把电脑弄没，不是接管电脑
@@ -365,6 +376,8 @@ export function checkGrant(
   let sawFullDeny = "";
   let sawPathEscape = "";
   let sawReadOnly = false;
+  // wslAuto / super 已在上面各自返回；走到这里一定要有窗口（也帮 TS 收窄 perHome）
+  if (!perHome || !perHome.size) return { ok: false, code: "E_NO_GRANT", why: "没有打开任何授权窗口" };
   for (const g of perHome.values()) {
     if (!never(g.expiresAt) && g.expiresAt <= now.getTime()) { perHome.delete(g.id); continue; }
 

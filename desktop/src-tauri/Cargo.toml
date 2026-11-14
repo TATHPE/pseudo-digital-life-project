@@ -2,7 +2,7 @@
 name = "jingjing-desktop"
 version = "0.1.1"
 edition = "2021"
-description = "鲸鲸 · 桌面壳（只做四件事：拉起 sidecar / 健康探测与回落 / 托盘 / 退出杀进程）"
+description = "Pseudo Digital Life Project · 桌面壳（只做四件事：拉起 sidecar / 健康探测与回落 / 托盘 / 退出杀进程）。「鲸鲸」仅是预置人格名，不是项目名"
 license = "MIT"
 
 [build-dependencies]

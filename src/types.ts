@@ -64,6 +64,10 @@ export interface BriefInput {
   persona: PersonaFiles;
   contracts: string[];       // P6 契约层，≤15 条
   state?: SelfState | null;  // P7
+  /** P7 追加行（2026-11-14 追加式状态快照）：只在状态真的变了才给，null/缺省时 P7 保持原样 */
+  stateNote?: string | null;
+  /** P10 检索覆盖（2026-11-14，学自 dsh-world 的 coverage: partial）：没读到的来源，空/缺省=完整 */
+  retrievalIncomplete?: string[];
   threads?: string[];        // P8 线头，≤3 条
   lastName?: string | null;  // P8 上次到哪了
   delta?: string | null;     // P9 这次变了什么

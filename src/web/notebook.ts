@@ -75,6 +75,8 @@ export const NOTEBOOK = `<!doctype html>
 /* 滚动条：浅色底上用墨色滑块 */
 [data-theme="hermes"] ::-webkit-scrollbar-thumb{background:var(--line-dim)}
 [data-theme="hermes"] ::-webkit-scrollbar-thumb:hover{background:var(--dim2)}
+/* 选项按钮：一律走共用语汇里的通用三行（高亮卡片），主题级不再单独覆盖，
+   避免「深色主题一套、浅色主题另一套」，也不给任何单颗按钮开小灶。 */
 
 
 /* ── 共用语汇（两套主题都用；颜色全部走变量）────────────────
@@ -155,6 +157,22 @@ body{background:var(--void);color:var(--ink);font:12.5px/1.75 var(--sans);
 .nb-crumb i{color:var(--dim2);font-style:normal;margin:0 6px}
 .nb-dot{width:5px;height:5px;background:var(--cyan);border-radius:50%;display:inline-block;margin-right:7px;vertical-align:1px}
 .nb-main{display:grid;grid-template-columns:var(--rail) minmax(0,1fr) auto;min-height:0;flex:1}
+/* ===== 外壳（2026-11-14）：ui.shell 以前只存不用，现在真的有第二种形态 =====
+   classic = 单栏专注：收起左侧索引与右侧切口签，只留内容；顶栏的「≡」把导航临时叫回来。
+   不复活那套已删的旧面板（2026-11-05 的决定），同一套记录本，只是收边。 */
+.nb-navtoggle{display:none;align-items:center;justify-content:center;width:26px;height:24px;margin-right:8px;
+  background:none;border:1px solid var(--line-dim);border-radius:6px;color:var(--dim);cursor:pointer;
+  font:13px/1 var(--sans);padding:0}
+.nb-navtoggle:hover{color:var(--ink);border-color:var(--line)}
+[data-shell="classic"] .nb-navtoggle{display:inline-flex}
+[data-shell="classic"] .nb-index{display:none}
+[data-shell="classic"] .nb-tabs{display:none}
+[data-shell="classic"] .nb-main{grid-template-columns:minmax(0,1fr)}
+[data-shell="classic"] #nb-composer{left:0 !important;right:0 !important}
+[data-shell="classic"] .nb-tick{left:0 !important;right:0 !important}
+/* 唤回的导航是浮层：不挤内容，点空白或选中一项就收 */
+[data-shell="classic"].shell-peek .nb-index{display:flex;position:fixed;left:0;top:0;bottom:0;z-index:40;
+  width:var(--rail);background:var(--void);border-right:1px solid var(--line);box-shadow:0 0 40px rgba(0,0,0,.45)}
 
 .nb-index{border-right:1px solid var(--line-dim);display:flex;flex-direction:column;min-height:0;padding:14px 0 8px;overflow:auto}
 .nb-index h2{font:10px/1 var(--mono);letter-spacing:.18em;color:var(--dim2);margin:0 0 10px 16px;font-weight:400}
@@ -255,19 +273,38 @@ body{background:var(--void);color:var(--ink);font:12.5px/1.75 var(--sans);
 .nb-runrow .k{font:9.5px/1.6 var(--mono);letter-spacing:.12em;color:var(--dim2)}
 .nb-runrow .v{color:var(--ink)}
 .nb-runrow .m{font:10px/1.6 var(--mono);color:var(--dim2);text-align:right}
-.nb-form-wrap{max-width:640px}
 .nb-form{display:grid;gap:8px;padding:6px 0 4px}
-.nb-jumpbar{position:sticky;top:0;z-index:3;display:flex;flex-wrap:wrap;gap:4px;padding:8px 0;
-  background:var(--void);border-bottom:1px solid var(--line-dim);margin-bottom:10px}
-.nb-jump{font:10px/1 var(--mono);letter-spacing:.06em;color:var(--dim);background:none;
-  border:1px solid var(--line-dim);padding:6px 8px;cursor:pointer}
-.nb-jump:hover{color:var(--ink);border-color:var(--line)}
-.nb-jump.on{color:var(--void);background:var(--ink);border-color:var(--ink)}
+/* ===== 设置页（2026-11-14 重排）：左侧分类 + 右侧整组铺开 =====
+   旧版是 20 个平铺标签，总宽 1407px 而容器只有 1075px —— 末尾 5 项得横向滚动才找得到；
+   而且一次只显示一节，同类的几项被拆到不同页。现在按 5 类收拢，同类一次看全。 */
+.cf-layout{display:flex;flex-wrap:wrap;align-items:flex-start;gap:26px 30px;max-width:940px}
+.cf-nav{flex:0 0 164px;position:sticky;top:6px;display:grid;gap:1px}
+.cf-navitem{display:grid;grid-template-columns:1fr auto;grid-template-areas:"n c" "h c";gap:2px 8px;
+  text-align:left;background:none;border:0;padding:9px 10px 9px 12px;
+  cursor:pointer;color:var(--dim);font:13px/1.3 var(--sans);transition:color .12s,background-color .12s}
+/* 选中用和左侧主导航同一套语言：淡底 + 亮字，不额外画边框 */
+.cf-navitem:hover{color:var(--ink);background:var(--tint1)}
+.cf-navitem.on{color:var(--ink);background:var(--tint3)}
+.cf-navname{grid-area:n;letter-spacing:.02em}
+.cf-navhint{grid-area:h;font:9px/1.4 var(--mono);letter-spacing:.08em;color:var(--dim2)}
+.cf-navn{grid-area:c;align-self:center;font:9px/1 var(--mono);color:var(--dim2)}
+.cf-navitem.on .cf-navn{color:var(--dim)}
+.cf-body{flex:1 1 420px;min-width:0;max-width:660px}
+.cf-ghead{display:flex;align-items:baseline;gap:10px;padding-bottom:7px;border-bottom:1px solid var(--line)}
+.cf-ghead h2{margin:0;font:15px/1.3 var(--sans);font-weight:500;color:var(--ink);letter-spacing:.02em}
+.cf-ghead .t{font:9.5px/1 var(--mono);letter-spacing:.16em;color:var(--dim2)}
+/* 组标题已经说明了这是什么，紧跟着的第一节不再画一条横线分隔 */
+.cf-group > .cf-ghead + .nb-sec{margin-top:14px;border-top:0;padding-top:0}
 .nb-sec{scroll-margin-top:44px}
+/* 版本与更新：SHA-256 / 下载地址都是长串，允许在任意字符处断行，别把整行顶出去 */
+#cf-upout .nb-runrow .v{overflow-wrap:anywhere;word-break:break-word}
 .nb-opts{display:flex;flex-wrap:wrap;gap:6px}
-.nb-opt{font:11px/1 var(--mono);color:var(--dim);background:none;border:1px solid var(--line-dim);padding:7px 9px;cursor:pointer}
-.nb-opt:hover{border-color:var(--line);color:var(--ink)}
-.nb-opt.on{color:var(--void);background:var(--ink);border-color:var(--ink)}
+/* 选项按钮（2026-11-14）：整套统一成「高亮卡片」——非选中态也有实底、可见边框和主色文字，
+   不再有哪一颗灰字糊在背景里。颜色全走 --ink / --void，随深浅主题自动翻转；
+   所有 .nb-opt（外壳 / 开机片头 / 主题 / 权限 / 音色 / 人格档）同一套规则，不给单颗开小灶。 */
+.nb-opt{font:600 11px/1.45 var(--mono);color:var(--void);background:color-mix(in srgb,var(--ink) 72%,var(--void));border:1px solid color-mix(in srgb,var(--ink) 45%,transparent);border-radius:6px;padding:7px 10px;cursor:pointer}
+.nb-opt:hover{background:color-mix(in srgb,var(--ink) 88%,var(--void));border-color:color-mix(in srgb,var(--ink) 65%,transparent)}
+.nb-opt.on{color:var(--void);background:var(--ink);border-color:var(--ink);font-weight:700;box-shadow:0 0 0 2px color-mix(in srgb,var(--ink) 30%,transparent),inset 0 0 0 1px rgba(255,255,255,.22)}
 .nb-av{width:26px;height:26px;object-fit:cover;border:1px solid var(--line-dim);image-rendering:auto}
 label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
 .nb-fld{display:grid;grid-template-columns:76px 1fr;gap:10px;align-items:center}
@@ -306,6 +343,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
 .nb-latest[hidden]{display:none}
 .nb-gav{display:block;width:22px;height:22px;object-fit:cover;margin:0 0 5px auto;border:1px solid var(--line-dim);opacity:.85}
 .nb-e.me .g .w{color:var(--amber)}
+.nb-note{font:10px/1.6 var(--mono);color:var(--dim2);margin-top:6px;letter-spacing:.04em}
 .nb-e .b{min-width:0}
 .nb-say{border-left:2px solid var(--cyan);padding:2px 0 2px 14px}
 .nb-e.me .nb-say{border-left-color:var(--amber)}
@@ -409,8 +447,6 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
 .nb-form input:focus,.nb-form textarea:focus{border-bottom-color:var(--ink);outline:none}
 /* 右栏切口签：选中反色 */
 .nb-tab{font-size:9.5px;letter-spacing:.14em}
-/* 跳转条 */
-.nb-jump{font-size:9.5px;letter-spacing:.12em;border-color:var(--line-dim)}
 /* 弹窗：只有细线，没有阴影 */
 .nb-modal{border-color:var(--line)}
 /* 引用块 / 追踪 / 审计：等宽小字，行高收紧 */
@@ -422,11 +458,7 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
 .nb-card{padding:12px 14px}
 /* 空状态 */
 .nb-empty{font-size:11.5px}
-/* 切口签 / 跳转条：分段细线，选中反色（设置页那排太挤，靠这个立住） */
-.nb-jumpbar{gap:0;border-bottom:1px solid var(--line)}
-.nb-jump{border:1px solid var(--line-dim);border-right:0;padding:7px 9px;color:var(--dim)}
-.nb-jump:last-child{border-right:1px solid var(--line-dim)}
-.nb-jump.on{background:var(--ink);color:var(--void);border-color:var(--ink)}
+/* 切口签：分段细线，选中反色 */
 .nb-tab{letter-spacing:.16em}
 
 /* 日志行：列宽自适应，长 verb 省略而不是压到下一列 */
@@ -435,10 +467,6 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
 .nb-logrow .d{white-space:nowrap}
 /* 拒因单独一行，缩进对齐，不挤在行列里 */
 .nb-audit{padding-left:114px;font-size:10px;color:var(--dim2)}
-/* 切口签：单行横向滚动，不折行 */
-.nb-jumpbar{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;padding:8px 0 6px}
-.nb-jump{flex:0 0 auto;white-space:nowrap}
-.nb-jumpbar::-webkit-scrollbar{height:6px}
 /* 还没配好的横幅：细线一条，不弹窗、不挡操作 */
 .nb-cfgbar{display:flex;align-items:center;gap:12px;padding:7px 16px;border-bottom:1px solid var(--line-dim);
   background:var(--tint1);font:10.5px/1.4 var(--mono);letter-spacing:.04em;color:var(--amber)}
@@ -497,19 +525,268 @@ input:focus-visible,textarea:focus-visible{outline:none;border-bottom-color:var(
 /* 横幅从上面掉下来（它是「出现了」这件事本身） */
 .nb-cfgbar:not([hidden]){animation:nb-drop .16s ease-out both}
 /* 按压：按钮给一点手感，不做位移 */
-.nb-btn:active,.nb-opt:active,.nb-jump:active{transform:translateY(1px)}
-.nb-btn,.nb-opt,.nb-jump,.nb-tab{transition:background-color .12s,color .12s,border-color .12s}
+.nb-btn:active,.nb-opt:active,.cf-navitem:active{transform:translateY(1px)}
+.nb-btn,.nb-opt,.cf-navitem,.nb-tab{transition:background-color .12s,color .12s,border-color .12s}
 /* 关掉动效：不劫持状态变化，只去掉位移与闪烁 */
 @media (prefers-reduced-motion: reduce){
   .nb-e.fresh,.nb-e.fresh .nb-say,.nb-step:last-child,.nb-panel:not([hidden]),.nb-cfgbar:not([hidden]){animation:none}
   .nb-say .streaming::after{animation:none}
-  .nb-btn:active,.nb-opt:active,.nb-jump:active{transform:none}
+  .nb-btn:active,.nb-opt:active,.cf-navitem:active{transform:none}
 }
 /* 跳转链接：平时看不见，Tab 一进来就出现（2026-11-07 a11y 补） */
 .nb-skip{position:absolute;left:8px;top:-40px;z-index:99;padding:6px 10px;background:var(--ink);color:var(--void);
   font:10.5px/1 var(--mono);letter-spacing:.08em;text-decoration:none;transition:top .12s}
 .nb-skip:focus{top:8px}
 @media (prefers-reduced-motion: reduce){.nb-skip{transition:none}}
+/* ===== 陪伴模式（2026-11-13）：鲸鱼娘占主视觉 + 浮动对话；只替换中间对话区，左导航与右卷宗保留 ===== */
+/* 背景一套：海洋/房间都写到 .nb-main 上，中间与右栏共享同一张底，不再各自铺一块 */
+.nb.companion-on{--cp-bg:radial-gradient(130% 100% at 50% 0%, #2a7fa3 0%, #1c5f86 30%, #123a5c 62%, #0a1626 100%);
+  /* 玻璃层：越透明越要够强的背景模糊 + 文字投影，否则压在人/照片上读不清 */
+  /* 上浅下深的一道压暗：既透又能压住文字，照片背景也不会糊成一片 */
+  --cp-glass:linear-gradient(to bottom, rgba(8,18,30,.26), rgba(8,18,30,.46) 55%, rgba(8,18,30,.62));
+  --cp-glass-strong:rgba(10,22,36,.46);--cp-hair:rgba(160,220,245,.17);
+  /* 右栏面板是整列高度，顶部常在亮墙上，必须比气泡更实一点才读得清 */
+  --cp-glass-panel:linear-gradient(to bottom, rgba(8,18,30,.52), rgba(8,18,30,.64));}
+.nb.companion-on[data-bg="room"]{--cp-bg:linear-gradient(180deg, rgba(12,20,32,.12), rgba(12,20,32,.4)), url("/static/pal/bg/room.png") center 32%/cover no-repeat}
+.nb.companion-on .nb-main{background:var(--cp-bg)}
+.nb.companion-on .nb-index{background:var(--void)}   /* 左导航保持原底色，不然黑字压在深底上 */
+#nb-companion{position:absolute;inset:0;display:none;overflow:hidden;background:transparent}
+.nb.companion-on #nb-companion{display:block}
+.nb.companion-on .nb-page{padding:0;overflow:hidden;position:relative}
+.nb.companion-on #nb-log,.nb.companion-on #nb-home,.nb.companion-on #nb-board,.nb.companion-on #nb-view{display:none}
+.nb.companion-on .nb-composer{display:none}
+/* 右卷宗留着（用户要的 0/I/II/III/IV + 计数）：整列透明浮在背景上，按钮本体是深色玻璃 + 描边，
+   不与任何一张具体背景绑定（海洋、房间、以后再加的都一样） */
+.nb.companion-on .nb-tabs{border-left:none;padding:16px 12px 14px 0;position:relative;background:transparent}
+.nb.companion-on .nb-rail{width:54px;gap:10px;padding-top:0;overflow:visible}
+.nb.companion-on .nb-tab{position:relative;border-radius:13px;padding:12px 0;border:1px solid rgba(150,215,240,.22);
+  background:rgba(10,24,40,.42);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+  color:#d6ebf7;font:11.5px/1 var(--mono);letter-spacing:.12em;box-shadow:0 4px 16px rgba(0,0,0,.22)}
+.nb.companion-on .nb-tab:hover{background:rgba(34,84,112,.6);color:#eef8fc}
+.nb.companion-on .nb-tab.on{background:rgba(70,194,212,.24);border-color:rgba(95,224,216,.85);color:#eafcff;
+  box-shadow:0 0 18px rgba(95,224,216,.38),inset 0 0 12px rgba(95,224,216,.18)}
+.nb.companion-on .nb-tab .c{position:absolute;top:-6px;right:-5px;margin:0;min-width:17px;height:17px;line-height:17px;
+  padding:0 4px;border-radius:9px;background:rgba(12,28,46,.92);border:1px solid rgba(150,215,240,.45);
+  font-size:9px;letter-spacing:0;color:#cfe9f6}
+
+/* 右栏展开面板（2026-11-13）：与对话卡同一版玻璃 —— 同一道半透明压暗 + 同样的模糊与圆角，
+   不再是一条贴着窗口边的裸面板 */
+.nb.companion-on .nb-panel{background:var(--cp-glass-panel);
+  -webkit-backdrop-filter:blur(20px) saturate(1.06);backdrop-filter:blur(20px) saturate(1.06);
+  border:1px solid var(--cp-hair);border-left:none;border-radius:18px;
+  margin-left:10px;padding:14px 16px 18px;box-shadow:0 10px 34px rgba(0,0,0,.28);
+  scrollbar-width:thin;scrollbar-color:rgba(120,200,235,.42) transparent}
+.nb.companion-on .nb-panel::-webkit-scrollbar{width:7px}
+.nb.companion-on .nb-panel::-webkit-scrollbar-thumb{background:rgba(120,200,235,.4);border-radius:7px}
+.nb.companion-on .nb-panel h3{color:rgba(214,238,249,.95);text-shadow:0 1px 3px rgba(0,6,14,.5)}
+.nb.companion-on .nb-panel .nb-card{border-color:rgba(160,220,245,.18);background:rgba(120,200,235,.07)}
+.nb.companion-on .nb-panel .nb-card .t{color:#eef7fc}
+.nb.companion-on .nb-panel .nb-empty{color:rgba(206,230,242,.8)}
+.nb.companion-on .nb-tab.wait.on{color:#0b0e0b}/* 背景层不再自己铺底（底在 .nb-main），只留水下光效 */
+.cp-bg{position:absolute;inset:0;z-index:0;overflow:hidden;background:transparent}
+.cp-bg::after{content:"";position:absolute;inset:0;background:radial-gradient(80% 60% at 50% 110%, rgba(8,16,30,.55), transparent 60%)}
+/* 房间里关掉水下光柱、焦散、气泡与冷光晕（背景本身在 .nb-main 的 --cp-bg 里）；自定义图同待遇 */
+.nb.companion-on[data-bg="room"] .cp-rays,.nb.companion-on[data-bg="room"] .cp-caustics,
+.nb.companion-on[data-bg="room"] .cp-bubbles,.nb.companion-on[data-bg="room"] .cp-glow,
+.nb.companion-on[data-bg="custom"] .cp-rays,.nb.companion-on[data-bg="custom"] .cp-caustics,
+.nb.companion-on[data-bg="custom"] .cp-bubbles,.nb.companion-on[data-bg="custom"] .cp-glow{display:none}
+.nb.companion-on[data-bg="room"] .cp-canvas,.nb.companion-on[data-bg="custom"] .cp-canvas{filter:drop-shadow(0 14px 26px rgba(0,8,18,.45))}
+/* 体积光：从海面斜射下来的明亮光柱（正常叠加保证可见），底部渐隐，缓慢摆动 */
+.cp-rays{position:absolute;inset:-18% -10%;transform-origin:50% 0;filter:blur(3px);
+  background:linear-gradient(102deg, transparent 39%, rgba(198,244,255,.4) 45%, rgba(198,244,255,.1) 51%, transparent 58%),
+    linear-gradient(96deg, transparent 55%, rgba(168,230,250,.32) 61%, transparent 68%),
+    linear-gradient(108deg, transparent 23%, rgba(210,248,255,.34) 30%, transparent 38%),
+    linear-gradient(90deg, transparent 69%, rgba(176,234,250,.28) 76%, transparent 84%),
+    linear-gradient(100deg, transparent 84%, rgba(190,240,255,.24) 90%, transparent 96%);
+  -webkit-mask-image:linear-gradient(to bottom, #000 0%, rgba(0,0,0,.6) 58%, transparent 96%);
+  mask-image:linear-gradient(to bottom, #000 0%, rgba(0,0,0,.6) 58%, transparent 96%);
+  animation:cp-rays 18s ease-in-out infinite alternate}
+@keyframes cp-rays{0%{transform:translateX(-3%) skewX(-2deg);opacity:.85}50%{opacity:1}100%{transform:translateX(3%) skewX(2deg);opacity:.9}}
+/* 水底焦散光斑：缓慢游动的亮区，增加深海层次 */
+.cp-caustics{position:absolute;inset:0;
+  background:radial-gradient(58% 40% at 26% 84%, rgba(130,216,240,.2), transparent 62%),
+    radial-gradient(50% 34% at 74% 88%, rgba(160,232,248,.16), transparent 62%),
+    radial-gradient(42% 30% at 50% 96%, rgba(190,242,255,.14), transparent 60%);
+  animation:cp-caustics 12s ease-in-out infinite alternate}
+@keyframes cp-caustics{0%{transform:translateX(-2%) scale(1);opacity:.5}100%{transform:translateX(2%) scale(1.07);opacity:.8}}
+.nb.companion-on #nb-companion{animation:cp-fade .55s ease-out}
+@keyframes cp-fade{from{opacity:0}to{opacity:1}}
+.cp-glow{position:absolute;left:50%;top:4%;width:64%;height:54%;transform:translateX(-50%);
+  background:radial-gradient(closest-side, rgba(165,236,250,.42), rgba(130,215,240,.13) 55%, transparent 72%);filter:blur(6px);
+  animation:cp-breathe 7s ease-in-out infinite}
+@keyframes cp-breathe{0%,100%{opacity:.75;transform:translateX(-50%) scale(1)}50%{opacity:1;transform:translateX(-50%) scale(1.05)}}
+.cp-bubbles{position:absolute;inset:0}
+.cp-bub{position:absolute;bottom:-48px;border-radius:50%;
+  background:radial-gradient(circle at 32% 30%, rgba(225,248,255,.55), rgba(160,220,240,.14) 58%, transparent 72%);
+  border:1px solid rgba(205,240,255,.2);animation:cp-rise linear infinite}
+@keyframes cp-rise{0%{transform:translateY(0) translateX(0);opacity:0}8%{opacity:.75}88%{opacity:.5}100%{transform:translateY(-112vh) translateX(26px);opacity:0}}
+/* 人物舞台：WebGL 透明画布叠在背景上；底部留出浮动对话+输入条的位置 */
+.cp-stage{position:absolute;inset:0;z-index:1}
+.cp-canvas{position:absolute;left:0;right:0;top:0;bottom:186px;width:100%;height:100%;display:block;
+  filter:drop-shadow(0 18px 30px rgba(0,10,25,.45))}
+@media (prefers-reduced-motion: reduce){.cp-rays,.cp-caustics{animation:none}}
+/* 顶部：状态胶囊 + 声音/切换 */
+.cp-top{position:absolute;top:0;left:0;right:0;z-index:3;display:flex;align-items:center;justify-content:space-between;padding:16px 20px}
+.cp-status{display:flex;align-items:center;gap:9px;height:34px;box-sizing:border-box;
+  background:rgba(12,28,46,.55);border:1px solid rgba(150,215,240,.26);
+  -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border-radius:999px;padding:0 16px;
+  font:12px/1 var(--sans);color:#e3f4fb;letter-spacing:.05em;box-shadow:0 4px 18px rgba(0,0,0,.22)}
+.cp-dot{width:7px;height:7px;border-radius:50%;background:#5fe0d8;box-shadow:0 0 9px #5fe0d8;animation:cp-pulse 2.4s ease-in-out infinite}
+@keyframes cp-pulse{0%,100%{opacity:.55;transform:scale(.9)}50%{opacity:1;transform:scale(1.1)}}
+/* 顶栏与面板共用同一套表面：同高度、同描边、同圆角，视觉上是一组控件 */
+.cp-topbtns{display:flex;gap:8px}
+.cp-icon,.cp-pill,.cp-exit{height:34px;background:rgba(12,28,46,.55);border:1px solid rgba(150,215,240,.26);
+  -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);
+  color:#e3f4fb;border-radius:999px;cursor:pointer;font:12px/1 var(--sans);transition:background .16s,border-color .16s,transform .12s}
+.cp-icon{width:34px;font-size:14px;display:flex;align-items:center;justify-content:center}
+.cp-pill{padding:0 14px;letter-spacing:.05em}
+.cp-exit{padding:0 16px;letter-spacing:.06em}
+.cp-icon:hover,.cp-pill:hover,.cp-exit:hover{background:rgba(42,98,130,.72);border-color:rgba(160,225,245,.55)}
+.cp-icon:active,.cp-pill:active,.cp-exit:active{transform:translateY(1px)}
+.cp-icon[aria-pressed="false"]{opacity:.55}
+.cp-pill[aria-pressed="true"]{background:rgba(70,194,212,.24);border-color:rgba(95,224,216,.7);color:#eafcff}
+/* 纯字幕模式（2026-11-13）：拿掉卡片，文字直接压在人/背景上，靠更重的投影保证可读 */
+.nb.companion-on.sub-mode .cp-bubble{background:none;border-color:transparent;
+  -webkit-backdrop-filter:none;backdrop-filter:none;box-shadow:none;padding:10px 14px}
+.nb.companion-on.sub-mode .cp-tx{color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.95),0 0 18px rgba(0,0,0,.7),0 2px 10px rgba(0,0,0,.55)}
+.nb.companion-on.sub-mode .cp-who{background:rgba(0,0,0,.34);border-color:rgba(255,255,255,.14)}
+.nb.companion-on.sub-mode .cp-more{background:rgba(8,18,30,.42);border-color:rgba(160,220,245,.18)}
+.nb.companion-on.sub-mode .cp-input{background:rgba(8,18,30,.34);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+/* 表情/动作弹层：只有 Live2D 公皮才显示，浮在右上按钮下方 */
+.cp-exprpop{position:absolute;top:60px;right:20px;z-index:4;max-width:340px;max-height:46vh;overflow:auto;
+  background:rgba(12,28,46,.72);border:1px solid rgba(150,215,240,.28);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);
+  border-radius:18px;padding:12px 14px;box-shadow:0 10px 34px rgba(0,0,0,.34);
+  scrollbar-width:thin;scrollbar-color:rgba(120,200,235,.4) transparent}
+.cp-exprpop[hidden]{display:none}
+.cp-exprsec{font:10px/1 var(--mono);letter-spacing:.16em;color:#9fc6dc;margin:6px 0 8px}
+.cp-exprrow{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px}
+.cp-chip{border:1px solid rgba(150,215,240,.22);background:rgba(120,200,235,.08);color:#dceef8;border-radius:999px;
+  padding:5px 12px;font:11.5px/1.4 var(--sans);cursor:pointer;transition:background .14s,border-color .14s}
+.cp-chip:hover{background:rgba(120,200,235,.2);border-color:rgba(160,225,245,.45)}
+.cp-chip:active{transform:translateY(1px)}
+/* 镜头/形象调参（2026-11-13 统一）：收起是一枚胶囊，展开是一张面板 ——
+   表面、描边、圆角、字体与对话气泡/顶栏完全同一套，不再各写一套玻璃 */
+.cp-ctrl{position:absolute;left:20px;top:66px;z-index:4;width:200px;max-height:calc(100% - 150px);overflow-y:auto;overflow-x:hidden;
+  background:rgba(12,28,46,.62);border:1px solid rgba(150,215,240,.28);
+  -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);
+  border-radius:18px;box-shadow:0 10px 34px rgba(0,0,0,.32);
+  scrollbar-width:thin;scrollbar-color:rgba(120,200,235,.45) transparent}
+.cp-ctrl:not([open]){width:auto;border-radius:999px;overflow:visible}
+.cp-ctrl:not([open]) .cp-ctrlhead{min-height:32px}  /* 32 + 上下各 1px 边框 = 与顶栏按钮同为 34px */
+.cp-ctrl::-webkit-scrollbar{width:7px}
+.cp-ctrl::-webkit-scrollbar-thumb{background:rgba(120,200,235,.4);border-radius:7px}
+.cp-ctrlhead{display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer;list-style:none;user-select:none;
+  padding:8px 16px;min-height:34px;box-sizing:border-box;font:10.5px/1.4 var(--mono);letter-spacing:.14em;color:rgba(176,218,237,.9)}
+.cp-ctrlhead::-webkit-details-marker{display:none}
+.cp-ctrlhead::after{content:'+';font:13px/1 var(--sans);color:#7fd8e8}
+.cp-ctrl[open] .cp-ctrlhead::after{content:'−'}
+.cp-ctrlhead:hover{color:#e6f6ff}
+.cp-ctrl[open] .cp-ctrlhead{border-bottom:1px solid rgba(150,215,240,.14)}
+.cp-ctrlbody{padding:9px 16px 11px}
+.cp-grp{font:9.5px/1 var(--mono);letter-spacing:.16em;color:rgba(158,206,228,.8);margin:9px 0 5px}
+.cp-grp:first-child{margin-top:0}
+.cp-ctl{display:block;margin:0 0 7px}
+.cp-ctl span{display:flex;align-items:baseline;justify-content:space-between;gap:8px;
+  font:11.5px/1.4 var(--sans);color:rgba(216,238,248,.92);margin-bottom:3px}
+.cp-ctl i{font-style:normal;font:10.5px/1 var(--mono);color:#7fd8e8;font-variant-numeric:tabular-nums}
+.cp-ctl input[type=range]{width:100%;height:14px;-webkit-appearance:none;appearance:none;background:transparent;cursor:pointer}
+.cp-ctl input[type=range]::-webkit-slider-runnable-track{height:3px;border-radius:3px;background:rgba(150,215,240,.22)}
+.cp-ctl input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:12px;height:12px;border-radius:50%;margin-top:-4.5px;
+  background:#eafcff;border:2px solid #46c2d4;box-shadow:0 0 8px rgba(70,194,212,.5);transition:transform .12s}
+.cp-ctl input[type=range]:hover::-webkit-slider-thumb{transform:scale(1.08)}
+.cp-ctl input[type=range]::-moz-range-track{height:3px;border-radius:3px;background:rgba(150,215,240,.22)}
+.cp-ctl input[type=range]::-moz-range-thumb{width:12px;height:12px;border-radius:50%;background:#eafcff;border:2px solid #46c2d4}
+.cp-ctlcheck{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 8px}
+.cp-ctlcheck span{margin-bottom:0}
+/* 开关做成滑动式：原生小方框和整块圆角语言不搭 */
+.cp-ctlcheck input[type=checkbox]{-webkit-appearance:none;appearance:none;flex:0 0 auto;width:32px;height:18px;border-radius:999px;
+  border:1px solid rgba(150,215,240,.3);background:rgba(10,24,40,.6);position:relative;cursor:pointer;
+  transition:background .16s,border-color .16s}
+.cp-ctlcheck input[type=checkbox]::after{content:'';position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;
+  background:rgba(220,240,250,.75);transition:transform .16s,background .16s}
+.cp-ctlcheck input[type=checkbox]:checked{background:rgba(70,194,212,.35);border-color:rgba(95,224,216,.75)}
+.cp-ctlcheck input[type=checkbox]:checked::after{transform:translateX(14px);background:#eafcff}
+.cp-ctrlreset{width:100%;margin-top:3px;padding:6px 0;border-radius:999px;border:1px solid rgba(150,215,240,.26);
+  background:rgba(120,200,235,.08);color:rgba(214,238,248,.92);font:11px/1 var(--sans);letter-spacing:.04em;cursor:pointer;
+  transition:background .14s,border-color .14s}
+.cp-ctrlreset:hover{background:rgba(120,200,235,.18);border-color:rgba(160,225,245,.4)}
+/* 底部：浮动对话气泡 + 输入条 */
+.cp-bottom{position:absolute;left:0;right:0;bottom:0;z-index:3;display:flex;flex-direction:column;align-items:center;gap:13px;padding:0 24px 24px}
+.cp-bubble{max-width:580px;width:100%;background:var(--cp-glass);border:1px solid var(--cp-hair);
+  -webkit-backdrop-filter:blur(20px) saturate(1.06);backdrop-filter:blur(20px) saturate(1.06);
+  border-radius:20px;padding:14px 20px;
+  font:15px/1.75 var(--sans);color:#f2f9fd;box-shadow:0 8px 28px rgba(0,0,0,.24);animation:cp-float-in .4s ease}
+@keyframes cp-float-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+/* 气泡里放的是**同一条对话**的最近几条（2026-11-13）：进陪伴视图能看见刚才在记录本里说了什么，
+   不再是「进去就从空开始」；在陪伴里说的话也会出现在记录本里 */
+/* 默认只露最近一轮（你 + 她），更早的收成一行提示；点开才展开，不再一屏都是字 */
+.cp-more{display:block;width:fit-content;margin:0 auto 9px;padding:3px 13px;cursor:pointer;
+  background:rgba(120,200,235,.06);border:1px solid rgba(160,220,245,.14);border-radius:999px;
+  font:10.5px/1.5 var(--mono);letter-spacing:.08em;color:rgba(170,216,236,.85);text-align:center;transition:background .14s,color .14s,border-color .14s}
+.cp-more:hover{background:rgba(120,200,235,.18);border-color:rgba(150,215,240,.34);color:#e3f6ff}
+.cp-more:hover{color:#cfeeff}
+.cp-more[hidden]{display:none}
+.cp-log{display:flex;flex-direction:column;gap:12px;max-height:32vh;overflow-y:auto;overscroll-behavior:contain;
+  scrollbar-width:thin;scrollbar-color:rgba(120,200,235,.45) transparent;padding-right:2px}
+.cp-log::-webkit-scrollbar{width:7px}
+.cp-log::-webkit-scrollbar-thumb{background:rgba(120,200,235,.4);border-radius:7px}
+/* 上下还有内容时用渐隐提示，而不是让字被硬切一半 */
+.cp-log.fade-top{-webkit-mask-image:linear-gradient(to bottom, transparent 0, #000 20px);mask-image:linear-gradient(to bottom, transparent 0, #000 20px)}
+.cp-log.fade-bottom{-webkit-mask-image:linear-gradient(to top, transparent 0, #000 20px);mask-image:linear-gradient(to top, transparent 0, #000 20px)}
+.cp-log.fade-top.fade-bottom{-webkit-mask-image:linear-gradient(to bottom, transparent 0, #000 20px, #000 calc(100% - 20px), transparent 100%);
+  mask-image:linear-gradient(to bottom, transparent 0, #000 20px, #000 calc(100% - 20px), transparent 100%)}
+.cp-log.clip{max-height:none;overflow:visible;gap:7px}
+.cp-log.clip .cp-line{display:none}
+.cp-log.clip .cp-line:nth-last-child(-n+2){display:flex}
+.cp-log.clip .cp-line.cp-me .cp-tx{font-size:13px;opacity:.72}
+.cp-line{display:flex;gap:8px;align-items:flex-start}
+.cp-who{flex:0 0 22px;text-align:center;font:9.5px/1.9 var(--mono);letter-spacing:.06em;color:#8ec8dd;
+  border-radius:6px;background:rgba(120,200,235,.1);border:1px solid rgba(150,215,240,.14);margin-top:1px}
+.cp-line.cp-me .cp-who{color:rgba(255,217,168,.85);background:rgba(255,200,120,.09);border-color:rgba(255,200,120,.16)}
+.cp-tx{flex:1;min-width:0;white-space:pre-wrap;word-break:break-word;font:14.5px/1.75 var(--sans);color:#f2f9fd;
+  text-shadow:0 1px 3px rgba(0,6,14,.5)}
+.cp-line.cp-me .cp-tx{color:#daeaf5}
+.cp-line .cp-typing::after{content:"…";animation:cp-dots 1.2s steps(4) infinite}
+@keyframes cp-dots{0%{content:""}25%{content:"·"}50%{content:"··"}75%{content:"···"}}
+.cp-input{max-width:580px;width:100%;display:flex;align-items:flex-end;gap:10px;background:var(--cp-glass-strong);
+  border:1px solid var(--cp-hair);-webkit-backdrop-filter:blur(20px) saturate(1.06);backdrop-filter:blur(20px) saturate(1.06);
+  border-radius:999px;padding:8px 8px 8px 22px;
+  box-shadow:0 6px 22px rgba(0,0,0,.22);transition:border-color .16s}
+.cp-input:focus-within{border-color:rgba(120,225,240,.6)}
+.cp-input.busy{border-color:rgba(150,215,240,.2)}
+.cp-input textarea:disabled{opacity:.6;cursor:default}
+.cp-input textarea{flex:1;min-width:0;background:none;border:none;outline:none;color:#eef7fc;font:14px/1.5 var(--sans);
+  resize:none;max-height:104px;overflow-y:auto;padding:7px 0;line-height:1.5}
+.cp-input textarea::placeholder{color:rgba(200,228,242,.5)}
+.cp-input textarea::-webkit-scrollbar{width:6px}
+.cp-input textarea::-webkit-scrollbar-thumb{background:rgba(120,200,235,.35);border-radius:6px}
+.cp-send{width:40px;height:40px;border-radius:50%;border:none;background:linear-gradient(135deg,#46c2d4,#2f8fbf);color:#fff;
+  font-size:17px;cursor:pointer;flex:0 0 auto;display:flex;align-items:center;justify-content:center;transition:transform .12s,filter .16s;box-shadow:0 4px 14px rgba(47,143,191,.4)}
+.cp-send:hover{filter:brightness(1.12)}
+.cp-send:active{transform:scale(.93)}
+.cp-send:disabled{opacity:.5;cursor:default}
+@media (prefers-reduced-motion: reduce){.cp-bub,.cp-glow,.cp-dot{animation:none}.cp-bubble{animation:none}}
+/* ===== 设置页 · 陪伴形象与背景卡片（2026-11-13）：点一下就换，缩略图所见即所得 ===== */
+.pal-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:12px;margin:6px 0 4px}
+.pal-card{position:relative;border:1px solid var(--line-dim);border-radius:12px;overflow:hidden;cursor:pointer;
+  background:var(--tint1);transition:border-color .15s,transform .12s,box-shadow .15s}
+.pal-card:hover{border-color:var(--cyan);transform:translateY(-1px)}
+.pal-card:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+.pal-card.on{border-color:var(--cyan);box-shadow:0 0 0 1px var(--cyan),0 6px 18px rgba(15,124,116,.18)}
+.pal-thumb{display:block;width:100%;height:88px;object-fit:cover;background:var(--tint2)}
+.pal-avthumb{object-fit:contain;background:linear-gradient(180deg,#123a5c,#0a1626)}
+.pal-noimg{display:flex;align-items:center;justify-content:center;color:#9fc6dc;font:12px/1 var(--mono);letter-spacing:.1em}
+.pal-kind{position:absolute;top:64px;right:6px;padding:2px 7px;border-radius:8px;background:rgba(10,24,40,.72);
+  border:1px solid rgba(150,215,240,.3);color:#bfe3f5;font:9.5px/1.4 var(--mono);letter-spacing:.06em}
+.pal-ocean{background:radial-gradient(130% 100% at 50% 0%, #2a7fa3 0%, #1c5f86 30%, #123a5c 62%, #0a1626 100%)}
+.pal-name{display:block;padding:7px 9px;font:11px/1.4 var(--sans);color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pal-now{position:absolute;top:6px;left:6px;padding:2px 7px;border-radius:8px;background:var(--cyan);color:#fff;
+  font:9.5px/1.4 var(--mono);letter-spacing:.06em}
+.pal-del{position:absolute;top:5px;right:5px;width:20px;height:20px;border-radius:50%;background:rgba(10,14,11,.62);
+  color:#fff;font:13px/20px var(--sans);text-align:center;cursor:pointer}
+.pal-del:hover{background:var(--amber)}
+.pal-steps{margin:8px 0 2px;padding:10px 12px;border:1px dashed var(--line-dim);border-radius:10px;
+  font:11.5px/1.8 var(--sans);color:var(--dim2)}
 </style></head>
 <body>
 <a class="nb-skip" href="#nb-page">跳到内容</a>
@@ -517,9 +794,11 @@ input:focus-visible,textarea:focus-visible{outline:none;border-bottom-color:var(
 <div class="nb">
   <div class="nb-cfgbar" id="nb-cfgbar" role="status" aria-live="polite" hidden></div>
   <div class="nb-top">
+    <button class="nb-navtoggle" id="nb-navtoggle" title="显示导航（Esc 收起）" aria-label="显示导航">≡</button>
     <span><i class="nb-dot" aria-hidden="true"></i><b id="nb-line">醒着</b></span>
     <span id="nb-counts"></span>
     <span class="sp"></span>
+    <button class="nb-modechip" id="nb-companion-toggle" title="陪伴形象 ⇄ 文字记录本">陪伴</button>
     <button class="nb-modechip" id="nb-modechip" title="聊天：只靠记忆召回；工作：带上最近几轮 + 更宽的预算">聊天</button>
     <span id="nb-usd">今天 $0.000</span><span id="nb-model">—</span>
     <span id="nb-crumb" class="nb-crumb">记录本</span>
@@ -539,6 +818,7 @@ input:focus-visible,textarea:focus-visible{outline:none;border-bottom-color:var(
 <div class="nb-go" data-v="logs" role="button" tabindex="0">日志</div>
       <div class="nb-go" data-v="files" role="button" tabindex="0">文件</div>
       <div class="nb-go" data-v="git" role="button" tabindex="0">校样</div>
+      <div class="nb-go" data-v="sys" role="button" tabindex="0">系统</div>
       <div class="nb-go" data-v="cfg" role="button" tabindex="0">设置</div>
       <div class="nb-grow"></div>
       <div class="nb-go" id="nb-board-btn" role="button" tabindex="0">她收着的<span class="n" id="nb-about">…</span></div>
@@ -549,6 +829,48 @@ input:focus-visible,textarea:focus-visible{outline:none;border-bottom-color:var(
       <section id="nb-home"></section>
       <div id="nb-board" hidden></div>
       <div id="nb-view" hidden></div>
+      <div id="nb-companion" hidden>
+        <div class="cp-bg" aria-hidden="true"><div class="cp-rays"></div><div class="cp-caustics"></div><div class="cp-glow"></div><div class="cp-bubbles" id="cp-bubbles"></div></div>
+        <div class="cp-stage" id="cp-stage"></div>
+        <div class="cp-top">
+          <div class="cp-status"><i class="cp-dot"></i><span id="cp-state">鲸鱼娘 · 在发呆</span></div>
+          <div class="cp-topbtns">
+            <button class="cp-pill" id="cp-bg" title="背景：在设置里配好的列表里循环">海洋</button>
+            <button class="cp-pill" id="cp-sub" aria-pressed="false" title="对话框：玻璃卡片 ⇄ 纯字幕">字幕</button>
+            <button class="cp-pill" id="cp-expr" title="表情 / 动作（仅 Live2D 公皮）" hidden>表情</button>
+            <button class="cp-icon" id="cp-sound" title="声音开关" aria-pressed="true">🔊</button>
+            <button class="cp-exit" id="cp-exit" title="切回文字记录本">记录本</button>
+          </div>
+        </div>
+        <div class="cp-exprpop" id="cp-exprpop" hidden></div>
+        <details class="cp-ctrl" id="cp-ctrl" aria-label="镜头与形象调参">
+          <summary class="cp-ctrlhead">镜头 · 形象</summary>
+          <div class="cp-ctrlbody">
+            <div class="cp-grp">镜头</div>
+            <label class="cp-ctl"><span>取景松紧<i id="tv-frac"></i></span><input type="range" data-tune="frac" min="0.3" max="0.9" step="0.01"></label>
+            <label class="cp-ctl"><span>缩放<i id="tv-zoom"></i></span><input type="range" data-tune="zoom" min="0.6" max="1.8" step="0.01"></label>
+            <label class="cp-ctl"><span>垂直位置<i id="tv-offY"></i></span><input type="range" data-tune="offY" min="-240" max="240" step="2"></label>
+            <label class="cp-ctl"><span>水平位置<i id="tv-offX"></i></span><input type="range" data-tune="offX" min="-240" max="240" step="2"></label>
+            <div class="cp-grp">表现</div>
+            <label class="cp-ctl"><span>视线跟随<i id="tv-gaze"></i></span><input type="range" data-tune="gaze" min="0" max="2" step="0.05"></label>
+            <label class="cp-ctl"><span>口型幅度<i id="tv-mouth"></i></span><input type="range" data-tune="mouth" min="0" max="2" step="0.05"></label>
+            <label class="cp-ctl"><span>呼吸幅度<i id="tv-breath"></i></span><input type="range" data-tune="breath" min="0" max="2" step="0.05"></label>
+            <div class="cp-grp">画面</div>
+            <label class="cp-ctl cp-ctlcheck" title="关掉模型自带的加载方块 / 鼻影伪影，mesh 与 Live2D 公皮都适用"><span>伪影修复<i id="tv-noseFix"></i></span><input type="checkbox" data-tune="noseFix"></label>
+            <button class="cp-ctrlreset" id="cp-ctrl-reset">重置为默认</button>
+          </div>
+        </details>
+        <div class="cp-bottom">
+          <div class="cp-bubble" id="cp-bubble">
+            <button class="cp-more" id="cp-more" type="button" hidden>↑ 之前</button>
+            <div class="cp-log" id="cp-log" aria-live="polite"></div>
+          </div>
+          <div class="cp-input" id="cp-input-box">
+            <textarea id="cp-say" rows="1" placeholder="和鲸鱼娘说点什么  ·  Enter 发送，Shift+Enter 换行" autocomplete="off"></textarea>
+            <button class="cp-send" id="cp-send" title="发送">↑</button>
+          </div>
+        </div>
+      </div>
       <div class="nb-sheet" id="nb-log"></div>
     </main>
 

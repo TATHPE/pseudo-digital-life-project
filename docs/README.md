@@ -7,15 +7,15 @@
 |---|---|
 | [design/0-定义-数字生命.md](design/0-定义-数字生命.md) | 7.9 KB |
 | [design/01-记忆动力学.md](design/01-记忆动力学.md) | 19.9 KB |
-| [design/02-存储与索引层.md](design/02-存储与索引层.md) | 26.1 KB |
+| [design/02-存储与索引层.md](design/02-存储与索引层.md) | 26.2 KB |
 | [runtime/04-执行层与权限分级.md](runtime/04-执行层与权限分级.md) | 23.3 KB |
-| [runtime/11-技能与插件兼容.md](runtime/11-技能与插件兼容.md) | 12.8 KB |
+| [runtime/11-技能与插件兼容.md](runtime/11-技能与插件兼容.md) | 12.9 KB |
 | [runtime/13-模型与API配置方案.md](runtime/13-模型与API配置方案.md) | 8.7 KB |
 | [design/17-界面与上下文.md](design/17-界面与上下文.md) | 16.3 KB |
 | [runtime/18-断电与自我更新.md](runtime/18-断电与自我更新.md) | 8.0 KB |
 | [runtime/21-语言与技术栈选择.md](runtime/21-语言与技术栈选择.md) | 4.4 KB |
-| [ops/23-发布-桌面端-首次配置.md](ops/23-发布-桌面端-首次配置.md) | 14.7 KB |
-| [ops/24-基准与口径.md](ops/24-基准与口径.md) | 12.5 KB |
+| [ops/23-发布-桌面端-首次配置.md](ops/23-发布-桌面端-首次配置.md) | 15.5 KB |
+| [ops/24-基准与口径.md](ops/24-基准与口径.md) | 15.8 KB |
 | [ops/25-常驻指令-设计记录.md](ops/25-常驻指令-设计记录.md) | 3.5 KB |
 | [runtime/26-降级与编排.md](runtime/26-降级与编排.md) | 2.4 KB |
 

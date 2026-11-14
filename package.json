@@ -3,7 +3,7 @@
   "version": "0.1.1",
   "private": true,
   "type": "module",
-  "description": "鲸鲸 · 伪数字生命（记忆 + 衰减 + 人格）",
+  "description": "Pseudo Digital Life Project · 伪数字生命（记忆 + 衰减 + 人格）",
   "engines": {
     "node": ">=24"
   },
@@ -21,17 +21,31 @@
     "map:check": "node tools/map-check.mjs",
     "setup:e2e": "node tools/setup-e2e.ts",
     "desktop:check": "node tools/desktop-check.mjs",
+    "desktop:sync": "node tools/sync-desktop.ts",
+    "desktop:sync:check": "node tools/sync-desktop.ts --check",
     "desktop:dev": "cd desktop/src-tauri && cargo tauri dev",
     "desktop:build": "cd desktop/src-tauri && cargo tauri build",
     "eval:about": "node --experimental-strip-types tools/eval-about.ts",
     "eval:rank": "node --experimental-strip-types tools/eval-rank.ts",
     "ui:test:nb": "node tools/ui-test-nb.mjs",
     "eval:hard": "node tools/eval-hard2.ts",
+    "eval:evidence": "node tools/eval-evidence.ts",
     "eval:assembly": "node --experimental-strip-types tools/eval-assembly.ts",
-    "eval:assembly:ci": "node --experimental-strip-types tools/eval-assembly.ts --offline"
+    "eval:assembly:ci": "node --experimental-strip-types tools/eval-assembly.ts --offline",
+    "release:check": "node --experimental-strip-types tools/release.ts check",
+    "release:manifest": "node --experimental-strip-types tools/release.ts manifest",
+    "release:verify": "node --experimental-strip-types tools/release.ts verify",
+    "release:snapshot": "node --experimental-strip-types tools/release.ts snapshot",
+    "release:verify-data": "node --experimental-strip-types tools/release.ts verify-data",
+    "uninstall:guard": "node --experimental-strip-types tools/uninstall-guard.ts",
+    "bench:baseline": "node --experimental-strip-types tools/bench-baseline.ts",
+    "bench:baseline:ci": "node --experimental-strip-types tools/bench-baseline.ts --ci",
+    "rollback:e2e": "node --experimental-strip-types tools/rollback-e2e.ts"
   },
   "dependencies": {
     "casbin": "^5.51.1",
+    "msedge-tts": "^2.1.1",
+    "sherpa-onnx": "^2.0.1",
     "sqlite-vec": "^0.1.9"
   },
   "devDependencies": {

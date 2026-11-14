@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { step, DEFAULTS, describe, loadState, saveState, advance, RULES, type SelfState } from "../src/state.ts";
+import { step, DEFAULTS, describe, loadState, saveState, advance, advanceWithSnapshot, stateSnapshot, RULES, type SelfState } from "../src/state.ts";
 import { openDb } from "../src/db.ts";
 
 test("交互：closeness 缓慢上升，energy 下降，且单轮不跳变", () => {
@@ -31,7 +31,7 @@ test("夜间：energy 回升", () => {
   assert.ok(a.energy > 0.2);
 });
 
-test("状态可回放：每次 advance 落一条，loadState 取最新", () => {
+test("状态可回放：每次状态变化落一条，loadState 取最新", () => {
   const db = openDb(":memory:").db;
   advance(db, { turns: 1 }, new Date("2026-10-28T10:00:00Z"));
   const s2 = advance(db, { turns: 5 }, new Date("2026-10-28T11:00:00Z"));
@@ -53,4 +53,32 @@ test("saveState 会四舍五入到 3 位（避免浮点噪声）", () => {
   const r = db.prepare("SELECT energy,closeness FROM self_state").get() as { energy: number; closeness: number };
   assert.equal(r.energy, 0.123);
   assert.equal(r.closeness, 0.654);
+});
+
+// 追加式状态快照（2026-11-14，学自 dsh-world）：只在变化时才落库 + 追加一行
+test("stateSnapshot：没变化返回 null；变化逐字段列出并声明「以最新一条为准」", () => {
+  assert.equal(stateSnapshot(DEFAULTS, { ...DEFAULTS }), null);
+  const s = stateSnapshot(DEFAULTS, { ...DEFAULTS, energy: 0.5, mood: "有点沉" });
+  assert.ok(s);
+  assert.equal(s!.changes.length, 2);
+  assert.match(s!.text, /energy 0\.700 → 0\.500/);
+  assert.match(s!.text, /以最新一条为准，之前那条不再算数/);
+  assert.equal(stateSnapshot(DEFAULTS, { ...DEFAULTS, energy: 0.7 + 1e-9 }), null, "浮点噪声不算变化");
+});
+
+test("advanceWithSnapshot：状态没变不落新行，变了才追加", () => {
+  const db = openDb(":memory:").db;
+  const count = () => (db.prepare("SELECT count(*) c FROM self_state").get() as { c: number }).c;
+  const first = advanceWithSnapshot(db, { turns: 1 }, new Date("2026-10-28T10:00:00Z"));
+  assert.ok(first.snapshot, "第一轮应该产生快照");
+  assert.equal(count(), 1);
+
+  const same = advanceWithSnapshot(db, { turns: 0, silenceDays: 0 }, new Date("2026-10-28T10:01:00Z"));
+  assert.equal(same.snapshot, null);
+  assert.equal(count(), 1, "状态没变就不该追加行（历史里每行都得是一次变化）");
+  assert.equal(loadState(db).closeness, first.state.closeness);
+
+  const changed = advanceWithSnapshot(db, { turns: 3 }, new Date("2026-10-28T10:02:00Z"));
+  assert.ok(changed.snapshot);
+  assert.equal(count(), 2);
 });

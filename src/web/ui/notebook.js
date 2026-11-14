@@ -1,7 +1,25 @@
 (function(){
   var $ = function(id){ return document.getElementById(id); };
   var H = { 'content-type':'application/json', 'x-jj':'1' };
-  var TL = [], BOARD = false, CUR = 0, TAB = -1, BUSY = false, AV = {}, AC = null, MEM_OFF = 0, CFG_TAB = 0;
+  // 「请求回来就算成功」是假的：/api/standing/bogus/disable 返回 404，界面照样弹「已停用」（2026-11-14 抓到）。
+  // 统一走这里：非 2xx 或 body.ok === false 都 reject，message 用服务端给的原因。
+  function jsend(method, url, body){
+    return fetch(url, { method: method, headers: H, body: JSON.stringify(body || {}) })
+      .then(function(r){
+        return r.text().then(function(raw){
+          var j = {};
+          try { j = raw ? JSON.parse(raw) : {}; } catch (e) { j = {}; }
+          if (!r.ok || j.ok === false || j.error) {
+            var err = new Error(j.why || j.code || j.error || ('HTTP ' + r.status));
+            err.status = r.status; err.body = j;
+            throw err;
+          }
+          return j;
+        });
+      });
+  }
+  function jpost(url, body){ return jsend('POST', url, body); }
+  var TL = [], BOARD = false, CUR = 0, TAB = -1, BUSY = false, AV = {}, AC = null, MEM_OFF = 0, CFG_GRP = 0;
   var TRACE = [];   // 当前这一轮的过程（想/用/结果/错）；右栏第四个签看它
 
   function esc(s){
@@ -24,7 +42,7 @@
 
   // 面包屑：现在的「在哪」。分两段，末段加粗。
   var CRUMB = { home: '工作台', chat: '记录', sess: '会话', mem: '记忆', docs: '文档', cap: '能力',
-    logs: '日志', files: '文件', git: '校样', cfg: '设置', gap: '还缺', approvals: '待你处理', board: '她收着的', task: '任务' };
+    logs: '日志', files: '文件', git: '校样', sys: '系统', cfg: '设置', gap: '还缺', approvals: '待你处理', board: '她收着的', task: '任务' };
   function setCrumb(v, extra){
     var el = $('nb-crumb');
     if (!el) return;
@@ -50,11 +68,36 @@
     if (name === 'hermes') document.documentElement.setAttribute('data-theme', 'hermes');
     else document.documentElement.removeAttribute('data-theme');
   }
+  // 外壳（2026-11-14）：ui.shell 以前只存不用。现在真的有第二种形态：
+  // notebook = 三栏记录本；classic = 单栏专注（收左索引与右切口签，≡ 唤回导航）。
+  function applyShell(name){
+    var h = document.documentElement;
+    if (name === 'classic') h.setAttribute('data-shell', 'classic');
+    else h.removeAttribute('data-shell');
+  }
+  function shellPeek(on){ document.documentElement.classList.toggle('shell-peek', !!on); }
   function loadTheme(){
     fetch('/api/ui').then(function(r){ return r.json(); }).then(function(j){
       applyTheme((j && j.theme) || 'ledger');
+      applyShell((j && j.shell) || 'notebook');
     }).catch(function(){});
   }
+  // ≡ 唤回的导航是浮层：Esc 或点空白就收（避免 classic 下把人困在内容页）
+  (function(){
+    var b = document.getElementById('nb-navtoggle');
+    if (b) b.onclick = function(e){
+      e.stopPropagation();
+      shellPeek(!document.documentElement.classList.contains('shell-peek'));
+    };
+    document.addEventListener('keydown', function(e){ if (e.key === 'Escape') shellPeek(false); });
+    document.addEventListener('click', function(e){
+      if (!document.documentElement.classList.contains('shell-peek')) return;
+      var x = e.target;
+      if (x && x.closest && x.closest('#nb-navtoggle')) return;
+      if (x && x.closest && x.closest('.nb-index')) { if (x.closest('.nb-go')) shellPeek(false); return; }
+      shellPeek(false);
+    });
+  })();
 
   // ── 顶栏与左栏 ────────────────────────────────
   // 模式：聊天（默认，只靠记忆召回）/ 工作（带最近几轮 + 更宽预算）。
@@ -237,6 +280,7 @@
         hhmm(b.ts) + '<span class="w">' + (mine ? '你' : '她') + '</span></div>' +
         '<div class="b"><div class="nb-say"><div class="' + (long ? 'nb-fold' : '') + '" id="' + id + '">' +
         body + '</div></div>' +
+        (b.unanswered ? '<div class="nb-note">这一轮没有生成回答（中途断开或点了停止）</div>' : '') +
         (evChips(b).length ? '<div class="nb-ev">' + evChips(b).map(function(t){ return '<span>' + esc(t) + '</span>'; }).join('') + '</div>' : '') +
         '</div></article>';
       if (long) {
@@ -275,6 +319,9 @@
     BOARD = !!on;
     $('nb-board').hidden = !on;
     $('nb-log').hidden = !!on;
+    // 标本页与「设置/记忆等视图」互斥：不藏起来会叠在一起窜界面
+    $('nb-view').hidden = true;
+    if (COMPANION) companionOff();
     showHome(!on);
     $('nb-board-btn').className = 'nb-go' + (on ? ' cur' : '');
     if (on) loadBoard();
@@ -317,9 +364,9 @@
         b.onclick = function(){
           var ok = b.hasAttribute('data-ok');
           var id = ok ? b.getAttribute('data-ok') : b.getAttribute('data-no');
-          fetch('/api/proposals/' + encodeURIComponent(id), {
-            method:'POST', headers:H, body: JSON.stringify({ action: ok ? 'accept' : 'reject' })
-          }).then(function(){ tick(ok ? '已同意' : '已拒绝'); loadBoard(); loadState(); }).catch(function(){});
+          jpost('/api/proposals/' + encodeURIComponent(id), { action: ok ? 'accept' : 'reject' })
+            .then(function(){ tick(ok ? '已同意' : '已拒绝'); loadBoard(); loadState(); })
+            .catch(function(e){ tick('没' + (ok ? '同意成' : '拒绝成') + '：' + e.message); });
         };
       });
     });
@@ -608,11 +655,12 @@
       fetch('/api/egress').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
       fetch('/api/skills').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
       fetch('/api/activity?limit=8').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
+      fetch('/api/nightlog').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
     ]).then(function(res){
       var st = res[0] || {}, sum = res[1] || {}, props = Array.isArray(res[2]) ? res[2] : [];
       var dors = res[3] || {}, health = res[4] || {};
       var use = res[5] || {}, night = res[6] || {}, eg = res[7] || {};
-      var sk = res[8] || {}, act = res[9] || {};
+      var sk = res[8] || {}, act = res[9] || {}, nlog = res[10] || {};
       var ctx = dors.context || {};
       var deg = health.degraded || [];
       var d = new Date();
@@ -664,6 +712,11 @@
         '<div class="nb-actrow" style="margin:10px 0 2px">' +
         '<button class="nb-btn" id="nb-night">现在整理一次</button>' +
         '<span class="nb-empty" id="nb-nightmsg">闲时整理（闲置 20 小时后自动跑）；手动跑一次不写游标也行</span></div>' +
+        ((nlog.runs || []).length ? (nlog.runs || []).slice(0, 5).map(function(r){
+          return '<div class="nb-runrow"><span class="k">' + esc(String(r.ts || '').slice(5, 16).replace('T', ' ')) + '</span>' +
+            '<span class="v">' + (r.ok ? '整理完了' : '没整理成') + '</span>' +
+            '<span class="m">新增 ' + Number(r.added || 0) + ' · 合并 ' + Number(r.merged || 0) + ' · 衰减 ' + Number(r.decayed || 0) + '</span></div>';
+        }).join('') : '<div class="nb-empty">还没整理过。</div>') +
         '<div class="nb-sec">§ 03 配方</div>' +
         ((sk.skills || []).length ? '<div class="nb-grid2">' + (sk.skills || []).slice(0, 6).map(function(x){
           return '<button class="nb-recipe" data-skill="' + esc(x.id) + '">' +
@@ -785,23 +838,26 @@
             var it = items[Number(b.getAttribute('data-ok'))];
             if (!it) return;
             var req = it.kind === 'proposal'
-              ? fetch(it.route, { method: 'POST', headers: H, body: JSON.stringify({ action: 'accept', reason: '我同意，你来做' }) })
-              : fetch('/api/egress', { method: 'POST', headers: H, body: JSON.stringify({ action: 'once', path: String(it.id).replace('egress:', '') }) });
-            req.then(function(){ tick('已同意'); paint(); loadState(); });
+              ? jpost(it.route, { action: 'accept', reason: '我同意，你来做' })
+              : jpost('/api/egress', { action: 'once', path: String(it.id).replace('egress:', '') });
+            req.then(function(){ tick('已同意'); paint(); loadState(); })
+              .catch(function(e){ tick('没同意成：' + e.message); });
           };
         });
         Array.prototype.forEach.call(box.querySelectorAll('[data-no]'), function(b){
           b.onclick = function(){
             var it = items[Number(b.getAttribute('data-no'))];
             if (!it) return;
-            fetch(it.route, { method: 'POST', headers: H, body: JSON.stringify({ action: 'reject', reason: '不做' }) })
-              .then(function(){ tick('已拒绝'); paint(); loadState(); });
+            jpost(it.route, { action: 'reject', reason: '不做' })
+              .then(function(){ tick('已拒绝'); paint(); loadState(); })
+              .catch(function(e){ tick('没拒绝成：' + e.message); });
           };
         });
         var off = $('nb-egoff');
         if (off) off.onclick = function(){
-          fetch('/api/egress', { method: 'POST', headers: H, body: JSON.stringify({ action: 'revoke' }) })
-            .then(function(){ tick('外发授权已收回'); paint(); loadState(); });
+          jpost('/api/egress', { action: 'revoke' })
+            .then(function(){ tick('外发授权已收回'); paint(); loadState(); })
+            .catch(function(e){ tick('没收回：' + e.message); });
         };
       }).catch(function(){
         var box = $('nb-appr'); if (box) box.innerHTML = '<div class="nb-empty">读取失败。</div>';
@@ -945,7 +1001,10 @@
         '<b>条数</b><span>' + Number(meta.msgs || 0) + '</span></div>';
       var acts = '<div class="nb-actrow" style="margin:6px 0 10px">' +
         '<button class="nb-btn" id="nb-branch">从这里分叉</button>' +
-        '<button class="nb-btn" id="nb-undo">撤回最后一轮</button></div>';
+        '<button class="nb-btn" id="nb-undo">撤回最后一轮</button>' +
+        '<button class="nb-btn" id="nb-rename">改名</button>' +
+        '<button class="nb-btn" id="nb-interrupt">打断回答</button>' +
+        '<button class="nb-btn danger" id="nb-close">关闭会话</button></div>';
       var tabs = '<div class="nb-jumpbar" style="position:static;border-top:0;border-bottom:1px solid var(--line-dim)">' +
         tab('msgs', '记录', msgs.length) + tab('turns', '轮次', null) + tab('files', '文件', files.length) + tab('term', '终端', terms.length) + '</div>';
       var bodyMsgs = msgs.length ? msgs.map(function(m){
@@ -970,9 +1029,33 @@
         '<div id="nb-stab-files" hidden>' + bodyFiles + '</div>' +
         '<div id="nb-stab-term" hidden>' + bodyTerm + '</div>';
       var br = $('nb-branch');
-      if (br) br.onclick = function(){ fetch('/api/sessions/' + encodeURIComponent(id) + '/branch', { method: 'POST', headers: H, body: '{}' }).then(function(){ tick('已分叉'); sessView(); }); };
+      if (br) br.onclick = function(){ jpost('/api/sessions/' + encodeURIComponent(id) + '/branch', {})
+        .then(function(){ tick('已分叉'); sessView(); })
+        .catch(function(e){ tick('没分叉：' + e.message); }); };
       var un = $('nb-undo');
-      if (un) un.onclick = function(){ fetch('/api/sessions/' + encodeURIComponent(id) + '/undo', { method: 'POST', headers: H, body: '{}' }).then(function(){ tick('已撤回最后一轮'); sessDetail(id); }); };
+      if (un) un.onclick = function(){ jpost('/api/sessions/' + encodeURIComponent(id) + '/undo', {})
+        .then(function(){ tick('已撤回最后一轮'); sessDetail(id); })
+        .catch(function(e){ tick('没撤回：' + e.message); }); };
+      var rn = $('nb-rename');
+      if (rn) rn.onclick = function(){
+        var title = window.prompt('给这次会话起个名字', String(meta.title || ''));
+        if (title == null) return;
+        jpost('/api/sessions/' + encodeURIComponent(id) + '/rename', { title: title })
+          .then(function(){ tick('已改名'); sessDetail(id); })
+          .catch(function(e){ tick('没改名：' + e.message); });
+      };
+      var it = $('nb-interrupt');
+      if (it) it.onclick = function(){
+        fetch('/api/sessions/' + encodeURIComponent(id) + '/interrupt', { method: 'POST', headers: H, body: '{}' })
+          .then(function(r){ return r.json(); }).then(function(j){ tick(j.interrupted ? '已打断当前回答' : '当前没有在跑的回答'); });
+      };
+      var cl = $('nb-close');
+      if (cl) cl.onclick = function(){
+        if (!window.confirm('关闭这次会话？（记录还在，只是不再继续）')) return;
+        jpost('/api/sessions/' + encodeURIComponent(id) + '/close', {})
+          .then(function(){ tick('已关闭'); sessView(); })
+          .catch(function(e){ tick('没关闭：' + e.message); });
+      };
       // 轮次：一问一答一行，按钮各自独立
       fetch('/api/sessions/' + encodeURIComponent(id) + '/turns').then(function(r){ return r.json(); }).then(function(tj){
         var turns = (tj && tj.turns) || [];
@@ -995,8 +1078,9 @@
         Array.prototype.forEach.call(box.querySelectorAll('[data-tundo]'), function(b){
           b.onclick = function(){
             var tid = b.getAttribute('data-tundo');
-            fetch('/api/sessions/' + encodeURIComponent(id) + '/turns/' + tid + '/undo', { method: 'POST', headers: H, body: '{}' })
-              .then(function(){ tick('已撤回这一轮'); sessDetail(id); });
+            jpost('/api/sessions/' + encodeURIComponent(id) + '/turns/' + tid + '/undo', {})
+              .then(function(){ tick('已撤回这一轮'); sessDetail(id); })
+              .catch(function(e){ tick('没撤回：' + e.message); });
           };
         });
         Array.prototype.forEach.call(box.querySelectorAll('[data-tretry]'), function(b){
@@ -1146,6 +1230,8 @@
   }
   function go(v){
     VIEW = v;
+    BOARD = false;
+    if (COMPANION && v !== 'chat') companionOff();
     Array.prototype.forEach.call(document.querySelectorAll('.nb-go[data-v]'), function(x){
       x.className = 'nb-go' + (x.getAttribute('data-v') === v ? ' cur' : '');
       // 选中态同时给念屏（a11y 审计 P2）
@@ -1178,6 +1264,7 @@
     else if (v === 'logs') logsView();
     else if (v === 'files') filesView('');
     else if (v === 'git') gitView();
+    else if (v === 'sys') sysView();
     else if (v === 'cfg') cfgView();
     else if (v === 'gap') gapView();
     else if (v === 'task') taskView();
@@ -1268,13 +1355,14 @@
       var sens = $('nb-msens');
       if (sens) sens.onclick = function(){
         var next = m.sensitivity === 'shareable' ? 'local_only' : 'shareable';
-        fetch('/api/memories/' + id, { method: 'PUT', headers: H, body: JSON.stringify({ sensitivity: next }) })
-          .then(function(){ tick('敏感度：' + (next === 'shareable' ? '可出网' : '仅本地')); memDetail(id); });
+        jsend('PUT', '/api/memories/' + id, { sensitivity: next })
+          .then(function(){ tick('敏感度：' + (next === 'shareable' ? '可出网' : '仅本地')); memDetail(id); })
+          .catch(function(e){ tick('没改成：' + e.message); });
       };
       if (b3) b3.onclick = function(){
-        fetch('/api/memories/' + id + '/forget', { method: 'POST', headers: H, body: '{}' })
+        jpost('/api/memories/' + id + '/forget', {})
           .then(function(){ tick('已忘掉 #' + id); memForgotten(id); })
-          .catch(function(){ tick('忘不掉，看状态'); });
+          .catch(function(e){ tick('忘不掉：' + e.message); });
       };
     }).catch(function(){
       el.innerHTML = head('记忆 #' + id) + wrap('<div class="nb-empty">读取失败。</div>');
@@ -1354,8 +1442,8 @@
           if (!window.confirm('忘掉这份文档？（会从检索里去掉）')) return;
           fetch('/api/docs/' + id + '/forget', { method: 'POST', headers: H, body: '{}' })
             .then(function(r){ return r.json(); }).then(function(j){
-              tick(j.ok === false ? (j.error || '没删成') : '已忘掉');
-              docsView();
+              if (j.ok === false) { tick(j.error || '没删成'); docsView(); return; }
+              tick('已忘掉'); docForgotten(id);
             });
         };
       });
@@ -1386,12 +1474,35 @@
       var b2 = $('nb-dback2'), f = $('nb-dforget');
       if (b2) b2.onclick = function(){ docsView(); };
       if (f) f.onclick = function(){
+        if (!window.confirm('忘掉这篇文档？（会从检索里去掉）')) return;
         fetch('/api/docs/' + encodeURIComponent(id) + '/forget', { method: 'POST', headers: H, body: '{}' })
-          .then(function(){ tick('已忘掉这篇文档'); docsView(); });
+          .then(function(r){ return r.json(); }).then(function(j){
+            if (j.ok === false) { tick(j.error || '没删成'); return; }
+            tick('已忘掉这篇文档'); docForgotten(id);
+          });
       };
     }).catch(function(){
       el.innerHTML = head('文档') + wrap('<div class="nb-empty">读取失败。</div>');
     });
+  }
+
+  // 忘掉之后的落点：给一次撤销（调 /api/docs/:id/restore，恢复会重建 FTS）
+  function docForgotten(id){
+    var el = $('nb-view');
+    el.innerHTML = head('文档', '<button class="nb-btn" id="nd-fback">← 回文档</button>') +
+      wrap('<div class="nb-empty">已忘掉这篇。它被标成 deleted（不是物理删除），随时可以撤回来。</div>' +
+      '<div class="nb-actrow"><button class="nb-btn" id="nd-fundo">撤销，恢复这篇</button>' +
+      '<button class="nb-btn" id="nd-fback2">← 回文档</button></div>');
+    var b1 = $('nd-fback'), b2 = $('nd-fback2'), b3 = $('nd-fundo');
+    if (b1) b1.onclick = function(){ docsView(); };
+    if (b2) b2.onclick = function(){ docsView(); };
+    if (b3) b3.onclick = function(){
+      fetch('/api/docs/' + encodeURIComponent(id) + '/restore', { method: 'POST', headers: H, body: '{}' })
+        .then(function(r){ return r.json(); }).then(function(j){
+          if (j.ok === false) { tick(j.error || '没恢复成'); return; }
+          tick('已恢复这篇'); docDetail(id);
+        });
+    };
   }
 
   function capView(){
@@ -1408,6 +1519,7 @@
         }).join('');
       var box = $('nb-cap'); if (box) box.innerHTML = html;
       paintPlugins();
+      paintDrafts();
     }).catch(function(){});
 
     // 插件：MCP 服务器与技能（增删 + 重连）—— 旧面板有，新界面之前只剩只读
@@ -1474,6 +1586,39 @@
         };
       }).catch(function(){});
     }
+
+    // 她写的技能草稿箱（2026-11-12）：自我更新接回路——她自己 propose 的草稿，人可上岗/丢/回滚
+    function paintDrafts(){
+      fetch('/api/skills/drafts').then(function(r){ return r.json(); }).then(function(j){
+        var box = $('nb-cap'); if (!box) return;
+        var drafts = j.drafts || [], vers = j.versions || [];
+        box.innerHTML += '<div class="nb-sec">她写的技能 · 草稿箱</div>' +
+          (j.frozenUntil ? '<div class="nb-empty">自我更新冻结到 ' + esc(String(j.frozenUntil).slice(0, 16)) + '（连续失败太多次）</div>' : '') +
+          (drafts.length ? drafts.map(function(d){
+            return '<div class="nb-runrow"><span class="k">' + esc(d.id) + '</span>' +
+              '<span class="v">' + esc(String(d.because || '').slice(0, 60)) + '</span>' +
+              '<button class="nb-btn" data-promote="' + esc(d.id) + '">上岗</button>' +
+              '<button class="nb-btn danger" data-drop="' + esc(d.id) + '">丢</button></div>';
+          }).join('') : '<div class="nb-empty">她还没写草稿（skill.propose）。</div>') +
+          (vers.length ? '<div class="nb-sec">最近改了什么</div>' + vers.slice(0, 5).map(function(v){
+            return '<div class="nb-row" style="cursor:default"><span class="tag">ver</span>' + esc(v.file) +
+              '<span class="m">' + esc(String(v.text || '').split(String.fromCharCode(10)).slice(2, 4).join(' · ').slice(0, 80)) + '</span></div>';
+          }).join('') : '');
+        Array.prototype.forEach.call(box.querySelectorAll('[data-promote]'), function(b){
+          b.onclick = function(){
+            fetch('/api/skills/drafts/' + encodeURIComponent(b.getAttribute('data-promote')) + '/promote', { method: 'POST', headers: H, body: '{}' })
+              .then(function(r){ return r.json(); }).then(function(r){ tick(r.ok ? '已上岗' : (r.why || r.error || '没上岗')); capView(); });
+          };
+        });
+        Array.prototype.forEach.call(box.querySelectorAll('[data-drop]'), function(b){
+          b.onclick = function(){
+            if (!window.confirm('丢掉草稿 ' + b.getAttribute('data-drop') + '？')) return;
+            fetch('/api/skills/drafts/' + encodeURIComponent(b.getAttribute('data-drop')) + '/drop', { method: 'POST', headers: H, body: '{}' })
+              .then(function(r){ return r.json(); }).then(function(){ capView(); });
+          };
+        });
+      }).catch(function(){});
+    }
   }
 
   function gitView(){
@@ -1532,20 +1677,616 @@
     };
   }
 
+  // ── 陪伴模式（2026-11-13）：鲸鱼娘（RuiC-2D 绑定的 mesh avatar）占主视觉 + 浮动对话，顶栏右上「陪伴」切换。只替换中间对话区，其余区域保留。 ──
+  var COMPANION = false, CP_MOUNTED = false, CP_BUSY = false, CP_SOUND = true, CP_AC = null;
+  // 形象/背景的选择存在服务端 config.json（设置页与陪伴视图共用同一份），素材在 <home>/pal
+  var CP_PAL = null;
+  function cpLoadPal(cb){
+    fetch('/api/pal').then(function(r){ return r.json(); }).then(function(s){ CP_PAL = s; if (cb) cb(s); })
+      .catch(function(){ if (cb) cb(null); });
+  }
+  function cpCurAvatar(){
+    if (!CP_PAL) return null;
+    return (CP_PAL.avatars || []).filter(function(a){ return a.id === CP_PAL.avatar; })[0] || null;
+  }
+  function cpCurBg(){
+    if (!CP_PAL) return null;
+    return (CP_PAL.backgrounds || []).filter(function(b){ return b.id === CP_PAL.bg; })[0] || null;
+  }
+  function cpApplyState(){
+    var nb = document.querySelector('.nb'); if (!nb) return;
+    var bg = cpCurBg();
+    // 有图就铺图（房间/自定义同一条路），没图就是内置海洋渐变；右栏透明浮在上面
+    if (bg && bg.url){ nb.setAttribute('data-bg', 'custom'); nb.style.setProperty('--cp-bg', 'url("' + bg.url + '") center 32%/cover no-repeat'); }
+    else { nb.setAttribute('data-bg', 'ocean'); nb.style.removeProperty('--cp-bg'); }
+    var b = $('cp-bg'); if (b) b.textContent = bg ? String(bg.name).replace('（内置）', '') : '海洋';
+    var av = cpCurAvatar();
+    var st = $('cp-state'); if (st && av) st.textContent = av.name.replace('（内置）', '') + ' · 在发呆';
+  }
+  // 表情/动作面板：只有 Live2D 公皮（cubism）才有表情表与动作表，mesh 形象隐藏该按钮
+  function cpExprSync(){
+    var btn = $('cp-expr'); if (!btn) return;
+    var isCub = window.JJPal && window.JJPal.kind && window.JJPal.kind() === 'cubism';
+    btn.hidden = !isCub;
+    if (!isCub){ var pop0 = $('cp-exprpop'); if (pop0) pop0.hidden = true; return; }
+    var pop = $('cp-exprpop'); if (!pop || pop.hidden) return;
+    cpExprFill();
+  }
+  // 镜头/形象调参面板：滑杆实时驱动 JJPal.setTune，读数同步，重置回默认
+  function cpCtrlSync(){
+    if (!window.JJPal || !window.JJPal.getTune) return;
+    var t = window.JJPal.getTune();
+    Array.prototype.forEach.call(document.querySelectorAll('#cp-ctrl input[data-tune]'), function(inp){
+      var k = inp.getAttribute('data-tune');
+      if (typeof t[k] === 'number') {
+        if (inp.type === 'checkbox') inp.checked = !!t[k]; else inp.value = String(t[k]);
+      }
+      var ro = $('tv-' + k); if (ro) ro.textContent = fmtTune(k, t[k]);
+    });
+  }
+  function fmtTune(k, v){
+    if (k === 'noseFix') return v ? '开' : '关';
+    if (k === 'offX' || k === 'offY') return (v > 0 ? '+' : '') + Math.round(v);
+    if (typeof v !== 'number' || !isFinite(v)) return '-';
+    return (Math.round(v * 100) / 100).toFixed(2);
+  }
+  var cpCtrl = $('cp-ctrl'); if (cpCtrl) {
+    try { cpCtrl.open = localStorage.getItem('jj.cp.ctrl.open') === '1'; } catch (e) {}
+    cpCtrl.addEventListener('toggle', function(){ try { localStorage.setItem('jj.cp.ctrl.open', cpCtrl.open ? '1' : '0'); } catch (e) {} });
+    cpCtrl.addEventListener('input', function(e){
+      var inp = e.target; if (!inp || !inp.getAttribute) return;
+      var k = inp.getAttribute('data-tune'); if (!k) return;
+      var v = inp.type === 'checkbox' ? (inp.checked ? 1 : 0) : parseFloat(inp.value);
+      if (isNaN(v)) return;
+      var patch = {}; patch[k] = v;
+      if (window.JJPal && window.JJPal.setTune) window.JJPal.setTune(patch);
+      var ro = $('tv-' + k); if (ro) ro.textContent = fmtTune(k, v);
+    });
+  }
+  var cpCtrlReset = $('cp-ctrl-reset'); if (cpCtrlReset) cpCtrlReset.onclick = function(){
+    if (window.JJPal && window.JJPal.resetTune) window.JJPal.resetTune();
+    cpCtrlSync();
+  };
+  function cpExprFill(){
+    var pop = $('cp-exprpop'); if (!pop || !window.JJPal) return;
+    var ex = window.JJPal.expressions ? window.JJPal.expressions() : [];
+    var mo = window.JJPal.motions ? window.JJPal.motions() : [];
+    var html = '<div class="cp-exprsec">表情</div><div class="cp-exprrow">';
+    html += ex.length ? ex.map(function(n){ return '<button class="cp-chip" data-expr="' + esc(n) + '">' + esc(n) + '</button>'; }).join('') : '<span class="nb-empty">这个模型没有表情表</span>';
+    html += '</div><div class="cp-exprsec">动作</div><div class="cp-exprrow">';
+    html += mo.length ? mo.map(function(m){ return '<button class="cp-chip" data-motion="' + esc(m.group) + '" data-mi="' + m.index + '">' + esc(m.name || m.group) + '</button>'; }).join('') : '<span class="nb-empty">这个模型没有动作表</span>';
+    html += '</div>';
+    pop.innerHTML = html;
+  }
+  function ensurePal(cb){
+    if (window.JJPal) { cb(); return; }
+    var s = document.createElement('script');
+    s.src = '/ui/pal.js';
+    s.onload = function(){ cb(); };
+    s.onerror = function(){ tick('形象模块加载失败'); };
+    document.head.appendChild(s);
+  }
+  function cpBubbles(){
+    var box = $('cp-bubbles'); if (!box || box.childNodes.length) return;
+    for (var i = 0; i < 16; i++){
+      var b = document.createElement('span');
+      b.className = 'cp-bub';
+      var sz = 6 + Math.random() * 26;
+      b.style.width = sz + 'px'; b.style.height = sz + 'px';
+      b.style.left = (Math.random() * 100) + '%';
+      b.style.animationDuration = (9 + Math.random() * 12) + 's';
+      b.style.animationDelay = (-Math.random() * 18) + 's';
+      box.appendChild(b);
+    }
+  }
+  function cpState(text){ var el = $('cp-state'); if (el) el.textContent = '鲸鱼娘 · ' + text; }
+  // ── 气泡 = 同一条对话的最近几条（2026-11-13）。数据源就是 /api/timeline，
+  //    和记录本完全是同一份 inbox，所以两边看到的是同一串话，不是两套。──
+  var CP_HIST_N = 6, TL_DIRTY = false;
+  // 默认只露最近两条（你 + 她），更早的折起来；展开/收起的状态记在本地，下次进来还是你上次选的样子
+  var CP_EXPANDED = false;
+  try { CP_EXPANDED = localStorage.getItem('jj.cp.log.expanded') === '1'; } catch (e) {}
+  function cpLogCount(){ var l = $('cp-log'); return l ? l.querySelectorAll('.cp-line').length : 0; }
+  function cpMoreSync(){
+    var log = $('cp-log'), btn = $('cp-more'); if (!log || !btn) return;
+    var hiddenN = Math.max(0, cpLogCount() - 2);
+    log.classList.toggle('clip', !CP_EXPANDED && hiddenN > 0);
+    btn.hidden = hiddenN <= 0;
+    btn.textContent = CP_EXPANDED ? '收起' : ('↑ 之前 ' + hiddenN + ' 条');
+  }
+  var cpMoreBtn = $('cp-more');
+  if (cpMoreBtn) cpMoreBtn.onclick = function(){
+    CP_EXPANDED = !CP_EXPANDED;
+    try { localStorage.setItem('jj.cp.log.expanded', CP_EXPANDED ? '1' : '0'); } catch (e) {}
+    cpMoreSync();
+    // 点开是「想往回看」，所以从头看；收起就回到最新
+    cpLogScroll(CP_EXPANDED);
+    var inp = $('cp-say'); if (inp) inp.focus();
+  };
+  function cpFadeSync(){
+    var l = $('cp-log'); if (!l) return;
+    var canScroll = l.scrollHeight > l.clientHeight + 2;
+    var atTop = l.scrollTop < 4;
+    var atBot = l.scrollTop + l.clientHeight > l.scrollHeight - 4;
+    l.classList.toggle('fade-top', canScroll && !atTop);
+    l.classList.toggle('fade-bottom', canScroll && !atBot);
+  }
+  function cpLogScroll(toTop){
+    var l = $('cp-log'); if (!l) return;
+    l.scrollTop = toTop ? 0 : l.scrollHeight;
+    cpFadeSync();
+  }
+  var cpLogEl = $('cp-log');
+  if (cpLogEl) cpLogEl.addEventListener('scroll', cpFadeSync);
+  function cpClip(s, n){ var x = String(s == null ? '' : s); return x.length > n ? x.slice(0, n) + '…' : x; }
+  function cpLine(role, text){
+    var log = $('cp-log'); if (!log) return null;
+    var d = document.createElement('div');
+    d.className = 'cp-line ' + (role === 'me' ? 'cp-me' : 'cp-her');
+    var w = document.createElement('span'); w.className = 'cp-who'; w.textContent = role === 'me' ? '你' : '她';
+    var t = document.createElement('div'); t.className = 'cp-tx';
+    if (text) t.textContent = text;
+    d.appendChild(w); d.appendChild(t); log.appendChild(d);
+    cpMoreSync();
+    cpLogScroll();
+    return t;
+  }
+  function cpLoadHistory(){
+    var log = $('cp-log'); if (!log) return;
+    log.innerHTML = '';
+    cpLine('her', '在呢，想聊点什么？');
+    cpMoreSync();
+    fetch('/api/timeline').then(function(r){ return r.json(); }).then(function(blocks){
+      var msgs = (blocks || []).filter(function(b){ return b.type === 'msg' && b.text; }).slice(-CP_HIST_N);
+      if (!msgs.length) return;
+      log.innerHTML = '';
+      msgs.forEach(function(b){ cpLine(b.role === 'user' ? 'me' : 'her', cpClip(b.text, 200)); });
+      cpMoreSync();
+      cpLogScroll();
+    }).catch(function(){ /* 拉不到就留着那句招呼，不影响说话 */ });
+  }
+  function cpMount(){
+    if (CP_MOUNTED) return;
+    cpBubbles();
+    ensurePal(function(){
+      var st = $('cp-stage');
+      var av = cpCurAvatar();
+      if (st && window.JJPal) {
+        var p = window.JJPal.mount(st, av ? av.base : undefined, av ? av.kind : 'mesh', av ? av.entry : undefined);
+        CP_MOUNTED = true; CP_AV_MOUNTED = av ? av.id : null;
+        if (p && p.then) p.then(function(){ cpExprSync(); cpCtrlSync(); }); else { cpExprSync(); cpCtrlSync(); }
+      }
+    });
+  }
+  function cpDestroy(){
+    // 不打断正在飞的那一轮（2026-11-13）：切视图 / 换形象只是「看不见」，答案仍然要落盘。
+    // 以前这里 CP_AC.abort() 会让服务端 aborted=true 直接丢掉整段回复 —— 用户那一轮就像被吃了。
+    // 真要停，用发送键变成的「■ 停止」。
+    if (window.JJPal) { try { window.JJPal.destroy(); } catch (e) {} }
+    CP_MOUNTED = false;
+  }
+  // 对话框两种形态：玻璃卡片（默认） ⇄ 纯字幕。选择记在本地，下次进来还是上次的样子
+  var CP_SUB = false;
+  try { CP_SUB = localStorage.getItem('jj.cp.sub') === '1'; } catch (e) {}
+  function cpSubSync(){
+    var nb = document.querySelector('.nb');
+    if (nb) nb.classList.toggle('sub-mode', CP_SUB);
+    var b = $('cp-sub');
+    if (b) { b.setAttribute('aria-pressed', CP_SUB ? 'true' : 'false'); b.title = CP_SUB ? '当前：纯字幕（点一下回到玻璃卡片）' : '当前：玻璃卡片（点一下切成纯字幕）'; }
+  }
+  var cpSubBtn = $('cp-sub');
+  if (cpSubBtn) cpSubBtn.onclick = function(){
+    CP_SUB = !CP_SUB;
+    try { localStorage.setItem('jj.cp.sub', CP_SUB ? '1' : '0'); } catch (e) {}
+    cpSubSync();
+    var inp = $('cp-say'); if (inp) inp.focus();
+  };
+
+  function companionOn(){
+    COMPANION = true;
+    document.querySelector('.nb').classList.add('companion-on');
+    var cp = $('nb-companion'); if (cp) cp.hidden = false; // 去掉 hidden，否则被 [hidden]!important 压住
+    var oc = $('nb-composer'); if (oc) oc.hidden = true; // 原文字输入栏在 .nb 之外，CSS 选择器够不到，这里直接藏
+    var t = $('nb-companion-toggle'); if (t) t.classList.add('on');
+    cpLoadHistory();
+    cpSubSync();
+    cpLoadPal(function(){ cpApplyState(); cpMount(); });
+    cpState('在发呆');
+    var inp = $('cp-say'); if (inp) setTimeout(function(){ inp.focus(); if (typeof cpSayGrow === 'function') cpSayGrow(inp); }, 200);
+  }
+  function companionOff(){
+    COMPANION = false;
+    document.querySelector('.nb').classList.remove('companion-on');
+    var cp = $('nb-companion'); if (cp) cp.hidden = true;
+    var oc = $('nb-composer'); if (oc) oc.hidden = false;
+    var t = $('nb-companion-toggle'); if (t) t.classList.remove('on');
+    cpDestroy();
+    // 在陪伴里说过的话，回记录本要立刻能看到（以前不重拉，那几轮像没发生过）
+    if (TL_DIRTY){ TL_DIRTY = false; loadTimeline(); }
+  }
+  function cpSend(){
+    if (CP_BUSY) return;
+    var inp = $('cp-say'); var text = (inp.value || '').trim(); if (!text) return;
+    inp.value = '';
+    if (inp.style) { inp.style.height = 'auto'; }
+    CP_BUSY = true;
+    // 忙碌时这颗键变成「停止」：这是**唯一**的中断入口，切视图不再偷偷把回答掐掉
+    var send = $('cp-send');
+    if (send) { send.disabled = false; send.dataset.stop = '1'; send.textContent = '■'; send.title = '停止这一轮'; }
+    CP_STOPPED = false;
+    cpLine('me', text);                                  // 你说的话也进同一条流
+    var bt = cpLine('her', ''); if (bt) bt.className = 'cp-tx cp-typing';
+    // 说话期间锁输入，别让人对着一句还没答完的话继续敲
+    var box = $('cp-input-box');
+    inp.disabled = true; inp.placeholder = '她在想…';
+    if (box) box.classList.add('busy');
+    cpState('在思考');
+    if (window.JJPal) window.JJPal.setState('thinking');
+    var reply = '';
+    CP_AC = new AbortController();
+    fetch('/api/say', { method: 'POST', headers: H, body: JSON.stringify({ text: text }), signal: CP_AC.signal }).then(function(res){
+      if (!res.ok || !res.body) throw new Error('E_HTTP');
+      var rd = res.body.getReader(), dec = new TextDecoder(), buf = '';
+      function pump(){ return rd.read().then(function(r){
+        if (r.done) return;
+        buf += dec.decode(r.value, { stream: true });
+        var parts = buf.split(String.fromCharCode(10, 10)); buf = parts.pop();
+        parts.forEach(function(frame){
+          var line = frame.trim(); if (line.indexOf('data: ') !== 0) return;
+          var ev; try { ev = JSON.parse(line.slice(6)); } catch (e) { return; }
+          if (ev.type === 'delta'){ reply += ev.text; if (bt){ bt.className = 'cp-tx'; bt.textContent = reply; cpLogScroll(); } }
+        });
+        return pump();
+      }); }
+      return pump();
+    }).then(function(){
+      CP_BUSY = false; CP_AC = null;
+      if (send) { send.dataset.stop = '0'; send.textContent = '↑'; send.title = '发送'; send.disabled = false; }
+      if (bt) bt.className = 'cp-tx';
+      if (!reply && bt) bt.textContent = CP_STOPPED ? '（已停止）' : '（这一轮没接上）';
+      if (reply) TL_DIRTY = true;
+      // 说这话的时候已经离开陪伴视图了：直接刷记录本，别等下次进来
+      if (!COMPANION && reply) { TL_DIRTY = false; loadTimeline(); }
+      if (box) box.classList.remove('busy');
+      inp.disabled = false; inp.placeholder = CP_SAY_PH;
+      cpMoreSync();
+      if (window.JJPal) window.JJPal.setState('idle');
+      if (reply && CP_SOUND && window.JJPal){
+        cpState('在说话');
+        window.JJPal.speak(reply).then(function(){ cpState('在发呆'); }).catch(function(){ cpState('在发呆'); });
+      } else { cpState('在发呆'); }
+    }).catch(function(){
+      CP_BUSY = false; CP_AC = null;
+      if (send) { send.dataset.stop = '0'; send.textContent = '↑'; send.title = '发送'; send.disabled = false; }
+      if (bt){ bt.className = 'cp-tx'; bt.textContent = CP_STOPPED ? '（已停止）' : '（这一轮没接上，看看右上角状态）'; }
+      if (CP_STOPPED) TL_DIRTY = true;
+      var box2 = $('cp-input-box');
+      if (box2) box2.classList.remove('busy');
+      inp.disabled = false; inp.placeholder = CP_SAY_PH;
+      cpMoreSync();
+      cpState('在发呆'); if (window.JJPal) window.JJPal.setState('idle');
+    });
+  }
+  var cpTgl = $('nb-companion-toggle');
+  if (cpTgl) cpTgl.onclick = function(){ if (COMPANION){ companionOff(); go('chat'); } else { go('chat'); companionOn(); } };
+  var cpExit = $('cp-exit'); if (cpExit) cpExit.onclick = function(){ companionOff(); go('chat'); };
+  var cpBgBtn = $('cp-bg'); if (cpBgBtn) cpBgBtn.onclick = function(){
+    // 在设置页配好的背景列表里循环；选择写回服务端，设置页与这里永远一致
+    var list = (CP_PAL && CP_PAL.backgrounds) || [];
+    if (!list.length) return;
+    var i = 0; for (var k = 0; k < list.length; k++) if (list[k].id === CP_PAL.bg) i = k;
+    var next = list[(i + 1) % list.length];
+    fetch('/api/pal', { method: 'PUT', headers: H, body: JSON.stringify({ bg: next.id }) })
+      .then(function(r){ return r.json(); }).then(function(s){ if (s && s.ok){ CP_PAL = s; cpApplyState(); } })
+      .catch(function(){ tick('背景切换失败'); });
+  };
+  var cpSnd = $('cp-sound'); if (cpSnd) cpSnd.onclick = function(){
+    CP_SOUND = !CP_SOUND;
+    cpSnd.setAttribute('aria-pressed', CP_SOUND ? 'true' : 'false');
+    cpSnd.textContent = CP_SOUND ? '🔊' : '🔇';
+    if (!CP_SOUND && window.JJPal && window.JJPal.stop) window.JJPal.stop();
+  };
+  var cpExprBtn = $('cp-expr'); if (cpExprBtn) cpExprBtn.onclick = function(){
+    var pop = $('cp-exprpop'); if (!pop) return;
+    pop.hidden = !pop.hidden;
+    if (!pop.hidden) cpExprFill();
+  };
+  var cpExprPop = $('cp-exprpop'); if (cpExprPop) cpExprPop.onclick = function(e){
+    var t = e.target; if (!t || !t.closest) return;
+    var ex = t.closest('[data-expr]');
+    if (ex){ if (window.JJPal) window.JJPal.setExpression(ex.getAttribute('data-expr')); return; }
+    var mo = t.closest('[data-motion]');
+    if (mo){ if (window.JJPal) window.JJPal.playMotion(mo.getAttribute('data-motion'), parseInt(mo.getAttribute('data-mi'), 10) || 0); }
+  };
+  var CP_STOPPED = false;
+  function cpStop(){
+    CP_STOPPED = true;
+    if (CP_AC) { try { CP_AC.abort(); } catch (e) {} }
+  }
+  var cpSendBtn = $('cp-send');
+  if (cpSendBtn) cpSendBtn.onclick = function(){ if (CP_BUSY) { cpStop(); return; } cpSend(); };
+  var cpSay = $('cp-say');
+  var CP_SAY_PH = '和鲸鱼娘说点什么  ·  Enter 发送，Shift+Enter 换行';
+  function cpSayGrow(el){
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = Math.min(104, el.scrollHeight) + 'px';
+  }
+  if (cpSay){
+    cpSay.onkeydown = function(e){
+      if (e.key === 'Enter' && !e.shiftKey && !e.isComposing){ e.preventDefault(); cpSend(); return; }
+      if (e.key === 'Escape'){ cpSay.blur(); }
+    };
+    cpSay.addEventListener('input', function(){ cpSayGrow(cpSay); });
+    cpSayGrow(cpSay);
+  }
+
+  // ── 设置页 · 陪伴形象与背景（2026-11-13）：点卡片就换、上传/导入后自动用上，全程不用碰文件目录 ──
+  var CP_AV_MOUNTED = null;
+  function palMsg(id, text, bad){
+    var el = $(id); if (!el) return;
+    el.textContent = text || '';
+    el.style.color = bad ? 'var(--amber)' : '';
+  }
+  function palCard(kind, item, cur){
+    var on = item.id === cur;
+    var thumb = kind === 'bg'
+      ? (item.url ? '<img class="pal-thumb" src="' + esc(item.url) + '" alt="" loading="lazy">' : '<span class="pal-thumb pal-ocean"></span>')
+      : (item.thumb ? '<img class="pal-thumb pal-avthumb" src="' + esc(item.thumb) + '" alt="" loading="lazy">' : '<span class="pal-thumb pal-avthumb pal-noimg">' + (item.kind === 'cubism' ? 'Live2D' : '形象') + '</span>');
+    var tag = kind === 'avatar' ? '<span class="pal-kind">' + (item.kind === 'cubism' ? 'Live2D' : '单图绑定') + '</span>' : '';
+    return '<div class="pal-card' + (on ? ' on' : '') + '" role="button" tabindex="0" data-pal="' + kind + '" data-id="' + esc(item.id) + '" title="点一下就用它">' +
+      thumb + tag + '<span class="pal-name">' + esc(item.name) + '</span>' +
+      (on ? '<span class="pal-now">使用中</span>' : '') +
+      (item.builtin ? '' : '<span class="pal-del" data-paldel="' + kind + '" data-id="' + esc(item.id) + '" title="删除这个素材">×</span>') +
+      '</div>';
+  }
+  function palGrids(s){
+    var a = $('pal-avatars'), b = $('pal-bgs');
+    if (a) a.innerHTML = (s.avatars || []).map(function(x){ return palCard('avatar', x, s.avatar); }).join('');
+    if (b) b.innerHTML = (s.backgrounds || []).map(function(x){ return palCard('bg', x, s.bg); }).join('');
+  }
+  function palSyncCompanion(){
+    if (!COMPANION) return;
+    cpApplyState();
+    var av = cpCurAvatar();
+    if (av && av.id !== CP_AV_MOUNTED){ cpDestroy(); cpMount(); }
+  }
+  function palAdopt(s, msgId, what){
+    CP_PAL = s; palGrids(s); palSyncCompanion();
+    palMsg(msgId, '已用上：' + what);
+  }
+  function palUpload(url, file, msgId){
+    palMsg(msgId, '正在上传 ' + file.name + ' …');
+    fetch(url + '?name=' + encodeURIComponent(file.name), { method: 'POST', headers: { 'x-jj': '1' }, body: file })
+      .then(function(r){ return r.json(); }).then(function(s){
+        if (s && s.ok) palAdopt(s, msgId, file.name);
+        else palMsg(msgId, (s && (s.hint || s.error)) || '上传失败', true);
+      }).catch(function(){ palMsg(msgId, '上传失败：检查文件大小或网络', true); });
+  }
+  // 事件委托：设置页重渲染后不用重新接线
+  document.addEventListener('click', function(e){
+    var t = e.target;
+    if (!t || !t.closest) return;
+    var del = t.closest('[data-paldel]');
+    if (del){
+      e.stopPropagation();
+      var kind = del.getAttribute('data-paldel'), id = del.getAttribute('data-id');
+      if (!window.confirm('删除这个' + (kind === 'bg' ? '背景' : '形象') + '？删掉后不可恢复。')) return;
+      fetch('/api/pal/' + kind + '/' + encodeURIComponent(id), { method: 'DELETE', headers: H })
+        .then(function(r){ return r.json(); }).then(function(s){ if (s && s.backgrounds){ CP_PAL = s; palGrids(s); palSyncCompanion(); } })
+        .catch(function(){ tick('删除失败'); });
+      return;
+    }
+    var card = t.closest('[data-pal]');
+    if (card){
+      var k = card.getAttribute('data-pal'), cid = card.getAttribute('data-id');
+      var patch = {}; patch[k] = cid;
+      fetch('/api/pal', { method: 'PUT', headers: H, body: JSON.stringify(patch) })
+        .then(function(r){ return r.json(); }).then(function(s){
+          if (s && s.ok) palAdopt(s, k === 'bg' ? 'pal-bg-msg' : 'pal-av-msg', (k === 'bg' ? cpCurBg() : cpCurAvatar() || {}).name || cid);
+          else tick('切换失败');
+        }).catch(function(){ tick('切换失败'); });
+      return;
+    }
+    if (t.id === 'pal-bg-add'){ var f = $('pal-bg-file'); if (f) f.click(); return; }
+    if (t.id === 'pal-av-add'){ var g = $('pal-av-file'); if (g) g.click(); return; }
+    if (t.id === 'pal-go'){ go('chat'); companionOn(); return; }
+  });
+  document.addEventListener('change', function(e){
+    var t = e.target;
+    if (t.id === 'pal-bg-file' && t.files && t.files[0]){ palUpload('/api/pal/bg', t.files[0], 'pal-bg-msg'); t.value = ''; }
+    if (t.id === 'pal-av-file' && t.files && t.files[0]){ palUpload('/api/pal/avatar', t.files[0], 'pal-av-msg'); t.value = ''; }
+  });
+  // 卡片是 role=button 的 div：键盘 Enter/空格 也要能选
+  document.addEventListener('keydown', function(e){
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    var c = e.target && e.target.closest ? e.target.closest('[data-pal]') : null;
+    if (c){ e.preventDefault(); c.click(); }
+  });
+
+  // ── 系统（2026-11-14）：后端早就建好、界面一直没有入口的六块，收进一页 ──────
+  // 工具 / 审计 / 回执 / 待处理 / 线头 / 抽检。只读为主；能动手的都走 jsend，失败会说话。
+  function sysView(){
+    var el = $('nb-view');
+    el.innerHTML = head('系统', '<button class="nb-btn" id="sys-refresh">刷新</button>') +
+      wrap('<div class="nb-empty" id="sys-msg">读取中…</div><div id="sys-body"></div>');
+    var body = $('sys-body'), msgEl = $('sys-msg'), btn = $('sys-refresh');
+    // 别继承上一页的滚动位置：从对话切过来时页面可能停在底部，一进来就看不见待处理
+    var pg = document.getElementById('nb-page'); if (pg) pg.scrollTop = 0;
+    if (btn) btn.onclick = function(){ paint(); };
+
+    function cut(s, n){ s = String(s == null ? '' : s); return s.length > n ? s.slice(0, n) + '…' : s; }
+    function when(ts){ return String(ts || '').replace('T', ' ').slice(5, 16); }
+    function empty(t){ return '<div class="nb-empty">' + esc(t) + '</div>'; }
+    function sec(title, n, inner){
+      return '<div class="nb-sec"><span>' + esc(title) + '</span>' +
+        (n == null ? '' : '<span class="m" style="margin-left:auto;color:var(--dim2)">' + n + '</span>') + '</div>' + inner;
+    }
+
+    function pendHtml(list){
+      if (!list.length) return empty('没有等你点头的事。');
+      return list.map(function(p){
+        var leftMin = Math.round((Date.parse(p.expires_at) - Date.now()) / 60000);
+        return '<div class="nb-runrow" style="grid-template-columns:1fr auto">' +
+          '<span class="v">' + esc(p.verb) + ' <span class="m" style="text-align:left">' + esc(cut(p.template || '', 60)) + '</span></span>' +
+          '<span class="m">' + (p.expired || leftMin <= 0 ? '已过期' : '剩 ' + leftMin + ' 分钟') + '</span></div>' +
+          '<div class="nb-logrow" style="padding:2px 2px 8px">' + esc(cut((p.argv || []).join(' '), 180)) + '</div>' +
+          '<div class="nb-actrow" style="margin:-4px 0 10px">' +
+          '<button class="nb-btn" data-pend="' + esc(p.id) + '" data-act="confirm">批准</button>' +
+          '<button class="nb-btn danger" data-pend="' + esc(p.id) + '" data-act="reject">拒绝</button></div>';
+      }).join('');
+    }
+
+    function rcpHtml(r){
+      var items = (r && r.items) || [];
+      if (!items.length) return empty('没有回执。');
+      return items.map(function(x){
+        return '<div class="nb-row" style="cursor:default">' +
+          '<span class="tag">' + (x.seen ? '已读' : '未读') + '</span>' + esc(cut(x.title, 60)) +
+          '<span class="m">' + esc(when(x.at)) + '</span></div>' +
+          (x.body ? '<div class="nb-sub">' + esc(cut(x.body, 200)) + '</div>' : '') +
+          (x.seen ? '' : '<div class="nb-actrow" style="margin:-2px 0 8px">' +
+            '<button class="nb-btn" data-seen="' + esc(x.id) + '">标为已读</button></div>');
+      }).join('');
+    }
+
+    function thHtml(list){
+      if (!list.length) return empty('没有开着的线头。');
+      return list.map(function(x){
+        return '<div class="nb-row" style="cursor:default">' +
+          '<span class="tag">' + (x.aging ? '有点久' : '线头') + '</span>' + esc(cut(x.text, 70)) +
+          '<span class="m">' + (x.ageDays || 0) + ' 天</span></div>' +
+          (x.why ? '<div class="nb-sub">' + esc(cut(x.why, 120)) + '</div>' : '') +
+          '<div class="nb-actrow" style="margin:-2px 0 8px">' +
+          '<button class="nb-btn" data-thclose="' + x.id + '">收线</button></div>';
+      }).join('');
+    }
+
+    function revHtml(list){
+      if (!list.length) return empty('今天没有要抽检的关联。');
+      return list.map(function(x){
+        var key = x.src_id + '|' + x.dst_id + '|' + String(x.rel || '');
+        return '<div class="nb-runrow" style="grid-template-columns:1fr auto">' +
+          '<span class="v">' + esc(cut(x.a_text, 44)) + ' ↔ ' + esc(cut(x.b_text, 44)) + '</span>' +
+          '<span class="m">' + esc(x.rel) + ' · ' + Number(x.weight || 0).toFixed(2) + '</span></div>' +
+          '<div class="nb-actrow" style="margin:-4px 0 10px">' +
+          '<button class="nb-btn" data-rev="' + esc(key) + '" data-okv="1">对</button>' +
+          '<button class="nb-btn danger" data-rev="' + esc(key) + '" data-okv="0">不对，剪断</button></div>';
+      }).join('');
+    }
+
+    function auditHtml(a){
+      var rows = (a && a.rows) || [];
+      if (!rows.length) return empty('还没有执行记录。');
+      return '<div class="nb-empty" style="margin-bottom:6px">显示最近 ' + rows.length + ' 条 / 共 ' + (a.total || rows.length) + ' 条</div>' +
+        rows.map(function(r){
+          var bad = r.decision !== 'allowed';
+          return '<div class="nb-logrow">' +
+            '<span class="d">' + esc(when(r.ts)) + '</span>' +
+            '<span class="v">' + esc(r.verb) + '</span>' +
+            '<span class="d">' + esc(r.tier) + '</span>' +
+            '<span class="d" style="color:' + (bad ? 'var(--amber)' : 'inherit') + '">' + esc(r.decision) + '</span>' +
+            '<span class="d">' + (r.ms ? r.ms + 'ms' : '') + '</span></div>' +
+            (r.reason ? '<div class="nb-audit">' + esc(cut(r.reason, 140)) + '</div>' : '');
+        }).join('');
+    }
+
+    function toolsHtml(list){
+      if (!list.length) return empty('没有注册工具。');
+      return list.map(function(x){
+        return '<div class="nb-row" style="cursor:default">' +
+          '<span class="tag">' + esc(x.tier) + '</span>' + esc(x.name) +
+          '<span class="m">' + esc(cut(x.description, 90)) + '</span></div>';
+      }).join('');
+    }
+
+    function wire(){
+      Array.prototype.forEach.call(body.querySelectorAll('[data-pend]'), function(b){
+        b.onclick = function(){
+          var act = b.getAttribute('data-act');
+          jpost('/api/pending/' + encodeURIComponent(b.getAttribute('data-pend')), { action: act })
+            .then(function(){ tick(act === 'confirm' ? '已批准' : '已拒绝'); paint(); })
+            .catch(function(e){ tick('没成：' + e.message); });
+        };
+      });
+      Array.prototype.forEach.call(body.querySelectorAll('[data-seen]'), function(b){
+        b.onclick = function(){
+          jpost('/api/receipts/' + encodeURIComponent(b.getAttribute('data-seen')) + '/seen', {})
+            .then(function(){ paint(); })
+            .catch(function(e){ tick('没标成：' + e.message); });
+        };
+      });
+      Array.prototype.forEach.call(body.querySelectorAll('[data-thclose]'), function(b){
+        b.onclick = function(){
+          var note = window.prompt('这条线怎么收的？（一句话，可留空）', '');
+          if (note === null) return;
+          jpost('/api/threads/' + b.getAttribute('data-thclose') + '/close', { note: note })
+            .then(function(){ tick('已收线'); paint(); })
+            .catch(function(e){ tick('没收成：' + e.message); });
+        };
+      });
+      Array.prototype.forEach.call(body.querySelectorAll('[data-rev]'), function(b){
+        b.onclick = function(){
+          var parts = b.getAttribute('data-rev').split('|');
+          var ok = b.getAttribute('data-okv') === '1';
+          jpost('/api/surface/review', { src_id: Number(parts[0]), dst_id: Number(parts[1]), rel: parts[2], ok: ok })
+            .then(function(){ tick(ok ? '记下了' : '已剪断这条关联'); paint(); })
+            .catch(function(e){ tick('没记成：' + e.message); });
+        };
+      });
+    }
+
+    function paint(){
+      if (msgEl){ msgEl.textContent = '读取中…'; msgEl.style.color = ''; }
+      Promise.all([
+        fetch('/api/tools').then(function(r){ return r.json(); }).catch(function(){ return []; }),
+        fetch('/api/audit?limit=60').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
+        fetch('/api/receipts').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
+        fetch('/api/pending').then(function(r){ return r.json(); }).catch(function(){ return []; }),
+        fetch('/api/threads').then(function(r){ return r.json(); }).catch(function(){ return []; }),
+        fetch('/api/surface/review').then(function(r){ return r.json(); }).catch(function(){ return []; })
+      ]).then(function(res){
+        var tools = res[0] || [], audit = res[1] || {}, rcp = res[2] || {};
+        var pend = res[3] || [], th = res[4] || [], rev = res[5] || [];
+        if (msgEl) {
+          msgEl.textContent = '工具 ' + tools.length + ' · 审计 ' + (audit.total || 0) +
+            ' · 回执 ' + (rcp.unseen || 0) + ' 未读 · 待处理 ' + pend.length +
+            ' · 线头 ' + th.length + ' · 抽检 ' + rev.length;
+        }
+        body.innerHTML =
+          sec('待处理', pend.length, pendHtml(pend)) +
+          sec('回执', (rcp.items || []).length, rcpHtml(rcp)) +
+          sec('线头', th.length, thHtml(th)) +
+          sec('抽检', rev.length, revHtml(rev)) +
+          sec('审计', null, auditHtml(audit)) +
+          sec('工具', tools.length, toolsHtml(tools));
+        wire();
+      }).catch(function(e){ if (msgEl) msgEl.textContent = '读不到：' + ((e && e.message) || e); });
+    }
+
+    paint();
+  }
+
+  // 设置页的五个分类（2026-11-14 重排）：原来 20 个平铺标签，一半得横向滚动才看得见，
+  // 同类功能还被拆散（模型一览夹在人格和头像之间）。这里按「她在想什么 → 她是谁 → 她能做什么 → 界面长什么样 → 数据怎么管」排。
+  var CFG_GROUPS = [
+    { name: '大脑', hint: '模型 · 接口', secs: ['接口 · 云端', '本地模型', '眼 · 视觉'] },
+    { name: '她',   hint: '人格 · 形象 · 声音', secs: ['人格', '头像', '形象与背景', '声音'] },
+    { name: '手脚', hint: '能力 · 权限 · 接入', secs: ['主机 · 命令解释器', 'WSL 小房子', '常驻指令', '限制', 'QQ 接入（OneBot 11）'] },
+    { name: '观感', hint: '主题 · 片头', secs: ['外观', '开机片头'] },
+    { name: '数据', hint: '备份 · 诊断 · 版本 · 目录', secs: ['诊断', '版本与更新', '导出 / 导入', '工作区域', '引导', '部署状态'] }
+  ];
+
   function cfgView(){
     var el = $('nb-view');
     // 重渲染（改完某节后刷新）要停在原地：不然滚动位置也一起回到顶部
     var keepScroll = (document.getElementById('nb-page') || {}).scrollTop || 0;
     el.innerHTML = head('设置') + wrap('<div id="nb-cfg"><div class="nb-empty">读取中…</div></div>');
     var chosen = {};
-    var SECS = [];
-    function sec(t, inner){
-      SECS.push(t);
-      var i = SECS.length;
-      // 一次只显示一节：设置页有近两千像素高，靠滚动真的会看不见（用户连问两次）
-      return '<div class="nb-secwrap" data-i="' + i + '"' + (i === CFG_TAB + 1 ? '' : ' hidden') + '>' +
-        '<div class="nb-sec" id="cf-sec-' + i + '">' + t + '</div>' + inner + '</div>';
-    }
+    // 设置页重排（2026-11-14）：原来是 20 个平铺标签（总宽 1407 > 容器 1075，最后 5 项得横向滚动才看得见），
+    // 而且一次只显示一节 —— 有关联的功能被拆到不同页。现在收成 5 组，组内整组铺开，靠分组表决定顺序。
+    var SECMAP = {};
+    function sec(t, inner){ SECMAP[t] = inner; return ''; }
     function field(label, id, val, ph){
       return '<label class="nb-fld"><span>' + label + '</span>' +
         '<input id="' + id + '" class="nb-search" value="' + esc(val || '') + '" placeholder="' + esc(ph || '') + '"></label>';
@@ -1574,12 +2315,25 @@
       fetch('/api/avatars').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
       fetch('/api/bridge').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
       fetch('/api/deploy').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
+      fetch('/api/wsl').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
+      fetch('/api/vision').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
+      fetch('/api/tts/status').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
+      fetch('/api/tts/voices').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
+      fetch('/api/pal').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
+      fetch('/api/permission').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
+      fetch('/api/version').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
     ]).then(function(res){
       var c = res[0] || {}, ui = res[1] || {}, m = res[2] || {}, mode = (res[3] || {}).mode || 'chat';
       var host = res[4] || {}, sd = Array.isArray(res[5]) ? res[5] : [];
       var grants = Array.isArray(res[6]) ? res[6] : [];
       var eg = res[7] || {}, health = res[8] || {}, persona = res[9] || {};
       var av = res[10] || {}, br = res[11] || {}, dep = res[12] || {};
+      var wsl = res[13] || {}, vis = res[14] || {};
+      var tts = res[15] || {}, ttsVoices = (res[16] || {}).voices || [];
+      var pal = res[17] || {};
+      var perm = res[18] || {};
+      var ver = res[19] || {};
+      CP_PAL = pal.avatars ? pal : CP_PAL;
       var locals = m.installed || [];
       var roleModel = function(n){
         var hit = (m.roles || []).filter(function(x){ return x.role === n; })[0];
@@ -1604,8 +2358,21 @@
         (locals.length ? optRow('embed', locals, curEmbed, 'embed') + optRow('chat', locals, curChat, 'chat')
           : '<div class="nb-empty">没有已拉模型</div>') +
         '<div class="nb-actrow"><button class="nb-btn" id="cf-msave">保存模型</button>' +
+        '<button class="nb-btn" id="cf-mpick">看看装了哪些模型</button>' +
         '<span class="nb-empty">端点 ' + esc(m.endpoint || '—') + ' · ' + (m.online ? '在线' : '离线') +
         ' · 索引 ' + esc((m.index && m.index.current) || '—') + '</span></div></div>');
+      html += sec('眼 · 视觉',
+        '<div class="nb-form">' +
+        optRow('vprov', ['ollama', 'cloud'], vis.provider || 'ollama', '走哪路') +
+        field('model', 'cf-vmodel', vis.model || '', '本地 qwen2.5vl:3b / 云端填厂商模型名') +
+        field('baseUrl', 'cf-vbase', vis.baseUrl || '', '云端 OpenAI 兼容地址（本地留空）') +
+        field('key', 'cf-vkey', '', vis.hasKey ? '已有（' + (vis.keyFingerprint || '') + '），留空不改' : '云端视觉 key（本地不用填）') +
+        '<div class="nb-runrow"><span class="k">屏幕可发云端</span><span class="v">' + (vis.cloudEnabled ? '开' : '关') + '</span>' +
+        '<span class="m">默认只走本地；开了才允许把截图发云端</span></div>' +
+        '<div class="nb-actrow"><button class="nb-btn" id="cf-vsave">保存</button>' +
+        '<button class="nb-btn" id="cf-vcloud">' + (vis.cloudEnabled ? '关掉云闸' : '开云闸') + '</button>' +
+        '<button class="nb-btn danger" id="cf-vclear">清除 key</button>' +
+        '<span class="nb-empty" id="cf-vmsg"></span></div></div>');
       html += sec('人格',
         '<div class="nb-form">' + field('名字', 'cf-name', (c.agent && c.agent.name) || '', '她叫什么') +
         '<div class="nb-actrow"><button class="nb-btn" id="cf-nsave">保存名字</button>' +
@@ -1617,10 +2384,7 @@
         '<textarea id="cf-ptext" class="nb-search" style="min-height:150px;width:100%;font-family:var(--mono);font-size:12px;line-height:1.7"></textarea>' +
         '<div class="nb-actrow"><button class="nb-btn" id="cf-psave">保存这块</button>' +
         '<span class="nb-empty" id="cf-pmsg">改动只向前生效，会开新的一代</span></div></div>');
-      html += sec('模型一览',
-        '<div class="nb-form"><div class="nb-actrow">' +
-        '<button class="nb-btn" id="cf-mpick">看看装了哪些模型</button>' +
-        '<span class="nb-empty">装了什么 / 多大 / 给哪个角色用 / 测一句</span></div></div>');
+      // 「模型一览」已并入上一节「本地模型」：同一个按钮不必单独占一页
       html += sec('头像',
         '<div class="nb-form">' +
         '<div class="nb-fld"><span>她</span><div class="nb-actrow">' +
@@ -1639,16 +2403,87 @@
         '<div class="nb-actrow"><button class="nb-btn" id="cf-hsave">保存</button>' +
         '<span class="nb-empty">当前 <b id="cf-hnow">' + esc((host.active && host.active.label) || '—') + '</b>' +
         '<span id="cf-hmsg"></span></span></div></div>');
+      html += sec('WSL 小房子',
+        '<div class="nb-form">' +
+        '<div class="nb-kv"><b>发行版</b><span>' + esc(wsl.distro || 'Ubuntu') + '</span>' +
+        '<b>状态</b><span>' + (wsl.installed ? esc(wsl.state || '已装') : '未安装') + '</span>' +
+        '<b>自主</b><span>' + (wsl.autonomous ? '开（不逐次问）' : '关') + '</span></div>' +
+        '<div class="nb-actrow"><button class="nb-btn" id="cf-wsetup">' + (wsl.installed ? '重新初始化' : '装 Ubuntu') + '</button>' +
+        '<button class="nb-btn" id="cf-wauto">' + (wsl.autonomous ? '关掉自主' : '开自主') + '</button>' +
+        '<button class="nb-btn" id="cf-wsnap">立即快照</button>' +
+        '<span class="nb-empty" id="cf-wmsg"></span></div>' +
+        '<div class="nb-empty">她自己的 Linux（/root/jj）。自主开了就不逐次问；逐条审计 + 快照兜底，格式化/删盘根/删快照永久拒。装 Ubuntu 约 1GB。</div>' +
+        ((wsl.snapshots || []).length ? '<div class="nb-sec">快照</div>' + wsl.snapshots.map(function(s){
+          return '<div class="nb-row" style="cursor:default"><span class="tag">tar</span>' + esc(s.file) +
+            '<span class="m">' + Math.round((s.bytes || 0) / 1048576) + ' MB · ' + esc(String(s.at || '').slice(0, 16)) + '</span></div>';
+        }).join('') : '') +
+        '</div>');
+      html += sec('形象与背景',
+        '<div class="nb-form">' +
+        '<div class="nb-empty">点卡片就换，立刻生效；上传或导入成功后自动用上。素材只存在本机，不上传云端。</div>' +
+        '<div class="nb-sec">人物形象</div>' +
+        '<div class="pal-grid" id="pal-avatars"></div>' +
+        '<div class="nb-actrow"><button class="nb-btn" id="pal-av-add">＋ 导入形象包（.yxavatar / .zip）</button>' +
+        '<input type="file" id="pal-av-file" accept=".yxavatar,.zip,application/zip" hidden>' +
+        '<span class="nb-empty" id="pal-av-msg"></span></div>' +
+        '<div class="pal-steps">两种形象都能导，不用装任何软件也能先用内置鲸鱼娘：<br>① 现成 Live2D 模型（zip 里有 .model3.json，例如 VTube Studio 公皮）→ 直接点「导入形象包」选那个 zip，表情 / 动作 / 物理都保留；<br>② 只有一张立绘 → 可选免费开源工具 RuiC-2D（github.com/HRuiCcc/RuiC-2D，本机运行）绑定后导出 .yxavatar 再导入。<br>导入成功后自动切换，不用重启；不想要了点卡片右上 × 删除。</div>' +
+        '<div class="nb-sec">背景</div>' +
+        '<div class="pal-grid" id="pal-bgs"></div>' +
+        '<div class="nb-actrow"><button class="nb-btn" id="pal-bg-add">＋ 上传背景图</button>' +
+        '<input type="file" id="pal-bg-file" accept="image/png,image/jpeg,image/webp" hidden>' +
+        '<span class="nb-empty" id="pal-bg-msg"></span></div>' +
+        '<div class="pal-steps">支持 PNG / JPG / WebP，≤8MB。人物站在画面中间，建议选横图或上下留白多的图；右栏按钮会浮在背景上，任何图都能配。</div>' +
+        '<div class="nb-actrow"><button class="nb-btn" id="pal-go">去陪伴视图看看</button></div>' +
+        '</div>');
+      html += sec('声音',
+        '<div class="nb-form">' +
+        optRow('ttsbackend', ['local', 'cloud'], tts.backend || 'local', '声音后端') +
+        field('音色', 'cf-ttsvoice', tts.voice || '', 'local 填 speaker id（如 0）；cloud 填 edge 音色名') +
+        field('语速', 'cf-ttsspeed', String(tts.speed == null ? 1 : tts.speed), '0.5–2.0') +
+        '<div class="nb-kv"><b>状态</b><span>' + (tts.ready ? '就绪' : '未就绪') + '</span>' +
+        '<b>当前音色</b><span>' + esc(tts.voice || '—') + '</span></div>' +
+        (tts.why ? '<div class="nb-empty">' + esc(tts.why) + '</div>' : '') +
+        (ttsVoices.length ? '<div class="nb-empty">可选音色（点一下填入）：</div><div class="nb-opts">' +
+          ttsVoices.slice(0, 12).map(function(v){ return '<button class="nb-opt" data-ttsvoice="' + esc(v.id) + '">' + esc(v.name || v.id) + '</button>'; }).join('') + '</div>' : '') +
+        '<div class="nb-actrow"><button class="nb-btn" id="cf-ttssave">保存</button>' +
+        '<button class="nb-btn" id="cf-ttstest">试听一句</button>' +
+        '<span class="nb-empty" id="cf-ttsmsg"></span></div>' +
+        '<div class="nb-empty">形象与背景在「形象与背景」那一节里点选/上传，这里只管声音。本地声音需 jingjing tts setup 下载模型；云声音免 key 需网络。</div>' +
+        '</div>');
       html += sec('常驻指令', sd.length ? sd.map(function(x){
         return '<div class="nb-runrow"><span class="k">' + esc(x.when || '') + '</span>' +
           '<span class="v">' + esc(x.because || x.id) + '</span>' +
           '<button class="nb-btn" data-off="' + esc(x.id) + '">停用</button></div>';
       }).join('') : '<div class="nb-empty">没有常驻指令。</div>');
+      // 权限档位（2026-11-14）：后端一直有 ask / read / write / full 四档，
+      // 但这里以前把这行**写死**成「全开（full）」——实际档位不是 full 时界面在说谎，
+      // 而且用户根本没有切档入口。现在读 /api/permission，四档直接可选。
+      var permPresets = (Array.isArray(perm.presets) && perm.presets.length) ? perm.presets : [
+        { id: 'ask', label: '逐次确认', hint: '每次动作都要你看一眼' },
+        { id: 'read', label: '仅可查看', hint: '只读；要动手的命令都拒绝' },
+        { id: 'write', label: '工作区内修改', hint: '只在 workspace 内' },
+        { id: 'full', label: '完全权限', hint: '任意命令（会话级）' }
+      ];
+      // 读不到就写「读不到」，绝不默默回落到 full —— 那正是以前那行写死文案的问题
+      var curPreset = String(perm.preset || '');
+      var curPresetObj = permPresets.filter(function(x){ return x.id === curPreset; })[0] || { id: curPreset, label: curPreset, hint: '' };
       html += sec('限制',
-        '<div class="nb-runrow"><span class="k">档位</span><span class="v">全开（full）</span>' +
-        '<span class="m">限制全部撤掉，等软件能用了再谈</span></div>' +
+        // 说明单独一行：grant.ts 里 full 的 hint 有一百多字，塞进 .nb-runrow 的右列会把档位挤成三行
+        '<div class="nb-runrow"><span class="k">档位</span><span class="v" id="cf-perm-v">' +
+        (curPreset ? esc(curPresetObj.label) + '（' + esc(curPreset) + '）' : '读不到') + '</span></div>' +
+        '<div class="nb-empty" style="margin:-2px 0 8px">' + esc(curPresetObj.hint || '刷新一下再看') + '</div>' +
+        '<div class="nb-opts" id="cf-perm">' + permPresets.map(function(x){
+          return '<button class="nb-opt' + (x.id === curPreset ? ' on' : '') + '" data-perm="' + esc(x.id) + '" title="' + esc(x.hint || '') + '">' + esc(x.label) + '</button>';
+        }).join('') + '</div>' +
+        '<div class="nb-empty" id="cf-perm-msg">切档会立刻撤销当前所有授权窗口，并记一条审计</div>' +
         '<div class="nb-runrow"><span class="k">授权窗口</span><span class="v">' + grants.length + ' 个</span>' +
         '<span class="m">启动自动开，不会逐次问你</span></div>' +
+        (grants.length ? grants.map(function(g){
+          var left = g.remainingS < 0 ? '长期' : (g.remainingS >= 60 ? Math.round(g.remainingS / 60) + ' 分钟' : g.remainingS + ' 秒');
+          return '<div class="nb-runrow"><span class="k">' + esc(g.full ? '全权' : (g.commands || []).join(',')) + '</span>' +
+            '<span class="v">' + esc(g.scope || '') + ' · 剩 ' + esc(left) + '</span>' +
+            '<button class="nb-btn danger" data-revoke="' + esc(g.id) + '">收回</button></div>';
+        }).join('') : '') +
         '<div class="nb-runrow"><span class="k">代码外发</span><span class="v">开</span>' +
         '<span class="m">每次仍写审计</span></div>' +
         '<div class="nb-runrow"><span class="k">超级权限</span>' +
@@ -1658,8 +2493,22 @@
         '<span class="nb-empty" id="cf-super-msg">开着的时候她会跟你确认一次，并记进审计</span></div>');
       html += sec('诊断',
         '<div class="nb-actrow"><button class="nb-btn" id="cf-doc">跑一遍体检</button>' +
-        '<span class="nb-empty">按项看，红的会列出来</span></div>' +
+        '<button class="nb-btn" id="cf-diagcopy">复制诊断摘要</button>' +
+        '<span class="nb-empty">按项看，红的会列出来；摘要只读版本与健康关键字段</span></div>' +
+        '<div class="nb-empty" id="cf-diagcopy-msg"></div>' +
         '<div id="cf-docout"></div>');
+      // 「版本与更新」：数据全来自 /api/version，不硬编码版本号（docs/ops/26 §1）。
+      // manual-verified 翻成一句中文人话；检查更新只展示，绝不下载 / 安装。
+      var policyCn = ver.updatePolicy === 'manual-verified'
+        ? '人工校验覆盖安装，不会自动更新' : esc(ver.updatePolicy || '—');
+      html += sec('版本与更新',
+        '<div class="nb-kv">' +
+        '<b>当前版本</b><span>' + esc(ver.version || '—') + '</span>' +
+        '<b>Node</b><span>' + esc(ver.node || '—') + '</span>' +
+        '<b>更新策略</b><span>' + policyCn + '</span></div>' +
+        '<div class="nb-actrow"><button class="nb-btn" id="cf-upcheck">检查更新</button>' +
+        '<span class="nb-empty" id="cf-upmsg">只读本地发布清单；本页不会自动下载或安装</span></div>' +
+        '<div id="cf-upout"></div>');
       html += sec('导出 / 导入',
         '<div class="nb-actrow"><button class="nb-btn" id="cf-exp">导出一份快照</button>' +
         '<span class="nb-empty" id="cf-expmsg">不带 secrets/tokens/snapshots</span></div>' +
@@ -1667,7 +2516,14 @@
         '<button class="nb-btn" id="cf-imp">看导入命令</button></div>' +
         '<div class="nb-empty" id="cf-impout"></div>');
       html += sec('外观',
-        '<div class="nb-form"><div class="nb-opts" id="cf-theme">' +
+        '<div class="nb-form">' +
+        '<div class="nb-fld"><span>外壳</span><div class="nb-opts" id="cf-shell">' +
+        [['notebook', '记录本（三栏）'], ['classic', '专注（单栏）']].map(function(x){
+          return '<button class="nb-opt' + (((ui.shell || 'notebook') === x[0]) ? ' on' : '') +
+            '" data-shellv="' + x[0] + '" title="' + (x[0] === 'classic' ? '收起左侧索引与右侧切口签，顶栏 ≡ 临时叫回导航' : '默认三栏') +
+            '">' + x[1] + '</button>';
+        }).join('') + '</div></div>' +
+        '<div class="nb-opts" id="cf-theme">' +
         [['ledger','记录本（黑白 · 紧凑）'],['hermes','Hermes（中性灰 · 宽版式）']].map(function(x){
           return '<button class="nb-opt" data-theme="' + x[0] + '">' + x[1] + '</button>';
         }).join('') + '</div>' +
@@ -1700,7 +2556,7 @@
         '再回来填这里。开启后，私聊她就能收到消息；群里要 @ 她（或在白名单里配群号）。</div></div>');
       html += sec('工作区域',
         '<div class="nb-kv"><b>当前数据目录</b><span id="cf-where-home">读取中…</span></div>' +
-        '<div class="nb-fld"><label>换到</label><input id="cf-where" placeholder="D:\\Pseudo Digital Life Project"></div>' +
+        '<div class="nb-fld"><label>换到</label><input id="cf-where" class="nb-search" placeholder="D:\\Pseudo Digital Life Project"></div>' +
         '<div class="nb-actrow"><button class="nb-btn" id="cf-where-go">改到这里</button>' +
         '<label class="nb-empty" style="display:inline-flex;gap:6px;align-items:center"><input type="checkbox" id="cf-where-move" style="width:auto">把现有数据一起复制过去</label>' +
         '<span class="nb-empty" id="cf-where-msg">改完重启一次生效</span></div>' +
@@ -1722,19 +2578,39 @@
         '<b>目录</b><span>' + esc(dep.home || '—') + '</span>' +
         '<b>降级</b><span>' + (deg.length ? esc(deg.join(' · ')) : '没有') + '</span></div>');
       var box = $('nb-cfg');
-      var jump = '<div class="nb-jumpbar">' + SECS.map(function(t, i){
-        return '<button class="nb-jump' + (i === CFG_TAB ? ' on' : '') + '" data-i="' + (i + 1) + '">' + esc(t) + '</button>';
-      }).join('') + '</div>';
-      if (box) box.innerHTML = jump + '<div class="nb-form-wrap">' + html + '</div>';
+      if (CFG_GRP < 0 || CFG_GRP >= CFG_GROUPS.length) CFG_GRP = 0;
+      var navHtml = '<nav class="cf-nav" aria-label="设置分类">' + CFG_GROUPS.map(function(g, i){
+        return '<button class="cf-navitem' + (i === CFG_GRP ? ' on' : '') + '" data-g="' + i + '"' +
+          (i === CFG_GRP ? ' aria-current="true"' : '') + '>' +
+          '<span class="cf-navname">' + esc(g.name) + '</span>' +
+          '<span class="cf-navhint">' + esc(g.hint) + '</span>' +
+          '<span class="cf-navn">' + g.secs.length + '</span></button>';
+      }).join('') + '</nav>';
+      // 组内整组铺开：同类的几节能一次看全，不用来回点标签
+      var bodyHtml = CFG_GROUPS.map(function(g, i){
+        return '<div class="cf-group" data-g="' + i + '"' + (i === CFG_GRP ? '' : ' hidden') + '>' +
+          '<div class="cf-ghead"><h2>' + esc(g.name) + '</h2><span class="t">' + esc(g.hint) + '</span></div>' +
+          g.secs.map(function(t){
+            var inner = SECMAP[t];
+            // 分组表里的标题和 sec() 的标题必须一字不差；对不上就当场显红，别让整节设置静默消失
+            if (inner === undefined) return '<div class="nb-sec">' + esc(t) + '</div>' +
+              '<div class="nb-empty" style="color:var(--amber)">这一节没渲染出来：分组表里的标题对不上（' + esc(t) + '）</div>';
+            return '<div class="nb-sec">' + esc(t) + '</div>' + inner;
+          }).join('') + '</div>';
+      }).join('');
+      if (box) box.innerHTML = '<div class="cf-layout">' + navHtml + '<div class="cf-body">' + bodyHtml + '</div></div>';
+      palGrids(pal);
       if (keepScroll) { var pg0 = document.getElementById('nb-page'); if (pg0) pg0.scrollTop = keepScroll; }
-      Array.prototype.forEach.call(box.querySelectorAll('.nb-jump'), function(b){
+      Array.prototype.forEach.call(box.querySelectorAll('.cf-navitem'), function(b){
         b.onclick = function(){
-          var want = b.getAttribute('data-i');
-          CFG_TAB = Number(want) - 1;
-          Array.prototype.forEach.call(box.querySelectorAll('.nb-jump'), function(x){ x.className = 'nb-jump'; });
-          b.className = 'nb-jump on';
-          Array.prototype.forEach.call(box.querySelectorAll('.nb-secwrap'), function(w){
-            w.hidden = w.getAttribute('data-i') !== want;
+          var want = Number(b.getAttribute('data-g'));
+          CFG_GRP = want;
+          Array.prototype.forEach.call(box.querySelectorAll('.cf-navitem'), function(x){
+            x.className = 'cf-navitem' + (x === b ? ' on' : '');
+            if (x === b) x.setAttribute('aria-current', 'true'); else x.removeAttribute('aria-current');
+          });
+          Array.prototype.forEach.call(box.querySelectorAll('.cf-group'), function(w){
+            w.hidden = w.getAttribute('data-g') !== String(want);
           });
           var pg = document.getElementById('nb-page'); if (pg) pg.scrollTop = 0;
         };
@@ -1884,6 +2760,22 @@
         };
       });
 
+      // 外壳：切换立刻生效（不刷新页面）
+      Array.prototype.forEach.call(box.querySelectorAll('[data-shellv]'), function(b){
+        b.onclick = function(){
+          var v = b.getAttribute('data-shellv');
+          if (((ui.shell || 'notebook') === v)) return;
+          jsend('PUT', '/api/ui', { shell: v })
+            .then(function(){
+              ui.shell = v;
+              applyShell(v);
+              shellPeek(false);
+              tick(v === 'classic' ? '外壳：专注（单栏）' : '外壳：记录本（三栏）');
+              cfgView();
+            })
+            .catch(function(e){ tick('没切换：' + e.message); });
+        };
+      });
       Array.prototype.forEach.call(box.querySelectorAll('[data-splash]'), function(b){
         b.onclick = function(){
           var v = b.getAttribute('data-splash');
@@ -1981,6 +2873,60 @@
             });
           }).catch(function(){ msg('保存失败', false); });
       });
+      // 眼 · 视觉（2026-11-12）
+      on('cf-vsave', function(){
+        var body = { provider: chosen.vprov || 'ollama', model: ($('cf-vmodel') || {}).value || '', baseUrl: ($('cf-vbase') || {}).value || '' };
+        var k = ($('cf-vkey') || {}).value || '';
+        if (k.trim()) body.key = k.trim();
+        jsend('PUT', '/api/vision', body)
+          .then(function(){ tick('视觉配置已保存'); cfgView(); })
+          .catch(function(e){ tick('没保存：' + e.message); });
+      });
+      on('cf-vcloud', function(){
+        jsend('PUT', '/api/vision', { cloudEnabled: !vis.cloudEnabled })
+          .then(function(){ tick('云闸已切换'); cfgView(); })
+          .catch(function(e){ tick('没切换：' + e.message); });
+      });
+      on('cf-vclear', function(){
+        jsend('PUT', '/api/vision', { key: null })
+          .then(function(){ tick('已清除视觉 key'); cfgView(); })
+          .catch(function(e){ tick('没清除：' + e.message); });
+      });
+      // WSL 小房子（2026-11-12）
+      on('cf-wsetup', function(){
+        if (!window.confirm('装/初始化她的 Ubuntu 小房子？约 1GB，可能要几分钟。')) return;
+        tick('装中…（别关页面）');
+        jpost('/api/wsl/setup', {})
+          .then(function(){ tick('小房子好了'); cfgView(); })
+          .catch(function(e){ tick('没装成：' + e.message); });
+      });
+      on('cf-wauto', function(){
+        jsend('PUT', '/api/wsl', { autonomous: !wsl.autonomous })
+          .then(function(){ tick('自主已切换'); cfgView(); })
+          .catch(function(e){ tick('没切换：' + e.message); });
+      });
+      on('cf-wsnap', function(){
+        tick('快照中…');
+        jpost('/api/wsl/snapshot', {})
+          .then(function(){ tick('快照好了'); cfgView(); })
+          .catch(function(e){ tick('没拍成：' + e.message); });
+      });
+      // 陪伴 · 声音（2026-11-12）
+      Array.prototype.forEach.call(box.querySelectorAll('[data-ttsvoice]'), function(b){
+        b.onclick = function(){ var f = $('cf-ttsvoice'); if (f) f.value = b.getAttribute('data-ttsvoice'); };
+      });
+      on('cf-ttssave', function(){
+        var sp = Number(($('cf-ttsspeed') || {}).value || '1');
+        fetch('/api/tts', { method: 'PUT', headers: H, body: JSON.stringify({ backend: chosen.ttsbackend || 'local', voice: ($('cf-ttsvoice') || {}).value || '', speed: isNaN(sp) ? 1 : sp }) })
+          .then(function(r){ return r.json(); }).then(function(j){ tick(j.ok === false ? (j.error || '没保存') : '声音配置已保存'); cfgView(); });
+      });
+      on('cf-ttstest', function(){
+        var m = $('cf-ttsmsg'); if (m) m.textContent = '合成中…';
+        fetch('/api/tts', { method: 'POST', headers: H, body: JSON.stringify({ text: '你好，我是鲸鲸。' }) })
+          .then(function(r){ if (!r.ok) return r.json().then(function(j){ throw new Error(j.error || '失败'); }); return r.blob(); })
+          .then(function(blob){ var a = new Audio(URL.createObjectURL(blob)); a.play(); if (m) m.textContent = '在放了'; })
+          .catch(function(e){ if (m) m.textContent = '试听失败：' + (e.message || e); });
+      });
       // 「换一张」按钮 → 触发隐藏的 file input（WebView 里 label 包 input 有时不弹框）
       Array.prototype.forEach.call(box.querySelectorAll('[data-pick]'), function(b){
         b.onclick = function(){
@@ -2039,6 +2985,87 @@
           }).join('') || '<div class="nb-empty">没有检查项</div>';
         });
       });
+      // 纯前端剪贴板：navigator.clipboard 在非安全上下文不可用，退一步用 execCommand。
+      // 只写剪贴板，不调用任何会写数据目录的服务端动作（exportDiag 会写 home/diag，这里不碰）。
+      function copyDiagText(text, msgEl){
+        var ok = function(){ if (msgEl) { msgEl.textContent = '已复制诊断摘要到剪贴板'; msgEl.style.color = 'var(--cyan)'; } };
+        var bad = function(){ if (msgEl) { msgEl.textContent = '复制失败：请检查浏览器剪贴板权限，或手动复制'; msgEl.style.color = 'var(--amber)'; } };
+        var legacy = function(){
+          try {
+            var ta = document.createElement('textarea');
+            ta.value = text;
+            ta.setAttribute('readonly', '');
+            ta.style.position = 'fixed'; ta.style.top = '-1000px'; ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            var done = document.execCommand('copy');
+            document.body.removeChild(ta);
+            return done;
+          } catch (e) { return false; }
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(ok, function(){ legacy() ? ok() : bad(); });
+        } else {
+          legacy() ? ok() : bad();
+        }
+      }
+      on('cf-diagcopy', function(){
+        var msgEl = $('cf-diagcopy-msg');
+        if (msgEl) { msgEl.textContent = '正在整理…'; msgEl.style.color = ''; }
+        // 纯前端读两个只读接口的关键字段；不新增任何服务端导出动作。
+        Promise.all([
+          fetch('/health').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
+          fetch('/api/version').then(function(r){ return r.json(); }).catch(function(){ return {}; })
+        ]).then(function(res){
+          var h = res[0] || {}, v = res[1] || {};
+          var dg = Array.isArray(h.degraded) ? h.degraded : [];
+          var lines = [
+            'PDLP 诊断摘要',
+            '生成时间: ' + new Date().toISOString(),
+            '版本: ' + (v.version || '—'),
+            '更新策略: ' + (v.updatePolicy || '—') + (v.updatePolicy === 'manual-verified' ? '（人工校验覆盖安装，不会自动更新）' : ''),
+            'Node: ' + (v.node || '—'),
+            '平台 / 架构: ' + (v.platform || '—') + ' / ' + (v.arch || '—'),
+            '最低 Node: ' + (v.minNode || '—'),
+            '健康: ' + (h.ok === false ? '异常' : '正常'),
+            'schema: ' + (h.schema == null ? '—' : h.schema),
+            '记忆(active): ' + (h.memories == null ? '—' : h.memories),
+            '已运行: ' + (h.uptimeS == null ? '—' : h.uptimeS + ' 秒'),
+            '部署槽: ' + (h.release || '—'),
+            '降级项: ' + (dg.length ? dg.join(' · ') : '无')
+          ];
+          copyDiagText(lines.join('\n'), msgEl);
+        }).catch(function(){
+          if (msgEl) { msgEl.textContent = '整理失败：接口没回来'; msgEl.style.color = 'var(--amber)'; }
+        });
+      });
+      // 「检查更新」只读：把 notes / downloadUrl / sha256 当文本展示，不给下载按钮、不触发安装。
+      on('cf-upcheck', function(){
+        var out = $('cf-upout'), m = $('cf-upmsg');
+        if (out) out.innerHTML = '<div class="nb-empty">检查中…</div>';
+        fetch('/api/update-check').then(function(r){ return r.json(); }).then(function(j){
+          j = j || {};
+          var rows = [];
+          if (j.notice) rows.push('<div class="nb-empty">' + esc(j.notice) + '</div>');
+          if (j.hasUpdate) {
+            rows.push('<div class="nb-runrow"><span class="k">有新版</span><span class="v">' +
+              esc(j.current || '—') + ' -> ' + esc(j.latest || '—') + '</span><span></span></div>');
+            rows.push('<div class="nb-runrow"><span class="k">更新说明</span><span class="v">' +
+              esc(j.notes || '—') + '</span><span></span></div>');
+            rows.push('<div class="nb-runrow"><span class="k">下载地址</span><span class="v">' +
+              esc(j.downloadUrl || '—') + '</span><span></span></div>');
+            rows.push('<div class="nb-runrow"><span class="k">SHA-256</span><span class="v">' +
+              esc(j.sha256 || '—') + '</span><span></span></div>');
+            rows.push('<div class="nb-empty">请自行下载、核对 SHA-256 后覆盖安装；本页不会自动下载或安装。</div>');
+          } else if (!j.notice) {
+            rows.push('<div class="nb-empty">当前已是最新（' + esc(j.current || '—') + '）。</div>');
+          }
+          if (out) out.innerHTML = rows.join('');
+          if (m) m.textContent = '只读本地发布清单；本页不会自动下载或安装';
+        }).catch(function(){
+          if (out) out.innerHTML = '<div class="nb-empty">检查失败（接口没回来）</div>';
+        });
+      });
       on('cf-exp', function(){
         var out = $('cf-expmsg'); if (out) out.textContent = '导出中…';
         fetch('/api/export', { method: 'POST', headers: H, body: '{}' })
@@ -2061,8 +3088,38 @@
       });
       Array.prototype.forEach.call(box.querySelectorAll('[data-off]'), function(b){
         b.onclick = function(){
-          fetch('/api/standing/' + encodeURIComponent(b.getAttribute('data-off')) + '/disable', { method: 'POST', headers: H, body: '{}' })
-            .then(function(){ tick('已停用'); cfgView(); });
+          jpost('/api/standing/' + encodeURIComponent(b.getAttribute('data-off')) + '/disable', {})
+            .then(function(){ tick('已停用'); cfgView(); })
+            .catch(function(e){ tick('没停用成：' + e.message); });
+        };
+      });
+      Array.prototype.forEach.call(box.querySelectorAll('[data-revoke]'), function(b){
+        b.onclick = function(){
+          jpost('/api/grants/' + encodeURIComponent(b.getAttribute('data-revoke')) + '/revoke', {})
+            .then(function(){ tick('已收回'); cfgView(); })
+            .catch(function(e){ tick('没收成：' + e.message); });
+        };
+      });
+      // 权限档位：切档会 revokeAll，所以先问一句；失败要说清原因，别静默
+      Array.prototype.forEach.call(box.querySelectorAll('[data-perm]'), function(b){
+        b.onclick = function(){
+          var want = b.getAttribute('data-perm');
+          if (want === curPreset) return;
+          var label = b.textContent;
+          var msg = $('cf-perm-msg');
+          if (!window.confirm('切到「' + label + '」？\n\n会立刻撤销当前所有授权窗口（正在跑的命令不受影响）。')) return;
+          if (msg) msg.textContent = '切换中…';
+          fetch('/api/permission', { method: 'POST', headers: H, body: JSON.stringify({ preset: want, because: '面板上切档位' }) })
+            .then(function(r){ return r.json().then(function(j){ return { ok: r.ok, j: j || {} }; }); })
+            .then(function(x){
+              if (!x.ok || x.j.ok === false) {
+                if (msg) msg.textContent = '没切成：' + (x.j.why || x.j.code || x.j.error || ('HTTP ' + x.ok));
+                return;
+              }
+              tick('档位：' + label);
+              cfgView();
+            })
+            .catch(function(e){ if (msg) msg.textContent = '没切成：' + ((e && e.message) || e); });
         };
       });
     });

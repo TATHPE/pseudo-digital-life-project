@@ -79,6 +79,52 @@ test("confidence 四态（01 §6.2）", () => {
   assert.equal(buildBrief(base({ recalled: mkRecall(3) })).confidence, "answer");
 });
 
+test("弱证据 A/B：只动 P10 提示，真记忆、契约与稳定前缀不变", (t) => {
+  const old = process.env.JJ_NEED_EVIDENCE_NOTE;
+  t.after(() => { if (old === undefined) delete process.env.JJ_NEED_EVIDENCE_NOTE; else process.env.JJ_NEED_EVIDENCE_NOTE = old; });
+  const input = base({ contracts: ["称呼小林"], recalled: mkRecall(1) });
+  process.env.JJ_NEED_EVIDENCE_NOTE = "0";
+  const off = buildBrief(input);
+  process.env.JJ_NEED_EVIDENCE_NOTE = "1";
+  const on = buildBrief(input);
+  assert.ok(!off.text.includes("检索提示：need_evidence"));
+  assert.ok(on.text.includes("检索提示：need_evidence"));
+  assert.ok(on.text.includes("不等于没有记录"));
+  assert.ok(on.text.includes("契约里写着的也照答"));
+  assert.ok(on.text.includes("称呼小林"));
+  assert.equal(on.prefixHash, off.prefixHash);
+  assert.equal(on.confidence, off.confidence);
+  const lines = (s: string) => s.split("\n").filter((l) => l.includes("cite:"));
+  assert.deepEqual(lines(on.text), lines(off.text));
+  assert.ok(!on.overBudget);
+});
+
+test("弱证据：重排 NONE 进提示；answer 与真空召回不额外念提示", () => {
+  const input = base({ recalled: mkRecall(3) });
+  assert.ok(!buildBrief(input).text.includes("检索提示：need_evidence"));
+  const none = buildBrief({ ...input, rerankNone: true });
+  assert.equal(none.confidence, "need_evidence");
+  assert.ok(none.text.includes("检索提示：need_evidence"));
+  assert.ok(!buildBrief(base()).text.includes("检索提示：need_evidence"));
+});
+
+test("弱证据：置信度只看预算内证据；零召回不因 P6 有契约就升级（2026-11-14 收紧）", () => {
+  const cut = buildBrief(base({ recalled: mkRecall(3), budget: { recalled: 0 } }));
+  assert.equal(cut.confidence, "abstain");
+  assert.ok(cut.text.includes("这一轮没有与你问的这件事相关的记忆"));
+  // P6 契约层每轮都在，它不能替本轮「什么都没召回」背书。收紧后走硬拒答，
+  // 但契约里写着的称呼仍要照答（11-04 修复不回退）。
+  const p6 = buildBrief(base({ contracts: ["称呼小林"], recalled: [] }));
+  assert.equal(p6.confidence, "abstain");
+  assert.ok(p6.text.includes("这一轮没有与你问的这件事相关的记忆"));
+  assert.ok(p6.text.includes("契约层 P6 里明确写着的"), "仍允许照答契约里的称呼");
+  assert.ok(!p6.text.includes("契约里写着的，就照着答"), "不该叠加 CONTRACT_ONLY_NOTE");
+  assert.ok(!p6.text.includes("检索提示：need_evidence"), "零召回不注入弱证据提示");
+  // 防回退：旧版会把 CONTRACT_ONLY_NOTE + evidenceNote 一起塞进 P10（+217 token）。
+  const bare = buildBrief(base());
+  assert.ok(p6.tokens - bare.tokens < 120, `零召回不该因契约多塞两段提示（+${p6.tokens - bare.tokens}）`);
+});
+
 test("时间措辞三态（18 §2.3）：断片 / 间隔 / 首次", () => {
   const outage = timeLine(base({
     outage: { from: new Date("2026-10-28T02:14:00"), to: new Date("2026-10-28T07:30:00"), kind: "power" },
@@ -292,4 +338,28 @@ test("P10 带上「多久以前」：权重不是时间（2026-11-09）", () => 
   // 没有 created_at 的旧数据不许多出一个空标签
   assert.ok(!one(mk()).includes("·  ·"), "不许渲染空的时间段");
   assert.ok(!/\d+ 天前|今天|个月前/.test(lines(mk())[0]!), "没有时间就不写");
+});
+
+// 追加式状态快照（2026-11-14，学自 dsh-world 的 mood 快照）
+test("P7 变化行只追加不替换，稳定前缀逐字不变", () => {
+  const state = { energy: 0.7, closeness: 0.3 };
+  const plain = buildBrief(base({ state }));
+  const note = "【状态变化】energy 0.700 → 0.680（以最新一条为准，之前那条不再算数）";
+  const withNote = buildBrief(base({ state, stateNote: note }));
+  assert.equal(withNote.prefixHash, plain.prefixHash, "P1–P4 稳定前缀不许动");
+  assert.ok(!plain.text.includes("【状态变化】"), "没变化就不该有快照行");
+  assert.ok(withNote.text.includes(note), "变化行要真的进正文");
+  assert.ok(withNote.text.includes("【状态】energy 0.70"), "当前值还在：追加不是替换");
+  assert.ok(withNote.tokens >= plain.tokens);
+});
+
+// coverage: partial（2026-11-14，学自 dsh-world）：没读到的来源 ≠ 事情没发生过
+test("P10 检索不完整提示：只在有缺口时出现，稳定前缀不变", () => {
+  const plain = buildBrief(base());
+  const partial = buildBrief(base({ retrievalIncomplete: ["向量检索不可用（缺 embedder，本轮只有字面检索）"] }));
+  assert.equal(partial.prefixHash, plain.prefixHash, "P1–P4 稳定前缀不许动");
+  assert.ok(!plain.text.includes("检索不完整"), "完整检索时不该多这句");
+  assert.ok(partial.text.includes("检索不完整"));
+  assert.ok(partial.text.includes("零命中不等于没发生过"));
+  assert.ok(partial.tokens > plain.tokens);
 });

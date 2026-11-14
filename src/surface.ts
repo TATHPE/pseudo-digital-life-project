@@ -13,6 +13,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import { bigrams } from "./text.ts";
 import { WHY_MAX } from "./links.ts";
+import { localDay, localDayOf } from "./localday.ts";
 
 export interface SurfaceInput {
   now: Date;
@@ -99,15 +100,10 @@ export function noteSurfaced(db: DatabaseSync, now: Date, pick: SurfacePick): vo
   } catch { /* ignore */ }
 }
 
-/** 本地日期（YYYY-MM-DD）。库里时间戳混着 Z 与 +08:00，按 UTC 切会把一天算错 */
-function localDay(t: Date): string {
-  return new Date(t.getTime() - t.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-}
-
-/** 今天已经浮过几条（按本地日期切） */
+/** 今天已经浮过几条（本地日界统一走 localday.ts；库里时间戳混着 Z 与 +08:00） */
 export function usedToday(db: DatabaseSync, now: Date): number {
   const day = localDay(now);
-  return readLog(db).filter((x) => localDay(new Date(x.ts)) === day).length;
+  return readLog(db).filter((x) => localDayOf(x.ts) === day).length;
 }
 
 function readLog(db: DatabaseSync): Array<{ ts: string; key: string }> {

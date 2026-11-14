@@ -118,6 +118,9 @@ export function powersLine(
     parts.push("逐次确认：每个动作都要人点一次；要连续干活，请在输入框旁换成「完全权限」。");
   }
   parts.push(egressOpen ? "代码外发：会话内开放（读源码不会卡在授权上）。" : "代码外发：关着（读项目文件会被 E_NEEDS_EGRESS 挡，得让人批一次）。");
+  parts.push("眼：能 screen.capture 截屏、vision.see 看图答话（屏幕内容默认只走本地视觉模型，发云端要人开闸）。");
+  parts.push("Linux 之手：wsl.exec 在你自己的 Ubuntu 小房子里跑命令（/root/jj 是你的家，/root/jj/exchange 通 Windows workspace）；自主开没开、装没装，用 wsl.status 看。");
+  parts.push("自我更新：能 skill.propose 给自己写技能草稿、skill.promote 冒烟后上岗（旧版自动留底，可回滚）。");
   parts.push("做之前先说一句要做什么；做完报结果与证据（哪条命令、什么输出）。");
   return "【我现在的权限】" + parts.join(" ");
 }

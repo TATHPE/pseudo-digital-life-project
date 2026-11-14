@@ -175,6 +175,21 @@ test("时间轴：同日空隙用 gap 块，跨天把间隔写进日期标签", 
   assert.deepEqual(sameDayGaps, ["7 小时 55 分"], JSON.stringify(sameDayGaps));
 });
 
+test("时间轴：只发出去、没人回答的一轮要标 unanswered（2026-11-13）", () => {
+  const L = (h: number, m: number) => new Date(2026, 10, 13, h, m).toISOString();
+  const b = groupTimeline([
+    { ts: L(21, 29), role: "user", text: "你好" },
+    { ts: L(21, 29), role: "agent", text: "第七次。" },
+    { ts: L(21, 30), role: "user", text: "你的每一轮对话token预算是多少" },
+    { ts: L(22, 46), role: "user", text: "你好" },
+    { ts: L(22, 46), role: "agent", text: "第八声。" },
+  ]);
+  const msgs = b.filter((x) => x.type === "msg") as any[];
+  assert.equal(msgs[0].unanswered, undefined, "有回答的不该标");
+  assert.equal(msgs[2].unanswered, true, "孤立的那轮要标出来");
+  assert.equal(msgs[3].unanswered, undefined, "后面跟了回答就不算");
+});
+
 test("状态行：一句话而不是仪表盘；断片/间隔都说得清", () => {
   assert.match(expenseLine(null, []), /还没聊过/);
   assert.match(expenseLine(0.001, [{ stage: "active", c: 3 }]), /刚刚/);
@@ -231,6 +246,161 @@ test("会话：一问一答挂在同一个 session 上，关掉之后开新的�
     const l2 = await (await fetch(`${base}/api/sessions`)).json() as any;
     assert.equal(l2.sessions.length, 2, "关掉之后是新的一次");
     assert.equal(l2.sessions.filter((x: any) => x.status === "closed").length, 1);
+  } finally { srv.close(); }
+});
+test("会话改名/打断 + 授权窗口收回：面板补全的写操作（2026-11-11）", async () => {
+  const { srv, base } = await start();
+  try {
+    const h = { "content-type": "application/json", "x-jj": "1" };
+    const say = (t: string) => fetch(`${base}/api/say`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: t }) }).then((r) => r.text());
+    await say("第一句");
+    const id = ((await (await fetch(`${base}/api/sessions`)).json()) as any).sessions[0].id;
+
+    // 改名：真写进标题
+    const rn = await fetch(`${base}/api/sessions/${id}/rename`, { method: "POST", headers: h, body: JSON.stringify({ title: "改过的名字" }) });
+    assert.equal(rn.status, 200);
+    const detail = await (await fetch(`${base}/api/sessions/${id}`)).json() as any;
+    assert.equal(detail.session.title, "改过的名字");
+
+    // 打断：没有在跑的回答时 interrupted=false（不报错）
+    const it = await (await fetch(`${base}/api/sessions/${id}/interrupt`, { method: "POST", headers: h, body: "{}" })).json() as any;
+    assert.equal(it.ok, true);
+    assert.equal(it.interrupted, false);
+
+    // 授权窗口：开一个 → 列表里有 → 收回后没了
+    const open = await (await fetch(`${base}/api/grants`, { method: "POST", headers: h, body: JSON.stringify({ commands: "node", scope: "workspace", ttlMin: 30, because: "测试窗口" }) })).json() as any;
+    assert.equal(open.ok, true);
+    const gid = open.grant.id;
+    const before = await (await fetch(`${base}/api/grants`)).json() as any[];
+    assert.ok(before.some((g) => g.id === gid), "开出来的窗口要在列表里");
+    const rv = await (await fetch(`${base}/api/grants/${gid}/revoke`, { method: "POST", headers: h, body: "{}" })).json() as any;
+    assert.equal(rv.ok, true);
+    const after = await (await fetch(`${base}/api/grants`)).json() as any[];
+    assert.ok(!after.some((g) => g.id === gid), "收回后不该还在");
+    assert.equal((await fetch(`${base}/api/grants/${gid}/revoke`, { method: "POST", headers: h, body: "{}" })).status, 404, "再收一次要 404");
+  } finally { srv.close(); }
+});
+test("手眼与自我更新的面板路由：WSL 自主开关 / 视觉云闸 / 技能草稿箱（2026-11-12）", async () => {
+  const { srv, base, dir } = await start();
+  try {
+    const h = { "content-type": "application/json", "x-jj": "1" };
+    // WSL：状态形状 + 自主开关（不跑 setup，那会真装 Ubuntu）
+    const w0 = await (await fetch(`${base}/api/wsl`)).json() as any;
+    assert.equal(typeof w0.distro, "string");
+    assert.ok(Array.isArray(w0.snapshots));
+    assert.equal(w0.autonomous, false);
+    const w1 = await (await fetch(`${base}/api/wsl`, { method: "PUT", headers: h, body: JSON.stringify({ autonomous: true }) })).json() as any;
+    assert.equal(w1.ok, true);
+    assert.equal(w1.autonomous, true);
+
+    // 视觉：默认本地、云闸关；切云 + 开闸 + 清 key
+    const v0 = await (await fetch(`${base}/api/vision`)).json() as any;
+    assert.equal(v0.provider, "ollama");
+    assert.equal(v0.cloudEnabled, false);
+    const v1 = await (await fetch(`${base}/api/vision`, { method: "PUT", headers: h, body: JSON.stringify({ provider: "cloud", model: "glm-4v", baseUrl: "https://x/v4", cloudEnabled: true }) })).json() as any;
+    assert.equal(v1.ok, true);
+    assert.equal(v1.provider, "cloud");
+    assert.equal(v1.cloudEnabled, true);
+    assert.equal((await (await fetch(`${base}/api/vision`, { method: "PUT", headers: h, body: JSON.stringify({ key: null }) })).json() as any).ok, true);
+
+    // 技能草稿箱：propose（直接写草稿）→ 列表有 → promote 上岗 → 列表空 + 留版本
+    const { proposeSkill } = await import("../src/selfupdate.ts");
+    assert.equal(proposeSkill(dir, { id: "panel-skill", content: "---\nname: t\ndescription: 测试技能\n---\n\n1. 做事\n", because: "面板接线测试" }).ok, true);
+    const d0 = await (await fetch(`${base}/api/skills/drafts`)).json() as any;
+    assert.ok(d0.drafts.some((x: any) => x.id === "panel-skill"), "草稿要在列表里");
+    const pr = await (await fetch(`${base}/api/skills/drafts/panel-skill/promote`, { method: "POST", headers: h, body: "{}" })).json() as any;
+    assert.equal(pr.ok, true, JSON.stringify(pr));
+    const d1 = await (await fetch(`${base}/api/skills/drafts`)).json() as any;
+    assert.ok(!d1.drafts.some((x: any) => x.id === "panel-skill"), "上岗后草稿清空");
+    assert.ok(d1.versions.length >= 1, "要留版本记录");
+    // 第一版没有 .prev，回滚应诚实报错
+    const rv = await fetch(`${base}/api/skills/revert`, { method: "POST", headers: h, body: JSON.stringify({ id: "panel-skill", why: "试回滚" }) });
+    assert.equal(rv.status, 400);
+  } finally { srv.close(); }
+});
+test("陪伴视图后端：静态资源 MIME/防穿越 + TTS 路由（2026-11-12）", async () => {
+  const { srv, base } = await start();
+  try {
+    const h = { "content-type": "application/json", "x-jj": "1" };
+    // 静态资源：vendored 库取得到、MIME 对
+    const lib = await fetch(`${base}/static/pal/ruic/vendor/mesh-avatar.js`);
+    assert.equal(lib.status, 200);
+    assert.match(String(lib.headers.get("content-type")), /application\/javascript/);
+    // 防穿越：编码的 ../ 不许逃出 static
+    const trav = await fetch(`${base}/static/..%2fserver.ts`);
+    assert.ok(trav.status === 403 || trav.status === 404, "穿越要拒");
+    assert.equal((await fetch(`${base}/static/pal/nope.js`)).status, 404);
+    // TTS 状态：默认 local 未就绪（无模型）
+    const st = await (await fetch(`${base}/api/tts/status`)).json() as any;
+    assert.equal(st.backend, "local");
+    assert.equal(st.ready, false);
+    // 切云 + 持久化 + 音色列表
+    const put = await (await fetch(`${base}/api/tts`, { method: "PUT", headers: h, body: JSON.stringify({ backend: "cloud", voice: "zh-CN-XiaoxiaoNeural", speed: 1.2 }) })).json() as any;
+    assert.equal(put.ok, true);
+    assert.equal(put.backend, "cloud");
+    const voices = await (await fetch(`${base}/api/tts/voices`)).json() as any;
+    assert.equal(voices.backend, "cloud");
+    assert.ok(voices.voices.length >= 1);
+    // 本地缺模型 → 合成诚实报 400
+    await fetch(`${base}/api/tts`, { method: "PUT", headers: h, body: JSON.stringify({ backend: "local" }) });
+    const say = await fetch(`${base}/api/tts`, { method: "POST", headers: h, body: JSON.stringify({ text: "你好" }) });
+    assert.equal(say.status, 400);
+    assert.match((await say.json() as any).error, /E_TTS_NO_MODEL/);
+  } finally { srv.close(); }
+});
+test("陪伴素材管理：/api/pal 选择 + 上传背景 + 导入形象包 + /pal 伺服与防穿越（2026-11-13）", async () => {
+  const { srv, base } = await start();
+  try {
+    const h = { "content-type": "application/json", "x-jj": "1" };
+    const s0 = await (await fetch(`${base}/api/pal`)).json() as any;
+    assert.equal(s0.avatar, "whale");
+    assert.ok(s0.backgrounds.some((b: any) => b.id === "room"));
+    const s1 = await (await fetch(`${base}/api/pal`, { method: "PUT", headers: h, body: JSON.stringify({ bg: "room" }) })).json() as any;
+    assert.equal(s1.bg, "room");
+    const bad = await fetch(`${base}/api/pal`, { method: "PUT", headers: h, body: JSON.stringify({ bg: "nope" }) });
+    assert.equal(bad.status, 400);
+    // 上传背景：原始字节 + 查文件头
+    const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(8)]);
+    const up = await (await fetch(`${base}/api/pal/bg?name=test-bg.png`, { method: "POST", headers: { "x-jj": "1" }, body: png })).json() as any;
+    assert.equal(up.ok, true, JSON.stringify(up));
+    assert.equal(up.bg, "test-bg", "上传后自动用上");
+    const img = await fetch(`${base}/pal/bg/test-bg.png`);
+    assert.equal(img.status, 200);
+    assert.match(String(img.headers.get("content-type")), /image\/png/);
+    const fake = await fetch(`${base}/api/pal/bg?name=x.png`, { method: "POST", headers: { "x-jj": "1" }, body: "<script>" });
+    assert.equal(fake.status, 400);
+    // 防穿越：/pal 根在数据目录，不许逃出去
+    const trav = await fetch(`${base}/pal/..%2fconfig.json`);
+    assert.ok(trav.status === 403 || trav.status === 404, "穿越要拒");
+    // 导入形象包：store-only 最小 zip
+    const rig = Buffer.from(JSON.stringify({ image: { width: 1, height: 2 }, head: {}, eyes: [{}, {}] }));
+    const layers = Buffer.from('{"layers":{}}');
+    const entries = [["rig.json", rig], ["built/layers.json", layers], ["built/base.png", png]] as Array<[string, Buffer]>;
+    const locals: Buffer[] = []; const centrals: Buffer[] = []; let off = 0;
+    for (const [name, data] of entries) {
+      const nb = Buffer.from(name);
+      const lh = Buffer.alloc(30); lh.writeUInt32LE(0x04034b50, 0); lh.writeUInt16LE(20, 4);
+      lh.writeUInt32LE(data.length, 18); lh.writeUInt32LE(data.length, 22); lh.writeUInt16LE(nb.length, 26);
+      locals.push(lh, nb, data);
+      const ch = Buffer.alloc(46); ch.writeUInt32LE(0x02014b50, 0); ch.writeUInt16LE(20, 4); ch.writeUInt16LE(20, 6);
+      ch.writeUInt32LE(data.length, 20); ch.writeUInt32LE(data.length, 24); ch.writeUInt16LE(nb.length, 28); ch.writeUInt32LE(off, 42);
+      centrals.push(ch, nb);
+      off += 30 + nb.length + data.length;
+    }
+    const cb = Buffer.concat(centrals);
+    const eo = Buffer.alloc(22); eo.writeUInt32LE(0x06054b50, 0); eo.writeUInt16LE(entries.length, 8); eo.writeUInt16LE(entries.length, 10);
+    eo.writeUInt32LE(cb.length, 12); eo.writeUInt32LE(off, 16);
+    const zip = Buffer.concat([...locals, cb, eo]);
+    const imp = await (await fetch(`${base}/api/pal/avatar?name=web-test`, { method: "POST", headers: { "x-jj": "1" }, body: zip })).json() as any;
+    assert.equal(imp.ok, true, JSON.stringify(imp));
+    assert.match(imp.avatar, /^u-[0-9a-f]{8}$/, "导入后自动用上");
+    const rigGet = await fetch(`${base}/pal/avatars/${imp.avatar}/rig.json`);
+    assert.equal(rigGet.status, 200);
+    // 删除：先删形象（退回内置），再删背景（退回海洋）
+    const da = await (await fetch(`${base}/api/pal/avatar/${imp.avatar}`, { method: "DELETE", headers: h })).json() as any;
+    assert.equal(da.avatar, "whale");
+    const db = await (await fetch(`${base}/api/pal/bg/test-bg`, { method: "DELETE", headers: h })).json() as any;
+    assert.equal(db.bg, "ocean");
   } finally { srv.close(); }
 });
 test("会话：分叉与撤回（2026-11-05）", async () => {
@@ -1130,5 +1300,59 @@ test("兜底状态：写入后用 dossier 能读到（顶栏据此显示「本�
       .run(JSON.stringify({ at: "2026-11-07T10:00:00Z", model: "qwen2.5:7b-instruct" }));
     const b = await (await fetch(`${base}/api/dossier`)).json() as { context?: { expressFallback?: { model?: string } } };
     assert.equal(b.context?.expressFallback?.model, "qwen2.5:7b-instruct");
+  } finally { srv.close(); }
+});
+
+test("写接口的坏 JSON 一律 400，不再 500，也不漏 SyntaxError（2026-11-14）", async () => {
+  const { base, srv } = await start();
+  try {
+    const H = { "x-jj": "1", "content-type": "application/json" };
+    const cases: Array<[string, string]> = [
+      ["PUT", "/api/ui"], ["PUT", "/api/config"], ["PUT", "/api/host"], ["PUT", "/api/tts"],
+      ["PUT", "/api/vision"], ["PUT", "/api/pal"], ["PUT", "/api/bridge"], ["PUT", "/api/persona"],
+      ["PUT", "/api/models"], ["PUT", "/api/wsl"], ["POST", "/api/tasks"], ["POST", "/api/permission"],
+      ["POST", "/api/super"], ["POST", "/api/grants"],
+    ];
+    for (const [method, path] of cases) {
+      const bad = await fetch(base + path, { method, headers: H, body: "{bad json" });
+      assert.equal(bad.status, 400, `${method} ${path} 坏 JSON 应该是 400，实际 ${bad.status}`);
+      const j = (await bad.json()) as { error?: string };
+      assert.equal(j.error, "E_BAD_JSON", `${path} 要回 E_BAD_JSON`);
+      const empty = await fetch(base + path, { method, headers: H, body: "" });
+      assert.equal(empty.status, 400, `${path} 空 body 也应该是 400`);
+    }
+  } finally { srv.close(); }
+});
+
+test("limit/offset 不是数字时回默认值，不把 NaN 塞进 SQL（2026-11-14）", async () => {
+  const { base, srv } = await start();
+  try {
+    const H = { "x-jj": "1" };
+    for (const u of ["/api/memories?limit=abc", "/api/memories?offset=abc", "/api/logs?limit=abc",
+      "/api/sessions?limit=abc", "/api/memories?limit=-5", "/api/memories?limit=1e309"]) {
+      const r = await fetch(base + u, { headers: H });
+      assert.equal(r.status, 200, `${u} 实际 ${r.status}（这里以前是 500 datatype mismatch）`);
+    }
+  } finally { srv.close(); }
+});
+
+test("权限档位接口：四档可读、可切、切完能读回来（2026-11-14）", async () => {
+  const { base, srv } = await start();
+  try {
+    const H = { "x-jj": "1", "content-type": "application/json" };
+    const before = (await (await fetch(base + "/api/permission", { headers: H })).json()) as {
+      preset: string; presets: Array<{ id: string; label: string; hint: string }>;
+    };
+    assert.deepEqual(before.presets.map((p) => p.id), ["ask", "read", "write", "full"], "四档要齐");
+    assert.ok(before.presets.every((p) => p.label && p.hint), "每档都要有名字和说明，面板直接用");
+
+    const w = await fetch(base + "/api/permission", { method: "POST", headers: H, body: JSON.stringify({ preset: "ask", because: "测试切档" }) });
+    assert.equal(w.status, 200);
+    const after = (await (await fetch(base + "/api/permission", { headers: H })).json()) as { preset: string };
+    assert.equal(after.preset, "ask", "切到 ask 要读得回来");
+
+    // 非法档位要 400，而不是默默接受
+    const bad = await fetch(base + "/api/permission", { method: "POST", headers: H, body: JSON.stringify({ preset: "nope" }) });
+    assert.equal(bad.status, 400);
   } finally { srv.close(); }
 });

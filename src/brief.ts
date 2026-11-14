@@ -149,9 +149,12 @@ export function buildBrief(input: BriefInput): BriefOutput {
   slots.push({ id: "P6", label: "契约记忆", tokens: estimateTokens(p6), stable: false });
 
   const st = input.state;
-  const p7 = st
-    ? `【状态】energy ${st.energy.toFixed(2)}｜closeness ${st.closeness.toFixed(2)}${st.mood ? `｜${st.mood}` : ""}`
-    : "";
+  // 追加式状态快照（2026-11-14）：变化行只在真的变了才追加，不替换上一行、不动稳定前缀。
+  // 缺省时 p7 与旧版逐字相同 —— 现有预算/前缀断言不受影响。
+  const p7parts: string[] = [];
+  if (st) p7parts.push(`【状态】energy ${st.energy.toFixed(2)}｜closeness ${st.closeness.toFixed(2)}${st.mood ? `｜${st.mood}` : ""}`);
+  if (input.stateNote) p7parts.push(input.stateNote);
+  const p7 = p7parts.join("\n");
   slots.push({ id: "P7", label: "我的状态", tokens: estimateTokens(p7), stable: false });
 
   // ── 易变（P8–P10）────────────────────────────────────
@@ -174,12 +177,14 @@ export function buildBrief(input: BriefInput): BriefOutput {
   // 靠自律没用（她自己也这么说）。这里改的是**上下文结构**：没召回 / 只召回到契约条目时，
   // 就在 P10 里紧跟一段硬提示，并把契约第一条**再念一遍** —— 放在她犯错的位置，
   // 而不是指望她记得最前面那一条。放易变区，稳定前缀的 prefixHash 不受影响。
-  const narrativeHits = (input.recalled ?? []).filter((m) => (m.layer ?? "narrative") !== "contract").length;
+  // 置信度只看真正装进 P10 的证据，预算裁掉的不能替本轮背书。
+  const narrativeHits = r.kept.filter((m) => (m.layer ?? "narrative") !== "contract").length;
   const noNarrative = narrativeHits === 0;
   const ABSTAIN_NOTE = [
     "（这一轮没有与你问的这件事相关的记忆。",
     "不要说「上次你说过」「我们之前提过」这类话 —— 那是编。不知道就说不知道，问她。）",
     "（契约第一条：不确定是不是真的记得，就说不记得。别把「我觉得应该记得」说成「我记得」。）",
+    "（契约层 P6 里明确写着的称呼、边界、偏好，照着答；那不是「上次你说过」，别装不知道。）",
   ].join("\n");
   // 只召回到契约条目（2026-11-04）：这时候说「没有相关记忆」是**假话** ——
   // 她的称呼、生日、边界全在 P6 里，而 P6 每轮都在。实测「我该叫你什么」被这句
@@ -189,9 +194,30 @@ export function buildBrief(input: BriefInput): BriefOutput {
     "（这一轮没有召回叙事记忆，只有契约层（P6）里的条目。",
     "契约里写着的，就照着答；契约里没有的，说不知道 —— 别猜，也别编「上次你说过」。）",
   ].join("\n");
+  // 收紧（2026-11-14）：「只召回到契约条目」指 **P10 召回里**真的装着契约条目，
+  // 不是「P6 有内容」。P6 每轮都在，把 c.kept 也算进来会让任何零召回的陌生问题
+  // 都升级成 need_evidence、白叠两段提示（实测 +217 token），「契约里写着的就照着答」
+  // 还会把无关问题往契约上硬套。契约里的内容改由 ABSTAIN_NOTE 第 4 句兜住，
+  // 不会退回 11-04 那个「连称呼都不敢答」的坑。真机 A/B 见 2026-11-14 工作日志。
   const contractOnly = noNarrative && r.lines.length > 0;
+  let confidence: BriefOutput["confidence"] =
+    noNarrative ? (contractOnly ? "need_evidence" : "abstain") : narrativeHits < 2 ? "need_evidence" : "answer";
+  if (input.rerankNone && confidence === "answer") confidence = "need_evidence";
+  // 只提示待核对，不否认已有证据。A/B 可关；稳定前缀与召回行都不变。
+  const evidenceNote = confidence === "need_evidence" && process.env.JJ_NEED_EVIDENCE_NOTE !== "0"
+    ? "（检索提示：need_evidence。候选相关性待核对，不等于没有记录。\n" +
+      "回答前逐项核对：记录说的是谁、哪件事、哪个细节。主体或事件不同，就不能用来回答；问题本身不是事情发生过的证据。\n" +
+      "明确记载的就照答，契约里写着的也照答；称呼用户与称呼你不可颠倒。不相关的不要套用，缺的细节先说不知道，再查证或问她，别编共同经历。\n" +
+      "例：只记着朋友住苏州，问用户住哪，应答『不知道你住哪』；只记着她独自逛书店，问你们共同旅行的细节，应答『没有那次共同旅行的记录』。）"
+    : "";
   const p10body = r.lines.length ? `【召回】\n${r.lines.join("\n")}` : "【召回】无";
-  const p10 = noNarrative ? `${p10body}\n${contractOnly ? CONTRACT_ONLY_NOTE : ABSTAIN_NOTE}` : p10body;
+  // coverage: partial（2026-11-14，学自 dsh-world）：有来源没读到时，零命中不能说成「没发生过」。
+  // 放易变区，缺省时 p10 与旧版逐字相同，稳定前缀不受影响。
+  const coverageNote = input.retrievalIncomplete?.length
+    ? `（检索不完整：${input.retrievalIncomplete.join("；")}。有来源没读到，零命中不等于没发生过；别把「没读到」说成「没发生过」，需要时再查一次或问她。）`
+    : "";
+  const p10 = [p10body, noNarrative ? (contractOnly ? CONTRACT_ONLY_NOTE : ABSTAIN_NOTE) : "", evidenceNote, coverageNote]
+    .filter(Boolean).join("\n");
   slots.push({ id: "P10", label: "召回", tokens: estimateTokens(p10), stable: false });
 
   // ── 她自己那一层（H-a / H-b）────────────────────────
@@ -292,14 +318,6 @@ export function buildBrief(input: BriefInput): BriefOutput {
   // ── 本轮输入 ────────────────────────────────────────
   const p11 = input.user;
   slots.push({ id: "P11", label: "用户输入", tokens: estimateTokens(p11), stable: false });
-
-  // confidence 四态（01 §6.2）：召回为空时必须能说"不知道"
-  // 只有契约条目 → "need_evidence"：不是"没有证据"，是"证据不在叙事层"（2026-11-04）
-  let confidence: BriefOutput["confidence"] =
-    narrativeHits === 0 ? (contractOnly ? "need_evidence" : "abstain") : narrativeHits < 2 ? "need_evidence" : "answer";
-  // 重排器说「都没有」时按保守回退保留了候选：召回不为空，但证据并不强。
-  // 不许标成 answer（那是假装确定）；也不动 abstain（真的没召回时仍要能拒答）。
-  if (input.rerankNone && confidence === "answer") confidence = "need_evidence";
 
   // ── 总预算：真的按 b.total 收口（2026-11-09）────────────────
   // 以前 b.total 只被赋值、从未被读取：各槽位的 fit() 只管自己的分项预算，

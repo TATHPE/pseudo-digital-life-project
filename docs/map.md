@@ -8,10 +8,10 @@
 
 | 项 | 数量 |
 |---|---|
-| 源文件（src/**/*.ts） | 127 |
-| 错误码 E_* | 237 |
-| verbs | 27 |
-| CLI 子命令 | 40 |
+| 源文件（src/**/*.ts） | 135 |
+| 错误码 E_* | 264 |
+| verbs | 33 |
+| CLI 子命令 | 42 |
 
 ## 错误码 E_*
 
@@ -28,16 +28,18 @@
 | `E_BAD_ARG` | `src/plugins.ts` |
 | `E_BAD_ARG_VALUE` | `src/toolsmoke.ts` |
 | `E_BAD_ARGS` | `src/toolsmoke.ts` |
-| `E_BAD_ARGV` | `src/agentguard.ts` `src/execute.ts` `src/permcheck.ts` `src/shell.ts` `src/verbs.ts` |
+| `E_BAD_ARGV` | `src/agentguard.ts` `src/execute.ts` `src/permcheck.ts` `src/shell.ts` `src/verbs.ts` `src/wsl.ts` |
+| `E_BAD_AVATAR` | `src/pal.ts` `src/web/server.ts` |
 | `E_BAD_COMMAND` | `src/plugins.ts` |
 | `E_BAD_ENDPOINT` | `src/transport.ts` |
-| `E_BAD_IMAGE` | `src/web/server.ts` |
+| `E_BAD_IMAGE` | `src/pal.ts` `src/web/server.ts` |
+| `E_BAD_JSON` | `src/web/body.ts` `src/web/server.ts` |
 | `E_BAD_KEY` | `src/web/routes/config.ts` |
 | `E_BAD_LINK` | `src/web/routes/control.ts` |
 | `E_BAD_MODE` | `src/web/server.ts` |
 | `E_BAD_MODEL` | `src/web/routes/config.ts` |
 | `E_BAD_NAME` | `src/plugins.ts` `src/selfupdate.ts` `src/web/server.ts` |
-| `E_BAD_PATH` | `src/gitview.ts` `src/web/routes/control.ts` |
+| `E_BAD_PATH` | `src/gitview.ts` `src/web/routes/control.ts` `src/web/server.ts` |
 | `E_BAD_PRESET` | `src/web/routes/control.ts` |
 | `E_BAD_RANGE` | `src/decayparams.ts` |
 | `E_BAD_REGEX` | `src/project.ts` |
@@ -51,7 +53,9 @@
 | `E_BAD_TARGET` | `src/decayparams.ts` `src/permcheck.ts` |
 | `E_BAD_TEMPLATE` | `src/shell.ts` |
 | `E_BAD_THEME` | `src/web/routes/config.ts` |
+| `E_BAD_VERSION` | `src/release.ts` |
 | `E_BAD_WS` | `src/web/server.ts` |
+| `E_BAD_ZIP` | `src/pal.ts` `src/web/server.ts` |
 | `E_BRIDGE_HTTP_` | `src/bridge.ts` |
 | `E_CALL` | `src/toolsmoke.ts` |
 | `E_CONFIG` | `src/cli/night.ts` `src/transport.ts` `src/web/server.ts` |
@@ -124,8 +128,9 @@
 | `E_NIGHTLOG` | `src/web/routes/status.ts` |
 | `E_NO_ARGV` | `src/shell.ts` |
 | `E_NO_ASSET` | `src/web/server.ts` |
-| `E_NO_AVATAR` | `src/web/server.ts` |
+| `E_NO_AVATAR` | `src/pal.ts` `src/web/server.ts` |
 | `E_NO_BASH` | `src/web/routes/config.ts` |
+| `E_NO_BG` | `src/pal.ts` |
 | `E_NO_CALL` | `src/toolsmoke.ts` |
 | `E_NO_CANDIDATES` | `src/agentguard.ts` |
 | `E_NO_CAPABILITY` | `src/execute.ts` `src/permcheck.ts` `src/tools.ts` |
@@ -158,6 +163,7 @@
 | `E_NO_SESSION` | `src/web/server.ts` |
 | `E_NO_SHELL` | `src/verbs.ts` |
 | `E_NO_SKILL` | `src/skills.ts` |
+| `E_NO_SNAPSHOT` | `src/wsl.ts` |
 | `E_NO_TARGET` | `src/cli/deploy.ts` |
 | `E_NO_TASK` | `src/web/routes/config.ts` |
 | `E_NO_TEMPLATE` | `src/shell.ts` |
@@ -170,6 +176,7 @@
 | `E_NOT_DIR` | `src/project.ts` |
 | `E_NOT_FILE` | `src/project.ts` |
 | `E_NOT_FOUND` | `src/agentguard.ts` `src/pathsafe.ts` `src/plugins.ts` `src/selfupdate.ts` `src/verbs.ts` `src/web/routes/memory.ts` `src/web/server.ts` |
+| `E_NOT_ZIP` | `src/pal.ts` `src/web/server.ts` |
 | `E_NOTHING_TO_DO` | `src/web/routes/config.ts` |
 | `E_NOTHING_TO_UNDO` | `src/web/server.ts` |
 | `E_OLLAMA_DOWN` | `src/cli/jingjing.ts` |
@@ -178,7 +185,7 @@
 | `E_OUT_OF_RANGE` | `src/decayparams.ts` |
 | `E_OUTPUT_TRUNCATED` | `src/web/routes/setup.ts` |
 | `E_OUTSIDE_HOME` | `src/web/server.ts` |
-| `E_PATH_DENIED` | `src/agentguard.ts` `src/pathsafe.ts` `src/project.ts` `src/shell.ts` `src/verbs.ts` |
+| `E_PATH_DENIED` | `src/agentguard.ts` `src/pathsafe.ts` `src/project.ts` `src/shell.ts` `src/verbs.ts` `src/web/server.ts` |
 | `E_PENDING_` | `src/web/routes/control.ts` |
 | `E_PENDING_EXPIRED` | `src/web/routes/control.ts` |
 | `E_PENDING_ID` | `src/confirm.ts` |
@@ -189,6 +196,7 @@
 | `E_POLICY_MODEL_CORRUPT` | `src/startupcheck.ts` |
 | `E_PRESET_READ_ONLY` | `src/grant.ts` |
 | `E_PRIVACY` | `src/cli/jingjing.ts` `src/provider.ts` |
+| `E_PROMOTE` | `src/verbs.ts` |
 | `E_PROPOSAL_ARGV_BIN` | `src/proposals.ts` |
 | `E_PROPOSAL_ARGV_PIPE` | `src/proposals.ts` |
 | `E_PROPOSAL_BACKLOG` | `src/proposals.ts` |
@@ -212,6 +220,7 @@
 | `E_ROOT_DIR` | `src/datadir.ts` |
 | `E_SANDBOX_UNAVAILABLE` | `src/shell.ts` |
 | `E_SCHEMA_MISMATCH` | `src/startupcheck.ts` |
+| `E_SCREEN_CAPTURE` | `src/vision.ts` |
 | `E_SETUP_BUSY` | `src/web/routes/setup.ts` |
 | `E_SKILL_NAME` | `src/skills.ts` |
 | `E_SKILL_READ` | `src/skills.ts` |
@@ -239,9 +248,13 @@
 | `E_TOKEN_MISMATCH` | `src/shell.ts` |
 | `E_TOKEN_UNKNOWN` | `src/shell.ts` |
 | `E_TOKEN_USED` | `src/shell.ts` |
-| `E_TOO_BIG` | `src/ingest.ts` `src/plugins.ts` `src/project.ts` `src/selfupdate.ts` `src/verbs.ts` `src/web/server.ts` |
+| `E_TOO_BIG` | `src/ingest.ts` `src/pal.ts` `src/plugins.ts` `src/project.ts` `src/selfupdate.ts` `src/verbs.ts` `src/web/server.ts` |
+| `E_TOO_MANY` | `src/pal.ts` |
 | `E_TOOL` | `src/mcp.ts` `src/tools.ts` |
 | `E_TOOL_FAILED` | `src/agent.ts` |
+| `E_TTS_EMPTY` | `src/tts.ts` |
+| `E_TTS_NO_MODEL` | `src/tts.ts` |
+| `E_TTS_TOO_LONG` | `src/tts.ts` |
 | `E_UNKNOWN_FIELD` | `src/decayparams.ts` |
 | `E_UNKNOWN_GAP` | `src/profile.ts` |
 | `E_UNKNOWN_KIND` | `src/decayparams.ts` |
@@ -251,9 +264,23 @@
 | `E_UNSUPPORTED_CONTENT` | `src/mcp.ts` |
 | `E_UPLOAD` | `src/web/server.ts` |
 | `E_VERB` | `src/agentguard.ts` `src/execute.ts` |
+| `E_VISION_CLOUD_OFF` | `src/vision.ts` |
+| `E_VISION_HTTP` | `src/vision.ts` |
+| `E_VISION_NO_CONFIG` | `src/vision.ts` |
+| `E_VISION_NO_KEY` | `src/vision.ts` |
+| `E_VISION_NO_MODEL` | `src/vision.ts` |
 | `E_WIPE_MARK_FAILED` | `src/web/routes/config.ts` |
 | `E_WRITE` | `src/reembed.ts` |
 | `E_WRONG_TOOL` | `src/toolsmoke.ts` |
+| `E_WSL_DENY` | `src/grant.ts` `src/verbs.ts` |
+| `E_WSL_EXPORT` | `src/wsl.ts` |
+| `E_WSL_IMPORT` | `src/wsl.ts` |
+| `E_WSL_INIT` | `src/wsl.ts` |
+| `E_WSL_INSTALL` | `src/wsl.ts` |
+| `E_WSL_NO_DISTRO` | `src/wsl.ts` |
+| `E_WSL_UNAVAILABLE` | `src/wsl.ts` |
+| `E_WSL_UNREGISTER` | `src/wsl.ts` |
+| `E_ZIP_METHOD` | `src/pal.ts` |
 
 ## verbs（能力目录）
 
@@ -279,17 +306,23 @@
 | `project.read` | T0 |
 | `project.search` | T0 |
 | `proposal.create` | T1 |
+| `screen.capture` | T1 |
 | `script.run` | T3 |
 | `shell.exec` | T3 |
 | `shell.run` | T3 |
 | `shell.templates` | T0 |
 | `skill.list` | T0 |
+| `skill.promote` | T1 |
+| `skill.propose` | T1 |
 | `skill.read` | T0 |
 | `time.now` | T0 |
+| `vision.see` | T1 |
+| `wsl.exec` | T3 |
+| `wsl.status` | T0 |
 
 ## CLI 子命令
 
-`migrate` · `remember` · `search` · `verify` · `outage` · `serve` · `config` · `models` · `links` · `threads` · `proposal` · `grant` · `standing` · `persona` · `setup` · `capabilities` · `doctor` · `reembed` · `auth` · `usage` · `test` · `night` · `shell` · `ingest` · `docs` · `forget-doc` · `export` · `verify-export` · `import` · `smoke-tools` · `templates` · `redteam` · `verb` · `beat` · `eval` · `decay` · `bench` · `profile` · `bridge` · `task`
+`migrate` · `remember` · `search` · `verify` · `outage` · `serve` · `config` · `models` · `links` · `threads` · `proposal` · `grant` · `standing` · `persona` · `setup` · `capabilities` · `doctor` · `reembed` · `auth` · `usage` · `test` · `night` · `shell` · `ingest` · `docs` · `forget-doc` · `export` · `verify-export` · `import` · `smoke-tools` · `templates` · `redteam` · `verb` · `beat` · `eval` · `decay` · `bench` · `profile` · `bridge` · `task` · `wsl` · `tts`
 
 ## 源文件
 
@@ -353,6 +386,7 @@
 | `src/interview.ts` | 人格访谈（H-4 第 ⑥ 步）。 |
 | `src/journal.ts` | inbox：原始事件的唯一事实源（18 §1.1） |
 | `src/links.ts` | 记忆之间的线（J-5）：抽检与"一句话拆线"。 |
+| `src/localday.ts` | 本地日界（2026-11-14）：全仓「今天」一律走这里，不再各写各的 UTC 切片。 |
 | `src/mcp.ts` | 最小 MCP stdio 客户端（11 §3 方向 B）。 |
 | `src/mcphub.ts` | MCP 连接中心（2026-11-03）。 |
 | `src/md.ts` | 极简 Markdown → HTML（够用、可测、零依赖；所有文本先转义） */ |
@@ -364,6 +398,7 @@
 | `src/notify.ts` | 回执通道（D-3 的前置，`docs/ops/25 §4`）。 |
 | `src/ollama.ts` | Ollama 探测（C-4）：一次 /api/tags + 两个最小调用探针。 |
 | `src/onebot.ts` | OneBot 11 适配器（2026-11-05）：把 QQ 消息接进来，把她的回话发出去。 |
+| `src/pal.ts` | 陪伴形象与背景（2026-11-13）：内置 + 用户自定义，设置页里点一下就换。 |
 | `src/pathsafe.ts` | 路径安全与项目根（叶子模块，2026-11-09 从 verbs.ts / project.ts 抽出）。 |
 | `src/permcheck.ts` | 权限自查（docs/ops/22 §0.4「权限自查」）：回答「**这个能力现在为什么不能用**」。 |
 | `src/persona.ts` | import { readFileSync, mkdirSync, existsSync, readdirSync } from "node |
@@ -379,6 +414,7 @@
 | `src/queryrewrite.ts` | 查询改写 / 别名归一（E-10，2026-11-02） |
 | `src/recall.ts` | 召回装配（17 §2 的 P10 槽位该放什么） |
 | `src/reembed.ts` | 重建向量索引（C-2） |
+| `src/release.ts` | 发布与更新：版本真源、发布清单、产物校验（2026-11-14 P2 产品化）。 |
 | `src/rerank.ts` | 选择性重排（2026-11-05，docs/ops/24 的标准：R@1 和 abstain **同时**变好才落地）。 |
 | `src/retrieve.ts` | 两阶段检索（02 §7.1 实测修订 / 12 §9.1） |
 | `src/schema.ts` | M0 schema（02 §4 + 18 §1 的 outage/审计） */ |
@@ -405,12 +441,16 @@
 | `src/tools.ts` | 工具面（给模型看）——现在只有**一条**执行路径： |
 | `src/toolsmoke.ts` | 工具调用冒烟（P0-1） |
 | `src/transport.ts` | 真正的模型调用层（13 §2 / 19 §0.1 W-A） |
+| `src/tts.ts` | TTS（2026-11-12，陪伴视图 P2）：她开口说话。可插拔后端，本地为主、云备选、音色可选。 |
 | `src/types.ts` | export type Tier = "T0" / "T1" / "T2" / "T3" / "T4"; |
-| `src/verbs.ts` | 能力目录（04 §3）：鲸鲸能碰到的东西**只有这张表里的**。 |
+| `src/verbs.ts` | 能力目录（04 §3）：PDLP 能碰到的东西**只有这张表里的**。 |
+| `src/vision.ts` | 眼（2026-11-12）：截图 + 视觉理解，本地 / 云双路。 |
+| `src/web/body.ts` | 请求体读取与 JSON 解析（2026-11-14） |
 | `src/web/boot.ts` | 开机片头（2026-11-02）。 |
 | `src/web/brand.ts` | 品牌图标（鲸）。旧面板（src/web/page.ts）2026-11-05 撤下、2026-11-06 已删除； |
 | `src/web/desk.ts` | 桌面端的**启动令牌**（2026-11-01：软件只有桌面端，不提供浏览器入口）。 |
 | `src/web/notebook.ts` | 第二条壳：工作记录本（2026-11-05） |
+| `src/web/query.ts` | 查询参数里的整数（2026-11-14） |
 | `src/web/routes/config.ts` | 配置 / 诊断 / 项目 / 导出路由（从 web/server.ts 抽出，行为逐字不变）。 |
 | `src/web/routes/control.ts` | 面板控制路由（从 web/server.ts 抽出，行为逐字不变）：提议 / 外发 / 闲时整理 / |
 | `src/web/routes/memory.ts` | 记忆 / 文档视图与增删改路由（从 web/server.ts 抽出，行为逐字不变）。 |
@@ -422,3 +462,4 @@
 | `src/web/timeline.ts` | 时间轴渲染（17 §4）：**没有"会话"，只有时间；空白要可见** */ |
 | `src/web/welcome.ts` | 首次配置引导页（`/welcome`）。 |
 | `src/weighthistory.ts` | 权重变更历史（E-3b，2026-11-10）。 |
+| `src/wsl.ts` | WSL 之手（2026-11-12）：她自己的 Linux 小房子。 |

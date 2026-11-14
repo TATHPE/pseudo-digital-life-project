@@ -8,6 +8,8 @@
 import type { DatabaseSync } from "node:sqlite";
 import { appendEvent, newEventId, readEvents } from "./journal.ts";
 import { loadState, advance } from "./state.ts";
+import { dayRange } from "./budget.ts";
+import { localDay, localDayOf } from "./localday.ts";
 
 export type ReasonKind = "promise_due" | "anniversary" | "silence" | "explicit" | "none";
 export type Gate = "quiet" | "cap" | "gap" | "no_reason";
@@ -66,7 +68,8 @@ export function findReason(db: DatabaseSync, now: Date, p: Prof, lastEventTs: st
      WHERE status='active' AND strftime('%m-%d', created_at, 'localtime')=?
      ORDER BY importance DESC LIMIT 1`,
   ).get(mmdd) as { id: number; text: string; created_at: string } | undefined;
-  if (anni && !anni.created_at.startsWith(now.toISOString().slice(0, 10))) {
+  // 排除「今天刚写下的」：SQL 按 localtime 取 mm-dd，这里也得按本地日比，别混 UTC 日期。
+  if (anni && localDayOf(anni.created_at) !== localDay(now)) {
     return { kind: "anniversary", text: `一年前的今天：${anni.text}`, memoryRef: anni.id, urgency: 0.6 };
   }
 
@@ -84,10 +87,13 @@ export function findReason(db: DatabaseSync, now: Date, p: Prof, lastEventTs: st
 
 export function decide(db: DatabaseSync, now: Date, p: Prof = DEFAULT_PROFILE, lastEventTs: string | null = null): Decision {
   const localMinutes = minutesOfDay(now);
-  const today = now.toISOString().slice(0, 10);
+  // 每日配额按本地 0 点切：以前 `substr(ts,1,10)` 配 UTC 日期，东八区凌晨会把昨天算进来，
+  // 而同一函数里的 localMinutes 又是本地时区 —— 一个决策混两套口径。
+  const { start, end } = dayRange(now);
   const sentToday = (db.prepare(
-    `SELECT count(*) c FROM intents WHERE decision='send' AND substr(ts,1,10)=?`,
-  ).get(today) as { c: number }).c;
+    `SELECT count(*) c FROM intents WHERE decision='send'
+       AND julianday(ts) >= julianday(?) AND julianday(ts) < julianday(?)`,
+  ).get(start, end) as { c: number }).c;
   const lastSent = (db.prepare(
     `SELECT ts FROM intents WHERE decision='send' ORDER BY ts DESC LIMIT 1`,
   ).get() as { ts: string } | undefined)?.ts ?? null;

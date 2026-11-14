@@ -19,6 +19,7 @@ import { join } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { ID_RE, skillsDir } from "./plugins.ts";
 import { scanSkills, splitFrontmatter } from "./skills.ts";
+import { localDay } from "./localday.ts";
 
 export const MAX_DRAFT_BYTES = 64 * 1024;
 /** 连续失败几次冻结自我更新 */
@@ -131,7 +132,7 @@ export function smokeDraft(home: string, id: string): { ok: boolean; problems: s
 function recordVersion(home: string, what: string, why: string, evidence: string[], rollback: string, now: Date): string {
   const dir = versionsDir(home);
   mkdirSync(dir, { recursive: true });
-  const day = now.toISOString().slice(0, 10);
+  const day = localDay(now);
   let n = 1;
   while (existsSync(join(dir, day + "-" + n + ".md"))) n++;
   const file = join(dir, day + "-" + n + ".md");

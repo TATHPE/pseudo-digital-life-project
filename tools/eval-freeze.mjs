@@ -58,8 +58,12 @@ const local = cfg.local ?? {};
 const embed = local.embed ?? "?";
 const casesCount = Object.values(byGroup).reduce((a, b) => a + b, 0);
 
+// 本地日（YYYY-MM-DD）：.mjs 不能直接 import .ts，这里内联同一口径，别再用 UTC 切片
+const tNow = new Date();
+const today = `${tNow.getFullYear()}-${String(tNow.getMonth() + 1).padStart(2, "0")}-${String(tNow.getDate()).padStart(2, "0")}`;
+
 const row = {
-  date: new Date().toISOString().slice(0, 10),
+  date: today,
   sha: sha.slice(0, 8),
   dirty,
   cases: casesCount,

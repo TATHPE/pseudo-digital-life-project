@@ -1,5 +1,7 @@
 # Pseudo Digital Life Project
 
+> **Naming**: the project is **Pseudo Digital Life Project (PDLP)**. "Jingjing" (鲸鲸) is only the **default persona name** (changeable in settings), not the project name; `jingjing` in paths and CLI commands is a historical internal identifier.
+
 > A digital-life prototype that runs on your own machine: **memories that fade, a persona that versions, and data that never leaves the box.**
 
 [![ci](https://github.com/TATHPE/pseudo-digital-life-project/actions/workflows/ci.yml/badge.svg)](https://github.com/TATHPE/pseudo-digital-life-project/actions/workflows/ci.yml)
@@ -77,7 +79,7 @@ Requires **Node ≥ 24** (`node:sqlite` is still experimental in 22). No build s
 | What is in there | `memory.db` (memories), `persona/` (six blocks), `inbox/` (raw events), `secrets/` (API keys) |
 | How keys are stored | DPAPI-encrypted on Windows — only this machine can decrypt them |
 | Does it go online | Only to local Ollama by default; when using a cloud model, memories marked `local_only` never leave the machine |
-| Does uninstalling delete data | **No.** Use Settings → Workspace → "Reset" to wipe it (it backs up first) |
+| Does uninstalling delete data | **No.** Use Settings → Workspace → "Reset" to wipe it (it backs up first). Before uninstalling a dev install, run `npm run uninstall:guard` (see [`docs/ops/26`](docs/ops/26-更新与卸载策略.md)) |
 
 ## How it works
 
@@ -110,7 +112,7 @@ Design documents (Chinese) live in `docs/`:
 ## Development
 
 ```bash
-npm run check        # types + 720 tests (failed tests are retried; pass-on-retry is reported as FLAKY)
+npm run check        # types + 771 tests (failed tests are retried; pass-on-retry is reported as FLAKY)
 npm run ui:test      # headless Edge, real clicks (needs the server running)
 npm run map          # generate/verify docs/map.md (files · error codes · verbs · commands)
 node src/cli/jingjing.ts eval         # the four retrieval gates
@@ -132,7 +134,7 @@ After changing the assembly fixtures or the embed model, run `--refresh-embeddin
 - If you skip the setup guide, chat only works when a local chat model is installed: it then falls back to that model, which **cannot use tools** and says so in the top bar. With no local model, the banner keeps telling you to configure one
 - Task orchestration advances one step per tick and stops after two steps without progress; there is no planning tree, no parallelism
 - `memory.db` is plain SQLite; secrets are sealed with DPAPI and do not survive a machine move
-- No auto-update, no system integration beyond the tray, single user
+- No **silent** auto-update: new versions are downloaded, SHA-256 verified and installed manually (`/api/version` reports the installed build; see [`docs/ops/26`](docs/ops/26-更新与卸载策略.md)); no system integration beyond the tray, single user
 - P10 still lets 1–2 weakly related memories in: vector candidates have no relevance floor (cos 0.49–0.60 lands next to a true hit at 0.72). A threshold would cut the true hits too; a cross-encoder was evaluated and deliberately dropped on 2026-11-10 (see `docs/ops/24`), so this is an accepted known limit
 ## License
 

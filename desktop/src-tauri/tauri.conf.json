@@ -4,7 +4,11 @@
   "version": "0.1.1",
   "identifier": "life.pseudolife.desktop",
   "build": {
-    "frontendDist": "assets"
+    "frontendDist": "assets",
+    "beforeBuildCommand": {
+      "script": "node tools/sync-desktop.ts",
+      "cwd": "../.."
+    }
   },
   "app": {
     "windows": [
@@ -41,6 +45,6 @@
       "../bundle-src/node": "node"
     },
     "shortDescription": "会记得你的本地数字生命",
-    "longDescription": "鲸鲸的桌面壳：它只负责把本地服务装进一个原生窗口。删掉壳，jingjing serve 7700 仍提供全部能力。"
+    "longDescription": "Pseudo Digital Life Project 的桌面壳：它只负责把本地服务装进一个原生窗口。删掉壳，jingjing serve 7700 仍提供全部能力。"
   }
 }

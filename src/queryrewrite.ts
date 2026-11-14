@@ -53,6 +53,14 @@ export const ALIASES: ReadonlyArray<readonly [string, string]> = [
   ["用了多少", "用量"],
 ];
 
+/** E-12：只桥接已有别名表里的单字终点，不把任意汉字拆成 OR 查询。 */
+export function singleCharBridges(query: string): string[] {
+  if (query.length > 32) return [];
+  return [...new Set(ALIASES
+    .filter(([from, to]) => query.includes(from) && /^[\u4e00-\u9fff]$/.test(to))
+    .map(([, to]) => to))].slice(0, MAX_VARIANTS);
+}
+
 /** 一条查询最多几条变体（原句 + 归一 + 替换），再多多半只是噪声 */
 export const MAX_VARIANTS = 3;
 /** 每个别名替换最多几次（防止一句话被改得面目全非） */

@@ -23,9 +23,9 @@ test("H-6 壳没有 fs / shell / http 权限（不然它就成了第二条能力
 test("H-6 壳只做四件事：拉起 / 探测与报错 / 托盘 / 退出杀进程", () => {
   const src = read("src/main.rs") + read("src/sidecar.rs");
   assert.match(src, /Sidecar::start/, "要拉起 sidecar");
-  assert.match(src, /wait_healthy/, "要健康探测");
-  // 用户 2026-11-01：不做浏览器回落，也不做接 API 自修 —— 起不来就只弹报错
-  assert.match(src, /show_boot_error/, "三次失败要把窗口换成错误页");
+  assert.match(src, /try_ready/, "要健康探测");
+  // 用户 2026-11-01：不做浏览器回落，也不做接 API 自修 —— 真失败就只弹报错
+  assert.match(src, /show_boot_error/, "真失败要把窗口换成错误页");
   assert.ok(!src.includes("fallback_to_browser"), "回落浏览器那条路已经删了");
   assert.ok(!src.includes("xdg-open"), "壳不该再打开系统浏览器");
   assert.match(src, /taskkill/, "Windows 上要杀进程树");
@@ -36,8 +36,9 @@ test("H-6 壳只做四件事：拉起 / 探测与报错 / 托盘 / 退出杀进�
 
 test("H-6 窗口指向我们自己的面板 /（不是 /desk）", () => {
   const src = read("src/main.rs");
-  assert.ok(src.includes("sc.port()"), "窗口地址要用 sidecar 的端口");
+  assert.ok(src.includes("try_ready()"), "窗口地址要用 sidecar 探测到的端口");
   assert.ok(src.includes("?k="), "导航要带一次性令牌（否则服务端 403）");
+  assert.ok(/127\.0\.0\.1:\{\}\/\?k=\{\}/.test(src), "端口与令牌都来自 .desk.json，不许写死");
   assert.ok(!src.includes("{}/desk"), "Trianon 那条线不再进壳（注释里提到它没关系）");
 });
 
@@ -62,19 +63,33 @@ test("H-6 壳把 pid 传给 sidecar，serve 挂了看门狗（硬杀也不留孤
   assert.match(cli, /process\.kill\(parentPid, 0\)/, "看门狗用 signal 0 探活");
 });
 
-test("H-6 探测预算够 Node 启动（≥8 秒），不误判「起不来」", async () => {
-  const { readFileSync } = await import("node:fs");
-  const rs = readFileSync(join(T, "src/sidecar.rs"), "utf8");
-  // 只在 wait_healthy 里找探测循环：sidecar.rs 里还有别的 `for _ in 0..N`
-  // （比如向上找项目根的那个 0..8），钉第一个匹配会误伤
-  const fn = rs.slice(rs.indexOf("pub fn wait_healthy"));
-  const m = fn.match(/for _ in 0\.\.(\d+)/);
-  assert.ok(m, "要有探测循环");
-  const attempts = Number(m![1]);
-  assert.ok(attempts * 500 >= 8000, `探测预算只有 ${attempts * 500}ms —— Node 起 serve 要 3–4 秒`);
+test("H-6 开机冷启动不误判：慢也继续等，且不杀掉刚要起来的 sidecar", () => {
+  // 2026-11-14：原来 wait_healthy 是 24×500ms 一次性预算，到点就判「起不来」；
+  // 而失败分支里 sc Drop → stop() → taskkill，把刚要监听的 node 杀掉 ——
+  // 用户开机第一次点必弹「找不到服务」，第二次才正常。这条守住新的启动握手。
+  const main = read("src/main.rs");
+  const side = read("src/sidecar.rs");
+  assert.match(main, /loop \{/, "探测要持续循环，不是一次预算用完就判死");
+  assert.match(main, /try_ready\(\)/, "每轮重新读 .desk.json 并探端口");
+  assert.match(main, /exited\(\)/, "要区分「慢」和「子进程真退了」");
+  assert.match(main, /secs >= 300/, "要有最终兜底（5 分钟）");
+  assert.ok(!/wait_healthy/.test(main + side), "不许退回一次预算到点就报错的写法");
+  // 句柄必须在探测循环**之前**托管，否则失败分支的 Drop 会把 node 杀掉
+  const hostAt = main.indexOf("*st.sidecar.lock().unwrap() = Some(Sidecar::start");
+  const loopAt = main.indexOf("loop {");
+  assert.ok(hostAt >= 0 && hostAt < loopAt, "sidecar 句柄要先交给 AppState");
+  assert.match(main, /BOOT SLOW 30s/, "慢要写日志 + 给排障页");
+  assert.match(main, /show_boot_waiting/, "冷启动要有「还在准备」提示");
 });
 
 
+
+test("H-6 sidecar 输出落盘（错误页让看的 serve.log 必须真的存在）", () => {
+  const rs = read("src/sidecar.rs");
+  assert.match(rs, /serve\.log/, "stdout/stderr 要写 data/logs/serve.log");
+  assert.match(rs, /\.stdout\(out\)\.stderr\(err\)/, "不许再把 serve 的输出丢进 null()");
+  assert.match(rs, /serve\.prev\.log/, "每次启动轮转，别让日志无限增长");
+});
 
 test("启动不许白屏：窗口第一帧必须是黑的（tauri.conf + 预热页 + html 底色）", async () => {
   const conf = JSON.parse(readFileSync(join(T, "tauri.conf.json"), "utf8"));

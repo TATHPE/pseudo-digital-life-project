@@ -4,6 +4,7 @@
  * 只通过 ConfigCtx 拿闭包量，不与 server.ts 形成运行期循环依赖。
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { readJson } from "../body.ts";
 import type { DatabaseSync } from "node:sqlite";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -78,7 +79,7 @@ export async function handleConfig(ctx: ConfigCtx): Promise<boolean> {
       }
       if (req.method === "PUT" && url.pathname === "/api/ui") {
         const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return true; }
-        const body = JSON.parse(await readBody(req)) as { splash?: string; shell?: string; theme?: string };
+        const body = await readJson(req) as { splash?: string; shell?: string; theme?: string };
         const boot = await import("../boot.ts");
         // 三个都能单独改：只传哪个就改哪个（别把别的顺手写回默认值）
         const patch: { splash?: string; shell?: "classic" | "notebook"; theme?: "ledger" | "hermes" } = {};
@@ -123,7 +124,7 @@ export async function handleConfig(ctx: ConfigCtx): Promise<boolean> {
       }
       if (req.method === "POST" && url.pathname === "/api/tasks") {
         const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return true; }
-        const body = JSON.parse(await readBody(req)) as { action?: string; id?: number; goal?: string };
+        const body = await readJson(req) as { action?: string; id?: number; goal?: string };
         const tk = await import("../../tasks.ts");
         if (body.action === "create") {
           try {
@@ -169,7 +170,7 @@ export async function handleConfig(ctx: ConfigCtx): Promise<boolean> {
       if (req.method === "PUT" && url.pathname === "/api/where") {
         const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return true; }
         const dd = await import("../../datadir.ts");
-        const body = JSON.parse(await readBody(req)) as { root?: string; move?: boolean };
+        const body = await readJson(req) as { root?: string; move?: boolean };
         const v = dd.validRoot(String(body.root ?? ""));
         if (!v.ok) { json(res, 400, { error: v.why }); return true; }
         // 搬迁是可选的：默认不搬（安全），搬的时候先复制、核对文件数
@@ -187,7 +188,7 @@ export async function handleConfig(ctx: ConfigCtx): Promise<boolean> {
       // ── 清空重来：先备份 → 写标记 → 下次启动在 openDb 之前真删（2026-11-06）──
       if (req.method === "POST" && url.pathname === "/api/reset") {
         const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return true; }
-        const body = JSON.parse(await readBody(req)) as { action?: string; confirm?: string };
+        const body = await readJson(req) as { action?: string; confirm?: string };
         if (body.action !== "wipe") { json(res, 400, { error: "E_BAD_ACTION", why: "只支持 wipe" }); return true; }
         if (String(body.confirm ?? "") !== "清空") { json(res, 400, { error: "E_NEED_CONFIRM", why: "确认词要写「清空」" }); return true; }
         const dd = await import("../../datadir.ts");
@@ -219,7 +220,7 @@ export async function handleConfig(ctx: ConfigCtx): Promise<boolean> {
       }
       if (req.method === "PUT" && url.pathname === "/api/host") {
         const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return true; }
-        const body = JSON.parse(await readBody(req)) as { shell?: string; gitbashPath?: string };
+        const body = await readJson(req) as { shell?: string; gitbashPath?: string };
         const allowed = ["auto", "powershell", "pwsh", "gitbash", "bash"];
         const shell = String(body.shell ?? "auto");
         if (!allowed.includes(shell)) { json(res, 400, { error: "E_BAD_SHELL", why: "只能是 " + allowed.join(" / ") }); return true; }
@@ -249,7 +250,7 @@ export async function handleConfig(ctx: ConfigCtx): Promise<boolean> {
       if (req.method === "POST" && url.pathname === "/api/super") {
         const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return true; }
         const sg = await import("../../supergrant.ts");
-        const body = JSON.parse(await readBody(req)) as { action?: string; word?: string; because?: string };
+        const body = await readJson(req) as { action?: string; word?: string; because?: string };
         if (body.action === "off") {
           const r = sg.disableSuper(deps.home) as Extract<Awaited<ReturnType<typeof sg.disableSuper>>, { ok: true }>;
           try {
@@ -284,7 +285,7 @@ export async function handleConfig(ctx: ConfigCtx): Promise<boolean> {
       if (req.method === "POST" && url.pathname === "/api/plugins") {
         const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return true; }
         const pl = await import("../../plugins.ts");
-        const body = JSON.parse(await readBody(req)) as {
+        const body = await readJson(req) as {
           action?: string; kind?: string; name?: string; command?: string; args?: string[]; trust?: string; tools?: string[]; content?: string;
         };
         const kind = body.kind === "skill" ? "skill" : "mcp";
@@ -445,7 +446,7 @@ export async function handleConfig(ctx: ConfigCtx): Promise<boolean> {
       }
       if (req.method === "PUT" && url.pathname === "/api/models") {
         const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return true; }
-        const body = JSON.parse(await readBody(req)) as { default?: string; night?: string; embed?: string };
+        const body = await readJson(req) as { default?: string; night?: string; embed?: string };
         const patch: Record<string, string> = {};
         for (const k of ["default", "night", "embed"] as const) {
           const v = body[k];
@@ -487,7 +488,7 @@ export async function handleConfig(ctx: ConfigCtx): Promise<boolean> {
       }
       if (req.method === "PUT" && url.pathname === "/api/config") {
         const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return true; }
-        const body = JSON.parse(await readBody(req)) as {
+        const body = await readJson(req) as {
           provider?: string; model?: string; baseUrl?: string; key?: string | null;
           agent?: { name?: string };
         };
@@ -538,7 +539,7 @@ export async function handleConfig(ctx: ConfigCtx): Promise<boolean> {
       }
       if (req.method === "PUT" && url.pathname === "/api/persona") {
         const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return true; }
-        const body = JSON.parse(await readBody(req)) as { file?: string; content?: string; because?: string };
+        const body = await readJson(req) as { file?: string; content?: string; because?: string };
         try {
           const r = savePersonaFile(deps.home, body.file as PersonaFile, body.content ?? "", now(), String(body.because ?? "").slice(0, 500));
           // H-5 分代：人格**真的变了**才开新代（重复保存不该产生新一代）
@@ -562,6 +563,140 @@ export async function handleConfig(ctx: ConfigCtx): Promise<boolean> {
           });
         } catch (e) {
           json(res, 400, { error: String(e).replace(/^Error: /, "") });
+        }
+        return true;
+      }
+
+      // ── WSL 之手（2026-11-12）：她自己的 Linux 小房子 ──
+      if (req.method === "GET" && url.pathname === "/api/wsl") {
+        const w = await import("../../wsl.ts");
+        json(res, 200, w.status(deps.home));
+        return true;
+      }
+      if (req.method === "PUT" && url.pathname === "/api/wsl") {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return true; }
+        const body = await readJson(req) as { autonomous?: boolean; distro?: string };
+        const w = await import("../../wsl.ts");
+        writeFileConfig(deps.home, { wsl: {
+          ...(typeof body.autonomous === "boolean" ? { autonomous: body.autonomous } : {}),
+          ...(body.distro ? { distro: String(body.distro).slice(0, 40) } : {}),
+        } });
+        json(res, 200, { ok: true, ...w.status(deps.home) });
+        return true;
+      }
+      if (req.method === "POST" && url.pathname === "/api/wsl/setup") {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return true; }
+        const w = await import("../../wsl.ts");
+        const r = w.setup(deps.home);
+        json(res, r.ok ? 200 : 400, r.ok ? { ok: true, ...w.status(deps.home) } : { ok: false, error: r.why });
+        return true;
+      }
+      if (req.method === "POST" && url.pathname === "/api/wsl/snapshot") {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return true; }
+        const w = await import("../../wsl.ts");
+        const r = w.snapshot(deps.home);
+        json(res, r.ok ? 200 : 400, r.ok ? { ok: true, file: r.file, snapshots: w.listSnapshots(deps.home) } : { ok: false, error: r.why });
+        return true;
+      }
+
+      // ── 眼（2026-11-12）：视觉配置 + 云闸 + key ──
+      if (req.method === "GET" && url.pathname === "/api/vision") {
+        const v = await import("../../vision.ts");
+        const cfg = v.visionConfig(deps.home);
+        const key = secrets().get("vision");
+        json(res, 200, { ...cfg, hasKey: Boolean(key), keyFingerprint: key ? fingerprint(key) : null });
+        return true;
+      }
+      if (req.method === "PUT" && url.pathname === "/api/vision") {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return true; }
+        const body = await readJson(req) as {
+          provider?: string; model?: string; baseUrl?: string; cloudEnabled?: boolean; key?: string | null;
+        };
+        if (body.key === null) secrets().clear("vision");
+        else if (typeof body.key === "string" && body.key !== "") {
+          if (!/^\S{8,}$/.test(body.key)) { json(res, 400, { error: "E_BAD_KEY" }); return true; }
+          secrets().set("vision", body.key.trim());
+        }
+        writeFileConfig(deps.home, { vision: {
+          ...(body.provider === "cloud" || body.provider === "ollama" ? { provider: body.provider } : {}),
+          ...(body.model ? { model: String(body.model).slice(0, 80) } : {}),
+          ...(body.baseUrl ? { baseUrl: String(body.baseUrl).slice(0, 200) } : {}),
+          ...(typeof body.cloudEnabled === "boolean" ? { cloudEnabled: body.cloudEnabled } : {}),
+        } });
+        const v = await import("../../vision.ts");
+        json(res, 200, { ok: true, ...v.visionConfig(deps.home), hasKey: Boolean(secrets().get("vision")) });
+        return true;
+      }
+
+      // ── 自我更新接回路（2026-11-12）：她写的技能草稿箱 ──
+      if (req.method === "GET" && url.pathname === "/api/skills/drafts") {
+        const su = await import("../../selfupdate.ts");
+        json(res, 200, {
+          drafts: su.listDrafts(deps.home),
+          versions: su.recentVersions(deps.home, 8),
+          frozenUntil: su.frozenUntil(deps.db, now()),
+        });
+        return true;
+      }
+      const promoteM = url.pathname.match(/^\/api\/skills\/drafts\/([A-Za-z0-9_-]+)\/promote$/);
+      if (req.method === "POST" && promoteM) {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return true; }
+        const su = await import("../../selfupdate.ts");
+        const r = su.promoteDraft(deps.home, deps.db, promoteM[1]!, now());
+        json(res, r.ok ? 200 : 400, r.ok ? { ok: true, version: r.version, rollback: r.rollback } : { ok: false, error: r.code, why: r.why });
+        return true;
+      }
+      const dropM = url.pathname.match(/^\/api\/skills\/drafts\/([A-Za-z0-9_-]+)\/drop$/);
+      if (req.method === "POST" && dropM) {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return true; }
+        const su = await import("../../selfupdate.ts");
+        const r = su.dropDraft(deps.home, dropM[1]!);
+        json(res, r.ok ? 200 : 400, r.ok ? { ok: true } : { ok: false, error: r.why });
+        return true;
+      }
+      if (req.method === "POST" && url.pathname === "/api/skills/revert") {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return true; }
+        const body = await readJson(req) as { id?: string; why?: string };
+        const su = await import("../../selfupdate.ts");
+        const r = su.revertSkill(deps.home, deps.db, String(body.id ?? ""), String(body.why ?? ""), now());
+        json(res, r.ok ? 200 : 400, r.ok ? { ok: true, version: r.version } : { ok: false, error: r.code, why: r.why });
+        return true;
+      }
+
+      // ── TTS（2026-11-12，陪伴视图 P2）：她开口说话 ──
+      if (req.method === "GET" && url.pathname === "/api/tts/voices") {
+        const t = await import("../../tts.ts");
+        json(res, 200, await t.listVoices(deps.home));
+        return true;
+      }
+      if (req.method === "GET" && url.pathname === "/api/tts/status") {
+        const t = await import("../../tts.ts");
+        json(res, 200, await t.ttsStatus(deps.home));
+        return true;
+      }
+      if (req.method === "PUT" && url.pathname === "/api/tts") {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return true; }
+        const body = await readJson(req) as { backend?: string; voice?: string; speed?: number; modelPath?: string };
+        writeFileConfig(deps.home, { tts: {
+          ...(body.backend === "local" || body.backend === "cloud" ? { backend: body.backend } : {}),
+          ...(body.voice !== undefined ? { voice: String(body.voice).slice(0, 80) } : {}),
+          ...(typeof body.speed === "number" ? { speed: body.speed } : {}),
+          ...(body.modelPath ? { modelPath: String(body.modelPath).slice(0, 300) } : {}),
+        } });
+        const t = await import("../../tts.ts");
+        json(res, 200, { ok: true, ...(await t.ttsStatus(deps.home)) });
+        return true;
+      }
+      if (req.method === "POST" && url.pathname === "/api/tts") {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return true; }
+        const body = await readJson(req) as { text?: string; voice?: string };
+        const t = await import("../../tts.ts");
+        try {
+          const r = await t.synthesize(deps.home, String(body.text ?? ""), body.voice ? String(body.voice) : undefined);
+          res.writeHead(200, { "content-type": r.mime, "content-length": String(r.data.length), "cache-control": "no-store" });
+          res.end(r.data);
+        } catch (e) {
+          json(res, 400, { error: String((e as Error).message ?? e).replace(/^Error: /, "") });
         }
         return true;
       }

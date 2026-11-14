@@ -159,7 +159,7 @@ export async function runAssembly(
     const b = buildBrief({
       now, persona,
       contracts: openContracts(d.db, now).map((x) => x.text),
-      recalled: rc.recalled, user: c.q,
+      recalled: rc.recalled, rerankNone: rc.rerankNone, user: c.q,
     });
     const p10 = p10Of(b.text);
     maxTokens = Math.max(maxTokens, b.tokens);

@@ -28,8 +28,9 @@ import { coreFpFromHome, type CoreFp } from "./fingerprint.ts";
 /** 一版载荷里允许出现的目录（顺序稳定，便于哈希） */
 export const PAYLOAD_DIRS = ["persona", "skills"] as const;
 
-/** 会被"应用到 live home"的目录（skills 目前还没有消费者，先只应用 persona） */
-export const APPLIED_DIRS = ["persona"] as const;
+/** 会被"应用到 live home"的目录。persona 与 skills 都是数据文件，回滚/切槽即时生效，不用重启。
+ *  （2026-11-12：skills 已有消费者 scanSkills + skill.propose/promote，补进来；此前只应用 persona。） */
+export const APPLIED_DIRS = ["persona", "skills"] as const;
 
 export interface Manifest {
   id: string;

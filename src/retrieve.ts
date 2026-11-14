@@ -10,7 +10,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { Embedder } from "./embed.ts";
 import { ftsQuery } from "./text.ts";
-import { queryVariants, onlyStopwordHits } from "./queryrewrite.ts";
+import { queryVariants, onlyStopwordHits, singleCharBridges } from "./queryrewrite.ts";
 import { at } from "./assert.ts";
 import { bigrams } from "./text.ts";
 import type { Stage } from "./decay.ts";
@@ -239,6 +239,18 @@ export async function search(
     if (dropped) {
       ranked = kept;
       degraded.push("stopword_filtered");
+    }
+  }
+
+  // E-12：常规候选全空才补单字别名前缀（称呼→叫→叫我）。
+  // 复用现有 FTS，不改正文/索引、不扫描活库；不能把「我/的/上次」拆成万能命中。
+  // 放在虚词过滤后：这一路的证据是前缀，不是原句 bigram，仍走下面的状态与衰减闸门。
+  if (rewriteOn && process.env.JJ_SINGLE_CHAR_BRIDGE !== "0" && metaById.size === 0) {
+    const terms = singleCharBridges(query);
+    if (terms.length) {
+      ranked = ftsRun(terms.map((t) => `"${t}"*`).join(" OR "));
+      fetchMeta();
+      if (metaById.size) degraded.push("single_char_bridge");
     }
   }
 

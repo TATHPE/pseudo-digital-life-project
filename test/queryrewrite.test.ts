@@ -12,10 +12,11 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ALIASES, MAX_VARIANTS, normalizeQuery, queryVariants } from "../src/queryrewrite.ts";
+import { ALIASES, MAX_VARIANTS, normalizeQuery, queryVariants, singleCharBridges } from "../src/queryrewrite.ts";
 import { openDb } from "../src/db.ts";
 import { remember } from "../src/store.ts";
 import { search } from "../src/retrieve.ts";
+import { evaluateEvidence } from "../tools/eval-evidence.ts";
 
 test("别名归一：口语换成库里更可能的写法", () => {
   assert.equal(normalizeQuery("我妈生日是哪天"), "妈妈生日是哪天");
@@ -79,6 +80,56 @@ test("改写默认总是跑（用难用例量出来的：R@1 7/10 → 8/10）", 
   const src = readFileSync(join(process.cwd(), "src/retrieve.ts"), "utf8");
   assert.ok(src.includes("process.env.JJ_REWRITE_MIN_CANDS ?? 999"), "默认不再等「候选<2」");
   assert.ok(src.includes("JJ_QUERY_REWRITE"), "仍可用环境变量关掉");
+});
+
+test("E-12 单字桥只收已知别名终点，不做任意单字联想", () => {
+  assert.deepEqual(singleCharBridges("她不喜欢我怎么称呼"), ["叫"]);
+  assert.deepEqual(singleCharBridges("称呼和叫法"), ["叫"]);
+  for (const q of ["我女儿叫什么", "我上次说的股票代码", "麒麟座第七码头", "的我你", "称呼".repeat(20)]) {
+    assert.deepEqual(singleCharBridges(q), [], q);
+  }
+});
+
+test("E-12 A/B：没有向量时称呼能跨到叫我；关桥即消失，虚词仍拒", async (t) => {
+  const { db } = openDb(join(mkdtempSync(join(tmpdir(), "jj-bridge-")), "memory.db"));
+  t.after(() => db.close());
+  const id = remember(db, { text: "不要叫我助手", kind: "boundary", layer: "contract", sensitivity: "shareable" });
+  remember(db, { text: "上次程序挂掉后恢复了", kind: "episode", layer: "narrative" });
+  const old = process.env.JJ_SINGLE_CHAR_BRIDGE;
+  t.after(() => { if (old === undefined) delete process.env.JJ_SINGLE_CHAR_BRIDGE; else process.env.JJ_SINGLE_CHAR_BRIDGE = old; });
+  process.env.JJ_SINGLE_CHAR_BRIDGE = "0";
+  assert.equal((await search(db, null, "她不喜欢我怎么称呼")).hits.length, 0);
+  process.env.JJ_SINGLE_CHAR_BRIDGE = "1";
+  const on = await search(db, null, "她不喜欢我怎么称呼");
+  assert.equal(on.hits[0]?.id, id);
+  assert.ok(on.meta.degraded.includes("single_char_bridge"));
+  for (const q of ["我女儿叫什么", "我上次说的股票代码是多少", "麒麟座第七码头的坐标"]) {
+    assert.equal((await search(db, null, q)).hits.length, 0, q);
+  }
+  db.prepare("UPDATE memories SET status='archived' WHERE id=?").run(id);
+  assert.equal((await search(db, null, "怎么称呼")).hits.length, 0, "归档仍不召回");
+});
+
+test("E-12：正常命中时不扩前缀，不让弱候选抢位", async (t) => {
+  const { db } = openDb(join(mkdtempSync(join(tmpdir(), "jj-bridge-")), "memory.db"));
+  t.after(() => db.close());
+  const direct = remember(db, { text: "称呼用小林", kind: "fact_hard", layer: "narrative" });
+  remember(db, { text: "不要叫我助手", kind: "boundary", layer: "contract" });
+  const r = await search(db, null, "怎么称呼");
+  assert.equal(r.hits[0]?.id, direct);
+  assert.ok(!r.meta.degraded.includes("single_char_bridge"));
+});
+
+test("E-12 与弱证据离线 A/B 自带夹具，报告只计已运行的模型回答", async () => {
+  const { report, ok } = await evaluateEvidence();
+  assert.ok(ok);
+  assert.equal(report.bridge.filter((r) => !r.on && r.ok).length, 6);
+  assert.equal(report.bridge.filter((r) => r.on && r.ok).length, 9);
+  assert.equal(report.prompts.length, 16);
+  assert.equal(report.answers.length, 0);
+  assert.equal(report.model, null);
+  assert.equal(report.modelDigest, null);
+  assert.ok(report.fixtureHash);
 });
 
 test("覆盖率加权默认 0.5；硬门槛默认关（它会误杀纯语义的真命中）", () => {
