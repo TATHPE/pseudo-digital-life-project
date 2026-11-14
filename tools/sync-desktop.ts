@@ -113,12 +113,32 @@ export function syncDesktopBundle(root = ROOT, install = installProduction, arch
   }
 }
 
+/**
+ * 构建钩子用（2026-11-14）：快照已与源码逐字一致时**直接跳过同步**。
+ * 每次 `cargo tauri build` 都跑完整同步，会把 1000+ 文件的旧 app 改名再删掉；
+ * 本机批量删除保护按阈值拦下，构建就卡在 beforeBuildCommand。既然 `checkDesktopBundle`
+ * 已经逐字核过 app 载荷与内置 Node，一致时根本不需要动它，也就不产生任何需要删除的东西。
+ */
+export function syncIfNeeded(root: string = ROOT, install: Parameters<typeof syncDesktopBundle>[1] = installProduction): { skipped: boolean; version: string; files: number } {
+  try {
+    const r = checkDesktopBundle(root);
+    return { skipped: true, version: r.version, files: r.files };
+  } catch {
+    const r = syncDesktopBundle(root, install);
+    return { skipped: false, version: r.version, files: r.files };
+  }
+}
+
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
     const node = runtime(ROOT);
-    const r = process.argv.includes("--check") ? checkDesktopBundle() : syncDesktopBundle(ROOT, installProduction, process.argv.includes("--archive-existing"));
+    let r: { version: string; files: number; skipped?: boolean; archived?: string };
+    if (process.argv.includes("--check")) r = checkDesktopBundle();
+    else if (process.argv.includes("--if-needed")) r = syncIfNeeded(ROOT, installProduction);
+    else r = syncDesktopBundle(ROOT, installProduction, process.argv.includes("--archive-existing"));
     console.log(`✅ 桌面快照 ${r.version}：${r.files} 个载荷文件逐字一致；内置 Node ${node.version}`);
-    if ("archived" in r && r.archived) console.log(`旧快照完整保留：${r.archived}`);
+    if (r.skipped) console.log("↷ 快照已是最新，跳过同步（未产生旧快照）");
+    if (r.archived) console.log(`旧快照完整保留：${r.archived}`);
   } catch (e) {
     console.error("❌ " + (e as Error).message);
     process.exitCode = 1;

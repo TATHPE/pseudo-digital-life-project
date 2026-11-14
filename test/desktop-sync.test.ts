@@ -3,7 +3,10 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { checkDesktopBundle, syncDesktopBundle } from "../tools/sync-desktop.ts";
+import { checkDesktopBundle, syncDesktopBundle, syncIfNeeded } from "../tools/sync-desktop.ts";
+import { fileURLToPath } from "node:url";
+
+const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
 
 const put = (path: string, text: string) => { mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, text); };
 const install = (stage: string) => put(join(stage, "node_modules/.package-lock.json"), "{}");
@@ -31,6 +34,18 @@ test("桌面快照：完全替换旧 src/persona，包与锁同步，重复运�
   syncDesktopBundle(root, install);
   assert.equal(readFileSync(join(app, "bundle-manifest.json"), "utf8"), first);
   assert.deepEqual(readdirSync(dirname(app)), ["app"]);
+});
+
+test("syncIfNeeded：已一致时跳过，不产生千文件旧快照（构建钩子用）", () => {
+  const { root, app } = rig();
+  assert.equal(syncIfNeeded(root, install).skipped, false, "第一次要真同步");
+  assert.equal(syncIfNeeded(root, install).skipped, true, "已一致就该跳过");
+  assert.deepEqual(readdirSync(dirname(app)), ["app"], "跳过时不该留下 .stage-*-previous");
+});
+
+test("Tauri beforeBuildCommand 带 --if-needed", () => {
+  const conf = JSON.parse(readFileSync(join(ROOT, "desktop/src-tauri/tauri.conf.json"), "utf8"));
+  assert.match(String(conf.build?.beforeBuildCommand?.script ?? ""), /--if-needed/);
 });
 
 test("桌面快照：安装失败保留旧快照，暂存目录不残留", () => {
@@ -94,5 +109,5 @@ test("桌面快照：Tauri 直接构建也走钩子，cwd 从 src-tauri 定位�
   const config = JSON.parse(readFileSync(join(root, "desktop/src-tauri/tauri.conf.json"), "utf8"));
   const hook = config.build.beforeBuildCommand;
   assert.equal(resolve(root, "desktop/src-tauri", hook.cwd), root);
-  assert.equal(hook.script, "node tools/sync-desktop.ts");
+  assert.equal(hook.script, "node tools/sync-desktop.ts --if-needed");
 });

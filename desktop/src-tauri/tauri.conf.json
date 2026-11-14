@@ -6,7 +6,7 @@
   "build": {
     "frontendDist": "assets",
     "beforeBuildCommand": {
-      "script": "node tools/sync-desktop.ts",
+      "script": "node tools/sync-desktop.ts --if-needed",
       "cwd": "../.."
     }
   },
