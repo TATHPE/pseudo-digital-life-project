@@ -2786,7 +2786,7 @@
   // 同类功能还被拆散（模型一览夹在人格和头像之间）。这里按「她在想什么 → 她是谁 → 她能做什么 → 界面长什么样 → 数据怎么管」排。
   var CFG_GROUPS = [
     { name: '大脑', hint: '模型 · 接口', secs: ['接口 · 云端', '本地模型', '眼 · 视觉'] },
-    { name: '她',   hint: '人格 · 形象 · 声音', secs: ['人格', '头像', '形象与背景', '声音'] },
+    { name: '她',   hint: '人格 · 形象 · 主动性', secs: ['人格', '头像', '形象与背景', '声音', '主动开口'] },
     { name: '手脚', hint: '能力 · 权限 · 接入', secs: ['主机 · 命令解释器', 'WSL 小房子', '常驻指令', '限制', 'QQ 接入（OneBot 11）'] },
     { name: '观感', hint: '主题 · 片头', secs: ['外观', '开机片头'] },
     { name: '数据', hint: '备份 · 诊断 · 版本 · 目录', secs: ['诊断', '版本与更新', '导出 / 导入', '工作区域', '引导', '部署状态'] }
@@ -2964,6 +2964,21 @@
         '<button class="nb-btn" id="cf-ttstest">试听一句</button>' +
         '<span class="nb-empty" id="cf-ttsmsg"></span></div>' +
         '<div class="nb-empty">形象与背景在「形象与背景」那一节里点选/上传，这里只管声音。本地声音需 jingjing tts setup 下载模型；云声音免 key 需网络。</div>' +
+        '</div>');
+      // 主动开口（心跳）：2026-11-15 从启动参数 --beat 改成界面开关。
+      // 原来只在「体检」页第三段里有个按钮，用户去设置里找不到——开关该在设置里。
+      var beatOn = ui.beat === true, beatRun = ui.beatRunning === true;
+      html += sec('主动开口',
+        '<div class="nb-form">' +
+        '<div class="nb-kv"><b>状态</b><span id="cf-beatstate" style="color:' +
+          (beatRun ? 'var(--ok, #8fd694)' : beatOn ? 'var(--amber)' : 'var(--dim)') + '">' +
+          (beatRun ? '已开启 · 正在跑' : beatOn ? '已开启 · 等重启才生效' : '未开启（她不会主动说话）') + '</span></div>' +
+        '<div class="nb-actrow"><button class="nb-btn" id="cf-beat">' + (beatOn ? '关掉' : '打开') + '</button>' +
+        '<span class="nb-empty" id="cf-beatmsg">' +
+          (beatRun ? '关了并在重启后生效' : beatOn ? '已经写进 config.json，重启面板后开始' : '打开后要重启面板才生效') +
+        '</span></div>' +
+        '<div class="nb-empty">开启后每 60 秒判定一次要不要主动找你；静音 23:30–08:00，每日最多 3 次；' +
+        '每次发或不发都留审计，可在「系统」里查。默认关闭 —— 没有主动性的需求时，安静就是最好的行为。</div>' +
         '</div>');
       html += sec('常驻指令', sd.length ? sd.map(function(x){
         return '<div class="nb-runrow"><span class="k">' + esc(x.when || '') + '</span>' +
@@ -3302,6 +3317,35 @@
               tick('片头：' + (v === 'off' ? '不播' : v) + '（下次打开生效）');
             });
         };
+      });
+      // 主动开口（心跳）：写 config.json，**必须重启面板**才生效 ——
+      // 所以这里不假装「已开启」，只如实说「等重启」。
+      on('cf-beat', function(){
+        var btn = $('cf-beat'), st = $('cf-beatstate'), msg = $('cf-beatmsg');
+        var next = !(ui.beat === true);
+        if (btn) btn.disabled = true;
+        if (msg) msg.textContent = '保存中…';
+        fetch('/api/ui', { method: 'PUT', headers: H, body: JSON.stringify({ beat: next }) })
+          .then(function(r){ return r.json(); })
+          .then(function(j){
+            if (!j || j.ok !== true) {
+              if (msg) msg.textContent = (j && (j.why || j.error)) || '没保存成';
+              if (btn) btn.disabled = false;
+              return;
+            }
+            ui.beat = next;
+            if (btn) { btn.textContent = next ? '关掉' : '打开'; btn.disabled = false; }
+            if (st) {
+              st.textContent = next ? '已开启 · 等重启才生效' : '未开启（她不会主动说话）';
+              st.style.color = next ? 'var(--amber)' : 'var(--dim)';
+            }
+            if (msg) msg.textContent = next ? '已写进 config.json，重启面板后开始' : '已关掉，重启面板后彻底停';
+            tick(next ? '心跳已开启（重启面板后开始）' : '心跳已关闭（重启面板后生效）');
+          })
+          .catch(function(){
+            if (msg) msg.textContent = '没保存成：网络或服务没响应';
+            if (btn) btn.disabled = false;
+          });
       });
       // 工作区域：读当前目录 → 改（可选搬数据）→ 清空重来
       fetch('/api/where').then(function(r){ return r.json(); }).then(function(j){

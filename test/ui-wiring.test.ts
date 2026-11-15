@@ -228,3 +228,20 @@ test("存储页（阶段 3）：总览卡片 + 可排序明细 + 最大文件，
   assert.ok(!/jsend\('DELETE'|method:\s*'DELETE'|nb-btn danger/.test(body), "存储页不许有删除按钮");
   assert.ok(!/exec|spawn/.test(body), "存储页不许自己执行命令或清理脚本");
 });
+
+test("设置页要有「主动开口」开关（只放在体检页里，用户会找不到）", () => {
+  const UI = NB;
+  // 2026-11-15：心跳之前只有一个按钮在体检页第三段「后台」分组里。
+  // 用户找不到开关就是证据 —— 开关该在设置里，体检页只是给结论。
+  assert.ok(UI.includes("sec('主动开口'"), "设置页要有主动开口这一节");
+  assert.ok(UI.includes("'声音', '主动开口']"), "要挂进「她」组的分组表，否则该节整块静默消失");
+  assert.ok(UI.includes("id=\"cf-beat\""), "要有可点的开关按钮");
+  assert.ok(UI.includes("cf-beatstate"), "要把「已开启」和「正在跑」分开显示，别把没生效的说成已开启");
+  // 写入必须走 /api/ui，且必须是布尔 —— 这里再兜一层，防止有人改成字符串
+  // 注意：sysView() 定义在 cfgView 之前，不能拿它当右边界（会切出空串，断言假通过/假失败）
+  const from = UI.indexOf("function cfgView");
+  assert.ok(from > 0, "找不到 cfgView");
+  const body = UI.slice(from);
+  assert.ok(/JSON\.stringify\(\{\s*beat:\s*next\s*\}\)/.test(body), "开关写的是布尔 beat");
+  assert.ok(/\/api\/ui/.test(body), "写进 config.json，不是改命令行参数");
+});
