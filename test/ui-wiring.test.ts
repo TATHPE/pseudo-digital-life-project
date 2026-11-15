@@ -279,13 +279,7 @@ test("陪伴面板：正文渲染 markdown、历史不截断、工具能点开�
   assert.ok(NB.includes("cp-body cp-md"), "渲染后的正文要挂 cp-md 类（white-space 要退回 normal）");
   assert.ok(!NB.includes("cpClip("), "历史不许再按字符数截断");
   const TPL2 = readFileSync(new URL("../src/web/notebook.ts", import.meta.url), "utf8");
-  // 收起态按**行**钳，不按字符砍：删了 cpClip 之后整段摊开，气泡 223px→434px
-  assert.ok(TPL2.includes(".cp-log.clip .cp-body{max-height:calc(1.75em * 4)"), "收起态只露 4 行，全文留在 DOM 里");
-  // 钳口开在上方：窗口得跟着最新一句走，不然她边说、那 4 行却再也不变（用户反馈）
-  assert.ok(NB.includes("function cpClipSync"), "要有「滚到最新」的收口");
-  assert.ok(/b\.scrollTop = b\.scrollHeight/.test(NB), "被钳的正文要贴到底");
-  assert.ok(TPL2.includes(".cp-body.clip-more"), "渐隐只在真溢出时挂，短回复不能被削");
-  assert.ok(NB.includes("cpBodyOf") && NB.includes("bt.appendChild(cpToolStrip"), "工具胶囊要挂在钳的外面");
+  assert.ok(NB.includes("cpBodyOf") && NB.includes("bt.appendChild(cpToolStrip"), "工具胶囊挂在正文外层");
   // 工具：她说「刚跑了两条」，面板得让人能核对
   assert.ok(NB.includes("function cpToolStrip"), "要有工具胶囊");
   assert.ok(NB.includes("toolList"), "历史工具要读 /api/timeline 的结构化那份");
@@ -304,4 +298,24 @@ test("/api/timeline 给陪伴视图一份结构化工具列表", () => {
   // html 在 timeline 里算（记录页和陪伴视图共用一份 renderMarkdown），不额外推 SSE 帧
   assert.ok(/renderMarkdown\(b\.text\)/.test(SRV), "timeline 要给正文的 html");
   assert.ok(!/send\(\{\s*type:\s*"html"/.test(SRV), "收尾帧只能是 done，别在流里塞 html");
+});
+
+test("陪伴视图：收起时也要能用鼠标滚轮翻历史（2026-11-15）", () => {
+  // 前三版把「收起」实现成 display:none 只留最后两条 / 按 4 行钳正文 ——
+  // 历史行根本不在布局里，滚轮滚不动。收起应该只是把同一个滚动容器的窗口收窄。
+  const TPL = readFileSync(new URL("../src/web/notebook.ts", import.meta.url), "utf8");
+  const clip = TPL.match(/\.cp-log\.clip\{[^}]*\}/)?.[0] ?? "";
+  assert.ok(/max-height:min\(20vh,168px\)/.test(clip), "收起态是更小的滚动窗口");
+  assert.ok(/\.cp-log\{[^}]*overflow-y:auto/.test(TPL), "两态共用的容器必须能滚");
+  assert.ok(!TPL.includes(".cp-log.clip .cp-line{display:none}"), "历史行不许再被藏掉");
+  assert.ok(!TPL.includes(".cp-body.clip-more"), "正文不许再按行钳（历史要能读全）");
+  assert.ok(!/\.cp-log\.clip\.cp-line:nth-last-child/.test(TPL), "不许再只留最后两条");
+  // 默认贴底跟最新；人手动往上翻时不能被新内容硬拽回来
+  assert.ok(NB.includes("CP_AT_BOTTOM"), "要记「人是否还在底部」");
+  assert.ok(NB.includes("function cpLogBottom") && NB.includes("function cpLogTop"), "展开到顶 / 收起到底");
+  assert.ok(/CP_AT_BOTTOM\s*=\s*cpLogEl\.scrollTop\s*\+\s*cpLogEl\.clientHeight/.test(NB), "滚动事件要更新贴底标志");
+  assert.ok(NB.includes("CP_AT_BOTTOM = true;\n    cpLine('me', text)"), "发新话时强制回到这一轮");
+  assert.ok(/log\.classList\.toggle\('clip', !CP_EXPANDED\)/.test(NB), "收起态不依赖 hiddenN，始终是小窗");
+  assert.ok(NB.includes("addEventListener('wheel'"), "指针在气泡按钮/内边距上时也要能滚");
+  assert.ok(NB.includes("l.contains(e.target)"), "落在 cp-log 内部别滚两遍");
 });

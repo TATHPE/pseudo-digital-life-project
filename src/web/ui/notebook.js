@@ -2482,7 +2482,9 @@
   function cpMoreSync(){
     var log = $('cp-log'), btn = $('cp-more'); if (!log || !btn) return;
     var hiddenN = Math.max(0, cpLogCount() - 2);
-    log.classList.toggle('clip', !CP_EXPANDED && hiddenN > 0);
+    // 收起只是把窗口收窄（.cp-log.clip 改 max-height），**不再藏历史行**：
+    // 行必须留在滚动容器里，鼠标滚轮才能往上翻回去看
+    log.classList.toggle('clip', !CP_EXPANDED);
     btn.hidden = hiddenN <= 0;
     btn.textContent = CP_EXPANDED ? '收起' : ('↑ 之前 ' + hiddenN + ' 条');
   }
@@ -2491,8 +2493,7 @@
     CP_EXPANDED = !CP_EXPANDED;
     try { localStorage.setItem('jj.cp.log.expanded', CP_EXPANDED ? '1' : '0'); } catch (e) {}
     cpMoreSync();
-    // 点开是「想往回看」，所以从头看；收起就回到最新
-    cpLogScroll(CP_EXPANDED);
+    if (CP_EXPANDED) cpLogTop(); else cpLogBottom();
     var inp = $('cp-say'); if (inp) inp.focus();
   };
   function cpFadeSync(){
@@ -2503,29 +2504,36 @@
     l.classList.toggle('fade-top', canScroll && !atTop);
     l.classList.toggle('fade-bottom', canScroll && !atBot);
   }
-  // 收起态的钳口开在**上方**：把每条被钳的正文滚到底，窗口就跟着最新那句走。
-  // 原先从开头钳，她一边说、窗口里那 4 行却不再变（用户：「收起后怎么固定了」）。
-  // overflow:hidden 也能设 scrollTop；没用 flex-end 是因为那会改掉 markdown 的块级排版。
-  // clip-more 只在真的溢出时挂上：否则短回复的头一行也会被上缘渐隐削掉一半。
-  function cpClipSync(toTop){
+  // 滚动只在「人本来就在底部」时自动跟最新：往上翻历史时别被新内容硬拽回底部。
+  // 这个标志不能现算 —— append 之后 scrollHeight 已经变大，用当前值判断会误以为离底了。
+  var CP_AT_BOTTOM = true;
+  function cpLogTop(){
     var l = $('cp-log'); if (!l) return;
-    var clipped = l.classList.contains('clip');
-    var bs = l.querySelectorAll('.cp-body');
-    for (var i = 0; i < bs.length; i++){
-      var b = bs[i];
-      var over = clipped && b.scrollHeight > b.clientHeight + 1;
-      b.classList.toggle('clip-more', over);
-      if (over && !toTop) b.scrollTop = b.scrollHeight;
-    }
+    CP_AT_BOTTOM = false; l.scrollTop = 0; cpFadeSync();
   }
-  function cpLogScroll(toTop){
+  function cpLogBottom(){
     var l = $('cp-log'); if (!l) return;
-    l.scrollTop = toTop ? 0 : l.scrollHeight;
-    cpClipSync(toTop);
+    CP_AT_BOTTOM = true; l.scrollTop = l.scrollHeight; cpFadeSync();
+  }
+  function cpLogScroll(){
+    var l = $('cp-log'); if (!l) return;
+    if (CP_AT_BOTTOM) l.scrollTop = l.scrollHeight;
     cpFadeSync();
   }
   var cpLogEl = $('cp-log');
-  if (cpLogEl) cpLogEl.addEventListener('scroll', cpFadeSync);
+  if (cpLogEl) cpLogEl.addEventListener('scroll', function(){
+    CP_AT_BOTTOM = cpLogEl.scrollTop + cpLogEl.clientHeight >= cpLogEl.scrollHeight - 24;
+    cpFadeSync();
+  });
+  // 指针压在「↑ 之前 N 条」或气泡内边距上时，滚轮也该翻的是对话，不是什么都不动。
+  // 落点在 cp-log 内部（含工具输出框 .cp-tout）就交给它自己，避免滚两遍。
+  var cpBubbleEl = document.querySelector('.cp-bubble');
+  if (cpBubbleEl) cpBubbleEl.addEventListener('wheel', function(e){
+    var l = cpLogEl; if (!l) return;
+    if (e.target === l || (l.contains && l.contains(e.target))) return;
+    l.scrollTop += e.deltaY;
+    e.preventDefault();
+  }, { passive: false });
   // 她这一轮动过什么手：一个胶囊一行，点一下摊开那条结果（再点收起）。
   // 之所以不做成记录页那种 <details> 卡片：气泡只有 580px 宽，还压在房间照片上。
   function cpToolStrip(list){
@@ -2679,6 +2687,8 @@
     var send = $('cp-send');
     if (send) { send.disabled = false; send.dataset.stop = '1'; send.textContent = '■'; send.title = '停止这一轮'; }
     CP_STOPPED = false;
+    // 发了新话就回到底部跟着这一轮走 —— 哪怕刚刚正翻在历史里
+    CP_AT_BOTTOM = true;
     cpLine('me', text);                                  // 你说的话也进同一条流
     var bt = cpLine('her', ''); if (bt) bt.className = 'cp-tx cp-typing';
     // 说话期间锁输入，别让人对着一句还没答完的话继续敲
