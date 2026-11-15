@@ -174,3 +174,21 @@ test("外壳真的有两种形态，且系统页有六块（2026-11-14）", () =
     assert.ok(UI.includes(ep), `系统页要读 ${ep}`);
   }
 });
+
+test("能力体检页（阶段 2）：有入口、能深链、开关写的是 config 而不是命令行", () => {
+  const UI = NB;
+  const TPL = readFileSync(new URL("../src/web/notebook.ts", import.meta.url), "utf8");
+  assert.ok(TPL.includes('data-v="ovw"'), "左栏要有「体检」入口，否则接口有数据也没人看得见");
+  assert.ok(UI.includes("function ovwView"), "要有体检页");
+  assert.ok(UI.includes("fetch('/api/overview')"), "体检页要读只读总览接口");
+  assert.ok(UI.includes("v === 'ovw'"), "go() 要能分派到体检页");
+  assert.ok(UI.includes("'cap','ovw'"), "?view=ovw 必须在深链白名单里，否则打开就跳回工作台");
+  assert.ok(UI.includes("v: '能力体检', go: 'ovw'"), "命令面板要能搜到");
+  // 决策 2：开关写配置键，按钮上必须写清「要重启」，不许暗示点了就生效
+  assert.ok(UI.includes("jsend('PUT', '/api/ui', { beat:"), "心跳开关要走 /api/ui 的写入闸门");
+  assert.ok(UI.includes("data-ovwbeat"), "心跳那一行要有可点的开关");
+  assert.ok(UI.includes("需要重启面板") || UI.includes("重启面板后才生效"), "要写明重启才生效");
+  // 决策 5：安装引导只给命令文本，不自动执行
+  assert.ok(UI.includes("data-copy="), "安装引导要能复制命令");
+  assert.ok(!/exec|spawn/.test(UI.slice(UI.indexOf("function ovwView"), UI.indexOf("function capView"))), "体检页不许自己执行命令");
+});

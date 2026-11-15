@@ -9,7 +9,7 @@
 | 项 | 数量 |
 |---|---|
 | 源文件（src/**/*.ts） | 136 |
-| 错误码 E_* | 264 |
+| 错误码 E_* | 265 |
 | verbs | 33 |
 | CLI 子命令 | 42 |
 
@@ -30,6 +30,7 @@
 | `E_BAD_ARGS` | `src/toolsmoke.ts` |
 | `E_BAD_ARGV` | `src/agentguard.ts` `src/execute.ts` `src/permcheck.ts` `src/shell.ts` `src/verbs.ts` `src/wsl.ts` |
 | `E_BAD_AVATAR` | `src/pal.ts` `src/web/server.ts` |
+| `E_BAD_BEAT` | `src/web/routes/config.ts` |
 | `E_BAD_COMMAND` | `src/plugins.ts` |
 | `E_BAD_ENDPOINT` | `src/transport.ts` |
 | `E_BAD_IMAGE` | `src/pal.ts` `src/web/server.ts` |
@@ -398,7 +399,7 @@
 | `src/notify.ts` | 回执通道（D-3 的前置，`docs/ops/25 §4`）。 |
 | `src/ollama.ts` | Ollama 探测（C-4）：一次 /api/tags + 两个最小调用探针。 |
 | `src/onebot.ts` | OneBot 11 适配器（2026-11-05）：把 QQ 消息接进来，把她的回话发出去。 |
-| `src/overview.ts` | 状态总览（阶段 1，2026-11-15）：把「能力 / 配置体检 / 模型与接口 / 资源快照」 |
+| `src/overview.ts` | 状态总览（阶段 1 数据层 + 阶段 2 开关，2026-11-15）：把「能力 / 配置体检 / 模型与接口 / 资源快照」 |
 | `src/pal.ts` | 陪伴形象与背景（2026-11-13）：内置 + 用户自定义，设置页里点一下就换。 |
 | `src/pathsafe.ts` | 路径安全与项目根（叶子模块，2026-11-09 从 verbs.ts / project.ts 抽出）。 |
 | `src/permcheck.ts` | 权限自查（docs/ops/22 §0.4「权限自查」）：回答「**这个能力现在为什么不能用**」。 |

@@ -85,22 +85,26 @@ export async function handleConfig(ctx: ConfigCtx): Promise<boolean> {
       // ── 外观偏好（现在只剩开机片头档位；头像框已删 2026-11-01）──
       if (req.method === "GET" && url.pathname === "/api/ui") {
         const boot = await import("../boot.ts");
-        const ui = (readFileConfig(deps.home).ui ?? {}) as { splash?: string; shell?: string; theme?: string };
+        const ui = (readFileConfig(deps.home).ui ?? {}) as { splash?: string; shell?: string; theme?: string; beat?: boolean };
         json(res, 200, {
           splash: boot.splashMode(ui),
           theme: ui.theme === "hermes" ? "hermes" : "ledger",
           modes: boot.SPLASH_MODES,
           shell: ui.shell === "notebook" ? "notebook" : "classic",
           shells: ["classic", "notebook"],
+          // 两个状态分开报，别把「配置开了」谎报成「正在跑」（2026-11-15 决策 2）
+          // 「正在跑」只认运行期信号：配置驱动的启动没有 --beat，认 argv 会报反
+          beat: ui.beat === true,
+          beatRunning: process.env.JJ_BEAT_RUNNING === "1",
         });
         return true;
       }
       if (req.method === "PUT" && url.pathname === "/api/ui") {
         const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return true; }
-        const body = await readJson(req) as { splash?: string; shell?: string; theme?: string };
+        const body = await readJson(req) as { splash?: string; shell?: string; theme?: string; beat?: boolean };
         const boot = await import("../boot.ts");
         // 三个都能单独改：只传哪个就改哪个（别把别的顺手写回默认值）
-        const patch: { splash?: string; shell?: "classic" | "notebook"; theme?: "ledger" | "hermes" } = {};
+        const patch: { splash?: string; shell?: "classic" | "notebook"; theme?: "ledger" | "hermes"; beat?: boolean } = {};
         if (body.theme !== undefined) {
           const v = String(body.theme ?? "");
           if (v !== "ledger" && v !== "hermes") {
@@ -124,6 +128,14 @@ export async function handleConfig(ctx: ConfigCtx): Promise<boolean> {
             return true;
           }
           patch.shell = v;
+        }
+        // 心跳开关：只收真布尔。字符串 "false" 在这里会被当 truthy，必须显式拒
+        if (body.beat !== undefined) {
+          if (typeof body.beat !== "boolean") {
+            json(res, 400, { error: "E_BAD_BEAT", why: "beat 只能是 true / false" });
+            return true;
+          }
+          patch.beat = body.beat;
         }
         if (!Object.keys(patch).length) { json(res, 400, { error: "E_EMPTY_PATCH" }); return true; }
         writeFileConfig(deps.home, { ui: patch });
@@ -465,7 +477,9 @@ export async function handleConfig(ctx: ConfigCtx): Promise<boolean> {
           sources: configSources(deps.home),
           caps: cap,
           secrets: secretFlags,
-          bootBeat: process.argv.includes("--beat"),
+          // 心跳：只认运行期信号（serve 真启动了才置位），配置只代表「下次启动会开」
+          beatRunning: process.env.JJ_BEAT_RUNNING === "1",
+          beatConfigured: (file.ui ?? {}).beat === true,
           memory: {
             total: Number(memoryRow?.total ?? 0),
             added7d: Number(memoryRow?.added7d ?? 0),

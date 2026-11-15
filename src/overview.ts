@@ -1,14 +1,17 @@
 /**
- * 状态总览（阶段 1，2026-11-15）：把「能力 / 配置体检 / 模型与接口 / 资源快照」
+ * 状态总览（阶段 1 数据层 + 阶段 2 开关，2026-11-15）：把「能力 / 配置体检 / 模型与接口 / 资源快照」
  * 四份**只读事实**聚合成一份结构化结果，供界面把现状显式摆出来。
  *
  * 设计约束（research/notes/ui-design-references.md §9）：
- *  - 纯只读：不写 config.json / inbox / 数据库，不联网，不 spawn 外部进程。
+ *  - 本模块自己纯只读：不写 config.json / inbox / 数据库，不联网，不 spawn 外部进程。
  *    尤其不调用 wsl.status() —— 它会 spawnSync("wsl.exe")，本环境有命令安全黑名单。
  *    WSL 一律如实标「未探测」并给安装引导，不假装有结论。
  *  - 全部能力显式列出（含没配好的），禁用 ≠ 隐藏；状态标五态，缺什么给 installHint。
  *  - 只做当前快照：不采样、不存时间序列、不做趋势。
- *  - 界面开关（--beat 等）本阶段只在数据里预留 toggleKey / restartRequired，不实现写入。
+ *  - 开关只**描述**，写入在别处：toggleKey 给的是配置键（如 ui.beat），
+ *    真正的写走路由里的 writeGuarded（src/web/routes/config.ts 的 PUT /api/ui）。
+ *    restartRequired=true 的项必须把「配置开了」与「进程在跑」分成两个字段，
+ *    不许用一句话糊过去 —— 那是界面最容易骗人的地方。
  *
  * 为什么单独一层：控制器只负责取数，状态判定全在这里，可以纯函数测试
  * （不启服务、不碰真实数据目录）。参考 docs/runtime/11 §5.3 的「能力自述」口径，
@@ -98,8 +101,10 @@ export interface OverviewInput {
   caps: Capabilities;
   /** provider -> 有没有登记 key。只有布尔值，绝不携带密钥内容 */
   secrets: Record<string, boolean>;
-  /** 当前进程是否以 --beat 启动 */
-  bootBeat: boolean;
+  /** 当前进程**真的**在跑心跳（`--beat` 或配置开启后重启过；只认运行期信号） */
+  beatRunning: boolean;
+  /** config.json 的 ui.beat：下次启动要不要带心跳。开着但没重启 ≠ 正在跑 */
+  beatConfigured: boolean;
   memory: { total: number; added7d: number };
   usage: { todayUsd: number; calls: number; inTokens: number; outTokens: number };
   proc: ProcessSnapshot;
@@ -267,11 +272,14 @@ export function capabilityRows(i: OverviewInput): CapabilityRow[] {
   const rows: CapabilityRow[] = [
     {
       id: "heartbeat", group: "后台", label: "主动开口（心跳）",
-      state: i.bootBeat ? "enabled" : "off",
-      detail: i.bootBeat
+      state: i.beatRunning ? "enabled" : "off",
+      detail: i.beatRunning
         ? "每 60 秒判定一次；静音 23:30–08:00，每日最多 3 次，发不发都留审计"
-        : "功能已实现，但当前进程未带 --beat（桌面壳以 serve 0 启动），所以一次都没跑",
-      toggleKey: "serve --beat", restartRequired: true,
+        : i.beatConfigured
+          // 配置开了但进程没重启：这是最容易骗人的状态，必须写成「还没生效」而不是「已开启」
+          ? "界面里已开启，但当前进程启动时还没带心跳 —— 重启面板后生效"
+          : "功能已实现，当前未开启；打开开关后重启面板才会开始判定",
+      toggleKey: "ui.beat", restartRequired: true,
     },
     {
       id: "night", group: "后台", label: "夜间自我整理",
@@ -357,7 +365,9 @@ export function capabilityRows(i: OverviewInput): CapabilityRow[] {
       detail: "只比对本地 release.json，不联网、不下载、不安装",
     },
   ];
-  return rows;
+  // 已就绪的行不该再挂「怎么装 / 怎么配」——那是缺环境时才该说的话，
+  // 挂在已启用的行上等于把人往已经配好的地方赶（2026-11-15 截图验收抓到）。
+  return rows.map((r) => (r.state === "enabled" && r.installHint ? { ...r, installHint: undefined } : r));
 }
 
 /** 配置体检：4–6 项，从能力行派生，避免两套判定逻辑漂移 */
@@ -370,7 +380,9 @@ export function checkRows(rows: CapabilityRow[]): CheckRow[] {
     vision: "眼 · 视觉",
     tts: "声音",
     wsl: "WSL 小房子",
-    heartbeat: "部署状态",
+    // 心跳没有设置页落点：开关就在体检页自己这一屏，跳过去只会让人找不到东西。
+    // 空串 = 不渲染「去设置」按钮（界面按 target 有无决定）。
+    heartbeat: "",
   };
   const ids = ["express", "local-chat", "embed", "vision", "tts", "wsl", "heartbeat"];
   return ids.flatMap((id) => {
@@ -381,7 +393,8 @@ export function checkRows(rows: CapabilityRow[]): CheckRow[] {
       label: r.label,
       state: r.state,
       detail: r.detail,
-      hint: r.installHint,
+      // 已经就绪的项不该再挂「怎么装」——那是给缺环境的项用的（2026-11-15 截图验收抓到）
+      hint: r.state === "enabled" ? undefined : r.installHint,
       target: targets[id] ?? "设置",
     }];
   });

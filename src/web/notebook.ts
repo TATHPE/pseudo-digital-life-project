@@ -814,6 +814,7 @@ input:focus-visible,textarea:focus-visible{outline:none;border-bottom-color:var(
       <div class="nb-go" data-v="mem" role="button" tabindex="0">记忆<span class="n" id="nb-nmem">…</span></div>
       <div class="nb-go" data-v="docs" role="button" tabindex="0">文档<span class="n" id="nb-ndocs">…</span></div>
       <div class="nb-go" data-v="cap" role="button" tabindex="0">能力</div>
+      <div class="nb-go" data-v="ovw" role="button" tabindex="0">体检</div>
       <div class="nb-go" data-v="task" role="button" tabindex="0">任务<span class="n" id="nb-ntask">…</span></div>
 <div class="nb-go" data-v="logs" role="button" tabindex="0">日志</div>
       <div class="nb-go" data-v="files" role="button" tabindex="0">文件</div>

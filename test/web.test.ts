@@ -1284,6 +1284,55 @@ test("主题：ledger / hermes 能读能写，首屏就带上 data-theme（2026-
   } finally { srv.close(); }
 });
 
+test("心跳开关：写 ui.beat 落配置，overview 只说「配置开了、还没跑」（2026-11-15 决策 2）", async () => {
+  const dir = tmp();
+  const d = openDb(join(dir, "m.db"));
+  const srv = createWebServer({
+    db: d.db, inboxDir: join(dir, "inbox"), home: dir,
+    getTransport: () => { throw new Error("no model"); }, getEmbedder: () => null,
+    getConfig: () => ({ ollama: "", roles: { express: { provider: "deepseek", model: "x" } } }),
+  });
+  const base = `http://127.0.0.1:${await listenSafe(srv)}`;
+  const h = { "content-type": "application/json", "x-jj": "1" };
+  try {
+    const a = await (await fetch(`${base}/api/ui`)).json() as { beat?: boolean; beatRunning?: boolean };
+    assert.equal(a.beat, false, "默认不主动开口");
+    assert.equal(a.beatRunning, false);
+
+    const put = await fetch(`${base}/api/ui`, { method: "PUT", headers: h, body: JSON.stringify({ beat: true }) });
+    assert.equal(put.status, 200);
+    const b = await (await fetch(`${base}/api/ui`)).json() as { beat?: boolean; beatRunning?: boolean };
+    assert.equal(b.beat, true, "写进去要能读回来");
+    assert.equal(b.beatRunning, false, "配置文件开了不等于进程在跑，两个状态不能混");
+
+    const ov = await (await fetch(`${base}/api/overview`)).json() as {
+      capabilities: Array<{ id: string; state: string; detail: string; toggleKey?: string; restartRequired?: boolean }>;
+      notes: string[];
+    };
+    const hb = ov.capabilities.find((c) => c.id === "heartbeat");
+    assert.ok(hb, "能力清单里必须有心跳这一行");
+    assert.equal(hb?.toggleKey, "ui.beat", "开关写的是配置键");
+    assert.equal(hb?.restartRequired, true);
+    assert.equal(hb?.state, "off", "没重启就不许报 enabled");
+    assert.ok(hb?.detail.includes("重启"), "要说清重启才生效");
+    assert.ok(ov.notes.some((n) => n.includes("只读")), "口径说明要一起返回");
+
+    const bad = await fetch(`${base}/api/ui`, { method: "PUT", headers: h, body: JSON.stringify({ beat: "true" }) });
+    assert.equal(bad.status, 400, "字符串 \"true\" 会被当 truthy，必须拒");
+    const stillOn = await (await fetch(`${base}/api/ui`)).json() as { beat?: boolean };
+    assert.equal(stillOn.beat, true, "被拒的写入不能改到已有值");
+
+    // 运行期信号：serve 真起了心跳才置位。两个接口必须给同一个结论，不许一个说在跑一个说没跑
+    process.env.JJ_BEAT_RUNNING = "1";
+    try {
+      const running = await (await fetch(`${base}/api/ui`)).json() as { beatRunning?: boolean };
+      assert.equal(running.beatRunning, true, "/api/ui 要认运行期信号，不是 argv");
+      const ov2 = await (await fetch(`${base}/api/overview`)).json() as { capabilities: Array<{ id: string; state: string }> };
+      assert.equal(ov2.capabilities.find((c) => c.id === "heartbeat")?.state, "enabled", "overview 与 /api/ui 结论要一致");
+    } finally { delete process.env.JJ_BEAT_RUNNING; }
+  } finally { srv.close(); }
+});
+
 test("兜底状态：写入后用 dossier 能读到（顶栏据此显示「本地 · 模型名」）", async () => {
   const dir = tmp();
   const d = openDb(join(dir, "m.db"));

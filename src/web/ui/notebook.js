@@ -42,7 +42,7 @@
 
   // 面包屑：现在的「在哪」。分两段，末段加粗。
   var CRUMB = { home: '工作台', chat: '记录', sess: '会话', mem: '记忆', docs: '文档', cap: '能力',
-    logs: '日志', files: '文件', git: '校样', sys: '系统', cfg: '设置', gap: '还缺', approvals: '待你处理', board: '她收着的', task: '任务' };
+    logs: '日志', files: '文件', git: '校样', sys: '系统', cfg: '设置', gap: '还缺', approvals: '待你处理', board: '她收着的', task: '任务', ovw: '能力体检' };
   function setCrumb(v, extra){
     var el = $('nb-crumb');
     if (!el) return;
@@ -1264,6 +1264,7 @@
     else if (v === 'logs') logsView();
     else if (v === 'files') filesView('');
     else if (v === 'git') gitView();
+    else if (v === 'ovw') ovwView();
     else if (v === 'sys') sysView();
     else if (v === 'cfg') cfgView();
     else if (v === 'gap') gapView();
@@ -1503,6 +1504,189 @@
           tick('已恢复这篇'); docDetail(id);
         });
     };
+  }
+
+  // ── 能力体检（阶段 2，2026-11-15）───────────────────────────
+  // 数据来自只读接口 /api/overview（src/overview.ts）。这里只做「看清 + 打开入口」，
+  // 不做自动下载、不自动开闸；唯一会写盘的是心跳开关，走 PUT /api/ui（同源 + x-jj 闸门）。
+  var CAPW = {
+    enabled: ['已启用', 'var(--ink)'],
+    off:     ['未启用', 'var(--dim2)'],
+    missing: ['缺模型 / 素材', 'var(--amber)'],
+    gated:   ['需你开闸', 'var(--amber)'],
+    unknown: ['未探测', 'var(--dim2)']
+  };
+  var CAPORDER = ['大脑', '感官', '手脚', '后台', '数据'];
+  function ovwBytes(n){
+    n = Number(n) || 0;
+    if (n < 1024) return n + ' B';
+    if (n < 1048576) return (n / 1024).toFixed(0) + ' KB';
+    if (n < 1073741824) return (n / 1048576).toFixed(1) + ' MB';
+    return (n / 1073741824).toFixed(2) + ' GB';
+  }
+  function ovwView(){
+    var el = $('nb-view');
+    el.innerHTML = head('能力体检', '<button class="nb-btn" id="ovw-refresh">刷新</button>') +
+      wrap('<div class="nb-empty" id="ovw-msg">读取中…</div><div id="ovw-body"></div>');
+    var body = $('ovw-body'), msgEl = $('ovw-msg'), btn = $('ovw-refresh');
+    var pg = document.getElementById('nb-page'); if (pg) pg.scrollTop = 0;
+    var UI = { beat: false };
+    if (btn) btn.onclick = function(){ paint(); };
+
+    function tag(state){
+      var w = CAPW[state] || CAPW.unknown;
+      return '<span class="tag" style="color:' + w[1] + ';cursor:default">' + esc(w[0]) + '</span>';
+    }
+    function part(title, note, inner){
+      return '<div class="nb-sec"><span>' + esc(title) + '</span>' +
+        (note ? '<span class="m" style="margin-left:auto;color:var(--dim2)">' + esc(note) + '</span>' : '') +
+        '</div>' + inner;
+    }
+    function empty(t){ return '<div class="nb-empty">' + esc(t) + '</div>'; }
+    // 说明行：**别用 .nb-logrow** —— 那是日志页的五列网格（118px 起），
+    // 拿它包一句中文会被塞进第一列折成四行（2026-11-15 截图验收抓到）。
+    function noteLine(t, color){
+      return '<div style="padding:1px 2px 9px;font:11.5px/1.6 var(--mono);color:' + (color || 'var(--dim2)') + '">' + esc(t) + '</div>';
+    }
+    // 正文级说明（比命令文本重要，用正文字体，不用等宽小字）
+    function subLine(t){
+      return '<div style="padding:1px 2px 9px;font:12px/1.65 var(--sans);color:var(--dim2)">' + esc(t) + '</div>';
+    }
+    // 缺环境时给的是「命令文本」，只展示 + 可复制，绝不自动执行（决策 5）
+    function hintRow(h){
+      return '<div class="nb-runrow" style="grid-template-columns:72px minmax(0,1fr) auto;align-items:center;border-bottom:0;padding:2px 2px 8px">' +
+        '<span class="k">怎么办</span>' +
+        '<span class="v" style="font-family:var(--mono);font-size:12px;overflow-wrap:anywhere">' + esc(h) + '</span>' +
+        '<button class="nb-btn" data-copy="' + esc(h) + '">复制</button></div>';
+    }
+    function toggleBtn(row){
+      if (!row.toggleKey) return '';
+      // 目前只有心跳是「配置键 + 需重启」型开关；wsl.autonomous 在设置页已有入口，不在这里开第二个
+      if (row.toggleKey !== 'ui.beat') return '';
+      var on = !!UI.beat;
+      return '<div class="nb-actrow" style="margin:2px 0 10px">' +
+        '<button class="nb-btn" data-ovwbeat="1">' + (on ? '关掉心跳' : '打开心跳') + '</button>' +
+        '<span class="nb-empty">改的是 config.json，<b>需要重启面板</b>才生效</span></div>';
+    }
+    function capRow(row){
+      var restart = row.restartRequired ? ' <span style="color:var(--dim2)">· 重启生效</span>' : '';
+      return '<div class="nb-runrow" style="grid-template-columns:170px 96px minmax(0,1fr);align-items:start">' +
+        '<span class="v" style="color:var(--ink)">' + esc(row.label) + '</span>' +
+        '<span>' + tag(row.state) + '</span>' +
+        '<span style="color:var(--dim);font-size:12px;line-height:1.65">' + esc(row.detail) + restart + '</span>' +
+        '</div>' + (row.installHint ? hintRow(row.installHint) : '') + toggleBtn(row);
+    }
+
+    function paint(){
+      if (msgEl) { msgEl.textContent = '读取中…'; msgEl.style.color = ''; }
+      Promise.all([
+        fetch('/api/overview').then(function(r){ return r.json(); }),
+        fetch('/api/ui').then(function(r){ return r.json(); }).catch(function(){ return {}; })
+      ]).then(function(res){
+        var j = res[0] || {}, ui = res[1] || {};
+        if (msgEl) msgEl.textContent = '';
+        UI.beat = !!ui.beat;
+        var caps = j.capabilities || [], checks = j.checks || [], models = j.models || [], rs = j.resources || {};
+
+        var ready = caps.filter(function(c){ return c.state === 'enabled'; }).length;
+        var bad = checks.filter(function(c){ return c.state !== 'enabled'; }).length;
+        var html = '<div class="nb-kv" style="margin-bottom:6px">' +
+          '<b>能力</b><span>' + ready + ' / ' + caps.length + ' 项已就绪' +
+            (caps.length ? '（未就绪 ' + (caps.length - ready) + ' 项，下面全部列出）' : '') + '</span>' +
+          '<b>体检</b><span>' + (bad ? bad + ' 项要你处理' : '没有拦路的问题') + '</span>' +
+          '<b>规模</b><span>数据目录 ' + ovwBytes(rs.totalBytes) + ' · ' + (rs.totalFiles || 0) + ' 个文件 · 进程 RSS ' +
+            ovwBytes((rs.process || {}).rss) + '</span>' +
+          '<b>时间</b><span>' + esc(String(j.generatedAt || '').replace('T', ' ').slice(0, 19)) + '</span>' +
+          '</div>';
+
+        // 一、体检：先说要你动手的事
+        html += part('体检：要你处理的', bad ? bad + ' 项' : '0 项',
+          checks.length ? checks.map(function(c){
+            var need = c.state !== 'enabled';
+            return '<div class="nb-runrow" style="grid-template-columns:150px 96px minmax(0,1fr) auto;align-items:start">' +
+              '<span class="v" style="color:var(--ink)">' + esc(c.label) + '</span>' +
+              '<span>' + tag(c.state) + '</span>' +
+              '<span style="color:var(--dim);font-size:12px;line-height:1.65">' + esc(c.detail) + '</span>' +
+              (need && c.target ? '<button class="nb-btn" data-ovwgo="' + esc(c.target) + '">去设置</button>' : '<span></span>') +
+              '</div>' +
+              (c.hint ? noteLine(c.hint) : '');
+          }).join('') : empty('没有体检项。'));
+
+        // 二、能力清单：五态全列，一行都不藏
+        CAPORDER.forEach(function(g){
+          var list = caps.filter(function(c){ return c.group === g; });
+          if (!list.length) return;
+          html += part(g, list.length + ' 项', list.map(capRow).join(''));
+        });
+
+        // 三、模型与接口：本地云端共用一张表（集中分类）
+        var mcols = 'grid-template-columns:150px 64px minmax(0,1fr) 96px';
+        html += part('模型与接口', models.length + ' 个角色',
+          models.length ? '<div class="nb-runrow" style="' + mcols + ';padding:4px 2px">' +
+            '<span class="k">角色</span><span class="k">哪一侧</span>' +
+            '<span class="k">provider / model · 来源</span><span class="k">状态</span></div>' +
+            models.map(function(m){
+              return '<div class="nb-runrow" style="' + mcols + ';align-items:start">' +
+                '<span class="v" style="color:var(--ink)">' + esc(m.purpose) + '</span>' +
+                '<span style="font-size:12px;color:var(--dim)">' + esc(m.side) + '</span>' +
+                '<span style="font:12px/1.65 var(--mono);color:var(--dim);overflow-wrap:anywhere">' +
+                  esc((m.provider || '?') + (m.model ? ' / ' + m.model : ' / 未填')) +
+                  ' <span style="color:var(--dim2)">(' + esc(m.source) + ')</span></span>' +
+                '<span>' + tag(m.state) + '</span></div>';
+            }).join('') : empty('没有模型角色。'));
+
+        // 四、资源：只做当前快照（决策 4：不做历史趋势）
+        var groups = rs.groups || [];
+        html += part('资源占用（当前快照）', '进程 ' + ovwBytes((rs.process || {}).rss),
+          '<div class="nb-kv" style="margin-bottom:4px"><b>进程</b><span>RSS ' + ovwBytes((rs.process || {}).rss) +
+            ' · heap ' + ovwBytes((rs.process || {}).heapUsed) +
+            ' · 已跑 ' + Math.round((rs.process || {}).uptimeS || 0) + 's</span>' +
+          '<b>数据目录</b><span>' + ovwBytes(rs.totalBytes) + ' / ' + (rs.totalFiles || 0) + ' 个文件</span></div>' +
+          (groups.length ? groups.map(function(g){
+            return '<div class="nb-runrow" style="grid-template-columns:minmax(0,1fr) 110px 96px">' +
+              '<span class="v" style="color:var(--ink)">' + esc(g.label) + '</span>' +
+              '<span class="m">' + g.files + ' 个文件</span>' +
+              '<span class="m">' + ovwBytes(g.bytes) + '</span></div>';
+          }).join('') : empty('数据目录还是空的。')) +
+          (rs.truncated ? '<div style="padding:8px 2px;font-size:11.5px;color:var(--amber)">数字不完整：' +
+            (typeof rs.depthLimited === 'number' && rs.depthLimited > 0
+              ? '有 ' + rs.depthLimited + ' 个深层子目录超出扫描深度被跳过'
+              : '文件数超过扫描上限') + '，别当准数。</div>' : ''));
+
+        // 五、口径原样展示（服务端写好的边界说明，界面不改写）
+        html += part('口径与边界', String((j.notes || []).length) + ' 条',
+          (j.notes || []).map(function(n){ return subLine(n); }).join(''));
+
+        body.innerHTML = html;
+
+        // 「去设置」——只切页，不替用户改任何东西
+        Array.prototype.forEach.call(body.querySelectorAll('[data-ovwgo]'), function(b){
+          b.onclick = function(){ go('cfg'); };
+        });
+        Array.prototype.forEach.call(body.querySelectorAll('[data-copy]'), function(b){
+          b.onclick = function(){
+            var t = b.getAttribute('data-copy');
+            var done = function(){ tick('已复制：' + t); };
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              navigator.clipboard.writeText(t).then(done).catch(function(){ tick('复制不了，手动抄一下'); });
+            } else { tick('复制不了，手动抄一下：' + t); }
+          };
+        });
+        // 心跳开关：唯一的写操作，先问再写，写完说清「要重启」
+        var bBtn = body.querySelector('[data-ovwbeat]');
+        if (bBtn) bBtn.onclick = function(){
+          var next = !UI.beat;
+          if (!window.confirm(next ? '打开主动开口（心跳）？\n会写 config.json，重启面板后才生效。' : '关掉主动开口？\n会写 config.json，重启面板后才生效。')) return;
+          bBtn.disabled = true;
+          jsend('PUT', '/api/ui', { beat: next })
+            .then(function(){ tick(next ? '已开启：重启面板后开始心跳' : '已关闭：重启面板后停止心跳'); paint(); })
+            .catch(function(e){ bBtn.disabled = false; tick('没改成：' + e.message); });
+        };
+      }).catch(function(e){
+        if (msgEl) { msgEl.textContent = '读不到：' + ((e && e.message) || e); msgEl.style.color = 'var(--amber)'; }
+      });
+    }
+    paint();
   }
 
   function capView(){
@@ -3135,6 +3319,7 @@
     { k: '页面', v: '记忆', go: 'mem' },
     { k: '页面', v: '文档', go: 'docs' },
     { k: '页面', v: '能力', go: 'cap' },
+    { k: '页面', v: '能力体检', go: 'ovw' },
     { k: '页面', v: '校样', go: 'git' },
     { k: '页面', v: '设置', go: 'cfg' },
     { k: '页面', v: '还缺', go: 'gap' },
@@ -3224,7 +3409,7 @@
     var v = m ? m[1] : '';
     if (v === 'board') { go('home'); setTimeout(function(){ Board(true); }, 120); return; }
     if (v === 'chat') { go('chat'); return; }
-    if (['mem','docs','cap','git','cfg','gap','task','sess','approvals','logs','files'].indexOf(v) >= 0) { setTimeout(function(){ go(v); }, 120); return; }
+    if (['mem','docs','cap','ovw','git','cfg','gap','task','sess','approvals','logs','files'].indexOf(v) >= 0) { setTimeout(function(){ go(v); }, 120); return; }
     // 没有 ?view= 时**默认进记录**：打开就该是「今天 + 最近一轮会话」，不是工作台
     if (!v && location.search.indexOf("pal=1") < 0) { go('chat'); return; }
     go('home');

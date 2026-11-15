@@ -43,7 +43,8 @@ function mkInput(patch: Partial<OverviewInput> = {}): OverviewInput {
     sources: {},
     caps: mkCaps(),
     secrets: {},
-    bootBeat: false,
+    beatRunning: false,
+    beatConfigured: false,
     memory: { total: 0, added7d: 0 },
     usage: { todayUsd: 0, calls: 0, inTokens: 0, outTokens: 0 },
     proc: { rss: 1000, heapUsed: 500, external: 10, uptimeS: 1, node: "v24.0.0", pid: 1 },
@@ -152,8 +153,8 @@ test("capabilityRows：默认状态下未启用/缺模型/需开闸都如实列�
   // 缺环境的能力必须给安装引导（用户决策 5）
   assert.match(rows.find((r) => r.id === "vision")?.installHint ?? "", /ollama pull qwen2\.5vl:3b/);
   assert.match(rows.find((r) => r.id === "wsl")?.installHint ?? "", /jingjing wsl setup/);
-  // 界面开关只预留数据，本阶段不写入
-  assert.equal(rows.find((r) => r.id === "heartbeat")?.toggleKey, "serve --beat");
+  // 开关写的是**配置键**（ui.beat），命令行参数那条路保留但不再是唯一入口（2026-11-15 决策 2）
+  assert.equal(rows.find((r) => r.id === "heartbeat")?.toggleKey, "ui.beat");
   assert.equal(rows.find((r) => r.id === "heartbeat")?.restartRequired, true);
 });
 
@@ -167,7 +168,7 @@ test("capabilityRows：装齐模型、登记密钥、带 --beat 后转为 enable
   const rows = capabilityRows(mkInput({
     caps,
     secrets: { deepseek: true },
-    bootBeat: true,
+    beatRunning: true,
     file: { local: { default: "qwen2.5:7b-instruct" } },
   }));
   const by = Object.fromEntries(rows.map((r) => [r.id, r.state]));
@@ -179,8 +180,21 @@ test("capabilityRows：装齐模型、登记密钥、带 --beat 后转为 enable
   assert.equal(by.wsl, "unknown", "WSL 不因为别的就绪就假称可用");
 });
 
+test("capabilityRows：配置开了心跳但进程没重启 → 不许报「已启用」", () => {
+  const rows = capabilityRows(mkInput({ beatConfigured: true, beatRunning: false }));
+  const hb = rows.find((r) => r.id === "heartbeat");
+  assert.equal(hb?.state, "off", "写进配置不等于正在跑，谎报成 enabled 就是骗人");
+  assert.ok(hb?.detail.includes("重启"), "要说清重启才生效");
+  assert.equal(hb?.restartRequired, true);
+  assert.equal(hb?.toggleKey, "ui.beat", "开关写的是配置键，不是命令行参数");
+
+  const running = capabilityRows(mkInput({ beatConfigured: true, beatRunning: true })).find((r) => r.id === "heartbeat");
+  assert.equal(running?.state, "enabled");
+  assert.ok(!running?.detail.includes("重启"));
+});
+
 test("capabilityRows：WSL 无论如何都不做探测结论，且永远给安装引导", () => {
-  for (const input of [mkInput(), mkInput({ file: { wsl: { autonomous: true } }, bootBeat: true })]) {
+  for (const input of [mkInput(), mkInput({ file: { wsl: { autonomous: true } }, beatRunning: true })]) {
     const wsl = capabilityRows(input).find((r) => r.id === "wsl");
     assert.equal(wsl?.state, "unknown");
     assert.ok(wsl?.detail.includes("不执行 wsl.exe"));
@@ -191,7 +205,14 @@ test("capabilityRows：WSL 无论如何都不做探测结论，且永远给安�
 test("checkRows：从能力行派生 7 项，带跳转目标与修复提示", () => {
   const checks = checkRows(capabilityRows(mkInput()));
   assert.equal(checks.length, 7);
-  assert.ok(checks.every((c) => c.target && c.detail));
+  assert.ok(checks.every((c) => c.detail), "每项都要有说明");
+  assert.equal(checks.find((c) => c.id === "heartbeat")?.target, "", "心跳的开关在本页，不该给「去设置」");
+  // 已就绪的项不挂安装提示（挂就是噪音）：给一个装了 bge-m3 的环境
+  const withEmbed = checkRows(capabilityRows(mkInput({
+    caps: mkCaps({ providers: { roles: mkCaps().providers.roles, ollama: { base: OLLAMA, online: true, models: ["bge-m3"] } } }),
+  })));
+  assert.equal(withEmbed.find((c) => c.id === "embed")?.state, "enabled");
+  assert.equal(withEmbed.find((c) => c.id === "embed")?.hint, undefined);
   assert.equal(checks.find((c) => c.id === "express")?.target, "接口 · 云端");
   assert.ok(checks.find((c) => c.id === "vision")?.hint);
 });

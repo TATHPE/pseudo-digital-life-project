@@ -530,7 +530,13 @@ async function main(): Promise<void> {
       });
 
       // 可选：心跳（01 §10）。默认不开——没有主动性的需求时，安静就是最好的行为。
-      if (rest.includes("--beat")) {
+      // 2026-11-15 决策 2：除了 `--beat`，界面上的开关（config.json 的 ui.beat）也算数，
+      // 否则桌面壳 `serve 0` 启动后界面上那颗开关点了也没用。两者取或：命令行还能临时强开。
+      const beatFromUi = readFileConfig(HOME).ui?.beat === true;
+      if (rest.includes("--beat") || beatFromUi) {
+        // 运行期真信号：/api/overview 只认这个环境变量判「正在跑」，
+        // 不认 argv —— 配置驱动的启动没有 --beat，认 argv 会把在跑的心跳报成关着。
+        process.env.JJ_BEAT_RUNNING = "1";
         const { beat } = await import("../heartbeat.ts");
         const draft = async (r: { kind: string; text: string }) => {
           let out = "";
