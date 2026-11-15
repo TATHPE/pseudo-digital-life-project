@@ -27,8 +27,10 @@ There is exactly one interface, a **notebook**: days down the left, prose in the
 ## What it is not
 
 - **Not a cloud service**: everything runs on loopback; the memory store is a local SQLite file
-- **Not a general assistant**: no web search, no plugin marketplace; the 27 tools are local read/write/exec
-- **Not a mature product**: 0.1.1, built and used by one person; the rough edges are documented in `docs/` (Chinese)
+- **Not a general assistant**: no web search, no plugin marketplace; the 33 capabilities are local read/write/exec
+- **Not a mature product**: 0.1.1 (installer rebuilt 2026-11-14), built and used by one person; the rough edges are documented in `docs/` (Chinese)
+
+> **2026-11-14 refresh**: the v0.1.1 installer was rebuilt with the startup-reliability fix, release verification, memory safeguards and the settings/observability work. Same version number, different binary — re-download it. See the [release notes](docs/ops/release-notes-v0.1.1.md) and [CHANGELOG](CHANGELOG.md).
 
 ## Today
 
@@ -45,7 +47,7 @@ Two themes, switchable at runtime: dark for tool-like density, light for paper +
 | **Long-term memory** | Decay curves, four-stage lifecycle, anchors, reconsolidation; a contract layer that never decays |
 | **Retrieval** | FTS5 bigram lexical ∪ vector k-NN, fused by RRF, MMR de-duplication; three abstain gates; optional local reranker |
 | **Nightly consolidation** | Cursor-based and incremental; a failed run never advances the cursor; idempotent (re-running writes nothing twice) |
-| **Tools** | 27 capabilities (T0 read-only → T3 exec) behind a grant window, one-shot tokens and a full audit log |
+| **Tools** | 33 capabilities (T0 read-only → T3 exec) behind a grant window, one-shot tokens and a full audit log |
 | **Persona** | Six persona blocks + interview drafts + sealing; changes only ever apply forward, never rewrite the past |
 | **Desktop shell** | Tauri, with the Node runtime and source bundled, so it runs wherever you install it; data directory is yours to choose (defaults off the C: drive) |
 
@@ -112,7 +114,7 @@ Design documents (Chinese) live in `docs/`:
 ## Development
 
 ```bash
-npm run check        # types + 771 tests (failed tests are retried; pass-on-retry is reported as FLAKY)
+npm run check        # types + 826 tests (failed tests are retried; pass-on-retry is reported as FLAKY)
 npm run ui:test      # headless Edge, real clicks (needs the server running)
 npm run map          # generate/verify docs/map.md (files · error codes · verbs · commands)
 node src/cli/jingjing.ts eval         # the four retrieval gates
@@ -125,7 +127,7 @@ node src/cli/jingjing.ts doctor --perms       # permission audit: why is this ve
 node src/cli/jingjing.ts decay --history 1    # weight change history for one memory
 ```
 
-CI runs `check`, `map:check` and `eval:assembly:ci`; UI tests and the Ollama-backed evals stay local.
+CI runs `check`, `map:check`, `eval:assembly:ci`, `release:check` and `bench:baseline:ci` on Ubuntu/Node 24, plus an informational probe for optional native modules; UI tests and the Ollama-backed evals stay local.
 After changing the assembly fixtures or the embed model, run `--refresh-embeddings` and commit `embeddings.json` with them (the table is fingerprinted, CI goes red otherwise).
 
 ## Known limits
