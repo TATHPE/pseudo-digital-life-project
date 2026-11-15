@@ -5,7 +5,7 @@
 
 | 文件 | 大小 |
 |---|---|
-| [design/0-定义-数字生命.md](design/0-定义-数字生命.md) | 9.2 KB |
+| [design/0-定义-数字生命.md](design/0-定义-数字生命.md) | 9.5 KB |
 | [design/01-记忆动力学.md](design/01-记忆动力学.md) | 19.9 KB |
 | [design/02-存储与索引层.md](design/02-存储与索引层.md) | 26.5 KB |
 | [runtime/04-执行层与权限分级.md](runtime/04-执行层与权限分级.md) | 23.3 KB |
