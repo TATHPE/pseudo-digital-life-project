@@ -11,7 +11,9 @@
 
 [中文](README.zh-CN.md) · **English**
 
-![The notebook (dark)](docs/images/chat-dark.png)
+![Companion mode — the room (dark)](docs/images/companion-room.png)
+
+> The companion window is above; the notebook and workbench are shown below.
 
 ## What it is
 
@@ -32,13 +34,19 @@ There is exactly one interface, a **notebook**: days down the left, prose in the
 
 > **2026-11-14 refresh**: the v0.1.1 installer was rebuilt with the startup-reliability fix, release verification, memory safeguards and the settings/observability work. Same version number, different binary — re-download it. See the [release notes](docs/ops/release-notes-v0.1.1.md) and [CHANGELOG](CHANGELOG.md).
 
+## Companion mode
+
+The same memory and persona can live in a lighter window: she stands on your desk over a **room** or **ocean** backdrop, one line of conversation at a time. Switch scenes with the buttons in the top right, or tap **Notebook** to return to the three-column workbench. The bundled whale-girl is a layered 2D rig (blink / mouth sprites); Live2D/Cubism models you import stay in your data directory and are never shipped with the installer.
+
+> Her name is the **default persona name** (changeable in Settings). The project is Pseudo Digital Life Project (PDLP).
+
 ## Today
 
-| Hermes-style (light) | Workbench |
+| Companion · Ocean (light) | Workbench |
 |---|---|
-| ![The notebook (light)](docs/images/chat-light.png) | ![Workbench](docs/images/workbench.png) |
+| ![Companion mode — the ocean (light)](docs/images/companion-ocean.png) | ![Workbench](docs/images/workbench.png) |
 
-Two themes, switchable at runtime: dark for tool-like density, light for paper + hairlines. Same layout, type scale and rhythm — only the palette changes.
+Two themes (dark / light) and two ways to be with her: a companion window, or the full notebook / workbench. Switch at runtime; layout, type scale and rhythm stay the same — only the palette and density change.
 
 ## What it does
 
