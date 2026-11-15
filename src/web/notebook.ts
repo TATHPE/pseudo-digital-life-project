@@ -294,8 +294,16 @@ body{background:var(--void);color:var(--ink);font:12.5px/1.75 var(--sans);
 .cf-ghead h2{margin:0;font:15px/1.3 var(--sans);font-weight:500;color:var(--ink);letter-spacing:.02em}
 .cf-ghead .t{font:9.5px/1 var(--mono);letter-spacing:.16em;color:var(--dim2)}
 /* 组标题已经说明了这是什么，紧跟着的第一节不再画一条横线分隔 */
-.cf-group > .cf-ghead + .nb-sec{margin-top:14px;border-top:0;padding-top:0}
+.cf-group > .cf-ghead + .cf-sec > .nb-sec{margin-top:14px;border-top:0;padding-top:0}
 .nb-sec{scroll-margin-top:44px}
+/* 找设置（2026-11-15）：设置页有 21 节，光靠分组名猜「视觉」在哪是猜不出来的。
+   搜索不复制 DOM —— 把命中那一节整块搬进结果面板，按钮/输入仍是原来那一份，事件不丢。 */
+.cf-findbar{margin:0 0 10px;max-width:660px}
+.cf-findbar .nb-search{flex:1;min-width:0}
+.cf-findout{max-width:660px;margin:0 0 18px}
+.cf-findout .nb-empty{margin:0 0 10px}
+.cf-findout .cf-sec > .nb-sec{border-top:0;padding-top:0}
+.cf-findout[hidden],.cf-layout[hidden]{display:none}
 /* 版本与更新：SHA-256 / 下载地址都是长串，允许在任意字符处断行，别把整行顶出去 */
 #cf-upout .nb-runrow .v{overflow-wrap:anywhere;word-break:break-word}
 .nb-opts{display:flex;flex-wrap:wrap;gap:6px}
@@ -897,8 +905,8 @@ input:focus-visible,textarea:focus-visible{outline:none;border-bottom-color:var(
           </div>
         </div>
         <div class="cp-exprpop" id="cp-exprpop" hidden></div>
-        <details class="cp-ctrl" id="cp-ctrl" aria-label="镜头与形象调参">
-          <summary class="cp-ctrlhead">镜头 · 形象</summary>
+        <details class="cp-ctrl" id="cp-ctrl" aria-label="视觉设置：镜头与形象调参">
+          <summary class="cp-ctrlhead" title="视觉设置：取景、缩放、位置、视线、口型、呼吸、伪影修复">视觉 · 镜头</summary>
           <div class="cp-ctrlbody">
             <div class="cp-grp">镜头</div>
             <label class="cp-ctl"><span>取景松紧<i id="tv-frac"></i></span><input type="range" data-tune="frac" min="0.3" max="0.9" step="0.01"></label>

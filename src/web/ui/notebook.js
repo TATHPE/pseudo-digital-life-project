@@ -3075,11 +3075,15 @@
   // 同类功能还被拆散（模型一览夹在人格和头像之间）。这里按「她在想什么 → 她是谁 → 她能做什么 → 界面长什么样 → 数据怎么管」排。
   // 内置布局只是「没写过自定义布局时」的兜底。真正的分组与顺序从 /api/ui 的
   // raw.cfgGroups 读（用户自己写进 config.json），不在这里把顺序钉死（2026-11-15）。
+  // 2026-11-15：四节「视觉」相关的设置原来散在三个组里（眼 · 视觉在「大脑」、
+  // 形象与背景在「她」、外观/片头在「观感」），用户点开叫「观感」的组反而找不到视觉。
+  // 默认布局把它们收进一组；这只是兜底，用户随时能用布局编辑器改成自己的排法。
   var CFG_GROUPS_DEFAULT = [
-    { name: '大脑', hint: '模型 · 接口', secs: ['接口 · 云端', '本地模型', '眼 · 视觉'] },
-    { name: '她',   hint: '人格 · 形象 · 主动性', secs: ['人格', '头像', '形象与背景', '声音', '主动开口'] },
+    { name: '大脑', hint: '模型 · 接口', secs: ['接口 · 云端', '本地模型'] },
+    { name: '她',   hint: '人格 · 声音 · 主动性', secs: ['人格', '头像', '声音', '主动开口'] },
+    { name: '视觉 · 观感', hint: '看图 · 形象 · 背景 · 主题 · 片头',
+      secs: ['眼 · 视觉', '形象与背景', '外观', '开机片头'] },
     { name: '手脚', hint: '能力 · 权限 · 接入', secs: ['主机 · 命令解释器', 'WSL 小房子', '常驻指令', '限制', 'QQ 接入（OneBot 11）'] },
-    { name: '观感', hint: '主题 · 片头', secs: ['外观', '开机片头'] },
     { name: '数据', hint: '备份 · 诊断 · 版本 · 目录', secs: ['诊断', '版本与更新', '导出 / 导入', '工作区域', '引导', '部署状态'] }
   ];
   function cfgGroupsFrom(ui){
@@ -3446,9 +3450,10 @@
           g.secs.map(function(t){
             var inner = SECMAP[t];
             // 分组表里的标题和 sec() 的标题必须一字不差；对不上就当场显红，别让整节设置静默消失
-            if (inner === undefined) return '<div class="nb-sec">' + esc(t) + '</div>' +
-              '<div class="nb-empty" style="color:var(--amber)">这一节没渲染出来：分组表里的标题对不上（' + esc(t) + '）</div>';
-            return '<div class="nb-sec">' + esc(t) + '</div>' + inner;
+            if (inner === undefined) return '<div class="cf-sec" data-t="' + esc(t) + '"><div class="nb-sec">' + esc(t) + '</div>' +
+              '<div class="nb-empty" style="color:var(--amber)">这一节没渲染出来：分组表里的标题对不上（' + esc(t) + '）</div></div>';
+            // 每一节包一层 .cf-sec：搜索时整块搬进结果面板，DOM 节点和事件都还是原来那一份
+            return '<div class="cf-sec" data-t="' + esc(t) + '"><div class="nb-sec">' + esc(t) + '</div>' + inner + '</div>';
           }).join('') + '</div>';
       }).join('');
       // 布局编辑器放在分组之外：万一用户把分组删空，也得有个地方能改回来。
@@ -3457,6 +3462,10 @@
         '<button class="nb-btn" id="cf-edit-raw">{ } 直接编辑配置 JSON</button>' +
         '<span class="nb-empty">' + (ui.raw && Array.isArray(ui.raw.cfgGroups) ? '现在用的是你自己的布局' : '现在用的是内置默认布局') + '</span>' +
         '</div>' +
+        '<div class="nb-actrow cf-findbar"><input id="cf-find" class="nb-search" type="search" ' +
+        'placeholder="找设置：视觉 / 声音 / 主题 …（Esc 清空）" autocomplete="off">' +
+        '<span class="nb-empty" id="cf-find-msg"></span></div>' +
+        '<div class="cf-findout" id="cf-findout" hidden></div>' +
         '<div id="cf-editor" hidden><div class="nb-sec" id="cf-editor-title"></div>' +
         '<textarea id="cf-editor-text" class="nb-search" rows="14" spellcheck="false" style="width:100%;min-height:220px;font:12px/1.6 var(--mono);padding:10px;resize:vertical"></textarea>' +
         '<div class="nb-actrow"><button class="nb-btn" id="cf-editor-save">保存并刷新</button>' +
@@ -3466,6 +3475,54 @@
         '<div class="nb-empty" id="cf-editor-help"></div></div>';
       if (box) box.innerHTML = bar + '<div class="cf-layout">' + navHtml + '<div class="cf-body">' + bodyHtml + '</div></div>';
       palGrids(pal);
+      // ── 找设置（2026-11-15）：21 节 × 5 组，靠猜组名找不到「视觉」。
+      // 命中的整节**搬**进结果面板（不是复制）：按钮、输入、已绑的事件都还是原来那一份。
+      (function(){
+        var find = $('cf-find'), out = $('cf-findout');
+        var layout = box ? box.querySelector('.cf-layout') : null;
+        if (!find || !out || !layout) return;
+        var origin = [].slice.call(layout.querySelectorAll('.cf-sec')).map(function(n){
+          return { node: n, group: n.parentNode };
+        });
+        var alias = {
+          '接口 · 云端': 'api key deepseek 密钥 接口 云端',
+          '本地模型': 'ollama embed chat 索引',
+          '眼 · 视觉': 'vision 看图 截图 屏幕 provider baseUrl model key',
+          '形象与背景': 'avatar 立绘 背景图 房间 pal 形象',
+          '外观': 'theme shell 主题 版式 配色 外壳',
+          '开机片头': 'splash 动画 开机',
+          '声音': 'tts 语音 音色 语速 音量 backend voice baseUrl apiKey',
+          '主动开口': '心跳 beat 主动 定时',
+          '人格': 'persona 名字 人设',
+          '限制': '权限 grant 档位 确认'
+        };
+        function restore(){
+          origin.forEach(function(o){ o.group.appendChild(o.node); o.node.hidden = false; });
+          out.hidden = true; layout.hidden = false;
+          var m = $('cf-find-msg'); if (m) m.textContent = '';
+        }
+        function apply(){
+          var q = String(find.value || '').trim().toLowerCase();
+          if (!q){ restore(); return; }
+          origin.forEach(function(o){ o.group.appendChild(o.node); o.node.hidden = false; });
+          var hits = 0;
+          origin.forEach(function(o){
+            var gi = Number(o.group.getAttribute('data-g'));
+            var g = CFG_GROUPS[gi] || { name: '', hint: '' };
+            // 只拿「小节标题 + 组名 + 别名」比：把组 hint 或整节正文也算进去，
+            // 搜「声音」会把「人格 / 头像」一起捞出来，反而更难找。
+            var hay = [o.node.getAttribute('data-t'), g.name, alias[o.node.getAttribute('data-t')] || '']
+              .join(' ').toLowerCase();
+            if (hay.indexOf(q) >= 0){ out.appendChild(o.node); hits++; }
+            else o.node.hidden = true;
+          });
+          layout.hidden = true; out.hidden = false;
+          var m = $('cf-find-msg');
+          if (m) m.textContent = hits ? ('找到 ' + hits + ' 节 · 清空回到分组') : '没有对得上的小节';
+        }
+        find.oninput = apply;
+        find.onkeydown = function(e){ if (e.key === 'Escape'){ find.value = ''; apply(); } };
+      })();
       if (keepScroll) { var pg0 = document.getElementById('nb-page'); if (pg0) pg0.scrollTop = keepScroll; }
       Array.prototype.forEach.call(box.querySelectorAll('.cf-navitem'), function(b){
         b.onclick = function(){

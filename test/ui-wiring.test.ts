@@ -103,7 +103,13 @@ test("陪伴视图：鲸鱼娘主视觉 + 浮动对话 + 右上切换（2026-11-
   assert.ok(PAL.includes("loadTune"), "调参要持久化");
   // 2026-11-13：面板默认折叠 + 鼻影修复接线（黑方块 / NaN / 复选框没生效三处一起修）
   assert.ok(TPL.includes('<details class="cp-ctrl"'), "调参面板要默认折叠");
-  assert.ok(TPL.includes('<summary class="cp-ctrlhead">'), "折叠标题要可点");
+  assert.ok(/<summary class="cp-ctrlhead"/.test(TPL), "折叠标题要可点");
+  // 用户找不到「视觉设置」：默认布局把四节视觉相关的小节收进一组，陪伴视图的调参按钮也改名
+  assert.ok(TPL.includes('视觉 · 镜头'), "陪伴视图的视觉调参入口要叫得出「视觉」");
+  assert.ok(NB.includes("视觉 · 观感") && NB.includes("'眼 · 视觉', '形象与背景', '外观', '开机片头'"),
+    "默认布局里看图 / 形象 / 外观 / 片头要在同一组");
+  assert.ok(NB.includes('id="cf-find"') && NB.includes("function apply()") && NB.includes("cf-findout"),
+    "设置页要能直接搜小节，不靠猜组名");
   assert.ok(TPL.includes('cp-grp'), "调参面板要按「镜头 / 表现 / 画面」分组，别一长串平铺");
   assert.ok(TPL.includes('id="cp-sub"'), "要有「玻璃卡片 ⇄ 纯字幕」的切换键");
   assert.ok(TPL.includes('sub-mode'), "字幕模式要有独立的样式钩子");
