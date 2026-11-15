@@ -42,7 +42,7 @@
 
   // 面包屑：现在的「在哪」。分两段，末段加粗。
   var CRUMB = { home: '工作台', chat: '记录', sess: '会话', mem: '记忆', docs: '文档', cap: '能力',
-    logs: '日志', files: '文件', git: '校样', sys: '系统', cfg: '设置', gap: '还缺', approvals: '待你处理', board: '她收着的', task: '任务', ovw: '能力体检' };
+    logs: '日志', files: '文件', git: '校样', sys: '系统', cfg: '设置', gap: '还缺', approvals: '待你处理', board: '她收着的', task: '任务', ovw: '能力体检', sto: '存储' };
   function setCrumb(v, extra){
     var el = $('nb-crumb');
     if (!el) return;
@@ -1265,6 +1265,7 @@
     else if (v === 'files') filesView('');
     else if (v === 'git') gitView();
     else if (v === 'ovw') ovwView();
+    else if (v === 'sto') stoView();
     else if (v === 'sys') sysView();
     else if (v === 'cfg') cfgView();
     else if (v === 'gap') gapView();
@@ -1524,6 +1525,17 @@
     if (n < 1073741824) return (n / 1048576).toFixed(1) + ' MB';
     return (n / 1073741824).toFixed(2) + ' GB';
   }
+  // 五态标签：颜色只表示「要不要你动手」，不表示功能好坏
+  function ovwTag(state){
+    var w = CAPW[state] || CAPW.unknown;
+    return '<span class="tag" style="color:' + w[1] + ';cursor:default">' + esc(w[0]) + '</span>';
+  }
+  function ovwPart(title, note, inner){
+    return '<div class="nb-sec"><span>' + esc(title) + '</span>' +
+      (note ? '<span class="m" style="margin-left:auto;color:var(--dim2)">' + esc(note) + '</span>' : '') +
+      '</div>' + inner;
+  }
+  function ovwEmpty(t){ return '<div class="nb-empty">' + esc(t) + '</div>'; }
   function ovwView(){
     var el = $('nb-view');
     el.innerHTML = head('能力体检', '<button class="nb-btn" id="ovw-refresh">刷新</button>') +
@@ -1533,18 +1545,8 @@
     var UI = { beat: false };
     if (btn) btn.onclick = function(){ paint(); };
 
-    function tag(state){
-      var w = CAPW[state] || CAPW.unknown;
-      return '<span class="tag" style="color:' + w[1] + ';cursor:default">' + esc(w[0]) + '</span>';
-    }
-    function part(title, note, inner){
-      return '<div class="nb-sec"><span>' + esc(title) + '</span>' +
-        (note ? '<span class="m" style="margin-left:auto;color:var(--dim2)">' + esc(note) + '</span>' : '') +
-        '</div>' + inner;
-    }
-    function empty(t){ return '<div class="nb-empty">' + esc(t) + '</div>'; }
-    // 说明行：**别用 .nb-logrow** —— 那是日志页的五列网格（118px 起），
-    // 拿它包一句中文会被塞进第一列折成四行（2026-11-15 截图验收抓到）。
+    // 状态标签 / 分节标题 / 空态：存储页也用同一套，避免两页各写一份再慢慢长歪
+    var tag = ovwTag, part = ovwPart, empty = ovwEmpty;
     function noteLine(t, color){
       return '<div style="padding:1px 2px 9px;font:11.5px/1.6 var(--mono);color:' + (color || 'var(--dim2)') + '">' + esc(t) + '</div>';
     }
@@ -1635,23 +1637,21 @@
                 '<span>' + tag(m.state) + '</span></div>';
             }).join('') : empty('没有模型角色。'));
 
-        // 四、资源：只做当前快照（决策 4：不做历史趋势）
-        var groups = rs.groups || [];
-        html += part('资源占用（当前快照）', '进程 ' + ovwBytes((rs.process || {}).rss),
-          '<div class="nb-kv" style="margin-bottom:4px"><b>进程</b><span>RSS ' + ovwBytes((rs.process || {}).rss) +
-            ' · heap ' + ovwBytes((rs.process || {}).heapUsed) +
-            ' · 已跑 ' + Math.round((rs.process || {}).uptimeS || 0) + 's</span>' +
-          '<b>数据目录</b><span>' + ovwBytes(rs.totalBytes) + ' / ' + (rs.totalFiles || 0) + ' 个文件</span></div>' +
-          (groups.length ? groups.map(function(g){
-            return '<div class="nb-runrow" style="grid-template-columns:minmax(0,1fr) 110px 96px">' +
-              '<span class="v" style="color:var(--ink)">' + esc(g.label) + '</span>' +
-              '<span class="m">' + g.files + ' 个文件</span>' +
-              '<span class="m">' + ovwBytes(g.bytes) + '</span></div>';
-          }).join('') : empty('数据目录还是空的。')) +
-          (rs.truncated ? '<div style="padding:8px 2px;font-size:11.5px;color:var(--amber)">数字不完整：' +
-            (typeof rs.depthLimited === 'number' && rs.depthLimited > 0
-              ? '有 ' + rs.depthLimited + ' 个深层子目录超出扫描深度被跳过'
-              : '文件数超过扫描上限') + '，别当准数。</div>' : ''));
+        // 四、存储：这里只留概要，明细在「存储」页
+        //（同一份数字画两个地方会慢慢长歪：口径改了一处、另一处忘了改）
+        var groups = rs.groups || [], proc = rs.process || {};
+        html += part('存储概要', '明细在「存储」页',
+          '<div class="nb-kv"><b>数据目录</b><span>' + ovwBytes(rs.totalBytes) + ' / ' + (rs.totalFiles || 0) + ' 个文件</span>' +
+          '<b>进程</b><span>RSS ' + ovwBytes(proc.rss) + ' · heap ' + ovwBytes(proc.heapUsed) +
+            ' · 已跑 ' + Math.round(proc.uptimeS || 0) + 's</span>' +
+          (groups.length ? '<b>最大几类</b><span>' + groups.slice(0, 3).map(function(g){
+            return esc(g.label) + ' ' + ovwBytes(g.bytes);
+          }).join(' · ') + '</span>' : '') +
+          '</div>' +
+          '<div class="nb-actrow" style="margin:2px 0 8px"><button class="nb-btn" data-ovwsto="1">看完整存储明细</button>' +
+          (rs.truncated ? '<span class="nb-empty" style="color:var(--amber)">数字不完整：' +
+            (Number(rs.depthLimited) > 0 ? '有深层目录被跳过' : '文件数超过扫描上限') + '</span>' : '') +
+          '</div>');
 
         // 五、口径原样展示（服务端写好的边界说明，界面不改写）
         html += part('口径与边界', String((j.notes || []).length) + ' 条',
@@ -1663,6 +1663,8 @@
         Array.prototype.forEach.call(body.querySelectorAll('[data-ovwgo]'), function(b){
           b.onclick = function(){ go('cfg'); };
         });
+        var stoBtn = body.querySelector('[data-ovwsto]');
+        if (stoBtn) stoBtn.onclick = function(){ go('sto'); };
         Array.prototype.forEach.call(body.querySelectorAll('[data-copy]'), function(b){
           b.onclick = function(){
             var t = b.getAttribute('data-copy');
@@ -1687,6 +1689,168 @@
       });
     }
     paint();
+  }
+
+  // ── 存储（阶段 3）：总览卡片 → 分类明细表（可排序 + 占比条） → 最大文件 ──
+  // 数据只来自只读的 /api/overview.resources（一次取回，排序/展开都在本地重绘，不回源）。
+  // 不做 treemap、不做历史趋势：PDLP 只有十来类目录，排序表 + 占比条比色块更好读（决策 4）。
+  // 任何清理动作都不在这里做——这里只回答「什么占了地方」，不替用户删东西。
+  function stoView(){
+    var el = $('nb-view');
+    el.innerHTML = head('存储', '<button class="nb-btn" id="sto-refresh">刷新</button>') +
+      wrap('<div class="nb-empty" id="sto-msg">读取中…</div><div id="sto-body"></div>');
+    var body = $('sto-body'), msgEl = $('sto-msg'), btn = $('sto-refresh');
+    var pg = document.getElementById('nb-page'); if (pg) pg.scrollTop = 0;
+    // 分类列给上限、占比条吃掉剩余宽度：分类名最长也就「记忆库（db / wal / shm）」
+    // 那么宽，全给它 1fr 会在名字和条之间留出一大片空档
+    var COLS = 'minmax(140px,260px) minmax(80px,1fr) 96px 80px 50px';
+    var DATA = null;              // 只存一份快照，排序与展开不重新请求
+    var sortKey = 'bytes';        // bytes | files | label
+    var sortDesc = true;
+    var opened = {};              // groupKey -> true
+    if (btn) btn.onclick = function(){ load(); };
+
+    function pct(part, whole){ return whole > 0 ? (part / whole) * 100 : 0; }
+
+    function bar(bytes, total){
+      var w = pct(bytes, total);
+      // 有体积就给一条能看见的最细线：0.6% 是「有，但很小」，不是「没有」
+      if (bytes > 0 && w < 0.6) w = 0.6;
+      return '<span style="display:block;height:5px;background:var(--line-dim);position:relative">' +
+        '<span style="position:absolute;left:0;top:0;bottom:0;width:' + Math.min(100, w).toFixed(1) +
+        '%;background:var(--ink);opacity:.72"></span></span>';
+    }
+
+    function card(k, v, m){
+      return '<div class="nb-card2"><span class="k">' + esc(k) + '</span><b>' + esc(v) + '</b>' +
+        '<span class="m">' + esc(m) + '</span></div>';
+    }
+
+    function sortHead(){
+      // 表头必须与数据行**逐列对齐**（5 格对 5 列）：百分比单独成列，不能再拿体积的标题去盖占比条
+      function h(k, txt, align){
+        var on = sortKey === k;
+        return '<button class="k" data-sto-sort="' + k + '" style="background:none;border:0;padding:0;cursor:pointer;' +
+          'text-align:' + align + ';color:' + (on ? 'var(--ink)' : 'var(--dim2)') + '">' + txt +
+          (on ? (sortDesc ? ' ↓' : ' ↑') : '') + '</button>';
+      }
+      return '<div class="nb-runrow" style="grid-template-columns:' + COLS + ';padding:4px 2px">' +
+        '<span style="padding-left:27px">' + h('label', '分类', 'left') + '</span>' +
+        '<span></span>' +
+        h('bytes', '体积', 'right') +
+        h('files', '文件数', 'right') +
+        '<span class="k" style="text-align:right;color:var(--dim2)">占比</span></div>';
+    }
+
+    function groupRows(groups, total){
+      var list = groups.slice();
+      list.sort(function(a, b){
+        if (sortKey === 'label') return sortDesc ? b.label.localeCompare(a.label) : a.label.localeCompare(b.label);
+        if (sortKey === 'files') return sortDesc ? b.files - a.files : a.files - b.files;
+        return sortDesc ? b.bytes - a.bytes : a.bytes - b.bytes;
+      });
+      return list.map(function(g){
+        var items = g.items || [];
+        var isOpen = !!opened[g.key];
+        var head = '<div class="nb-runrow" style="grid-template-columns:' + COLS + ';align-items:center">' +
+          '<span class="v" style="color:var(--ink);display:flex;gap:6px;align-items:baseline;min-width:0">' +
+            (items.length
+              ? '<button class="nb-btn" data-sto-open="' + esc(g.key) + '" title="展开组内明细" ' +
+                'style="padding:0 5px;font-size:10px;line-height:15px;min-width:0">' + (isOpen ? '−' : '+') + '</button>'
+              : '<span style="display:inline-block;width:21px"></span>') +
+            '<span style="overflow-wrap:anywhere">' + esc(g.label) + '</span></span>' +
+          '<span>' + bar(g.bytes, total) + '</span>' +
+          '<span class="m" style="text-align:right;color:var(--ink)">' + ovwBytes(g.bytes) + '</span>' +
+          '<span class="m" style="text-align:right">' + g.files + '</span>' +
+          '<span class="m" style="text-align:right">' + pct(g.bytes, total).toFixed(1) + '%</span>' +
+          '</div>';
+        if (!isOpen) return head;
+        return head + items.map(function(it){
+          return '<div class="nb-runrow" style="grid-template-columns:' + COLS + ';align-items:center;border-bottom:0;padding:4px 2px">' +
+            '<span style="font:12px/1.5 var(--mono);color:var(--dim);padding-left:27px;overflow-wrap:anywhere">' + esc(it.path) + '</span>' +
+            '<span></span>' +
+            '<span class="m" style="text-align:right">' + ovwBytes(it.bytes) + '</span>' +
+            '<span class="m" style="text-align:right">' + it.files + '</span>' +
+            '<span class="m" style="text-align:right">' + pct(it.bytes, total).toFixed(1) + '%</span></div>';
+        }).join('') +
+          (g.itemsOmitted ? '<div class="nb-empty" style="padding:2px 2px 8px 27px">' +
+            '还有 ' + g.itemsOmitted + ' 项更小的没列（只保留前 20 项）。</div>' : '');
+      }).join('');
+    }
+
+    function render(){
+      var j = DATA || {};
+      var rs = j.resources || {}, proc = rs.process || {}, c = j.counters || {};
+      var groups = rs.groups || [], tops = rs.topFiles || [];
+      var total = Number(rs.totalBytes) || 0;
+      var bad = rs.truncated;
+
+      var cards = '<div class="nb-cards" style="grid-template-columns:repeat(4,minmax(0,1fr))">' +
+        card('数据目录', ovwBytes(total), (rs.totalFiles || 0) + ' 个文件' + (bad ? ' · 不完整' : '')) +
+        card('进程内存', ovwBytes(proc.rss), 'heap ' + ovwBytes(proc.heapUsed) + ' · external ' + ovwBytes(proc.external)) +
+        card('记忆', String(c.memories == null ? '—' : c.memories), '近 7 天 +' + (c.added7d || 0) + ' 条') +
+        card('今日花费', '$' + (Number(c.todayUsd) || 0).toFixed(4), (c.calls || 0) + ' 次调用 · 进程已跑 ' +
+          Math.round(proc.uptimeS || 0) + 's') +
+        '</div>';
+
+      // 不完整原因要分开说：文件数到顶（扫了但没扫完）和深度截断（跳过整棵子树）后果不同
+      var warn = bad
+        ? '<div style="margin:8px 0 2px;font:11.5px/1.7 var(--mono);color:var(--amber)">' +
+          '数字不完整：' + (Number(rs.depthLimited) > 0
+            ? '有 ' + rs.depthLimited + ' 个深层子目录超出扫描深度被整棵跳过'
+            : '文件数超过扫描上限') + '。别把这张表当准数。</div>'
+        : '<div style="margin:8px 0 2px;font:11.5px/1.7 var(--mono);color:var(--dim2)">' +
+          '已完整扫描数据目录（' + (rs.totalFiles || 0) + ' 个文件，不跟随链接与 junction）。</div>';
+
+      var table = groups.length
+        ? sortHead() + groupRows(groups, total)
+        : ovwEmpty('数据目录还是空的。');
+
+      var topBlock = tops.length
+        ? tops.map(function(f){
+            return '<div class="nb-runrow" style="grid-template-columns:minmax(0,1fr) 92px;align-items:center">' +
+              '<span style="font:12px/1.5 var(--mono);color:var(--dim);overflow-wrap:anywhere">' + esc(f.path) + '</span>' +
+              '<span class="m" style="text-align:right;color:var(--ink)">' + ovwBytes(f.bytes) + '</span></div>';
+          }).join('')
+        : ovwEmpty('还没扫到文件。');
+
+      body.innerHTML = cards + warn +
+        ovwPart('分类明细', groups.length + ' 类 · 点列头排序，点 + 看组内明细', table) +
+        ovwPart('最大的文件', '前 ' + tops.length + ' 个', topBlock) +
+        ovwPart('口径', '只读快照',
+          '<div style="font:11.5px/1.7 var(--mono);color:var(--dim2);padding:0 2px 10px">' +
+          '只统计当前这一刻，不留历史、不算趋势；体积按文件实际字节累加，目录本身不占额。' +
+          '镜像/素材类大文件都在上面「分类明细」里，这里不会替你删任何东西——' +
+          '要清理请自己确认路径后手动处理；inbox 与 memory.db 是事实源，删了就回不来。' +
+          '能力与配置层面的体检在「体检」页。</div>');
+
+      Array.prototype.forEach.call(body.querySelectorAll('[data-sto-sort]'), function(b){
+        b.onclick = function(){
+          var k = b.getAttribute('data-sto-sort');
+          if (sortKey === k) sortDesc = !sortDesc; else { sortKey = k; sortDesc = true; }
+          render();
+        };
+      });
+      Array.prototype.forEach.call(body.querySelectorAll('[data-sto-open]'), function(b){
+        b.onclick = function(){
+          var k = b.getAttribute('data-sto-open');
+          if (opened[k]) delete opened[k]; else opened[k] = true;
+          render();
+        };
+      });
+    }
+
+    function load(){
+      if (msgEl) { msgEl.textContent = '读取中…'; msgEl.style.color = ''; }
+      fetch('/api/overview').then(function(r){ return r.json(); }).then(function(j){
+        if (msgEl) msgEl.textContent = '';
+        DATA = j || {};
+        render();
+      }).catch(function(e){
+        if (msgEl) { msgEl.textContent = '读不到：' + ((e && e.message) || e); msgEl.style.color = 'var(--amber)'; }
+      });
+    }
+    load();
   }
 
   function capView(){
@@ -3320,6 +3484,7 @@
     { k: '页面', v: '文档', go: 'docs' },
     { k: '页面', v: '能力', go: 'cap' },
     { k: '页面', v: '能力体检', go: 'ovw' },
+    { k: '页面', v: '存储', go: 'sto' },
     { k: '页面', v: '校样', go: 'git' },
     { k: '页面', v: '设置', go: 'cfg' },
     { k: '页面', v: '还缺', go: 'gap' },
@@ -3409,7 +3574,7 @@
     var v = m ? m[1] : '';
     if (v === 'board') { go('home'); setTimeout(function(){ Board(true); }, 120); return; }
     if (v === 'chat') { go('chat'); return; }
-    if (['mem','docs','cap','ovw','git','cfg','gap','task','sess','approvals','logs','files'].indexOf(v) >= 0) { setTimeout(function(){ go(v); }, 120); return; }
+    if (['mem','docs','cap','ovw','sto','git','cfg','gap','task','sess','approvals','logs','files'].indexOf(v) >= 0) { setTimeout(function(){ go(v); }, 120); return; }
     // 没有 ?view= 时**默认进记录**：打开就该是「今天 + 最近一轮会话」，不是工作台
     if (!v && location.search.indexOf("pal=1") < 0) { go('chat'); return; }
     go('home');

@@ -16,7 +16,7 @@ import {
 } from "../src/overview.ts";
 
 const OLLAMA = "http://127.0.0.1:11434";
-const EMPTY_SCAN = { groups: [], totalBytes: 0, totalFiles: 0, truncated: false, depthLimited: 0 };
+const EMPTY_SCAN = { groups: [], totalBytes: 0, totalFiles: 0, truncated: false, depthLimited: 0, topFiles: [] };
 
 function mkCaps(patch: Partial<Capabilities> = {}): Capabilities {
   return {
@@ -139,8 +139,57 @@ test("scanHome：一棵子树超深度只跳过它本身，不能把整轮扫描
   }
 });
 
-test("capabilityRows：默认状态下未启用/缺模型/需开闸都如实列出，不隐藏", () => {
-  const rows = capabilityRows(mkInput());
+test("scanHome：分组明细按「最多两段路径」聚合，超出 maxItems 如实标 itemsOmitted", () => {
+  const home = mkdtempSync(join(tmpdir(), "jj-overview-items-"));
+  try {
+    mkdirSync(join(home, "pal", "models"), { recursive: true });
+    mkdirSync(join(home, "pal", "bg"), { recursive: true });
+    writeFileSync(join(home, "pal", "models", "a.moc3"), "x".repeat(100));
+    writeFileSync(join(home, "pal", "models", "b.moc3"), "x".repeat(50));
+    writeFileSync(join(home, "pal", "bg", "c.png"), "x".repeat(10));
+    const s = scanHome(home);
+    const pal = s.groups.find((g) => g.key === "pal");
+    assert.ok(pal);
+    // 同一个两段路径下的多个文件要合并成一条，不能一个文件一行
+    assert.deepEqual(pal.items[0], { path: "pal/models", bytes: 150, files: 2 });
+    assert.deepEqual(pal.items[1], { path: "pal/bg", bytes: 10, files: 1 });
+    assert.equal(pal.itemsOmitted, 0);
+
+    const cut = scanHome(home, { maxItems: 1 }).groups.find((g) => g.key === "pal");
+    assert.equal(cut?.items.length, 1, "maxItems 是硬上限，不能因为界面想看得更多就全量返回");
+    assert.equal(cut?.itemsOmitted, 1, "被截掉几条要说清，否则「只有一项」会被当成事实");
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("scanHome：最大文件按字节降序，且不越出 maxTopFiles", () => {
+  const home = mkdtempSync(join(tmpdir(), "jj-overview-top-"));
+  try {
+    writeFileSync(join(home, "small.txt"), "x");
+    writeFileSync(join(home, "memory.db"), "x".repeat(30));
+    mkdirSync(join(home, "pal"));
+    writeFileSync(join(home, "pal", "big.png"), "x".repeat(300));
+    const s = scanHome(home, { maxTopFiles: 2 });
+    assert.equal(s.topFiles.length, 2);
+    assert.equal(s.topFiles[0]?.path, "pal/big.png", "长文件常被目录聚合压平，这里要能看到具体文件");
+    assert.equal(s.topFiles[1]?.path, "memory.db");
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("buildOverview：resources 必须暴露 depthLimited 与 topFiles（界面靠它解释「为什么数字不完整」）", () => {
+  const scan = {
+    groups: [], totalBytes: 0, totalFiles: 0, truncated: true, depthLimited: 3,
+    topFiles: [{ path: "pal/big.png", bytes: 300 }],
+  };
+  const o = buildOverview(mkInput({ scan }));
+  assert.equal(o.resources.depthLimited, 3, "只报 truncated 不报原因，界面只能瞎猜是文件数超限还是深度截断");
+  assert.equal(o.resources.topFiles.length, 1);
+});
+
+test("capabilityRows：默认状态下未启用/缺模型/需开闸都如实列出，不隐藏", () => {  const rows = capabilityRows(mkInput());
   const by = Object.fromEntries(rows.map((r) => [r.id, r.state]));
   assert.equal(by.heartbeat, "off");
   assert.equal(by.vision, "missing");

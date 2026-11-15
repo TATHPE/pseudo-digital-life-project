@@ -192,3 +192,21 @@ test("能力体检页（阶段 2）：有入口、能深链、开关写的是 co
   assert.ok(UI.includes("data-copy="), "安装引导要能复制命令");
   assert.ok(!/exec|spawn/.test(UI.slice(UI.indexOf("function ovwView"), UI.indexOf("function capView"))), "体检页不许自己执行命令");
 });
+
+test("存储页（阶段 3）：总览卡片 + 可排序明细 + 最大文件，且只读不给删除入口", () => {
+  const UI = NB;
+  const TPL = readFileSync(new URL("../src/web/notebook.ts", import.meta.url), "utf8");
+  assert.ok(TPL.includes('data-v="sto"'), "左栏要有「存储」入口");
+  assert.ok(UI.includes("function stoView"), "要有存储页");
+  assert.ok(UI.includes("v === 'sto'"), "go() 要能分派到存储页");
+  assert.ok(UI.includes("'ovw','sto'"), "?view=sto 必须在深链白名单里");
+  assert.ok(UI.includes("v: '存储', go: 'sto'"), "命令面板要能搜到");
+  assert.ok(UI.includes("data-sto-sort"), "明细表要能点列头排序");
+  assert.ok(UI.includes("data-sto-open"), "分组要能展开看组内明细，否则大目录等于黑箱");
+  assert.ok(UI.includes("topFiles"), "要看得到「最大的文件」——目录表会把长文件压平");
+  assert.ok(UI.includes("data-ovwsto"), "体检页的概要要能跳到存储页，而不是两处各画一遍");
+  // 决策 4/6：只读快照，不给删除 / 清理入口（删只能用户自己确认后手动做）
+  const body = UI.slice(UI.indexOf("function stoView"), UI.indexOf("function capView"));
+  assert.ok(!/jsend\('DELETE'|method:\s*'DELETE'|nb-btn danger/.test(body), "存储页不许有删除按钮");
+  assert.ok(!/exec|spawn/.test(body), "存储页不许自己执行命令或清理脚本");
+});

@@ -1,6 +1,7 @@
 /**
- * 状态总览（阶段 1 数据层 + 阶段 2 开关，2026-11-15）：把「能力 / 配置体检 / 模型与接口 / 资源快照」
- * 四份**只读事实**聚合成一份结构化结果，供界面把现状显式摆出来。
+ * 状态总览（阶段 1 数据层 + 阶段 2 开关 + 阶段 3 存储下钻，2026-11-15）：
+ * 把「能力 / 配置体检 / 模型与接口 / 资源快照」四份**只读事实**聚合成一份结构化结果，
+ * 供界面把现状显式摆出来。
  *
  * 设计约束（research/notes/ui-design-references.md §9）：
  *  - 本模块自己纯只读：不写 config.json / inbox / 数据库，不联网，不 spawn 外部进程。
@@ -8,6 +9,8 @@
  *    WSL 一律如实标「未探测」并给安装引导，不假装有结论。
  *  - 全部能力显式列出（含没配好的），禁用 ≠ 隐藏；状态标五态，缺什么给 installHint。
  *  - 只做当前快照：不采样、不存时间序列、不做趋势。
+ *  - 资源快照要能回答「什么占了地方」：所以除了分组总量，还带组内明细（最多两段路径）
+ *    与全目录最大文件。一次遍历同时累加三份结果，不额外走第二遍 fs。
  *  - 开关只**描述**，写入在别处：toggleKey 给的是配置键（如 ui.beat），
  *    真正的写走路由里的 writeGuarded（src/web/routes/config.ts 的 PUT /api/ui）。
  *    restartRequired=true 的项必须把「配置开了」与「进程在跑」分成两个字段，
@@ -77,11 +80,29 @@ export interface ProcessSnapshot {
   pid: number;
 }
 
+/** 组内的一段明细：按「最多两段路径」聚合，用来回答「这类为什么这么大」 */
+export interface ResourceItem {
+  /** 组内相对路径，如 `pal/models`、`workspace/captures`、`memory.db-wal` */
+  path: string;
+  bytes: number;
+  files: number;
+}
+
 export interface ResourceGroup {
   key: string;
   label: string;
   bytes: number;
   files: number;
+  /** 按字节降序的组内明细（最多 ScanOptions.maxItems 条） */
+  items: ResourceItem[];
+  /** 被 maxItems 截掉的明细条数；>0 表示「还有更小的没列」 */
+  itemsOmitted: number;
+}
+
+/** 单个文件的最小信息：只用于「最大文件」视图，不含内容 */
+export interface FileEntry {
+  path: string;
+  bytes: number;
 }
 
 export interface HomeScan {
@@ -92,6 +113,8 @@ export interface HomeScan {
   truncated: boolean;
   /** 因深度上限被整棵跳过的子树数（0 表示没有目录被深度截断） */
   depthLimited: number;
+  /** 全目录最大的若干个文件（按字节降序）；WinDirStat 的教训是目录表会压平长文件 */
+  topFiles: FileEntry[];
 }
 
 export interface OverviewInput {
@@ -125,6 +148,9 @@ export interface Overview {
     totalBytes: number;
     totalFiles: number;
     truncated: boolean;
+    /** 被深度上限跳过的子树数；阶段 2 漏暴露过这个字段，界面只能瞎猜原因 */
+    depthLimited: number;
+    topFiles: FileEntry[];
   };
   counters: {
     memories: number;
@@ -163,6 +189,20 @@ export interface ScanOptions {
   maxFiles?: number;
   /** 最大递归深度 */
   maxDepth?: number;
+  /** 每个分组最多保留多少条明细（默认 20） */
+  maxItems?: number;
+  /** 「最大文件」保留多少条（默认 10） */
+  maxTopFiles?: number;
+}
+
+/**
+ * 明细键：取相对路径的**最多两段**。
+ * 一段太浅（pal 类下只有一个 pal 项，等于没说），全部段太深（一个长文件就占一行，
+ * 目录层级被压平）。两段刚好能回答「pal/models 占 61MB 还是 pal/background 占的」。
+ */
+export function detailPath(rel: string): string {
+  const seg = rel.split(/[\\/]/).filter(Boolean);
+  return seg.slice(0, 2).join("/");
 }
 
 /**
@@ -173,7 +213,13 @@ export interface ScanOptions {
 export function scanHome(home: string, opts: ScanOptions = {}): HomeScan {
   const maxFiles = opts.maxFiles ?? 5000;
   const maxDepth = opts.maxDepth ?? 6;
+  const maxItems = opts.maxItems ?? 20;
+  const maxTopFiles = opts.maxTopFiles ?? 10;
   const acc = new Map<string, { label: string; bytes: number; files: number }>();
+  /** group -> 明细键 -> 体积，用来做「这类为什么这么大」的下钻 */
+  const detail = new Map<string, Map<string, { bytes: number; files: number }>>();
+  /** 全目录最大文件：只存路径与字节，不读内容 */
+  const bigFiles: FileEntry[] = [];
   let totalFiles = 0;
   let truncated = false;
   let stopped = false; // 硬上限（文件数）已到，整轮停止
@@ -213,6 +259,15 @@ export function scanHome(home: string, opts: ScanOptions = {}): HomeScan {
       cur.bytes += st.size;
       cur.files += 1;
       acc.set(g.key, cur);
+      // 明细与最大文件都在这里累加：一次遍历，不额外走一遍 fs
+      const dp = detailPath(rel);
+      let dm = detail.get(g.key);
+      if (!dm) { dm = new Map(); detail.set(g.key, dm); }
+      const dcur = dm.get(dp) ?? { bytes: 0, files: 0 };
+      dcur.bytes += st.size;
+      dcur.files += 1;
+      dm.set(dp, dcur);
+      bigFiles.push({ path: rel, bytes: st.size });
       totalFiles += 1;
     }
   };
@@ -222,14 +277,25 @@ export function scanHome(home: string, opts: ScanOptions = {}): HomeScan {
   if (depthLimited > 0) truncated = true;
 
   const groups: ResourceGroup[] = [...acc.entries()]
-    .map(([key, v]) => ({ key, label: v.label, bytes: v.bytes, files: v.files }))
+    .map(([key, v]) => {
+      const all = [...(detail.get(key) ?? new Map<string, { bytes: number; files: number }>()).entries()]
+        .map(([path, d]) => ({ path, bytes: d.bytes, files: d.files }))
+        .sort((a, b) => b.bytes - a.bytes);
+      return {
+        key, label: v.label, bytes: v.bytes, files: v.files,
+        items: all.slice(0, maxItems),
+        itemsOmitted: Math.max(0, all.length - maxItems),
+      };
+    })
     .sort((a, b) => b.bytes - a.bytes);
+  const topFiles = bigFiles.sort((a, b) => b.bytes - a.bytes).slice(0, maxTopFiles);
   return {
     groups,
     totalBytes: groups.reduce((n, g) => n + g.bytes, 0),
     totalFiles,
     truncated,
     depthLimited,
+    topFiles,
   };
 }
 
@@ -454,6 +520,8 @@ export function buildOverview(i: OverviewInput): Overview {
       totalBytes: i.scan.totalBytes,
       totalFiles: i.scan.totalFiles,
       truncated: i.scan.truncated,
+      depthLimited: i.scan.depthLimited,
+      topFiles: i.scan.topFiles,
     },
     counters: {
       memories: i.memory.total,

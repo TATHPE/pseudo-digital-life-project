@@ -1333,6 +1333,45 @@ test("心跳开关：写 ui.beat 落配置，overview 只说「配置开了、�
   } finally { srv.close(); }
 });
 
+test("存储快照（阶段 3）：/api/overview 带组内明细与最大文件，可支撑排序与下钻", async () => {
+  const dir = tmp();
+  mkdirSync(join(dir, "pal", "models"), { recursive: true });
+  writeFileSync(join(dir, "pal", "models", "a.moc3"), "x".repeat(200));
+  writeFileSync(join(dir, "pal", "models", "b.moc3"), "x".repeat(100));
+  writeFileSync(join(dir, "memory.db-wal"), "x".repeat(50));
+  const d = openDb(join(dir, "m.db"));
+  const srv = createWebServer({
+    db: d.db, inboxDir: join(dir, "inbox"), home: dir,
+    getTransport: () => { throw new Error("no model"); }, getEmbedder: () => null,
+    getConfig: () => ({ ollama: "", roles: { express: { provider: "deepseek", model: "x" } } }),
+  });
+  const base = `http://127.0.0.1:${await listenSafe(srv)}`;
+  try {
+    const j = await (await fetch(`${base}/api/overview`)).json() as {
+      resources: {
+        groups: Array<{ key: string; items: Array<{ path: string; bytes: number; files: number }>; itemsOmitted: number }>;
+        topFiles: Array<{ path: string; bytes: number }>;
+        depthLimited: number;
+        truncated: boolean;
+      };
+    };
+    const rs = j.resources;
+    const pal = rs.groups.find((g) => g.key === "pal");
+    assert.ok(pal, "pal 组要出现");
+    assert.deepEqual(pal?.items[0], { path: "pal/models", bytes: 300, files: 2 },
+      "同一目录下的多个文件要合成一条明细，否则界面一行一个文件没法读");
+    assert.equal(pal?.itemsOmitted, 0);
+    // SQLite 自己的 m.db-wal 可能比测试写的小文件还大，所以不断言「第一名是谁」，
+    // 只断言：确实按字节降序，且写进去的具体文件路路径能出现在列表里
+    assert.ok(rs.topFiles.length >= 2);
+    assert.ok(rs.topFiles[0]!.bytes >= rs.topFiles[1]!.bytes, "最大文件必须按字节降序");
+    assert.ok(rs.topFiles.some((f) => f.path === "pal/models/a.moc3"),
+      "最大文件要看得到具体文件，不能只剩目录");
+    assert.equal(typeof rs.depthLimited, "number", "界面靠它区分「深度截断」和「文件数超限」");
+    assert.equal(rs.truncated, false);
+  } finally { srv.close(); }
+});
+
 test("兜底状态：写入后用 dossier 能读到（顶栏据此显示「本地 · 模型名」）", async () => {
   const dir = tmp();
   const d = openDb(join(dir, "m.db"));
