@@ -748,41 +748,51 @@ input:focus-visible,textarea:focus-visible{outline:none;border-bottom-color:var(
 .cp-log.fade-bottom{-webkit-mask-image:linear-gradient(to top, transparent 0, #000 20px);mask-image:linear-gradient(to top, transparent 0, #000 20px)}
 .cp-log.fade-top.fade-bottom{-webkit-mask-image:linear-gradient(to bottom, transparent 0, #000 20px, #000 calc(100% - 20px), transparent 100%);
   mask-image:linear-gradient(to bottom, transparent 0, #000 20px, #000 calc(100% - 20px), transparent 100%)}
-/* 收起态只改「显示哪几行」，**不动高度上限**（那是上面那条 bug 的来源） */
+/* 收起态只决定「露哪一条、露几行」，**不动高度上限**（那是上面那条 bug 的来源）。
+   2026-11-15 第二版：删掉 JS 的 cpClip(200) 之后，收起态把整条长回复整段摊开，
+   1280×800 下气泡从 223px 涨到 434px —— 收起是「瞄一眼」，不是「读完全文」。
+   所以这里按**行数**钳，不按字符数砍：全文留在 DOM 里，展开就能看全 */
 .cp-log.clip{gap:7px}
 .cp-log.clip .cp-line{display:none}
 .cp-log.clip .cp-line:nth-last-child(-n+2){display:flex}
-.cp-log.clip .cp-line.cp-me .cp-tx{font-size:13px;opacity:.72}
+.cp-log.clip .cp-body{max-height:calc(1.75em * 4);overflow:hidden;
+  -webkit-mask-image:linear-gradient(to bottom,#000 62%,rgba(0,0,0,0) 100%);
+  mask-image:linear-gradient(to bottom,#000 62%,rgba(0,0,0,0) 100%)}
+.cp-log.clip .cp-line.cp-me .cp-body{font-size:13px;opacity:.72;max-height:calc(1.75em * 2);
+  -webkit-mask-image:none;mask-image:none}
 .cp-line{display:flex;gap:8px;align-items:flex-start}
 .cp-who{flex:0 0 22px;text-align:center;font:9.5px/1.9 var(--mono);letter-spacing:.06em;color:#8ec8dd;
   border-radius:6px;background:rgba(120,200,235,.1);border:1px solid rgba(150,215,240,.14);margin-top:1px}
 .cp-line.cp-me .cp-who{color:rgba(255,217,168,.85);background:rgba(255,200,120,.09);border-color:rgba(255,200,120,.16)}
-.cp-tx{flex:1;min-width:0;white-space:pre-wrap;word-break:break-word;font:14.5px/1.75 var(--sans);color:#f2f9fd;
+/* .cp-tx 只做容器（flex 项 + 正文与工具胶囊的上下关系），文字样式全在 .cp-body：
+   收起态需要按行钳正文，而工具胶囊得留在钳的外面（不然「她刚跑了两条」被一起切掉） */
+.cp-tx{flex:1;min-width:0;display:flex;flex-direction:column}
+.cp-body{white-space:pre-wrap;word-break:break-word;font:14.5px/1.75 var(--sans);color:#f2f9fd;
   text-shadow:0 1px 3px rgba(0,6,14,.5)}
-.cp-line.cp-me .cp-tx{color:#daeaf5}
+.cp-line.cp-me .cp-tx .cp-body{color:#daeaf5}
 .cp-line .cp-typing::after{content:"…";animation:cp-dots 1.2s steps(4) infinite}
 @keyframes cp-dots{0%{content:""}25%{content:"·"}50%{content:"··"}75%{content:"···"}}
 /* 正文走服务端渲染的 markdown（和记录本同一份 md.ts）——气泡里原来是 textContent，
    于是 **粗体** 的星号、行首的 - 列表、反引号全都原样露出来。换成 HTML 后 white-space
    要退回 normal，否则 p 与 p 之间会被 pre-wrap 再撑一遍空行 */
-.cp-tx.cp-md{white-space:normal}
-.cp-tx.cp-md p{margin:0 0 .72em}
-.cp-tx.cp-md p:last-child{margin-bottom:0}
-.cp-tx.cp-md ul,.cp-tx.cp-md ol{margin:.1em 0 .8em;padding-left:1.2em}
-.cp-tx.cp-md li{margin:.22em 0}
-.cp-tx.cp-md code{font:12.5px/1.6 var(--mono);background:rgba(8,20,30,.46);border:1px solid rgba(160,220,245,.2);
+.cp-body.cp-md{white-space:normal}
+.cp-body.cp-md p{margin:0 0 .72em}
+.cp-body.cp-md p:last-child{margin-bottom:0}
+.cp-body.cp-md ul,.cp-body.cp-md ol{margin:.1em 0 .8em;padding-left:1.2em}
+.cp-body.cp-md li{margin:.22em 0}
+.cp-body.cp-md code{font:12.5px/1.6 var(--mono);background:rgba(8,20,30,.46);border:1px solid rgba(160,220,245,.2);
   border-radius:5px;padding:1px 5px}
 /* 只认**直接子级**的 pre：工具胶囊里那个输出框（.cp-tout）也在 .cp-tx 里，
-   但它在 .cp-tools 下 —— 用 > 把它排除掉，免得两条规则打架还要靠优先级 */
-.cp-tx.cp-md > pre{background:rgba(8,20,30,.5);border:1px solid rgba(160,220,245,.18);border-radius:10px;
+   但它是 .cp-body 的兄弟（挂 .cp-tools 下）—— 用 > 把它排除掉，免得两条规则打架还要靠优先级 */
+.cp-body.cp-md > pre{background:rgba(8,20,30,.5);border:1px solid rgba(160,220,245,.18);border-radius:10px;
   padding:9px 11px;overflow:auto;margin:0 0 .8em}
-.cp-tx.cp-md > pre code{background:none;border:none;padding:0}
-.cp-tx.cp-md h1,.cp-tx.cp-md h2,.cp-tx.cp-md h3,.cp-tx.cp-md h4{font-size:15px;margin:.7em 0 .35em;letter-spacing:.02em}
-.cp-tx.cp-md blockquote{margin:0 0 .8em;padding-left:10px;border-left:2px solid rgba(150,215,240,.35);color:rgba(228,243,250,.86)}
-.cp-tx.cp-md hr{border:none;border-top:1px solid rgba(160,220,245,.2);margin:.9em 0}
-.cp-tx.cp-md a{color:#9fe3ff}
-.cp-tx.cp-md .md-table{border-collapse:collapse;margin:0 0 .8em;font-size:13px}
-.cp-tx.cp-md .md-table th,.cp-tx.cp-md .md-table td{border:1px solid rgba(160,220,245,.2);padding:4px 8px}
+.cp-body.cp-md > pre code{background:none;border:none;padding:0}
+.cp-body.cp-md h1,.cp-body.cp-md h2,.cp-body.cp-md h3,.cp-body.cp-md h4{font-size:15px;margin:.7em 0 .35em;letter-spacing:.02em}
+.cp-body.cp-md blockquote{margin:0 0 .8em;padding-left:10px;border-left:2px solid rgba(150,215,240,.35);color:rgba(228,243,250,.86)}
+.cp-body.cp-md hr{border:none;border-top:1px solid rgba(160,220,245,.2);margin:.9em 0}
+.cp-body.cp-md a{color:#9fe3ff}
+.cp-body.cp-md .md-table{border-collapse:collapse;margin:0 0 .8em;font-size:13px}
+.cp-body.cp-md .md-table th,.cp-body.cp-md .md-table td{border:1px solid rgba(160,220,245,.2);padding:4px 8px}
 /* 她这一轮动过什么手：工具名做成小胶囊，点一下展开那条结果。
    面板原来完全不提过程 —— 她说「刚跑了两条」，人却无从核对 */
 .cp-tools{display:flex;flex-wrap:wrap;gap:6px;margin:9px 0 0}

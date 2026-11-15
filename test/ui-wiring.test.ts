@@ -276,8 +276,12 @@ test("陪伴面板：正文渲染 markdown、历史不截断、工具能点开�
   // 气泡原来是 textContent：`**读**`、`- ` 列表、反引号全裸奔（用户截图里就是这么一坨）。
   // markdown 只该有一份实现（src/md.ts），前端拿服务端渲染好的 html，不再各写一套。
   assert.ok(NB.includes("opts.html"), "cpLine 要能接服务端渲染的 html");
-  assert.ok(NB.includes("cp-tx cp-md"), "渲染后的正文要挂 cp-md 类（white-space 要退回 normal）");
-  assert.ok(!NB.includes("cpClip("), "历史不许再截 200 字（高度上限交给 .cp-log 滚）");
+  assert.ok(NB.includes("cp-body cp-md"), "渲染后的正文要挂 cp-md 类（white-space 要退回 normal）");
+  assert.ok(!NB.includes("cpClip("), "历史不许再按字符数截断");
+  const TPL2 = readFileSync(new URL("../src/web/notebook.ts", import.meta.url), "utf8");
+  // 收起态按**行**钳，不按字符砍：删了 cpClip 之后整段摊开，气泡 223px→434px
+  assert.ok(TPL2.includes(".cp-log.clip .cp-body{max-height:calc(1.75em * 4)"), "收起态只露 4 行，全文留在 DOM 里");
+  assert.ok(NB.includes("cpBodyOf") && NB.includes("bt.appendChild(cpToolStrip"), "工具胶囊要挂在钳的外面");
   // 工具：她说「刚跑了两条」，面板得让人能核对
   assert.ok(NB.includes("function cpToolStrip"), "要有工具胶囊");
   assert.ok(NB.includes("toolList"), "历史工具要读 /api/timeline 的结构化那份");
@@ -285,9 +289,8 @@ test("陪伴面板：正文渲染 markdown、历史不截断、工具能点开�
   // 渲染走「回读 timeline」，不新增 SSE 收尾帧（最后一帧仍是 done）
   assert.ok(NB.includes("function cpUpgrade"), "说完要回读 timeline 换成渲染版");
   assert.ok(!NB.includes('ev.type === \'html\''), "不要在流里加 html 帧：收尾帧只能是 done");
-  const TPL2 = readFileSync(new URL("../src/web/notebook.ts", import.meta.url), "utf8");
   assert.ok(TPL2.includes(".cp-tchip"), "胶囊要有样式");
-  assert.ok(TPL2.includes(".cp-tx.cp-md p"), "markdown 段落要重设间距");
+  assert.ok(TPL2.includes(".cp-body.cp-md p"), "markdown 段落要重设间距");
 });
 
 test("/api/timeline 给陪伴视图一份结构化工具列表", () => {

@@ -2546,13 +2546,18 @@
       // 只替换「就是这一条」：这一轮被掐断、或者服务端收尾时改写过正文（步数用完的收尾总结），
       // 对不上就留着流式那段纯文字 —— 宁可没排版，也不能把别人的回答盖到这一条上
       if (last.text.trim() !== String(reply == null ? '' : reply).trim()) return false;
-      bt.className = 'cp-tx cp-md';
-      bt.innerHTML = last.html;
+      var bd = cpBodyOf(bt);
+      bt.className = 'cp-tx';
+      if (bd){ bd.className = 'cp-body cp-md'; bd.innerHTML = last.html; }
+      var old = bt.querySelector('.cp-tools'); if (old) old.remove();
       if (last.toolList && last.toolList.length) bt.appendChild(cpToolStrip(last.toolList));
       cpLogScroll();
       return true;
     }).catch(function(){ return false; });
   }
+  // 正文放 .cp-body 里，工具胶囊留在 .cp-tx 下当兄弟：
+  // 收起态要按行钳正文（.cp-log.clip .cp-body{max-height}），胶囊不能被一起切掉
+  function cpBodyOf(tx){ return tx ? (tx.querySelector('.cp-body') || tx) : null; }
   // opts.html：服务端渲染好的 markdown（md.ts 那一份）；不给就按纯文本放
   function cpLine(role, text, opts){
     var log = $('cp-log'); if (!log) return null;
@@ -2560,8 +2565,10 @@
     d.className = 'cp-line ' + (role === 'me' ? 'cp-me' : 'cp-her');
     var w = document.createElement('span'); w.className = 'cp-who'; w.textContent = role === 'me' ? '你' : '她';
     var t = document.createElement('div'); t.className = 'cp-tx';
-    if (opts && opts.html){ t.className = 'cp-tx cp-md'; t.innerHTML = opts.html; }
-    else if (text) t.textContent = text;
+    var b = document.createElement('div'); b.className = 'cp-body';
+    if (opts && opts.html){ b.className = 'cp-body cp-md'; b.innerHTML = opts.html; }
+    else if (text) b.textContent = text;
+    t.appendChild(b);
     if (opts && opts.tools && opts.tools.length) t.appendChild(cpToolStrip(opts.tools));
     d.appendChild(w); d.appendChild(t); log.appendChild(d);
     cpMoreSync();
@@ -2678,7 +2685,7 @@
         parts.forEach(function(frame){
           var line = frame.trim(); if (line.indexOf('data: ') !== 0) return;
           var ev; try { ev = JSON.parse(line.slice(6)); } catch (e) { return; }
-          if (ev.type === 'delta'){ reply += ev.text; if (bt){ bt.className = 'cp-tx'; bt.textContent = reply; cpLogScroll(); } }
+          if (ev.type === 'delta'){ reply += ev.text; if (bt){ bt.className = 'cp-tx'; var bd = cpBodyOf(bt); if (bd) bd.textContent = reply; cpLogScroll(); } }
           else if (ev.type === 'tool'){ liveTools.push({ name: ev.name, ms: null, result: '' }); cpState('在用 ' + ev.name); }
           else if (ev.type === 'tool_result'){
             for (var i = liveTools.length - 1; i >= 0; i--){ if (liveTools[i].ms == null){ liveTools[i].ms = ev.ms; liveTools[i].result = ev.result; break; } }
@@ -2690,8 +2697,8 @@
     }).then(function(){
       CP_BUSY = false; CP_AC = null;
       if (send) { send.dataset.stop = '0'; send.textContent = '↑'; send.title = '发送'; send.disabled = false; }
-      if (bt && !bt.classList.contains('cp-md')) bt.className = 'cp-tx';
-      if (!reply && bt) bt.textContent = CP_STOPPED ? '（已停止）' : '（这一轮没接上）';
+      if (bt) bt.className = 'cp-tx';
+      if (!reply && bt){ var bd0 = cpBodyOf(bt); if (bd0) bd0.textContent = CP_STOPPED ? '（已停止）' : '（这一轮没接上）'; }
       // 换成渲染好的正文 + 工具胶囊；回读失败就退回刚流下来的纯文字（至少不丢内容），
       // 工具胶囊用当场捡到的那些补上
       if (reply) cpUpgrade(bt, reply).then(function(ok){ if (!ok && bt && liveTools.length) bt.appendChild(cpToolStrip(liveTools)); });
@@ -2709,7 +2716,7 @@
     }).catch(function(){
       CP_BUSY = false; CP_AC = null;
       if (send) { send.dataset.stop = '0'; send.textContent = '↑'; send.title = '发送'; send.disabled = false; }
-      if (bt){ bt.className = 'cp-tx'; bt.textContent = CP_STOPPED ? '（已停止）' : '（这一轮没接上，看看右上角状态）'; }
+      if (bt){ bt.className = 'cp-tx'; var bd1 = cpBodyOf(bt); if (bd1) bd1.textContent = CP_STOPPED ? '（已停止）' : '（这一轮没接上，看看右上角状态）'; }
       if (CP_STOPPED) TL_DIRTY = true;
       var box2 = $('cp-input-box');
       if (box2) box2.classList.remove('busy');
