@@ -751,15 +751,19 @@ input:focus-visible,textarea:focus-visible{outline:none;border-bottom-color:var(
 /* 收起态只决定「露哪一条、露几行」，**不动高度上限**（那是上面那条 bug 的来源）。
    2026-11-15 第二版：删掉 JS 的 cpClip(200) 之后，收起态把整条长回复整段摊开，
    1280×800 下气泡从 223px 涨到 434px —— 收起是「瞄一眼」，不是「读完全文」。
-   所以这里按**行数**钳，不按字符数砍：全文留在 DOM 里，展开就能看全 */
+   所以这里按**行数**钳，不按字符数砍：全文留在 DOM 里，展开就能看全。
+   2026-11-15 第三版：钳口开在**上方**。原先按开头钳，她一边说、窗口里那 4 行却再也不变，
+   后面的话全落在看不见的下面（用户：「收起后怎么固定了」）。现在窗口跟着最新一句走，
+   上缘渐隐表示「上面还有」；到底的定位在 cpClipBottom() 里做（overflow:hidden 也能设 scrollTop，
+   比 flex-end 稳：markdown 的块级子元素不会因此换掉排版） */
 .cp-log.clip{gap:7px}
 .cp-log.clip .cp-line{display:none}
 .cp-log.clip .cp-line:nth-last-child(-n+2){display:flex}
-.cp-log.clip .cp-body{max-height:calc(1.75em * 4);overflow:hidden;
-  -webkit-mask-image:linear-gradient(to bottom,#000 62%,rgba(0,0,0,0) 100%);
-  mask-image:linear-gradient(to bottom,#000 62%,rgba(0,0,0,0) 100%)}
-.cp-log.clip .cp-line.cp-me .cp-body{font-size:13px;opacity:.72;max-height:calc(1.75em * 2);
-  -webkit-mask-image:none;mask-image:none}
+.cp-log.clip .cp-body{max-height:calc(1.75em * 4);overflow:hidden}
+/* 只有真的溢出（JS 挂 clip-more）才渐隐上缘，短回复不该被削 */
+.cp-log.clip .cp-body.clip-more{-webkit-mask-image:linear-gradient(to bottom,rgba(0,0,0,.12) 0,#000 18%);
+  mask-image:linear-gradient(to bottom,rgba(0,0,0,.12) 0,#000 18%)}
+.cp-log.clip .cp-line.cp-me .cp-body{font-size:13px;opacity:.72;max-height:calc(1.75em * 2)}
 .cp-line{display:flex;gap:8px;align-items:flex-start}
 .cp-who{flex:0 0 22px;text-align:center;font:9.5px/1.9 var(--mono);letter-spacing:.06em;color:#8ec8dd;
   border-radius:6px;background:rgba(120,200,235,.1);border:1px solid rgba(150,215,240,.14);margin-top:1px}

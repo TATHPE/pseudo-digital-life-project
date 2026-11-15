@@ -2503,9 +2503,25 @@
     l.classList.toggle('fade-top', canScroll && !atTop);
     l.classList.toggle('fade-bottom', canScroll && !atBot);
   }
+  // 收起态的钳口开在**上方**：把每条被钳的正文滚到底，窗口就跟着最新那句走。
+  // 原先从开头钳，她一边说、窗口里那 4 行却不再变（用户：「收起后怎么固定了」）。
+  // overflow:hidden 也能设 scrollTop；没用 flex-end 是因为那会改掉 markdown 的块级排版。
+  // clip-more 只在真的溢出时挂上：否则短回复的头一行也会被上缘渐隐削掉一半。
+  function cpClipSync(toTop){
+    var l = $('cp-log'); if (!l) return;
+    var clipped = l.classList.contains('clip');
+    var bs = l.querySelectorAll('.cp-body');
+    for (var i = 0; i < bs.length; i++){
+      var b = bs[i];
+      var over = clipped && b.scrollHeight > b.clientHeight + 1;
+      b.classList.toggle('clip-more', over);
+      if (over && !toTop) b.scrollTop = b.scrollHeight;
+    }
+  }
   function cpLogScroll(toTop){
     var l = $('cp-log'); if (!l) return;
     l.scrollTop = toTop ? 0 : l.scrollHeight;
+    cpClipSync(toTop);
     cpFadeSync();
   }
   var cpLogEl = $('cp-log');

@@ -281,6 +281,10 @@ test("陪伴面板：正文渲染 markdown、历史不截断、工具能点开�
   const TPL2 = readFileSync(new URL("../src/web/notebook.ts", import.meta.url), "utf8");
   // 收起态按**行**钳，不按字符砍：删了 cpClip 之后整段摊开，气泡 223px→434px
   assert.ok(TPL2.includes(".cp-log.clip .cp-body{max-height:calc(1.75em * 4)"), "收起态只露 4 行，全文留在 DOM 里");
+  // 钳口开在上方：窗口得跟着最新一句走，不然她边说、那 4 行却再也不变（用户反馈）
+  assert.ok(NB.includes("function cpClipSync"), "要有「滚到最新」的收口");
+  assert.ok(/b\.scrollTop = b\.scrollHeight/.test(NB), "被钳的正文要贴到底");
+  assert.ok(TPL2.includes(".cp-body.clip-more"), "渐隐只在真溢出时挂，短回复不能被削");
   assert.ok(NB.includes("cpBodyOf") && NB.includes("bt.appendChild(cpToolStrip"), "工具胶囊要挂在钳的外面");
   // 工具：她说「刚跑了两条」，面板得让人能核对
   assert.ok(NB.includes("function cpToolStrip"), "要有工具胶囊");
