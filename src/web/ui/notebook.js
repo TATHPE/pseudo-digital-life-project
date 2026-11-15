@@ -1337,6 +1337,181 @@
     return '<button class="nb-opt' + (on ? ' on' : '') + '" data-mf="' + esc(k) + '" data-mfv="' + esc(val) + '">' + esc(label) + '</button>';
   }
 
+  // ── 趋势（阶段 5）──────────────────────────────────────────────────
+  // 两条画图原则，与 src/trends.ts 文件头注释一一对应：
+  // ① 柱状只画「每日新增」，累计改用文字 —— 两套量纲叠一张图必然被误读
+  // ② 衰减曲线横轴是**记忆年龄**，不是日期：库里没有逐日权重快照，
+  //    按日期画等于把今天算出来的值按到过去每一天上
+  var TRD_OPEN = false, TRD_DAYS = 30, TRD_OUT = false;
+
+  function trdBars(daily){
+    // viewBox 宽度贴着实际容器量（实测约 1164）：写 720 会被等比放大约 1.6 倍，
+    // 字号跟着放大，整张图虚高一大截
+    var W = 1160, H = 150, pl = 32, pr = 10, pt = 12, pb = 20;
+    var iw = W - pl - pr, ih = H - pt - pb, n = daily.length || 1;
+    var max = 1;
+    daily.forEach(function(d){ if (d.created > max) max = d.created; });
+    var bw = iw / n, w = Math.max(1.4, bw * 0.6);
+    var bars = daily.map(function(d, i){
+      if (!d.created) return '';
+      var h = Math.max(1.6, ih * d.created / max);
+      var x = pl + bw * i + (bw - w) / 2;
+      return '<rect x="' + x.toFixed(1) + '" y="' + (pt + ih - h).toFixed(1) +
+        '" width="' + w.toFixed(1) + '" height="' + h.toFixed(1) +
+        '" style="fill:var(--ink);opacity:.82"><title>' + esc(d.date + '：' + d.created + ' 条') + '</title></rect>';
+    }).join('');
+    // x 轴只标首 / 中 / 末：30 个日期全标会叠成一团
+    var idx = [0, Math.floor((n - 1) / 2), n - 1].filter(function(v, i, a){ return v >= 0 && a.indexOf(v) === i; });
+    var xlab = idx.map(function(i){
+      var d = daily[i]; if (!d) return '';
+      var anchor = i === 0 ? 'start' : (i === n - 1 ? 'end' : 'middle');
+      var x = i === 0 ? pl : (i === n - 1 ? W - pr : pl + bw * i + bw / 2);
+      return '<text x="' + x.toFixed(1) + '" y="' + (H - 5) + '" text-anchor="' + anchor +
+        '" style="font:9px var(--mono);fill:var(--dim2)">' + esc(d.date.slice(5)) + '</text>';
+    }).join('');
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto;display:block" role="img" aria-label="每日新增记忆条数">' +
+      '<line x1="' + pl + '" y1="' + (pt + ih) + '" x2="' + (W - pr) + '" y2="' + (pt + ih) + '" style="stroke:var(--line)"/>' +
+      '<text x="' + (pl - 5) + '" y="' + (pt + 5) + '" text-anchor="end" style="font:9px var(--mono);fill:var(--dim2)">' + max + '</text>' +
+      '<text x="' + (pl - 5) + '" y="' + (pt + ih) + '" text-anchor="end" style="font:9px var(--mono);fill:var(--dim2)">0</text>' +
+      bars + xlab + '</svg>';
+  }
+
+  function trdDecay(decay){
+    var have = decay.filter(function(b){ return b.n > 0; });
+    if (!have.length) return '<div class="nb-empty">这个窗口里没有可算的记忆。</div>';
+    var W = 1160, H = 152, pl = 40, pr = 14, pt = 16, pb = 26;
+    var iw = W - pl - pr, ih = H - pt - pb, n = decay.length;
+    var stepX = n > 1 ? iw / (n - 1) : 0;
+    // keep 允许 >1（被召回加强过）。上界按实际最大值取，但至少到 1，否则 1.0 会被顶到框外
+    var top = 1;
+    have.forEach(function(b){ if (b.keep > top) top = b.keep; });
+    var pts = decay.map(function(b, i){
+      return { x: pl + stepX * i, y: pt + ih - (Math.min(b.keep, top) / top) * ih, b: b };
+    });
+    // 没有样本的桶**不画点也不连线**：连线会跨过空桶，看起来像"那段真的掉了"
+    var segs = [], cur = [];
+    pts.forEach(function(p){
+      if (p.b.n > 0) cur.push(p);
+      else if (cur.length) { segs.push(cur); cur = []; }
+    });
+    if (cur.length) segs.push(cur);
+    var lines = segs.map(function(s){
+      if (s.length < 2) return '';
+      return '<polyline points="' + s.map(function(p){ return p.x.toFixed(1) + ',' + p.y.toFixed(1); }).join(' ') +
+        '" style="fill:none;stroke:var(--ink);stroke-width:1.5;opacity:.85"/>';
+    }).join('');
+    var dots = pts.filter(function(p){ return p.b.n > 0; }).map(function(p){
+      return '<circle cx="' + p.x.toFixed(1) + '" cy="' + p.y.toFixed(1) + '" r="2.6" style="fill:var(--ink)"/>' +
+        '<text x="' + p.x.toFixed(1) + '" y="' + (p.y - 10).toFixed(1) + '" text-anchor="middle" ' +
+        'style="font:9px var(--mono);fill:var(--dim)">' + p.b.keep.toFixed(2) + '</text>';
+    }).join('');
+    var xlab = decay.map(function(b, i){
+      var x = pl + stepX * i;
+      var anchor = i === 0 ? 'start' : (i === n - 1 ? 'end' : 'middle');
+      return '<text x="' + x.toFixed(1) + '" y="' + (H - 8) + '" text-anchor="' + anchor +
+        '" style="font:9px var(--mono);fill:' + (b.n > 0 ? 'var(--dim2)' : 'var(--line)') + '">' + esc(b.label) + '</text>';
+    }).join('');
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto;display:block" role="img" aria-label="按记忆年龄的权重保留率">' +
+      '<line x1="' + pl + '" y1="' + (pt + ih) + '" x2="' + (W - pr) + '" y2="' + (pt + ih) + '" style="stroke:var(--line)"/>' +
+      '<line x1="' + pl + '" y1="' + pt + '" x2="' + (W - pr) + '" y2="' + pt + '" style="stroke:var(--line);stroke-dasharray:3 3"/>' +
+      (top >= 0.6 ? (function(){
+        // 参考线必须画在它声称的值上：0.5 就落在 0.5 对应的高度，不是「高度的一半」
+        var y = pt + ih - (0.5 / top) * ih;
+        return '<line x1="' + pl + '" y1="' + y.toFixed(1) + '" x2="' + (W - pr) + '" y2="' + y.toFixed(1) + '" style="stroke:var(--line);stroke-dasharray:2 4"/>' +
+          '<text x="' + (pl - 5) + '" y="' + (y + 4).toFixed(1) + '" text-anchor="end" style="font:9px var(--mono);fill:var(--dim2)">0.5</text>';
+      })() : '') +
+      '<text x="' + (pl - 5) + '" y="' + (pt + 4) + '" text-anchor="end" style="font:9px var(--mono);fill:var(--dim2)">' + top.toFixed(1) + '</text>' +
+      '<text x="' + (pl - 5) + '" y="' + (pt + ih) + '" text-anchor="end" style="font:9px var(--mono);fill:var(--dim2)">0</text>' +
+      lines + dots + xlab + '</svg>';
+  }
+
+  function trdKindRows(byKind){
+    if (!byKind.length) return '<div class="nb-empty">没有种类数据。</div>';
+    var maxKeep = 1;
+    byKind.forEach(function(k){ if (k.keep > maxKeep) maxKeep = k.keep; });
+    // 不用 .nb-runrow：它是给带按钮的操作行用的，行高 35px 配 8px 的条太松，
+    // 十条种类排下来像十行表格，看不出是"同类比较"
+    return byKind.slice(0, 10).map(function(k){
+      var pct = Math.max(2, Math.round(k.keep / maxKeep * 100));
+      return '<div style="display:grid;grid-template-columns:104px minmax(80px,1fr) 46px 52px;' +
+        'gap:12px;align-items:center;padding:4px 2px">' +
+        '<span style="font-size:12.5px;color:var(--ink)">' + esc(memKind(k.kind)) + '</span>' +
+        '<span style="height:8px;background:var(--line);display:block">' +
+          '<span style="display:block;height:8px;width:' + pct + '%;background:var(--ink);opacity:.8"></span></span>' +
+        '<span class="m" style="text-align:right">' + k.keep.toFixed(2) + '</span>' +
+        '<span class="m" style="text-align:right">' + k.n + ' 条</span></div>';
+    }).join('');
+  }
+
+  function trdPaint(j){
+    var box = $('nb-mtrend'); if (!box) return;
+    var s = j.summary || {}, daily = j.daily || [], decay = j.decay || [], byKind = j.byKind || [];
+    var total = daily.reduce(function(a, d){ return a + d.created; }, 0);
+    var avg = daily.length ? (total / daily.length) : 0;
+    var html = '';
+    html += '<div class="nb-actrow" style="gap:8px;margin:2px 0 8px">' +
+      '<button class="nb-btn" id="nb-mtrd">收起趋势</button>' +
+      '<span class="nb-empty">' + esc(j.from + ' → ' + j.to) + '</span>' +
+      '<span style="flex:1"></span>' +
+      [7, 30, 90].map(function(d){
+        return '<button class="nb-btn" data-trddays="' + d + '"' +
+          (d === TRD_DAYS ? ' style="border-color:var(--ink);color:var(--ink)"' : '') + '>' + d + ' 天</button>';
+      }).join('') +
+      '<button class="nb-btn" data-trdout="1"' + (TRD_OUT ? ' style="border-color:var(--ink);color:var(--ink)"' : '') +
+      '>含断片</button></div>';
+    html += ovwPart('每日新增', '共 ' + total + ' 条 · 平均 ' + avg.toFixed(1) + ' 条/天',
+      trdBars(daily) +
+      '<div class="nb-empty" style="margin-top:6px">累计 ' + s.beforeWindow + ' → ' + (s.beforeWindow + total) +
+        ' 条（窗口前已有 ' + s.beforeWindow + ' 条）' +
+        (s.fading || s.dormant ? '；其中衰减中 ' + s.fading + ' 条、休眠 ' + s.dormant + ' 条' : '') + '</div>');
+    html += ovwPart('衰减曲线', '横轴是记忆年龄，不是日期',
+      trdDecay(decay) +
+      '<div class="nb-empty" style="margin-top:6px">纵轴是平均保留率（当前权重 ÷ 初始权重）。' +
+        '没有样本的年龄段不画点、也不连线 —— 连线会跨过空档，看起来像“那段真的掉了”。' +
+        '大于 1 表示被召回加强过。</div>');
+    html += ovwPart('按种类', byKind.length + ' 种',
+      trdKindRows(j.byKind || []));
+    html += ovwPart('口径与边界', (j.notes || []).length + ' 条',
+      (j.notes || []).map(function(n){
+        return '<div style="font:12.5px/1.85 var(--sans);color:var(--dim);padding:2px 2px">' + esc(n) + '</div>';
+      }).join(''));
+    box.innerHTML = html;
+
+    var close = $('nb-mtrd');
+    if (close) close.onclick = function(){ TRD_OPEN = false; memTrendSlot(); };
+    Array.prototype.forEach.call(box.querySelectorAll('[data-trddays]'), function(b){
+      b.onclick = function(){ TRD_DAYS = Number(b.getAttribute('data-trddays')) || 30; trdLoad(); };
+    });
+    var ob = box.querySelector('[data-trdout]');
+    if (ob) ob.onclick = function(){ TRD_OUT = !TRD_OUT; trdLoad(); };
+  }
+
+  function trdLoad(){
+    var box = $('nb-mtrend'); if (!box) return;
+    box.innerHTML = '<div class="nb-empty">读取中…</div>';
+    fetch('/api/memories/trend?days=' + TRD_DAYS + (TRD_OUT ? '&outage=1' : ''))
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        if (!j || !j.daily) { box.innerHTML = '<div class="nb-empty">趋势读不到：' + esc((j && j.error) || '接口没返回数据') + '</div>'; return; }
+        trdPaint(j);
+      })
+      .catch(function(e){
+        if (box) box.innerHTML = '<div class="nb-empty">趋势读不到：' + esc(e.message) + '</div>';
+      });
+  }
+
+  function memTrendSlot(){
+    var box = $('nb-mtrend'); if (!box) return;
+    if (!TRD_OPEN) {
+      box.innerHTML = '<button class="nb-btn" id="nb-mtrd-open">展开近 30 天趋势</button>' +
+        '<span class="nb-empty" style="margin-left:8px">记的东西是越来越多还是越来越少 · 各年龄段还剩下多少</span>';
+      var b = $('nb-mtrd-open');
+      if (b) b.onclick = function(){ TRD_OPEN = true; trdLoad(); };
+      return;
+    }
+    trdLoad();
+  }
+
   function memView(q){
     memFromUrl();
     if (q !== undefined) MEM_Q = q;
@@ -1346,6 +1521,7 @@
       '<div class="nb-actrow" style="margin-bottom:6px;gap:8px">' +
         '<input class="nb-search" id="nb-mq" placeholder="搜记忆（回车）——语义召回，不是关键词匹配" value="' + esc(MEM_Q) + '" style="flex:1;min-width:200px">' +
         '<button class="nb-btn" id="nb-mreload">刷新</button></div>' +
+      '<div id="nb-mtrend" style="margin:2px 0 8px"></div>' +
       '<div id="nb-mfacet"></div>' +
       '<div id="nb-mstat" class="nb-empty" style="margin:8px 0 4px">读取中…</div>' +
       '<div id="nb-mlist"></div>');
@@ -1354,6 +1530,7 @@
       if (e.key === 'Enter') { MEM_Q = box.value.trim(); MEM_MORE = MEM_PAGE; memLoad(); }
     };
     var rb = $('nb-mreload'); if (rb) rb.onclick = function(){ memLoad(); };
+    memTrendSlot();
     memLoad();
   }
 

@@ -11,6 +11,7 @@ import { search } from "../../retrieve.ts";
 import { listDocs, forgetDoc, setDocSensitivity } from "../../ingest.ts";
 import { appendEvent, newEventId } from "../../journal.ts";
 import type { Embedder } from "../../embed.ts";
+import { memoryTrend } from "../../trends.ts";
 
 /**
  * 「不是关于人、是关于机器」的那一类记忆（断片 / 睡过头）。
@@ -153,6 +154,16 @@ export async function handleMemory(ctx: MemoryCtx): Promise<boolean> {
           total, outage, about: total - outage, about7d: Number(r.about7d ?? 0),
           byKind, byStage, byLayer,
         });
+        return true;
+      }
+      // 趋势（阶段 5）：近 N 天新增 / 累计 / 衰减曲线。
+      // 全是只读聚合，不新增采样、不落地任何时间序列（决策 4 约束的是资源页，这里也没破）。
+      if (req.method === "GET" && url.pathname === "/api/memories/trend") {
+        const r = memoryTrend(deps.db, {
+          days: intParam(url, "days", 30, 1, 180),
+          includeOutage: url.searchParams.get("outage") === "1",
+        });
+        json(res, 200, r);
         return true;
       }
       const memId = url.pathname.match(/^\/api\/memories\/(\d+)$/);

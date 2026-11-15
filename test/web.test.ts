@@ -159,6 +159,37 @@ test("GET /api/memories：无 embedder 时退化为按权重列，不报错", as
   } finally { srv.close(); }
 });
 
+test("GET /api/memories/trend：返回可直接画图的结构，断片默认排除且能开关", async () => {
+  const dir = tmp();
+  const d = openDb(join(dir, "m.db"));
+  const day = 86400 * 1000;
+  remember(d.db, { layer: "narrative", kind: "fact", text: "我住在杭州", importance: 4, now: new Date(Date.now() - 2 * day) });
+  remember(d.db, { layer: "narrative", kind: "episode", text: "进程被杀 9 分钟", importance: 2, now: new Date(Date.now() - 2 * day) });
+  const srv = createWebServer({
+    db: d.db, inboxDir: join(dir, "inbox"), home: dir,
+    getTransport: () => { throw new Error("no model"); }, getEmbedder: () => null,
+    getConfig: () => ({ ollama: "", roles: { express: { provider: "deepseek", model: "x" } } }),
+  });
+  const base = `http://127.0.0.1:${await listenSafe(srv)}`;
+  try {
+    const j = await (await fetch(`${base}/api/memories/trend?days=7`)).json() as any;
+    assert.equal(j.days, 7);
+    assert.equal(j.daily.length, 7, "窗口每一天都要有点，缺的补 0");
+    assert.ok(typeof j.summary.createdInWindow === "number");
+    assert.ok(Array.isArray(j.decay) && j.decay.length === 6, "年龄桶恒定 6 段");
+    assert.ok(j.notes.length >= 3, "口径说明必须跟着数据一起返回");
+    assert.equal(j.summary.createdInWindow, 1, "断片默认不计入");
+    assert.equal(j.summary.outageInWindow, 1, "但被排除多少要说出来");
+
+    const on = await (await fetch(`${base}/api/memories/trend?days=7&outage=1`)).json() as any;
+    assert.equal(on.summary.createdInWindow, 2, "outage=1 时断片计入");
+
+    // 天数越界要被夹住，而不是报错或返回空
+    const big = await (await fetch(`${base}/api/memories/trend?days=9999`)).json() as any;
+    assert.equal(big.days, 180);
+  } finally { srv.close(); d.db.close(); }
+});
+
 test("记忆浏览器（阶段 4）：列表带层级/时间/敏感度，分面筛选与排序落到 SQL", async () => {
   const dir = tmp();
   const d = openDb(join(dir, "m.db"));

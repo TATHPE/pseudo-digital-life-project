@@ -211,6 +211,19 @@ test("记忆浏览器（阶段 4）：筛选 + 抽屉，且界面没有任何改
   assert.ok(mem.includes("/sensitivity"), "敏感度是另一回事，走独立路由");
 });
 
+test("趋势（阶段 5）：记忆页可展开，图只画能算的东西", () => {
+  const UI = NB;
+  assert.ok(UI.includes("id=\"nb-mtrend\""), "记忆页要有趋势容器");
+  assert.ok(UI.includes("/api/memories/trend"), "要读趋势接口");
+  assert.ok(UI.includes("memTrendSlot"), "首屏不该为趋势多打一次请求，要能按需展开");
+  assert.ok(UI.includes("横轴是记忆年龄"), "要写明横轴是什么 —— 这是它和「时间序列」的区别");
+  // 诚实性：没有逐日权重快照，所以不许出现「按日期画权重」的字样/口径
+  assert.ok(!UI.includes("权重随时间"), "库里没有历史权重，不能这么写");
+  // 空样本的桶不画点也不连线：连线会跨过空档，看起来像那段真的掉了
+  assert.ok(UI.includes("不画点"), "空桶的语义要写在页面上");
+  assert.ok(UI.includes("含断片"), "断片能不能算进去要给开关，不能替用户决定");
+});
+
 test("存储页（阶段 3）：总览卡片 + 可排序明细 + 最大文件，且只读不给删除入口", () => {
   const UI = NB;
   const TPL = readFileSync(new URL("../src/web/notebook.ts", import.meta.url), "utf8");
