@@ -9,6 +9,23 @@
 
 ### Added
 
+- **声音 / 视觉配置不再由我预设，全部你自己写**（2026-11-15）。字段口径对齐 OpenAI 兼容
+  `/v1/audio/speech` 与常见本地推理服务（Ollama 11434/v1、LM Studio 1234/v1、
+  llama.cpp 8080/v1、vLLM 8000/v1）：`baseUrl` / `apiKey` / `model` / `voice` / `speed`
+  / `volume` / `format` / `instructions` / `modelPath`。
+  `backend` 与 `vision.provider` 从 `local|cloud` / `ollama|cloud` 两个字面量放开成任意字符串：
+  local=sherpa-onnx、cloud=msedge-tts、其它名字走 OpenAI 兼容 HTTP（声音 `/v1/audio/speech`，
+  视觉 `/v1/chat/completions`）。`apiKey` 走加密凭据库的 `tts` 槽，不进 `config.json`。
+  设置页所有输入都显示 **config.json 里的原值**，留空 = 未设置/清掉，不替你写回默认值；
+  运行时归一化出来的档位另放在「状态」里，并通过 `configured` / `modelSet` 如实标注。
+- **设置页分组与顺序由你决定**：`ui.cfgGroups` 存你自己的 `[{name, hint, secs}]`，
+  页首「⚙ 自定义分组与顺序」直接编辑 JSON；不写就用内置默认，「恢复内置默认布局」把键删掉
+  而不是写一份默认值进去。
+- **「{ } 直接编辑配置 JSON」**（VS Code settings.json 式）：`GET/PUT /api/config/raw`
+  只开放 `ui` / `tts` / `vision` 三个命名空间，脱敏、按命名空间合并、没写的键保持不变；
+  整份校验，写坏了明拒（`E_BAD_RAW`），不悄悄修。密钥不在这份里。
+- **陪伴视图 🔊 真的能存**：以前写死 `CP_SOUND = true`，点了只在内存里翻转、刷新就回去。
+  现在从 `/api/ui` 读 `ui.sound`、点击写回；音量读 `tts.volume` 并作用到 `Audio.volume`。
 - **状态总览 `/api/overview`**（`src/overview.ts`）：能力五态 / 配置体检 / 模型与接口 / 资源快照
   四份只读事实一次取回，密钥只报「有没有登记」。纯只读：不写配置、不写库、不联网、不 spawn 进程。
 - **界面「体检」页**（`?view=ovw`，左栏与命令面板都有入口）：把上述四块摊开——

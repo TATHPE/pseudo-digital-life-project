@@ -17,18 +17,31 @@ import { isInstalled } from "./ollama.ts";
 
 export const VISION_LOCAL_MODEL = "qwen2.5vl:3b";
 
-export interface VisionConfig { provider: "ollama" | "cloud"; model: string; baseUrl: string; cloudEnabled: boolean }
+export interface VisionConfig {
+  /** 任意字符串；ollama 走本地 /api/chat，其余走 OpenAI 兼容 /v1/chat/completions */
+  provider: string;
+  model: string;
+  baseUrl: string;
+  cloudEnabled: boolean;
+  /** 用户有没有真的设过 provider / model（界面要如实显示「未设置」，不拿运行时默认冒充） */
+  configured?: boolean;
+  modelSet?: boolean;
+}
 
 export function visionConfig(home: string): VisionConfig {
   const f = readFileConfig(home);
   const v = f.vision ?? {};
-  const provider = v.provider === "cloud" ? "cloud" : "ollama";
-  const base = provider === "cloud" ? (v.baseUrl ?? "") : (f.ollama ?? "http://127.0.0.1:11434");
+  const rawProvider = String(v.provider ?? "").trim();
+  const provider = rawProvider || "ollama";
+  const isLocal = provider === "ollama";
+  const rawModel = String(v.model ?? "").trim();
+  // 本地没设模型时运行时用内置 qwen2.5vl:3b，但**不写回配置**，并通过 modelSet=false 如实标出来
+  const model = rawModel || (isLocal ? VISION_LOCAL_MODEL : "");
+  const base = String(v.baseUrl ?? "").trim() || (isLocal ? (f.ollama ?? "http://127.0.0.1:11434") : "");
   return {
-    provider,
-    model: v.model?.trim() || (provider === "cloud" ? "" : VISION_LOCAL_MODEL),
-    baseUrl: base.replace(/\/+$/, ""),
+    provider, model, baseUrl: base.replace(/\/+$/, ""),
     cloudEnabled: v.cloudEnabled === true,
+    configured: rawProvider !== "", modelSet: rawModel !== "",
   };
 }
 
@@ -41,8 +54,11 @@ export function buildRequest(cfg: VisionConfig, b64: string, question: string, m
       body: { model: cfg.model, stream: false, messages: [{ role: "user", content: q, images: [b64] }] },
     };
   }
+  // 常见本地推理服务给的 baseUrl 已经带 /v1（Ollama 11434/v1、LM Studio 1234/v1…），
+  // 再拼一层 /v1 会变成 /v1/v1/... —— 那是把「照别的软件填的地址」判成了错地址。
+  const base = cfg.baseUrl.replace(/\/+$/, "");
   return {
-    url: cfg.baseUrl + "/v1/chat/completions",
+    url: base + (/\/v1$/i.test(base) ? "/chat/completions" : "/v1/chat/completions"),
     body: {
       model: cfg.model, max_tokens: 600,
       messages: [{ role: "user", content: [
@@ -68,16 +84,18 @@ export async function see(
   const mime = mimeOf(imageAbs);
   const doFetch = opts.fetch ?? fetch;
 
-  if (cfg.provider === "cloud") {
-    if (!cfg.cloudEnabled) throw new Error("E_VISION_CLOUD_OFF: 屏幕内容默认只走本地；要发云端，先在设置里开「屏幕可发云端」并填 key");
+  // 任何非 ollama 的 provider（含用户自己起的厂牌名）都算「把屏幕内容送出去」，
+  // 一律过隐私闸 + key，不因为换了名字就绕开。
+  if (cfg.provider !== "ollama") {
+    if (!cfg.cloudEnabled) throw new Error("E_VISION_CLOUD_OFF: 屏幕内容默认只走本地；要发到自定义端点，先在设置里开「屏幕可发云端」并填 key");
     const key = opts.key ?? createStore(join(home, "secrets")).get("vision");
-    if (!key) throw new Error("E_VISION_NO_KEY: 云端视觉没填 key（设置 → 接口 → 视觉）");
-    if (!cfg.baseUrl || !cfg.model) throw new Error("E_VISION_NO_CONFIG: 云端视觉要填 baseUrl 与 model");
+    if (!key) throw new Error("E_VISION_NO_KEY: 自定义视觉端点没填 key（设置 → 大脑 → 眼 · 视觉）");
+    if (!cfg.baseUrl || !cfg.model) throw new Error("E_VISION_NO_CONFIG: 自定义视觉要填 baseUrl 与 model");
     const { url, body } = buildRequest(cfg, b64, question, mime);
     const r = await doFetch(url, { method: "POST", headers: { "content-type": "application/json", authorization: "Bearer " + key }, body: JSON.stringify(body) });
     if (!r.ok) throw new Error("E_VISION_HTTP: " + r.status + " " + (await r.text()).slice(0, 200));
     const j = await r.json() as { choices?: Array<{ message?: { content?: string } }> };
-    return { text: String(j.choices?.[0]?.message?.content ?? "").trim(), provider: "cloud", model: cfg.model };
+    return { text: String(j.choices?.[0]?.message?.content ?? "").trim(), provider: cfg.provider, model: cfg.model };
   }
 
   if (!cfg.model) throw new Error("E_VISION_NO_MODEL: 没配视觉模型");

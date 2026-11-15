@@ -134,13 +134,17 @@ test("设置页收成 5 组，且每一节都被分组表覆盖（2026-11-14 重
   assert.ok(!TPL.includes("nb-jumpbar"), "旧的横向平铺标签条要彻底移除");
   assert.ok(TPL.includes(".cf-navitem"), "左侧分类栏要有自己的样式");
   assert.ok(TPL.includes(".cf-group"), "组内整组铺开要有容器");
-  assert.ok(UI.includes("var CFG_GROUPS"), "要有分组表");
+  assert.ok(UI.includes("var CFG_GROUPS_DEFAULT"), "要有内置默认分组表");
+  // 2026-11-15：内置表只是兜底，用户可从 /api/ui 的 raw.cfgGroups 覆盖（分组与顺序不再写死）
+  assert.ok(UI.includes("function cfgGroupsFrom"), "要有「读用户布局」的入口");
+  assert.ok(UI.includes("raw.cfgGroups"), "布局要来自用户自己的 config.json");
+  assert.ok(UI.includes('cf-edit-layout') && UI.includes('cf-edit-raw'), "要有分组编辑器与原始 JSON 编辑器");
 
   const secs = [...UI.matchAll(/html \+= sec\('([^']+)'/g)].map((m) => m[1]!);
   assert.ok(secs.length >= 18, `节数不该骤减，实际 ${secs.length}`);
 
-  const start = UI.indexOf("var CFG_GROUPS");
-  const block = UI.slice(start, UI.indexOf("function cfgView", start));
+  const start = UI.indexOf("var CFG_GROUPS_DEFAULT");
+  const block = UI.slice(start, UI.indexOf("function cfgGroupsFrom", start));
   const groups = block.match(/\{\s*name:/g) || [];
   assert.equal(groups.length, 5, "固定 5 个分类");
 

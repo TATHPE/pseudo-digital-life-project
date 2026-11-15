@@ -7,6 +7,13 @@ import { join } from "node:path";
 import { atomicWriteFile } from "./fsx.ts";
 import { applyEnv, baseConfig, type AppConfig } from "./config.ts";
 
+/** 设置页的自定义布局：一组里放哪些节、按什么顺序。用户自己写，代码不预设内容。 */
+export interface CfgGroup {
+  name: string;
+  hint?: string;
+  secs: string[];
+}
+
 export interface FileConfig {
   ollama?: string;
   express?: { provider?: string; model?: string; baseUrl?: string };
@@ -58,6 +65,18 @@ export interface FileConfig {
      * 界面显示"已开启 / 运行中"两个状态，不许把「配置开了」谎报成「正在跑」。
      */
     beat?: boolean;
+    /**
+     * 陪伴视图「她开口说话」的开关与音量（2026-11-15）。
+     * 以前前端写死 `CP_SOUND = true`、点一下只在内存里翻转，刷新就回去 —— 用户管这叫「给我固定了」。
+     * 这两项**不设默认值**：没写就是「没设置过」，运行时按开 / 原音量走，但绝不把默认值写回配置。
+     */
+    sound?: boolean;
+    volume?: number;
+    /**
+     * 设置页的分组与顺序（2026-11-15）。用户自己决定哪几节、放在哪组、排第几；
+     * 不配置才用内置默认。结构与校验在 /api/ui，见 CfgGroup。
+     */
+    cfgGroups?: CfgGroup[];
   };
   /**
    * 她叫什么（2026-11-01）：**"鲸鲸" 只是预置人格的名字，不是项目名**。
@@ -96,33 +115,43 @@ export interface FileConfig {
     autonomous?: boolean;
   };
   /**
-   * 眼（2026-11-12）：截图 + 视觉理解，本地/云双路。
-   * 屏幕内容默认只走本地（provider=ollama）；cloudEnabled 是人开的隐私闸，
-   * 开了才允许把截图发云端 OpenAI 兼容视觉 API（key 走 SecretStore 的 vision 槽）。
+   * 眼（2026-11-12）：截图 + 视觉理解。屏幕内容默认只走本地；cloudEnabled 是人开的隐私闸，
+   * 开了才允许把截图发云端（key 走 SecretStore 的 vision 槽）。
+   * 2026-11-15：provider 不再限定 `ollama | cloud` 两个字面量 —— 那是把用户的选择钉死。
+   * 现在任意字符串都存得下；运行时只区分「ollama 走 /api/chat」与「其余走 OpenAI 兼容
+   * /v1/chat/completions」，厂商名只是给人看的标签。
    */
   vision?: {
-    /** ollama（本地，默认）| cloud（OpenAI 兼容） */
-    provider?: "ollama" | "cloud";
-    /** 本地默认 qwen2.5vl:3b；云端填厂商模型名 */
+    /** 任意名字：ollama / cloud / 你自己的厂商名。空 = 未设置 */
+    provider?: string;
+    /** 模型名，自己填；空 = 未设置 */
     model?: string;
-    /** 云端 OpenAI 兼容 baseUrl（如 https://open.bigmodel.cn/api/paas/v4） */
+    /** OpenAI 兼容地址 / Ollama 地址，自己填 */
     baseUrl?: string;
     /** 屏幕内容可发云端（隐私闸，默认关） */
     cloudEnabled?: boolean;
   };
   /**
-   * TTS（2026-11-12，陪伴视图 P2）：她开口说话。本地为主、云备选、音色可选。
-   * local = sherpa-onnx（ONNX 无 Python，模型由人下载）；cloud = msedge-tts（免 key，需网络）。
-   * 声音克隆（GPT-SoVITS）留作后续可插拔后端。
+   * TTS（2026-11-12 建，2026-11-15 放开）：字段口径对齐 OpenAI 兼容 /audio/speech 与
+   * 常见本地推理服务（Ollama 11434/v1、LM Studio 1234/v1、llama.cpp 8080/v1、vLLM 8000/v1）：
+   * baseUrl + apiKey + model + voice + speed + format；本地服务的 apiKey 常只是占位符。
+   * backend 任意字符串：local=sherpa-onnx、cloud=msedge-tts、其余按 OpenAI 兼容 HTTP 走。
+   * **空值就是「没设置」，不替用户补默认值**；apiKey 不落 config.json，走 SecretStore 的 tts 槽。
    */
   tts?: {
-    /** local（默认）| cloud */
-    backend?: "local" | "cloud";
-    /** 音色：local 是 speaker id（如 "0"），cloud 是 edge 音色名（如 zh-CN-XiaoxiaoNeural） */
+    backend?: string;
+    baseUrl?: string;
+    model?: string;
     voice?: string;
-    /** 语速（0.5–2.0） */
+    /** 语速，OpenAI 口径 0.25–4.0（本地后端各自钳到自己的范围） */
     speed?: number;
-    /** 本地 sherpa 模型目录（默认 <home>/tts/model） */
+    /** 播放音量 0–1（前端 Audio.volume） */
+    volume?: number;
+    /** response_format：mp3 / wav / opus / aac / flac / pcm */
+    format?: string;
+    /** gpt-4o-mini-tts 一类模型支持的语气指令 */
+    instructions?: string;
+    /** 本地 sherpa 模型目录 */
     modelPath?: string;
   };
   /**

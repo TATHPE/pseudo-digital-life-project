@@ -1492,7 +1492,7 @@ test("写接口的坏 JSON 一律 400，不再 500，也不漏 SyntaxError（202
   try {
     const H = { "x-jj": "1", "content-type": "application/json" };
     const cases: Array<[string, string]> = [
-      ["PUT", "/api/ui"], ["PUT", "/api/config"], ["PUT", "/api/host"], ["PUT", "/api/tts"],
+      ["PUT", "/api/ui"], ["PUT", "/api/config"], ["PUT", "/api/config/raw"], ["PUT", "/api/host"], ["PUT", "/api/tts"],
       ["PUT", "/api/vision"], ["PUT", "/api/pal"], ["PUT", "/api/bridge"], ["PUT", "/api/persona"],
       ["PUT", "/api/models"], ["PUT", "/api/wsl"], ["POST", "/api/tasks"], ["POST", "/api/permission"],
       ["POST", "/api/super"], ["POST", "/api/grants"],

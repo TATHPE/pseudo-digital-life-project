@@ -1,28 +1,91 @@
 /**
- * TTS（2026-11-12，陪伴视图 P2）：她开口说话。可插拔后端，本地为主、云备选、音色可选。
+ * TTS（2026-11-12 建，2026-11-15 放开）：她开口说话。
  *
- *   local = sherpa-onnx（npm，ONNX 无 Python；中文多音色 VITS，音色 = speaker id）
- *   cloud = msedge-tts（npm，免 key，微软 Edge 神经音色；需网络）
+ *   local  = sherpa-onnx（npm，ONNX 无 Python；中文多音色 VITS，音色 = speaker id）
+ *   cloud  = msedge-tts（npm，免 key，微软 Edge 神经音色；需网络）
+ *   其它值 = OpenAI 兼容 /v1/audio/speech（自己填 baseUrl / model / voice / format / apiKey）
  *
- * 两个后端都**懒加载**（动态 import 用变量名，TS 不解析模块）：没装/没模型时诚实报不可用，
- * 绝不拖垮面板。声音克隆（GPT-SoVITS/CosyVoice，Python）留作后续可插拔后端，不在本期。
- * 模型由人下载（照 WSL 先例）：`jingjing tts setup`。
+ * 2026-11-15 之前 backend 只有 local|cloud 两个字面量，写别的值会被路由**静默丢掉**，
+ * ttsConfig 又强推回 local —— 用户填了等于没填（「值写死、改了不生效」）。
+ * 现在 backend 是任意字符串；运行时只是按上面三条路分派，不再改写用户的选择。
+ * 内置两个后端仍懒加载；模型由人下载：`jingjing tts setup`。
+ *
+ * 字段口径对齐 OpenAI /audio/speech 与本地推理服务（Ollama 11434/v1、LM Studio 1234/v1、
+ * llama.cpp 8080/v1、vLLM 8000/v1）：baseUrl + apiKey + model + voice + speed + format。
  */
 import { existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { readFileConfig } from "./configfile.ts";
 
-export interface TtsConfig { backend: "local" | "cloud"; voice: string; speed: number; modelPath: string }
+export interface TtsConfig {
+  /** 任意字符串；空表示没设置，运行时默认 local（**不会写回配置**） */
+  backend: string;
+  baseUrl: string;
+  model: string;
+  voice: string;
+  speed: number;
+  volume: number;
+  format: string;
+  instructions: string;
+  modelPath: string;
+  /** 用户有没有真的设过 backend（界面要如实显示「未设置」） */
+  configured: boolean;
+}
 
 export function ttsConfig(home: string): TtsConfig {
   const t = readFileConfig(home).tts ?? {};
-  const speed = typeof t.speed === "number" ? Math.max(0.5, Math.min(2, t.speed)) : 1.0;
+  const backend = String(t.backend ?? "").trim();
+  // 内置两个后端语速范围窄；自定义 OpenAI 兼容后端按 OpenAI 的 0.25–4.0
+  const custom = backend !== "" && backend !== "local" && backend !== "cloud";
+  const speed = typeof t.speed === "number" && Number.isFinite(t.speed)
+    ? Math.max(custom ? 0.25 : 0.5, Math.min(custom ? 4 : 2, t.speed))
+    : 1.0;
+  const volume = typeof t.volume === "number" && Number.isFinite(t.volume)
+    ? Math.max(0, Math.min(1, t.volume)) : 1;
   return {
-    backend: t.backend === "cloud" ? "cloud" : "local",
-    voice: String(t.voice ?? ""),
-    speed,
-    modelPath: t.modelPath ?? join(home, "tts", "model"),
+    backend: backend || "local",
+    baseUrl: String(t.baseUrl ?? "").trim(),
+    model: String(t.model ?? "").trim(),
+    voice: String(t.voice ?? "").trim(),
+    format: String(t.format ?? "").trim(),
+    instructions: String(t.instructions ?? "").trim(),
+    speed, volume,
+    modelPath: t.modelPath?.trim() || join(home, "tts", "model"),
+    configured: backend !== "",
   };
+}
+
+/** 自定义后端走 OpenAI 兼容 /audio/speech。纯函数，便于测，不碰网络。 */
+export function buildSpeechRequest(
+  cfg: TtsConfig, text: string, apiKey?: string,
+): { url: string; headers: Record<string, string>; body: Record<string, unknown> } {
+  let base = cfg.baseUrl.replace(/\/+$/, "");
+  if (!base) throw new Error("E_TTS_NO_BASEURL: 自定义声音后端要先填 baseUrl");
+  if (!/\/audio\/speech$/i.test(base)) {
+    // 只有 base 已经以 /v1 结尾才不补；厂商自己的 /v4 之类路径仍按 OpenAI 兼容拼 /v1
+    if (!/\/v1$/i.test(base)) base += "/v1";
+    base += "/audio/speech";
+  }
+  const body: Record<string, unknown> = {
+    model: cfg.model || "tts-1",
+    input: text,
+    voice: cfg.voice || "alloy",
+    ...(cfg.format ? { response_format: cfg.format } : {}),
+    ...(cfg.instructions ? { instructions: cfg.instructions } : {}),
+    speed: cfg.speed,
+  };
+  const headers: Record<string, string> = { "content-type": "application/json" };
+  if (apiKey) headers.authorization = "Bearer " + apiKey;
+  return { url: base, headers, body };
+}
+
+export function mimeForFormat(format: string): string {
+  const f = format.toLowerCase();
+  if (f === "wav" || f === "pcm") return "audio/wav";
+  if (f === "opus") return "audio/ogg";
+  if (f === "aac") return "audio/aac";
+  if (f === "flac") return "audio/flac";
+  return "audio/mpeg";
 }
 
 export interface Voice { id: string; name: string; lang?: string }
@@ -148,33 +211,66 @@ async function edgeSynthesize(text: string, voice: string, speed = 1): Promise<{
   return { mime: "audio/mpeg", data: Buffer.concat(chunks) };
 }
 
+// ── OpenAI 兼容 HTTP 后端 ─────────────────────────────────────
+/** opts.fetch / opts.key 供测试与路由注入；key 不落盘、不进日志。 */
+export async function openaiSynthesize(
+  cfg: TtsConfig, text: string,
+  opts: { key?: string; fetch?: typeof fetch } = {},
+): Promise<{ mime: string; data: Buffer }> {
+  const req = buildSpeechRequest(cfg, text, opts.key);
+  const doFetch = opts.fetch ?? fetch;
+  const r = await doFetch(req.url, { method: "POST", headers: req.headers, body: JSON.stringify(req.body) });
+  if (!r.ok) {
+    let detail = "";
+    try { detail = (await r.text()).slice(0, 200); } catch { /* ignore */ }
+    throw new Error(`E_TTS_HTTP_${r.status}: ${detail || "合成失败"}`);
+  }
+  const data = Buffer.from(await r.arrayBuffer());
+  return { mime: mimeForFormat(cfg.format || String(r.headers.get("content-type") || "")), data };
+}
+
 // ── 对外 ──────────────────────────────────────────────────────
-export async function listVoices(home: string): Promise<{ backend: string; voices: Voice[] }> {
+export async function listVoices(home: string): Promise<{ backend: string; voices: Voice[]; note?: string }> {
   const cfg = ttsConfig(home);
   if (cfg.backend === "cloud") return { backend: "cloud", voices: EDGE_VOICES };
+  if (cfg.backend !== "local") {
+    return { backend: cfg.backend, voices: [], note: "自定义后端没有预置音色表，音色名自己填" };
+  }
   return { backend: "local", voices: await localVoices(cfg) };
 }
 
-export async function ttsStatus(home: string): Promise<{ backend: string; ready: boolean; voice: string; why?: string }> {
+export async function ttsStatus(home: string): Promise<{
+  backend: string; configured: boolean; ready: boolean; voice: string; why?: string;
+}> {
   const cfg = ttsConfig(home);
   if (cfg.backend === "cloud") {
     let ready = true; let why: string | undefined;
     try { await loadEdge(); } catch { ready = false; why = "msedge-tts 没装（npm i msedge-tts）"; }
-    return { backend: "cloud", ready, voice: cfg.voice || EDGE_VOICES[0]!.id, ...(why ? { why } : {}) };
+    return { backend: "cloud", configured: cfg.configured, ready,
+      voice: cfg.voice || EDGE_VOICES[0]!.id, ...(why ? { why } : {}) };
+  }
+  if (cfg.backend !== "local") {
+    const missing = !cfg.baseUrl ? "baseUrl 没填" : !cfg.model ? "model 没填" : "";
+    return { backend: cfg.backend, configured: true, ready: !missing, voice: cfg.voice,
+      ...(missing ? { why: missing + "（自定义后端按 OpenAI 兼容 /audio/speech 走）" } : {}) };
   }
   let ready = localModelReady(cfg); let why: string | undefined;
-  if (!ready) why = "本地模型缺（跑 jingjing tts setup，或切云后端）";
-  else { try { await loadSherpa(); } catch { ready = false; why = "sherpa-onnx 没装或 Node 24 二进制不可用（可先切云后端）"; } }
-  return { backend: "local", ready, voice: cfg.voice || "0", ...(why ? { why } : {}) };
+  if (!ready) why = "本地模型缺（跑 jingjing tts setup，或自己填一个声音后端）";
+  else { try { await loadSherpa(); } catch { ready = false; why = "sherpa-onnx 没装或 Node 24 二进制不可用"; } }
+  return { backend: "local", configured: cfg.configured, ready, voice: cfg.voice || "0", ...(why ? { why } : {}) };
 }
 
 /** 合成一段语音。返回 mime + 音频字节。后端不可用/缺模型时抛带码的错误。 */
-export async function synthesize(home: string, text: string, voice?: string): Promise<{ mime: string; data: Buffer }> {
+export async function synthesize(
+  home: string, text: string, voice?: string,
+  opts: { key?: string; fetch?: typeof fetch } = {},
+): Promise<{ mime: string; data: Buffer }> {
   const t = String(text ?? "").trim();
   if (!t) throw new Error("E_TTS_EMPTY: 没有要说的文本");
   if (t.length > 2000) throw new Error("E_TTS_TOO_LONG: 一次最多 2000 字");
   const cfg = ttsConfig(home);
   const v = voice || cfg.voice;
   if (cfg.backend === "cloud") return edgeSynthesize(t, v || EDGE_VOICES[0]!.id, cfg.speed);
+  if (cfg.backend !== "local") return openaiSynthesize(cfg, t, opts);
   return localSynthesize(cfg, t, v);
 }

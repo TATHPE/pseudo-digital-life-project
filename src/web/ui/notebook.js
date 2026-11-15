@@ -2370,7 +2370,23 @@
   }
 
   // ── 陪伴模式（2026-11-13）：鲸鱼娘（RuiC-2D 绑定的 mesh avatar）占主视觉 + 浮动对话，顶栏右上「陪伴」切换。只替换中间对话区，其余区域保留。 ──
-  var COMPANION = false, CP_MOUNTED = false, CP_BUSY = false, CP_SOUND = true, CP_AC = null;
+  // CP_SOUND / CP_VOLUME 是**运行时**初值，不写回配置：真正的值从服务端读，
+  // 点了开关才落盘。以前写死 true 且只在内存翻转，刷新就回去（2026-11-15）。
+  var COMPANION = false, CP_MOUNTED = false, CP_BUSY = false, CP_SOUND = true, CP_VOLUME = 1, CP_AC = null;
+  function cpLoadPrefs(cb){
+    Promise.all([
+      fetch('/api/ui').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
+      fetch('/api/tts/status').then(function(r){ return r.json(); }).catch(function(){ return {}; })
+    ]).then(function(a){
+      var ui = a[0] || {}, t = a[1] || {};
+      CP_SOUND = ui.raw && typeof ui.raw.sound === 'boolean' ? ui.raw.sound : true;
+      CP_VOLUME = t.raw && typeof t.raw.volume === 'number' ? t.raw.volume : 1;
+      var b = $('cp-sound');
+      if (b){ b.setAttribute('aria-pressed', CP_SOUND ? 'true' : 'false'); b.textContent = CP_SOUND ? '🔊' : '🔇'; }
+      if (window.JJPal && window.JJPal.setVolume) window.JJPal.setVolume(CP_VOLUME);
+      if (cb) cb();
+    }).catch(function(){ if (cb) cb(); });
+  }
   // 形象/背景的选择存在服务端 config.json（设置页与陪伴视图共用同一份），素材在 <home>/pal
   var CP_PAL = null;
   function cpLoadPal(cb){
@@ -2663,6 +2679,7 @@
     var t = $('nb-companion-toggle'); if (t) t.classList.add('on');
     cpLoadHistory();
     cpSubSync();
+    cpLoadPrefs(function(){ cpApplyState(); cpMount(); });
     cpLoadPal(function(){ cpApplyState(); cpMount(); });
     cpState('在发呆');
     var inp = $('cp-say'); if (inp) setTimeout(function(){ inp.focus(); if (typeof cpSayGrow === 'function') cpSayGrow(inp); }, 200);
@@ -2769,6 +2786,9 @@
     cpSnd.setAttribute('aria-pressed', CP_SOUND ? 'true' : 'false');
     cpSnd.textContent = CP_SOUND ? '🔊' : '🔇';
     if (!CP_SOUND && window.JJPal && window.JJPal.stop) window.JJPal.stop();
+    // 写进 config.json，刷新/重开都认这个；音量、音色等细项在设置页「声音」里自己填
+    jsend('PUT', '/api/ui', { sound: CP_SOUND })
+      .catch(function(e){ tick('声音开关没存住：' + e.message); });
   };
   var cpExprBtn = $('cp-expr'); if (cpExprBtn) cpExprBtn.onclick = function(){
     var pop = $('cp-exprpop'); if (!pop) return;
@@ -3053,13 +3073,24 @@
 
   // 设置页的五个分类（2026-11-14 重排）：原来 20 个平铺标签，一半得横向滚动才看得见，
   // 同类功能还被拆散（模型一览夹在人格和头像之间）。这里按「她在想什么 → 她是谁 → 她能做什么 → 界面长什么样 → 数据怎么管」排。
-  var CFG_GROUPS = [
+  // 内置布局只是「没写过自定义布局时」的兜底。真正的分组与顺序从 /api/ui 的
+  // raw.cfgGroups 读（用户自己写进 config.json），不在这里把顺序钉死（2026-11-15）。
+  var CFG_GROUPS_DEFAULT = [
     { name: '大脑', hint: '模型 · 接口', secs: ['接口 · 云端', '本地模型', '眼 · 视觉'] },
     { name: '她',   hint: '人格 · 形象 · 主动性', secs: ['人格', '头像', '形象与背景', '声音', '主动开口'] },
     { name: '手脚', hint: '能力 · 权限 · 接入', secs: ['主机 · 命令解释器', 'WSL 小房子', '常驻指令', '限制', 'QQ 接入（OneBot 11）'] },
     { name: '观感', hint: '主题 · 片头', secs: ['外观', '开机片头'] },
     { name: '数据', hint: '备份 · 诊断 · 版本 · 目录', secs: ['诊断', '版本与更新', '导出 / 导入', '工作区域', '引导', '部署状态'] }
   ];
+  function cfgGroupsFrom(ui){
+    var g = ui && ui.raw ? ui.raw.cfgGroups : null;
+    if (!Array.isArray(g)) return CFG_GROUPS_DEFAULT;
+    // 只做形状检查，不替用户补节、不改顺序
+    var ok = g.every(function(x){ return x && typeof x.name === 'string' && Array.isArray(x.secs) &&
+      x.secs.every(function(s){ return typeof s === 'string'; }); });
+    return ok ? g.map(function(x){ return { name: x.name, hint: x.hint || '', secs: x.secs.slice() }; }) : CFG_GROUPS_DEFAULT;
+  }
+  function cfgDefaultJson(){ return JSON.stringify(CFG_GROUPS_DEFAULT, null, 2); }
 
   function cfgView(){
     var el = $('nb-view');
@@ -3117,6 +3148,7 @@
       var pal = res[17] || {};
       var perm = res[18] || {};
       var ver = res[19] || {};
+      var CFG_GROUPS = cfgGroupsFrom(ui);   // 用户自己的分组/顺序；没写才用内置默认
       CP_PAL = pal.avatars ? pal : CP_PAL;
       var locals = m.installed || [];
       var roleModel = function(n){
@@ -3145,18 +3177,25 @@
         '<button class="nb-btn" id="cf-mpick">看看装了哪些模型</button>' +
         '<span class="nb-empty">端点 ' + esc(m.endpoint || '—') + ' · ' + (m.online ? '在线' : '离线') +
         ' · 索引 ' + esc((m.index && m.index.current) || '—') + '</span></div></div>');
+      var vr = vis.raw || {};
+      // provider 也是自由文本：ollama=本地 /api/chat，其它任意名字都按 OpenAI 兼容
+      // /v1/chat/completions 走（厂商名只是标签）。显示的同样只是用户写下的原值。
       html += sec('眼 · 视觉',
         '<div class="nb-form">' +
-        optRow('vprov', ['ollama', 'cloud'], vis.provider || 'ollama', '走哪路') +
-        field('model', 'cf-vmodel', vis.model || '', '本地 qwen2.5vl:3b / 云端填厂商模型名') +
-        field('baseUrl', 'cf-vbase', vis.baseUrl || '', '云端 OpenAI 兼容地址（本地留空）') +
-        field('key', 'cf-vkey', '', vis.hasKey ? '已有（' + (vis.keyFingerprint || '') + '），留空不改' : '云端视觉 key（本地不用填）') +
-        '<div class="nb-runrow"><span class="k">屏幕可发云端</span><span class="v">' + (vis.cloudEnabled ? '开' : '关') + '</span>' +
-        '<span class="m">默认只走本地；开了才允许把截图发云端</span></div>' +
+        field('provider', 'cf-vprov', vr.provider || '', '未设置。ollama=本地；其它名字=OpenAI 兼容端点') +
+        field('model', 'cf-vmodel', vr.model || '', '未设置。自己填模型名') +
+        field('baseUrl', 'cf-vbase', vr.baseUrl || '', '未设置。Ollama 地址或 OpenAI 兼容地址') +
+        field('key', 'cf-vkey', '', vis.hasKey ? '已有（' + (vis.keyFingerprint || '') + '），留空不改' : '未设置。走加密凭据库，不进 config.json') +
+        '<div class="nb-runrow"><span class="k">屏幕可发外部端点</span><span class="v">' + (vis.cloudEnabled ? '开' : '关') + '</span>' +
+        '<span class="m">默认只走本地；开了才允许把截图发到非 ollama 的端点</span></div>' +
+        '<div class="nb-kv"><b>运行时</b><span>' + esc(vis.provider || '—') + (vis.configured === false ? '（未设置，暂用本地）' : '') +
+        ' / ' + esc(vis.model || '—') + (vis.modelSet === false ? '（未设置，暂用内置模型）' : '') + '</span></div>' +
         '<div class="nb-actrow"><button class="nb-btn" id="cf-vsave">保存</button>' +
         '<button class="nb-btn" id="cf-vcloud">' + (vis.cloudEnabled ? '关掉云闸' : '开云闸') + '</button>' +
         '<button class="nb-btn danger" id="cf-vclear">清除 key</button>' +
-        '<span class="nb-empty" id="cf-vmsg"></span></div></div>');
+        '<span class="nb-empty" id="cf-vmsg"></span></div>' +
+        '<div class="nb-empty">留空 = 清掉这一项，不替你补默认值。字段与本地推理服务（Ollama 11434/v1）' +
+        '及 OpenAI 兼容网关一致。</div></div>');
       html += sec('人格',
         '<div class="nb-form">' + field('名字', 'cf-name', (c.agent && c.agent.name) || '', '她叫什么') +
         '<div class="nb-actrow"><button class="nb-btn" id="cf-nsave">保存名字</button>' +
@@ -3219,20 +3258,34 @@
         '<div class="pal-steps">支持 PNG / JPG / WebP，≤8MB。人物站在画面中间，建议选横图或上下留白多的图；右栏按钮会浮在背景上，任何图都能配。</div>' +
         '<div class="nb-actrow"><button class="nb-btn" id="pal-go">去陪伴视图看看</button></div>' +
         '</div>');
+      var tr = tts.raw || {};
+      // 所有值都是**用户自己填的自由文本**，不再给 local/cloud 两档按钮（2026-11-15）。
+      // 显示的是 config.json 里的原值；运行时归一化出来的默认值只放在「状态」里，不冒充配置。
       html += sec('声音',
         '<div class="nb-form">' +
-        optRow('ttsbackend', ['local', 'cloud'], tts.backend || 'local', '声音后端') +
-        field('音色', 'cf-ttsvoice', tts.voice || '', 'local 填 speaker id（如 0）；cloud 填 edge 音色名') +
-        field('语速', 'cf-ttsspeed', String(tts.speed == null ? 1 : tts.speed), '0.5–2.0') +
-        '<div class="nb-kv"><b>状态</b><span>' + (tts.ready ? '就绪' : '未就绪') + '</span>' +
-        '<b>当前音色</b><span>' + esc(tts.voice || '—') + '</span></div>' +
+        // 标签要短：.nb-fld 左列只有 76px，写「格式 (RESPONSE_FORMAT)」会折行压到输入框上。
+        // 字段名一律放 placeholder 里，既看得见又不挤。
+        field('后端', 'cf-ttsbackend', tr.backend || '', '未设置 · backend：local=本地 / cloud=Edge / 其它名字=OpenAI 兼容端点') +
+        field('接口地址', 'cf-ttsbase', tr.baseUrl || '', '未设置 · baseUrl：如 http://localhost:1234/v1') +
+        field('模型', 'cf-ttsmodel', tr.model || '', '未设置 · model：自定义后端填服务上的模型名') +
+        field('密钥', 'cf-ttskey', '', tts.hasKey ? ('已存 ' + esc(tts.keyFingerprint || '') + '，留空不改；填 null 清除') : '未设置 · apiKey：走加密凭据库，不进 config.json') +
+        field('音色', 'cf-ttsvoice', tr.voice || '', '未设置 · voice：本地填 speaker id；Edge 填 zh-CN-XiaoxiaoNeural；OpenAI 填 alloy 等') +
+        field('语速', 'cf-ttsspeed', tr.speed == null ? '' : String(tr.speed), '未设置 · speed：OpenAI 口径 0.25–4.0，内置后端 0.5–2.0') +
+        field('音量', 'cf-ttsvolume', tr.volume == null ? '' : String(tr.volume), '未设置 · volume：0–1') +
+        field('格式', 'cf-ttsformat', tr.format || '', '未设置 · response_format：mp3 / wav / opus / aac / flac / pcm') +
+        field('指令', 'cf-ttsinst', tr.instructions || '', '未设置 · instructions：部分 OpenAI 兼容模型支持') +
+        field('模型目录', 'cf-ttsmodelpath', tr.modelPath || '', '未设置 · modelPath：仅后端填 local 时用') +
+        '<div class="nb-kv"><b>运行时后端</b><span>' + esc(tts.backend || '—') + (tts.configured === false ? '（未设置，暂用内置 local）' : '') + '</span>' +
+        '<b>状态</b><span>' + (tts.ready ? '就绪' : '未就绪') + '</span></div>' +
         (tts.why ? '<div class="nb-empty">' + esc(tts.why) + '</div>' : '') +
-        (ttsVoices.length ? '<div class="nb-empty">可选音色（点一下填入）：</div><div class="nb-opts">' +
+        (ttsVoices.length ? '<div class="nb-empty">这几个是后端自带的可选音色，点一下填进去，也可以自己写：</div><div class="nb-opts">' +
           ttsVoices.slice(0, 12).map(function(v){ return '<button class="nb-opt" data-ttsvoice="' + esc(v.id) + '">' + esc(v.name || v.id) + '</button>'; }).join('') + '</div>' : '') +
         '<div class="nb-actrow"><button class="nb-btn" id="cf-ttssave">保存</button>' +
         '<button class="nb-btn" id="cf-ttstest">试听一句</button>' +
         '<span class="nb-empty" id="cf-ttsmsg"></span></div>' +
-        '<div class="nb-empty">形象与背景在「形象与背景」那一节里点选/上传，这里只管声音。本地声音需 jingjing tts setup 下载模型；云声音免 key 需网络。</div>' +
+        '<div class="nb-empty">留空 = 清掉这一项，界面不会替你写回默认值。字段口径对齐 OpenAI 兼容 /v1/audio/speech ' +
+        '与常见本地推理服务（Ollama 11434/v1、LM Studio 1234/v1、llama.cpp 8080/v1、vLLM 8000/v1）；' +
+        '本地服务的 apiKey 常只是占位符。形象与背景在「形象与背景」那一节。</div>' +
         '</div>');
       // 主动开口（心跳）：2026-11-15 从启动参数 --beat 改成界面开关。
       // 原来只在「体检」页第三段里有个按钮，用户去设置里找不到——开关该在设置里。
@@ -3326,7 +3379,8 @@
         [['ledger','记录本（黑白 · 紧凑）'],['hermes','Hermes（中性灰 · 宽版式）']].map(function(x){
           return '<button class="nb-opt" data-theme="' + x[0] + '">' + x[1] + '</button>';
         }).join('') + '</div>' +
-        '<div class="nb-actrow"><span class="nb-empty">切了立刻生效，不用重启</span></div></div>');
+        '<div class="nb-actrow"><span class="nb-empty">切了立刻生效，不用重启。这几档是内置版式 / 片头，' +
+        '不是我能随便造的值；其余配置请用页首的「直接编辑配置 JSON」自己写。</span></div></div>');
       html += sec('开机片头',
         '<div class="nb-form">' +
         '<div class="nb-opts" id="cf-splash">' +
@@ -3397,7 +3451,20 @@
             return '<div class="nb-sec">' + esc(t) + '</div>' + inner;
           }).join('') + '</div>';
       }).join('');
-      if (box) box.innerHTML = '<div class="cf-layout">' + navHtml + '<div class="cf-body">' + bodyHtml + '</div></div>';
+      // 布局编辑器放在分组之外：万一用户把分组删空，也得有个地方能改回来。
+      var bar = '<div class="nb-actrow cf-custombar">' +
+        '<button class="nb-btn" id="cf-edit-layout">⚙ 自定义分组与顺序</button>' +
+        '<button class="nb-btn" id="cf-edit-raw">{ } 直接编辑配置 JSON</button>' +
+        '<span class="nb-empty">' + (ui.raw && Array.isArray(ui.raw.cfgGroups) ? '现在用的是你自己的布局' : '现在用的是内置默认布局') + '</span>' +
+        '</div>' +
+        '<div id="cf-editor" hidden><div class="nb-sec" id="cf-editor-title"></div>' +
+        '<textarea id="cf-editor-text" class="nb-search" rows="14" spellcheck="false" style="width:100%;min-height:220px;font:12px/1.6 var(--mono);padding:10px;resize:vertical"></textarea>' +
+        '<div class="nb-actrow"><button class="nb-btn" id="cf-editor-save">保存并刷新</button>' +
+        '<button class="nb-btn" id="cf-editor-cancel">收起</button>' +
+        '<button class="nb-btn danger" id="cf-editor-reset">恢复内置默认布局</button>' +
+        '<span class="nb-empty" id="cf-editor-msg"></span></div>' +
+        '<div class="nb-empty" id="cf-editor-help"></div></div>';
+      if (box) box.innerHTML = bar + '<div class="cf-layout">' + navHtml + '<div class="cf-body">' + bodyHtml + '</div></div>';
       palGrids(pal);
       if (keepScroll) { var pg0 = document.getElementById('nb-page'); if (pg0) pg0.scrollTop = keepScroll; }
       Array.prototype.forEach.call(box.querySelectorAll('.cf-navitem'), function(b){
@@ -3416,6 +3483,57 @@
       });
       function msg(t, ok){ var e = $('cf-msg'); if (e) { e.textContent = t; e.className = 'hint ' + (ok ? 'ok' : 'err'); } }
       function on(id, fn){ var b = $(id); if (b) b.onclick = fn; }
+      // ── 自己决定怎么配置（2026-11-15）───────────────────────────
+      // 两个入口都直接写 config.json：① 设置页分组与顺序 ② VS Code 式的原始 JSON。
+      // 不替用户预设、不把归一化后的默认值写回去；写坏了只报错，不悄悄修。
+      var editMode = '';
+      function editMsg(s, bad){ var e = $('cf-editor-msg'); if (e){ e.textContent = s; e.style.color = bad ? 'var(--amber)' : ''; } }
+      function editOpen(mode){
+        editMode = mode;
+        var wrap2 = $('cf-editor'), ta = $('cf-editor-text'); if (!wrap2 || !ta) return;
+        wrap2.hidden = false; editMsg('');
+        $('cf-editor-reset').hidden = mode !== 'layout';
+        if (mode === 'layout'){
+          $('cf-editor-title').textContent = '设置页分组与顺序';
+          ta.value = JSON.stringify(CFG_GROUPS, null, 2);
+          $('cf-editor-help').textContent = '一行一组：name 是组名，hint 是副标题，secs 按你写的顺序放节名。' +
+            '节名必须和页面上的小节标题一字不差，对不上会当场标红。留空数组就是只留这一条工具栏。' +
+            '保存只改 ui.cfgGroups，不动其他配置；「恢复内置默认布局」把它删掉。';
+        } else {
+          $('cf-editor-title').textContent = '直接编辑配置（ui / tts / vision）';
+          $('cf-editor-help').textContent = '只认 ui / tts / vision 三个命名空间，其余原样保留。' +
+            '密钥不在这里（走系统的加密凭据库），声音/视觉都能在这里一次写全。' +
+            '字符串留空 = 清掉这一项；没写的键保持不变，不会替你补默认值。';
+          editMsg('读取中…');
+          fetch('/api/config/raw').then(function(r){ return r.json(); }).then(function(j){
+            if (editMode !== 'raw') return;
+            ta.value = JSON.stringify({ ui: j.ui || {}, tts: j.tts || {}, vision: j.vision || {} }, null, 2);
+            editMsg('');
+          }).catch(function(e){ editMsg('读取失败：' + e.message, true); });
+        }
+        ta.focus();
+      }
+      on('cf-edit-layout', function(){ editOpen('layout'); });
+      on('cf-edit-raw', function(){ editOpen('raw'); });
+      on('cf-editor-cancel', function(){ var w = $('cf-editor'); if (w) w.hidden = true; editMode = ''; });
+      on('cf-editor-reset', function(){
+        editMsg('保存中…');
+        jsend('PUT', '/api/ui', { cfgGroups: null })
+          .then(function(){ cfgView(); })
+          .catch(function(e){ editMsg('没存成：' + e.message, true); });
+      });
+      on('cf-editor-save', function(){
+        var ta = $('cf-editor-text'); if (!ta) return;
+        var obj;
+        try { obj = JSON.parse(ta.value); }
+        catch (e){ editMsg('JSON 写错了：' + e.message, true); return; }
+        var call = editMode === 'layout'
+          ? jsend('PUT', '/api/ui', { cfgGroups: obj })
+          : jsend('PUT', '/api/config/raw', obj);
+        editMsg('保存中…');
+        call.then(function(){ cfgView(); })
+          .catch(function(e){ editMsg('没存成：' + e.message, true); });
+      });
       Array.prototype.forEach.call(box.querySelectorAll('.nb-opts'), function(g){
         g.onclick = function(e){
           var b = e.target;
@@ -3703,9 +3821,10 @@
       });
       // 眼 · 视觉（2026-11-12）
       on('cf-vsave', function(){
-        var body = { provider: chosen.vprov || 'ollama', model: ($('cf-vmodel') || {}).value || '', baseUrl: ($('cf-vbase') || {}).value || '' };
-        var k = ($('cf-vkey') || {}).value || '';
-        if (k.trim()) body.key = k.trim();
+        var v = function(id){ return (($(id) || {}).value || '').trim(); };
+        var body = { provider: v('cf-vprov'), model: v('cf-vmodel'), baseUrl: v('cf-vbase') };
+        var k = v('cf-vkey');
+        if (k) body.key = k;                 // 留空 = 不动已有 key
         jsend('PUT', '/api/vision', body)
           .then(function(){ tick('视觉配置已保存'); cfgView(); })
           .catch(function(e){ tick('没保存：' + e.message); });
@@ -3744,9 +3863,22 @@
         b.onclick = function(){ var f = $('cf-ttsvoice'); if (f) f.value = b.getAttribute('data-ttsvoice'); };
       });
       on('cf-ttssave', function(){
-        var sp = Number(($('cf-ttsspeed') || {}).value || '1');
-        fetch('/api/tts', { method: 'PUT', headers: H, body: JSON.stringify({ backend: chosen.ttsbackend || 'local', voice: ($('cf-ttsvoice') || {}).value || '', speed: isNaN(sp) ? 1 : sp }) })
-          .then(function(r){ return r.json(); }).then(function(j){ tick(j.ok === false ? (j.error || '没保存') : '声音配置已保存'); cfgView(); });
+        var v = function(id){ return (($(id) || {}).value || '').trim(); };
+        // 全部按原样回写：空串 = 清掉，**不补默认值**（用户明确要自己决定，不要我预设）
+        var body = {
+          backend: v('cf-ttsbackend'), baseUrl: v('cf-ttsbase'), model: v('cf-ttsmodel'),
+          voice: v('cf-ttsvoice'), format: v('cf-ttsformat'), instructions: v('cf-ttsinst'),
+          modelPath: v('cf-ttsmodelpath')
+        };
+        var sp = v('cf-ttsspeed'), vol = v('cf-ttsvolume');
+        if (sp !== '') body.speed = Number(sp);
+        if (vol !== '') body.volume = Number(vol);
+        var k = v('cf-ttskey');
+        if (k === 'null') body.apiKey = null;      // 显式清除
+        else if (k) body.apiKey = k;                // 留空 = 不动已有 key
+        jsend('PUT', '/api/tts', body)
+          .then(function(){ tick('声音配置已保存'); cfgView(); })
+          .catch(function(e){ tick('没保存：' + e.message); });
       });
       on('cf-ttstest', function(){
         var m = $('cf-ttsmsg'); if (m) m.textContent = '合成中…';

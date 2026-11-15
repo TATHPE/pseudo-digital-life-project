@@ -10,6 +10,7 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { readFileConfig, writeFileConfig, resolveConfig, configSources, normalizeAgentName } from "../../configfile.ts";
+import { ttsPatch, visionPatch, cfgGroupsPatch, rawPatch, rawView } from "../../config-custom.ts";
 import { lastPreflight, preflight } from "../../preflight.ts";
 import { capabilities, type Capabilities } from "../../capabilities.ts";
 import { CLI_COMMANDS } from "../../commands.ts";
@@ -85,7 +86,7 @@ export async function handleConfig(ctx: ConfigCtx): Promise<boolean> {
       // ── 外观偏好（现在只剩开机片头档位；头像框已删 2026-11-01）──
       if (req.method === "GET" && url.pathname === "/api/ui") {
         const boot = await import("../boot.ts");
-        const ui = (readFileConfig(deps.home).ui ?? {}) as { splash?: string; shell?: string; theme?: string; beat?: boolean };
+        const ui = readFileConfig(deps.home).ui ?? {};
         json(res, 200, {
           splash: boot.splashMode(ui),
           theme: ui.theme === "hermes" ? "hermes" : "ledger",
@@ -96,15 +97,19 @@ export async function handleConfig(ctx: ConfigCtx): Promise<boolean> {
           // 「正在跑」只认运行期信号：配置驱动的启动没有 --beat，认 argv 会报反
           beat: ui.beat === true,
           beatRunning: process.env.JJ_BEAT_RUNNING === "1",
+          // 2026-11-15：把**原始值**也报出来。上面几个是运行时归一化后的档位（没设就给默认），
+          // 界面要显示的是用户到底写没写、写了什么，不能拿归一化值冒充。
+          raw: { sound: ui.sound, volume: ui.volume, cfgGroups: ui.cfgGroups ?? null, theme: ui.theme ?? null,
+            splash: ui.splash ?? null, shell: ui.shell ?? null },
         });
         return true;
       }
       if (req.method === "PUT" && url.pathname === "/api/ui") {
         const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return true; }
-        const body = await readJson(req) as { splash?: string; shell?: string; theme?: string; beat?: boolean };
+        const body = await readJson(req) as Record<string, unknown>;
         const boot = await import("../boot.ts");
-        // 三个都能单独改：只传哪个就改哪个（别把别的顺手写回默认值）
-        const patch: { splash?: string; shell?: "classic" | "notebook"; theme?: "ledger" | "hermes"; beat?: boolean } = {};
+        // 都能单独改：只传哪个就改哪个（别把别的顺手写回默认值）
+        const patch: Record<string, unknown> = {};
         if (body.theme !== undefined) {
           const v = String(body.theme ?? "");
           if (v !== "ledger" && v !== "hermes") {
@@ -137,9 +142,44 @@ export async function handleConfig(ctx: ConfigCtx): Promise<boolean> {
           }
           patch.beat = body.beat;
         }
+        // 声音：以前前端写死 CP_SOUND=true，点了刷新就回去。现在由用户写进 config。
+        if (body.sound !== undefined) {
+          if (typeof body.sound !== "boolean") { json(res, 400, { error: "E_BAD_SOUND", why: "sound 只能是 true / false" }); return true; }
+          patch.sound = body.sound;
+        }
+        if (body.volume !== undefined) {
+          const v = typeof body.volume === "string" ? Number(body.volume) : body.volume;
+          if (typeof v !== "number" || !Number.isFinite(v) || v < 0 || v > 1) {
+            json(res, 400, { error: "E_BAD_VOLUME", why: "volume 要在 0–1 之间" }); return true;
+          }
+          patch.volume = v;
+        }
+        // 设置页分组 / 顺序：用户自己的布局，整份校验，null = 恢复内置默认
+        if (body.cfgGroups !== undefined) {
+          const r = cfgGroupsPatch(body.cfgGroups);
+          if (!r.ok) { json(res, 400, { error: r.error, why: r.why }); return true; }
+          patch.cfgGroups = r.patch;
+        }
         if (!Object.keys(patch).length) { json(res, 400, { error: "E_EMPTY_PATCH" }); return true; }
         writeFileConfig(deps.home, { ui: patch });
         json(res, 200, { ok: true, ...patch });
+        return true;
+      }
+
+      // ── 直接编辑配置（VS Code 式 settings.json）：只开放 ui / tts / vision 三个命名空间。
+      //     GET 脱敏（密钥在 SecretStore，不在这份里）；PUT 按命名空间合并，别的一律不动。
+      if (req.method === "GET" && url.pathname === "/api/config/raw") {
+        json(res, 200, { ok: true, ...rawView(readFileConfig(deps.home)),
+          namespaces: ["ui", "tts", "vision"] });
+        return true;
+      }
+      if (req.method === "PUT" && url.pathname === "/api/config/raw") {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return true; }
+        const body = await readJson(req) as Record<string, unknown>;
+        const r = rawPatch(body);
+        if (!r.ok) { json(res, 400, { error: r.error, why: r.why }); return true; }
+        const cfg = writeFileConfig(deps.home, r.patch);
+        json(res, 200, { ok: true, ...rawView(cfg) });
         return true;
       }
 
@@ -456,7 +496,7 @@ export async function handleConfig(ctx: ConfigCtx): Promise<boolean> {
 
         // 只报「有没有登记」，不取密钥值
         const secretFlags: Record<string, boolean> = {};
-        for (const p of ["deepseek", "anthropic", "openai", "vision"] as Provider[]) {
+        for (const p of ["deepseek", "anthropic", "openai", "vision", "tts"] as Provider[]) {
           secretFlags[p] = Boolean(secrets().get(p));
         }
 
@@ -684,29 +724,26 @@ export async function handleConfig(ctx: ConfigCtx): Promise<boolean> {
       // ── 眼（2026-11-12）：视觉配置 + 云闸 + key ──
       if (req.method === "GET" && url.pathname === "/api/vision") {
         const v = await import("../../vision.ts");
-        const cfg = v.visionConfig(deps.home);
         const key = secrets().get("vision");
-        json(res, 200, { ...cfg, hasKey: Boolean(key), keyFingerprint: key ? fingerprint(key) : null });
+        json(res, 200, { ...v.visionConfig(deps.home),
+          raw: readFileConfig(deps.home).vision ?? {},
+          hasKey: Boolean(key), keyFingerprint: key ? fingerprint(key) : null });
         return true;
       }
       if (req.method === "PUT" && url.pathname === "/api/vision") {
         const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return true; }
-        const body = await readJson(req) as {
-          provider?: string; model?: string; baseUrl?: string; cloudEnabled?: boolean; key?: string | null;
-        };
+        const body = await readJson(req) as Record<string, unknown>;
         if (body.key === null) secrets().clear("vision");
-        else if (typeof body.key === "string" && body.key !== "") {
-          if (!/^\S{8,}$/.test(body.key)) { json(res, 400, { error: "E_BAD_KEY" }); return true; }
+        else if (typeof body.key === "string" && body.key.trim()) {
+          if (!/^\S{8,}$/.test(body.key.trim())) { json(res, 400, { error: "E_BAD_KEY" }); return true; }
           secrets().set("vision", body.key.trim());
         }
-        writeFileConfig(deps.home, { vision: {
-          ...(body.provider === "cloud" || body.provider === "ollama" ? { provider: body.provider } : {}),
-          ...(body.model ? { model: String(body.model).slice(0, 80) } : {}),
-          ...(body.baseUrl ? { baseUrl: String(body.baseUrl).slice(0, 200) } : {}),
-          ...(typeof body.cloudEnabled === "boolean" ? { cloudEnabled: body.cloudEnabled } : {}),
-        } });
+        const r = visionPatch(body);
+        if (!r.ok) { json(res, 400, { error: r.error, why: r.why }); return true; }
+        if (Object.keys(r.patch).length) writeFileConfig(deps.home, { vision: r.patch });
         const v = await import("../../vision.ts");
-        json(res, 200, { ok: true, ...v.visionConfig(deps.home), hasKey: Boolean(secrets().get("vision")) });
+        json(res, 200, { ok: true, ...v.visionConfig(deps.home),
+          raw: readFileConfig(deps.home).vision ?? {}, hasKey: Boolean(secrets().get("vision")) });
         return true;
       }
 
@@ -753,20 +790,31 @@ export async function handleConfig(ctx: ConfigCtx): Promise<boolean> {
       }
       if (req.method === "GET" && url.pathname === "/api/tts/status") {
         const t = await import("../../tts.ts");
-        json(res, 200, await t.ttsStatus(deps.home));
+        const key = secrets().get("tts");
+        // raw 是用户真正写下的值（没写就是空），status 是运行时归一化后的可用性 —— 两者分开报，
+        // 别拿默认值冒充用户配置（2026-11-15「别替我预设」）。
+        json(res, 200, { ...(await t.ttsStatus(deps.home)),
+          raw: readFileConfig(deps.home).tts ?? {}, hasKey: Boolean(key),
+          keyFingerprint: key ? fingerprint(key) : null });
         return true;
       }
       if (req.method === "PUT" && url.pathname === "/api/tts") {
         const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return true; }
-        const body = await readJson(req) as { backend?: string; voice?: string; speed?: number; modelPath?: string };
-        writeFileConfig(deps.home, { tts: {
-          ...(body.backend === "local" || body.backend === "cloud" ? { backend: body.backend } : {}),
-          ...(body.voice !== undefined ? { voice: String(body.voice).slice(0, 80) } : {}),
-          ...(typeof body.speed === "number" ? { speed: body.speed } : {}),
-          ...(body.modelPath ? { modelPath: String(body.modelPath).slice(0, 300) } : {}),
-        } });
+        const body = await readJson(req) as Record<string, unknown>;
+        // key 单独走 SecretStore，绝不进 config.json（与 vision / express 同一套）
+        if (body.apiKey === null) secrets().clear("tts");
+        else if (typeof body.apiKey === "string" && body.apiKey.trim()) {
+          if (!/^\S{8,}$/.test(body.apiKey.trim())) { json(res, 400, { error: "E_BAD_KEY" }); return true; }
+          secrets().set("tts", body.apiKey.trim());
+        }
+        const r = ttsPatch(body);
+        if (!r.ok) { json(res, 400, { error: r.error, why: r.why }); return true; }
+        // 只有「真的传了配置字段」才写；单独传 apiKey 也是一次合法操作
+        if (Object.keys(r.patch).length) writeFileConfig(deps.home, { tts: r.patch });
         const t = await import("../../tts.ts");
-        json(res, 200, { ok: true, ...(await t.ttsStatus(deps.home)) });
+        const cfg = readFileConfig(deps.home);
+        json(res, 200, { ok: true, ...(await t.ttsStatus(deps.home)), raw: cfg.tts ?? {},
+          hasKey: Boolean(secrets().get("tts")) });
         return true;
       }
       if (req.method === "POST" && url.pathname === "/api/tts") {
@@ -774,7 +822,8 @@ export async function handleConfig(ctx: ConfigCtx): Promise<boolean> {
         const body = await readJson(req) as { text?: string; voice?: string };
         const t = await import("../../tts.ts");
         try {
-          const r = await t.synthesize(deps.home, String(body.text ?? ""), body.voice ? String(body.voice) : undefined);
+          const r = await t.synthesize(deps.home, String(body.text ?? ""), body.voice ? String(body.voice) : undefined,
+            { key: secrets().get("tts") });
           res.writeHead(200, { "content-type": r.mime, "content-length": String(r.data.length), "cache-control": "no-store" });
           res.end(r.data);
         } catch (e) {

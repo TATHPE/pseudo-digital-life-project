@@ -8,8 +8,8 @@
 
 | 项 | 数量 |
 |---|---|
-| 源文件（src/**/*.ts） | 137 |
-| 错误码 E_* | 265 |
+| 源文件（src/**/*.ts） | 138 |
+| 错误码 E_* | 272 |
 | verbs | 33 |
 | CLI 子命令 | 42 |
 
@@ -33,6 +33,7 @@
 | `E_BAD_BEAT` | `src/web/routes/config.ts` |
 | `E_BAD_COMMAND` | `src/plugins.ts` |
 | `E_BAD_ENDPOINT` | `src/transport.ts` |
+| `E_BAD_GROUPS` | `src/config-custom.ts` |
 | `E_BAD_IMAGE` | `src/pal.ts` `src/web/server.ts` |
 | `E_BAD_JSON` | `src/web/body.ts` `src/web/server.ts` |
 | `E_BAD_KEY` | `src/web/routes/config.ts` |
@@ -43,18 +44,22 @@
 | `E_BAD_PATH` | `src/gitview.ts` `src/web/routes/control.ts` `src/web/server.ts` |
 | `E_BAD_PRESET` | `src/web/routes/control.ts` |
 | `E_BAD_RANGE` | `src/decayparams.ts` |
+| `E_BAD_RAW` | `src/config-custom.ts` |
 | `E_BAD_REGEX` | `src/project.ts` |
 | `E_BAD_RELEASE_ID` | `src/deploy/slot.ts` |
 | `E_BAD_ROLE` | `src/cli/jingjing.ts` `src/web/server.ts` |
 | `E_BAD_SENSITIVITY` | `src/web/routes/memory.ts` |
 | `E_BAD_SHELL` | `src/web/routes/config.ts` |
 | `E_BAD_SLOT` | `src/shell.ts` |
+| `E_BAD_SOUND` | `src/web/routes/config.ts` |
+| `E_BAD_SPEED` | `src/config-custom.ts` |
 | `E_BAD_SPLASH` | `src/web/routes/config.ts` |
 | `E_BAD_STEP` | `src/web/routes/setup.ts` |
 | `E_BAD_TARGET` | `src/decayparams.ts` `src/permcheck.ts` |
 | `E_BAD_TEMPLATE` | `src/shell.ts` |
 | `E_BAD_THEME` | `src/web/routes/config.ts` |
 | `E_BAD_VERSION` | `src/release.ts` |
+| `E_BAD_VOLUME` | `src/config-custom.ts` `src/web/routes/config.ts` |
 | `E_BAD_WS` | `src/web/server.ts` |
 | `E_BAD_ZIP` | `src/pal.ts` `src/web/server.ts` |
 | `E_BRIDGE_HTTP_` | `src/bridge.ts` |
@@ -81,7 +86,7 @@
 | `E_EMPTY` | `src/agentguard.ts` `src/datadir.ts` `src/ingest.ts` `src/plugins.ts` `src/profile.ts` `src/selfupdate.ts` `src/store.ts` `src/web/server.ts` |
 | `E_EMPTY_EMBEDDING` | `src/embed.ts` |
 | `E_EMPTY_GOAL` | `src/tasks.ts` |
-| `E_EMPTY_PATCH` | `src/web/routes/config.ts` |
+| `E_EMPTY_PATCH` | `src/config-custom.ts` `src/web/routes/config.ts` |
 | `E_ENCODING` | `src/ingest.ts` `src/persona.ts` `src/web/routes/config.ts` `src/web/server.ts` |
 | `E_EXISTS` | `src/plugins.ts` `src/verbs.ts` |
 | `E_EXPORT_CORRUPT` | `src/handoff.ts` |
@@ -254,6 +259,8 @@
 | `E_TOOL` | `src/mcp.ts` `src/tools.ts` |
 | `E_TOOL_FAILED` | `src/agent.ts` |
 | `E_TTS_EMPTY` | `src/tts.ts` |
+| `E_TTS_HTTP_` | `src/tts.ts` |
+| `E_TTS_NO_BASEURL` | `src/tts.ts` |
 | `E_TTS_NO_MODEL` | `src/tts.ts` |
 | `E_TTS_TOO_LONG` | `src/tts.ts` |
 | `E_UNKNOWN_FIELD` | `src/decayparams.ts` |
@@ -349,6 +356,7 @@
 | `src/cli/night.ts` | CLI：night —— 跑一次闲时整理（抽取 + 冲突消解 + 归并 + 自传）。 |
 | `src/cli/redteam.ts` | 红队用例（04 §10）：21 条（17 拦 + 4 放行反例），可执行、可回归。 |
 | `src/commands.ts` | CLI 子命令表（B-0 用）。它必须与 `src/cli/jingjing.ts` 的 switch 分支一致 —— |
+| `src/config-custom.ts` | 用户自定义配置（2026-11-15）：把「声音 / 视觉」从我预设的几档里放开。 |
 | `src/config.ts` | 角色配置（13 §2） |
 | `src/configfile.ts` | 可持久化的配置（13 §2）：env > data/config.json > 默认值 |
 | `src/confirm.ts` | 待确认清单（04 §4.1 的"人那一侧"） |
@@ -444,7 +452,7 @@
 | `src/toolsmoke.ts` | 工具调用冒烟（P0-1） |
 | `src/transport.ts` | 真正的模型调用层（13 §2 / 19 §0.1 W-A） |
 | `src/trends.ts` | 记忆趋势（阶段 5，2026-11-15）：把「近 N 天新增 / 累计 / 衰减」算成能直接画图的结构。 |
-| `src/tts.ts` | TTS（2026-11-12，陪伴视图 P2）：她开口说话。可插拔后端，本地为主、云备选、音色可选。 |
+| `src/tts.ts` | TTS（2026-11-12 建，2026-11-15 放开）：她开口说话。 |
 | `src/types.ts` | export type Tier = "T0" / "T1" / "T2" / "T3" / "T4"; |
 | `src/verbs.ts` | 能力目录（04 §3）：PDLP 能碰到的东西**只有这张表里的**。 |
 | `src/vision.ts` | 眼（2026-11-12）：截图 + 视觉理解，本地 / 云双路。 |

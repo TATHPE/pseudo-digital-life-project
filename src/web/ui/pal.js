@@ -7,7 +7,7 @@
   var S = null;
   function blank(){
     return { stage:null, canvas:null, avatar:null, model:null, app:null, kind:'mesh', mw:0, mh:0, raf:0, onMove:null, onResize:null, dead:false,
-      audio:null, audioUrl:null, audioCtx:null, analyser:null, mouth:0,
+      audio:null, audioUrl:null, audioCtx:null, analyser:null, mouth:0, volume:1,
       t:0, last:0, nextBlink:2.5, blinkAt:-1, gazeX:0, gazeY:0, wantX:0, wantY:0, state:'idle',
       tune: loadTune() };
   }
@@ -78,6 +78,7 @@
       cleanupAudio();
       var url = URL.createObjectURL(blob);
       var audio = new Audio(url);
+      audio.volume = Math.max(0, Math.min(1, S.volume));  // 音量来自 config.json 的 tts.volume
       S.audio = audio; S.audioUrl = url;
       var Ctx = window.AudioContext || window.webkitAudioContext;
       if (Ctx){
@@ -114,6 +115,12 @@
       .catch(function(e){ setState('idle'); throw e; });
   }
   function stop(){ cleanupAudio(); if (S.rafMouth){ cancelAnimationFrame(S.rafMouth); S.rafMouth = 0; } setState('idle'); }
+  // 音量由设置页 tts.volume 决定，面板启动时读回来（不写死 1）
+  function setVolume(v){
+    var n = Number(v); if (!isFinite(n)) return;
+    S.volume = Math.max(0, Math.min(1, n));
+    if (S.audio) S.audio.volume = S.volume;
+  }
 
   // ── 每帧：呼吸/眨眼/视线/口型 → 参数 ────────────────────
   function frame(){
@@ -337,6 +344,7 @@
     mount: mount,
     speak: speak,
     stop: stop,
+    setVolume: setVolume,
     setExpression: setExpression,
     setState: setState,
     setMouth: setMouth,
