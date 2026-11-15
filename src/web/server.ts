@@ -17,7 +17,6 @@ import { buildBrief } from "../brief.ts";
 import { loadPersona } from "../persona.ts";
 import { expenseLine } from "./state.ts";
 import {readFileConfig, normalizeAgentName} from "../configfile.ts";
-import { recompute, w0FromImportance, type Stage } from "../decay.ts";
 import { capabilities } from "../capabilities.ts";
 import { preflight } from "../preflight.ts";
 import {listProposals} from "../proposals.ts";
@@ -33,7 +32,7 @@ import { recallForBrief, omissionNote } from "../recall.ts";
 import { toolHuman } from "../toolhint.ts";
 import { mcpFingerprint } from "../plugins.ts";
 import { decideSurface, pickSurface, noteSurfaced, usedToday } from "../surface.ts";
-import { reinforce, updateMemoryText, patchMemoryMeta } from "../store.ts";
+import { reinforce } from "../store.ts";
 import { meta } from "../db.ts";
 import { openContracts } from "../store.ts";
 import { execute } from "../execute.ts";
@@ -888,63 +887,12 @@ export function createWebServer(deps: WebDeps) {
         return;
       }
 
-      const memEdit = url.pathname.match(/^\/api\/memories\/(\d+)$/);
-      if (req.method === "PUT" && memEdit) {
-        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return; }
-        const body = await readJson(req) as {
-          text?: string; importance?: number; sensitivity?: string;
-        };
-        const id = Number(memEdit[1]);
-        const cur = deps.db.prepare("SELECT text,importance,sensitivity,layer FROM memories WHERE id=? AND status='active'")
-          .get(id) as { text: string; importance: number; sensitivity: string; layer: string } | undefined;
-        if (!cur) { json(res, 404, { error: "E_NO_MEMORY" }); return; }
-
-        const text = body.text === undefined ? cur.text : String(body.text).trim();
-        if (!text) { json(res, 400, { error: "E_EMPTY" }); return; }
-        if (text.includes("\uFFFD")) { json(res, 400, { error: "E_ENCODING" }); return; }
-        if (Buffer.byteLength(text, "utf8") > 2000) { json(res, 400, { error: "E_TOO_BIG" }); return; }
-        const importance = body.importance === undefined ? cur.importance : Math.max(1, Math.min(5, Math.round(Number(body.importance))));
-        const sensitivity = body.sensitivity === "shareable" ? "shareable"
-          : body.sensitivity === "local_only" ? "local_only" : cur.sensitivity;
-
-        // 纠错也是"变更"：留一条事件，并在面板上说明改了什么（02 §5 / 17 §4）
-        // E-3：人改过重要性 → 记下“是人在打分”，并把 w0 跟着重算
-        //（否则改了 importance 权重不变，很迷惑）
-        const layer = cur.layer === "contract" ? "contract" : "narrative";
-        const changedImportance = body.importance !== undefined && importance !== cur.importance;
-        // E-5：正文改动只走 store.updateMemoryText（它只接受 human:*，并留 pre-image）
-        // H-7 附：向量也交给它同一次写 —— 面板不再自己 INSERT vec_memories（那会变成第二个写入口）
-        if (text !== cur.text) {
-          let newEmb: Float32Array | null = null;
-          try {
-            const v = deps.getEmbedder();
-            if (v) newEmb = (await v.embed([text]))[0] ?? null;
-          } catch { /* 算不出向量不算失败：检索会退化为纯词法 */ }
-          try { updateMemoryText(deps.db, id, text, "human:panel", now(), newEmb); }
-          catch (e) { json(res, 400, { error: String((e as Error).message).slice(0, 120) }); return; }
-        }
-        if (changedImportance) {
-          const w0 = w0FromImportance(importance, layer);
-          const row = deps.db.prepare("SELECT kind,recall_count,last_decay_at,stage FROM memories WHERE id=?").get(id) as
-            { kind: string; recall_count: number; last_decay_at: string; stage: Stage };
-          // 锚点不动：改 importance 不是“再巩固”（后者才动 last_decay_at）
-          const r = recompute({ id: String(id), layer, kind: row.kind, w0, recallCount: row.recall_count, lastDecayAt: new Date(row.last_decay_at), stage: row.stage }, now());
-          // E-5 / Standards #1：**元数据走 patchMemoryMeta**（白名单 + 事件），不再裸 UPDATE。
-          // 以前这里直接写 SQL，于是“模型只能改元数据”那道闸门在生产路径上是死的（只有测试调用它）。
-          patchMemoryMeta(deps.db, id, {
-            importance, sensitivity, w0, weight: r.weight, stage: r.stage, scored_by: "human:panel",
-          }, "human:panel", now());
-        } else {
-          patchMemoryMeta(deps.db, id, { importance, sensitivity }, "human:panel", now());
-        }
-        // text_bigram / FTS / 向量 已由 updateMemoryText 一次写完（这里不再裸写）
-        appendEvent(deps.inboxDir, {
-          v: 1, id: newEventId(), ts: now().toISOString(), kind: "memory_edit", actor: "user",
-          payload: { id, before: cur.text, after: text, importance, sensitivity },
-        });
-        json(res, 200, { ok: true, text, importance, sensitivity });
-        return;
-      }
+      // 决策 3（2026-11-15）：**这里没有 PUT /api/memories/:id** —— 记忆正文不允许从界面改。
+      // 原先这里有完整实现（改正文 + 改 importance + 重算 w0 + 留 pre-image），
+      // 界面也挂着「编辑正文」按钮。用户明确要求「不允许编辑记忆」，所以端点与按钮一起撤掉：
+      // 只撤按钮等于留后门（任何脚本还能改），只撤端点等于摆一个点了必失败的按钮。
+      // 要纠正一条记错的记忆，正确做法是「忘掉它 → 重新记住」：两步都留痕、都可撤销。
+      // 注意：敏感度（能不能出网）不是正文，单独走 /api/memories/:id/sensitivity。
 
       if (req.method === "GET" && url.pathname === "/api/ingest/candidates") {
         // 面板不能读客户端文件系统 —— 只能列服务端 data/sources 下还没摄入的东西

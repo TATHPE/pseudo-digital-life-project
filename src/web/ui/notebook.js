@@ -1278,116 +1278,283 @@
     b.onclick = function(){ go(b.getAttribute('data-v')); };
   });
 
-  function memView(q){
-    var el = $('nb-view');
-    el.innerHTML = head('记忆 · ' + (q ? '搜「' + esc(q) + '」' : '全部')) +
-      wrap('<input class="nb-search" id="nb-mq" placeholder="搜记忆（回车）" value="' + esc(q || '') + '">' +
-        '<div id="nb-mlist"><div class="nb-empty">读取中…</div></div>');
-    var box = $('nb-mq');
-    if (box) {
-      box.onkeydown = function(e){ if (e.key === 'Enter') memView(box.value.trim()); };
-      box.focus();
-    }
-    if (!q) MEM_OFF = MEM_OFF || 0; else MEM_OFF = 0;
-    var url = q ? '/api/memories?q=' + encodeURIComponent(q) + '&limit=40'
-      : '/api/memories?limit=40&offset=' + MEM_OFF;
-    fetch(url).then(function(r){ return r.json(); }).then(function(rows){
-      if (!Array.isArray(rows)) rows = [];
-      var list = $('nb-mlist');
-      var more = (!q && rows.length === 40) ? '<div class="nb-actrow" style="margin-top:10px">' +
-        '<button class="nb-btn" id="nb-mmore">看更早的 40 条</button></div>' : '';
-      list.innerHTML = (rows.length ? rows.map(function(m){
-        return '<button class="nb-row" data-mem="' + m.id + '">' +
-          '<span class="tag">' + esc(KIND[m.kind] || m.kind || '') + '</span>' +
-          esc(String(m.text).slice(0, 110)) +
-          '<span class="m">#' + m.id + ' · ' + esc(m.stage) + ' · ' + Number(m.weight).toFixed(2) + '</span></button>';
-      }).join('') : '<div class="nb-empty">没有匹配的记忆。</div>') + (!q ? more : '');
-      var mb = $('nb-mmore');
-      if (mb) mb.onclick = function(){ MEM_OFF += 40; memView(''); };
-      Array.prototype.forEach.call(list.querySelectorAll('[data-mem]'), function(b){
-        b.onclick = function(){ memDetail(Number(b.getAttribute('data-mem'))); };
-      });
-    }).catch(function(){
-      var list = $('nb-mlist');
-      if (list) list.innerHTML = '<div class="nb-empty">读取失败。</div>';
-    });
-  }
+  // ── 记忆浏览器（阶段 4）：列表 + 分面筛选 + 详情抽屉 ─────────────────
+  // 三条硬约束：
+  //  1) 正文**不可编辑**（决策 3）：抽屉只读。纠错的正确路径是「忘掉 → 重新记住」，
+  //     两步都留痕、都能撤销；随手改正文会让「她记得的」和「日志里的」对不上。
+  //  2) 空结果不能只说「0 条」，必须给下一步 —— 零命中 ≠ 没发生过。
+  //  3) 筛选写进 URL：刷新不丢，也能把一屏筛选直接贴给别人。
+  var MEM_F = { scope: '', layer: '', kind: '', since: '', sens: '', sort: '' };
+  var MEM_Q = '';
+  var MEM_PAGE = 40;
+  var MEM_MORE = 40;
+  var MEM_FACETS = [
+    { k: 'scope', label: '范围', opts: [['', '全部'], ['about', '关于你'], ['outage', '断片']] },
+    { k: 'layer', label: '层级', opts: [['', '全部'], ['contract', '契约'], ['narrative', '叙事']] },
+    { k: 'since', label: '时间', opts: [['', '全部'], ['7d', '近 7 天'], ['30d', '近 30 天']] },
+    { k: 'sens', label: '出网', opts: [['', '全部'], ['local_only', '仅本地'], ['shareable', '可出网']] },
+    { k: 'sort', label: '排序', opts: [['', '按权重'], ['created', '最新'], ['oldest', '最早']] }
+  ];
+  // 词表补充（阶段 4）：KIND 把 fact/fact_hard 都叫「事实」、preference_* 都叫「偏好」，
+  // 直接拿来当筛选按钮就会出现两个同名、点了效果不同的按钮（截图验收抓到）。
+  var MEM_KIND = { fact_hard: '硬事实', fact: '事实', preference_hard: '强偏好', preference_soft: '弱偏好' };
+  function memKind(k){ return MEM_KIND[k] || KIND[k] || k || '记忆'; }
+  var MEM_LAYER = { contract: '契约', narrative: '叙事' };
+  var MEM_STAGE = { active: '活跃', fading: '淡出中', dormant: '休眠' };
 
-  function memDetail(id){
-    var el = $('nb-view');
-    el.innerHTML = head('记忆 #' + id, '<button class="nb-btn" id="nb-mback">← 回列表</button>') +
-      wrap('<div class="nb-empty">读取中…</div>');
-    var back = $('nb-mback'); if (back) back.onclick = function(){ memView(''); };
-    fetch('/api/memories/' + id).then(function(r){ return r.json(); }).then(function(j){
-      var m = (j && j.memory) || j || {};
-      var kv = [
-        ['种类', (KIND[m.kind] || m.kind || '') + ' / ' + (m.layer === 'contract' ? '契约层（不衰减）' : '叙事层')],
-        ['状态', esc(m.stage) + ' · 权重 ' + Number(m.weight || 0).toFixed(2) + ' · w0 ' + Number(m.w0 || 0).toFixed(2)],
-        ['来源', esc(m.scored_by || '?') + ' / ' + esc(m.source_kind || '?') + ' · ' + (m.sensitivity === 'shareable' ? '可出网' : '仅本地')],
-        ['采集', esc(String(m.created_at || '').slice(0, 16).replace('T', ' '))],
-        ['编号', '#' + esc(m.id)]
-      ].map(function(x){ return '<b>' + x[0] + '</b><span>' + x[1] + '</span>'; }).join('');
-      var html = '<div class="nb-sub" id="nb-mtext">' + esc(m.text || '') + '</div>' +
-        '<div class="nb-form" id="nb-medit" hidden>' +
-        '<textarea id="nb-mtextarea" class="nb-search" style="min-height:70px;width:100%">' + esc(m.text || '') + '</textarea>' +
-        '<div class="nb-actrow"><button class="nb-btn" id="nb-msave">保存</button>' +
-        '<button class="nb-btn" id="nb-mcancel">取消</button>' +
-        '<span class="nb-empty">改动会留一条事件（human:panel）</span></div></div>' +
-        (m.quote ? '<div class="nb-kv"><b>原话</b><span>' + esc(m.quote) + '</span></div>' : '') +
-        '<div class="nb-kv">' + kv + '</div>' +
-        '<div><button class="nb-btn" id="nb-meditbtn">编辑正文</button>' +
-        '<button class="nb-btn" id="nb-msens">改成' + (m.sensitivity === 'shareable' ? '仅本地' : '可出网') + '</button>' +
-        '<button class="nb-btn danger" id="nb-mforget">忘掉它</button>' +
-        '<button class="nb-btn" id="nb-mback2">← 回列表</button></div>';
-      el.innerHTML = head('记忆 #' + id, '<button class="nb-btn" id="nb-mback3">← 回列表</button>') + wrap(html);
-      var b1 = $('nb-mback3'), b2 = $('nb-mback2'), b3 = $('nb-mforget');
-      if (b1) b1.onclick = function(){ memView(''); };
-      if (b2) b2.onclick = function(){ memView(''); };
-      var eb = $('nb-meditbtn'), ed = $('nb-medit'), cancel = $('nb-mcancel'), save = $('nb-msave');
-      if (eb && ed) eb.onclick = function(){ ed.hidden = !ed.hidden; if (!ed.hidden) { var t = $('nb-mtextarea'); if (t) t.focus(); } };
-      if (cancel && ed) cancel.onclick = function(){ ed.hidden = true; };
-      if (save) save.onclick = function(){
-        var t = $('nb-mtextarea'); if (!t) return;
-        fetch('/api/memories/' + id, { method: 'PUT', headers: H, body: JSON.stringify({ text: t.value.trim() }) })
-          .then(function(r){ return r.json(); }).then(function(j){
-            if (j.ok === false) { tick(j.error || '没保存成'); return; }
-            tick('已改'); memDetail(id);
-          });
-      };
-      var sens = $('nb-msens');
-      if (sens) sens.onclick = function(){
-        var next = m.sensitivity === 'shareable' ? 'local_only' : 'shareable';
-        jsend('PUT', '/api/memories/' + id, { sensitivity: next })
-          .then(function(){ tick('敏感度：' + (next === 'shareable' ? '可出网' : '仅本地')); memDetail(id); })
-          .catch(function(e){ tick('没改成：' + e.message); });
-      };
-      if (b3) b3.onclick = function(){
-        jpost('/api/memories/' + id + '/forget', {})
-          .then(function(){ tick('已忘掉 #' + id); memForgotten(id); })
-          .catch(function(e){ tick('忘不掉：' + e.message); });
-      };
-    }).catch(function(){
-      el.innerHTML = head('记忆 #' + id) + wrap('<div class="nb-empty">读取失败。</div>');
-    });
-  }
-
-  // 忘掉之后的落点：给一次撤销（调 /api/memories/:id/restore）
-  function memForgotten(id){
-    var el = $('nb-view');
-    el.innerHTML = head('记忆 #' + id, '<button class="nb-btn" id="nb-fback">← 回列表</button>') +
-      wrap('<div class="nb-empty">已忘掉这条。它被标成 deleted（不是物理删除），随时可以撤回来。</div>' +
-      '<div class="nb-actrow"><button class="nb-btn" id="nb-fundo">撤销，恢复这条</button>' +
-      '<button class="nb-btn" id="nb-fback2">← 回列表</button></div>');
-    var b1 = $('nb-fback'), b2 = $('nb-fback2'), b3 = $('nb-fundo');
-    if (b1) b1.onclick = function(){ memView(''); };
-    if (b2) b2.onclick = function(){ memView(''); };
-    if (b3) b3.onclick = function(){
-      fetch('/api/memories/' + id + '/restore', { method: 'POST', headers: H, body: '{}' })
-        .then(function(r){ return r.json(); }).then(function(j){
-          if (j.ok === false) { tick(j.error || '没恢复成'); return; }
-          tick('已恢复 #' + id); memDetail(id);
-        });
+  function memFromUrl(){
+    var p = new URLSearchParams(location.search);
+    MEM_F = {
+      scope: p.get('scope') || '', layer: p.get('layer') || '', kind: p.get('kind') || '',
+      since: p.get('since') || '', sens: p.get('sens') || '', sort: p.get('sort') || ''
     };
+  }
+  function memQs(extra){
+    var p = [];
+    Object.keys(MEM_F).forEach(function(k){ if (MEM_F[k]) p.push(k + '=' + encodeURIComponent(MEM_F[k])); });
+    if (extra) p.push(extra);
+    return p.length ? '?' + p.join('&') : '';
+  }
+  function memCommit(){
+    // go() 本身不改 URL（全站如此），这里只补 query，不触发视图切换
+    try {
+      var parts = ['view=mem'];
+      Object.keys(MEM_F).forEach(function(k){ if (MEM_F[k]) parts.push(k + '=' + encodeURIComponent(MEM_F[k])); });
+      history.replaceState(null, '', location.pathname + '?' + parts.join('&'));
+    } catch (e) { /* 老浏览器 / 特殊宿主：不影响功能，只是刷新会丢筛选 */ }
+  }
+  function memActive(){
+    var out = [];
+    MEM_FACETS.forEach(function(f){
+      if (!MEM_F[f.k]) return;
+      var hit = f.opts.filter(function(o){ return o[0] === MEM_F[f.k]; })[0];
+      out.push(f.label + '：' + (hit ? hit[1] : MEM_F[f.k]));
+    });
+    if (MEM_F.kind) out.push('种类：' + memKind(MEM_F.kind));
+    return out;
+  }
+  function memChip(k, val, label, on){
+    return '<button class="nb-opt' + (on ? ' on' : '') + '" data-mf="' + esc(k) + '" data-mfv="' + esc(val) + '">' + esc(label) + '</button>';
+  }
+
+  function memView(q){
+    memFromUrl();
+    if (q !== undefined) MEM_Q = q;
+    MEM_MORE = MEM_PAGE;
+    var el = $('nb-view');
+    el.innerHTML = head('记忆') + wrap(
+      '<div class="nb-actrow" style="margin-bottom:6px;gap:8px">' +
+        '<input class="nb-search" id="nb-mq" placeholder="搜记忆（回车）——语义召回，不是关键词匹配" value="' + esc(MEM_Q) + '" style="flex:1;min-width:200px">' +
+        '<button class="nb-btn" id="nb-mreload">刷新</button></div>' +
+      '<div id="nb-mfacet"></div>' +
+      '<div id="nb-mstat" class="nb-empty" style="margin:8px 0 4px">读取中…</div>' +
+      '<div id="nb-mlist"></div>');
+    var box = $('nb-mq');
+    if (box) box.onkeydown = function(e){
+      if (e.key === 'Enter') { MEM_Q = box.value.trim(); MEM_MORE = MEM_PAGE; memLoad(); }
+    };
+    var rb = $('nb-mreload'); if (rb) rb.onclick = function(){ memLoad(); };
+    memLoad();
+  }
+
+  function memFacets(kinds){
+    var box = $('nb-mfacet'); if (!box) return;
+    var html = '';
+    MEM_FACETS.forEach(function(f){
+      html += '<div class="nb-actrow" style="gap:6px;margin:2px 0">' +
+        '<span style="font:9.5px/1 var(--mono);letter-spacing:.14em;color:var(--dim2);min-width:30px">' + esc(f.label) + '</span>' +
+        f.opts.map(function(o){ return memChip(f.k, o[0], o[1], MEM_F[f.k] === o[0]); }).join('') + '</div>';
+    });
+    // 种类只列**实际存在**的（summary 给的分布），列一排零结果选项等于让人自己试错
+    if (kinds && kinds.length) {
+      html += '<div class="nb-actrow" style="gap:6px;margin:2px 0">' +
+        '<span style="font:9.5px/1 var(--mono);letter-spacing:.14em;color:var(--dim2);min-width:30px">种类</span>' +
+        memChip('kind', '', '全部', !MEM_F.kind) +
+        kinds.map(function(x){
+          return memChip('kind', x.kind, memKind(x.kind) + ' ' + x.n, MEM_F.kind === x.kind);
+        }).join('') + '</div>';
+    }
+    box.innerHTML = html;
+    Array.prototype.forEach.call(box.querySelectorAll('[data-mf]'), function(b){
+      b.onclick = function(){
+        var k = b.getAttribute('data-mf');
+        var v = b.getAttribute('data-mfv');
+        MEM_F[k] = (MEM_F[k] === v) ? '' : v;
+        MEM_MORE = MEM_PAGE;
+        memCommit();
+        memLoad();
+      };
+    });
+  }
+
+  function memLoad(){
+    var list = $('nb-mlist'), stat = $('nb-mstat');
+    if (list) list.innerHTML = '<div class="nb-empty">读取中…</div>';
+    var extra = 'limit=' + MEM_MORE + (MEM_Q ? '&q=' + encodeURIComponent(MEM_Q) : '');
+    Promise.all([
+      fetch('/api/memories' + memQs(extra)).then(function(r){ return r.json(); }),
+      fetch('/api/memories/summary').then(function(r){ return r.json(); }).catch(function(){ return {}; })
+    ]).then(function(res){
+      var rows = Array.isArray(res[0]) ? res[0] : [];
+      var sum = res[1] || {};
+      memFacets(sum.byKind || []);
+      var act = memActive();
+      if (stat) {
+        stat.innerHTML = '<span>' + esc((MEM_Q ? '搜「' + MEM_Q + '」' : '全部') + ' · 显示 ' + rows.length + ' 条' +
+            (act.length ? ' · 已筛：' + act.join(' · ') : '')) + '</span>' +
+          (act.length || MEM_Q ? ' <button class="nb-btn" id="nb-mclear">清掉条件</button>' : '') +
+          '<span style="margin-left:12px;color:var(--dim2)">共 ' + esc(String(sum.total == null ? '?' : sum.total)) +
+            ' 条 · 关于你 ' + esc(String(sum.about == null ? '?' : sum.about)) +
+            ' · 断片 ' + esc(String(sum.outage == null ? '?' : sum.outage)) +
+            ' · 本周新增 ' + esc(String(sum.about7d == null ? 0 : sum.about7d)) + '</span>';
+        var cl = $('nb-mclear');
+        if (cl) cl.onclick = function(){
+          MEM_F = { scope: '', layer: '', kind: '', since: '', sens: '', sort: '' };
+          MEM_Q = ''; MEM_MORE = MEM_PAGE; memCommit();
+          var qb = $('nb-mq'); if (qb) qb.value = '';
+          memLoad();
+        };
+      }
+      if (!rows.length) {
+        list.innerHTML = '<div class="nb-empty" style="padding:16px 0;line-height:1.9">没有满足条件的记忆。<br>' +
+          '换一组条件，或者清掉条件看全部 —— 空结果只说明这次筛得窄，不说明这些事没发生过。</div>';
+        return;
+      }
+      list.innerHTML = rows.map(function(m){
+        var w = Number(m.weight || 0);
+        return '<button class="nb-row" data-mem="' + esc(m.id) + '">' +
+          '<span class="tag">' + esc(memKind(m.kind)) + '</span>' +
+          esc(String(m.text || '').slice(0, 120)) +
+          '<span class="m">#' + esc(m.id) + ' · ' + esc(MEM_LAYER[m.layer] || m.layer || '?') +
+            ' · ' + esc(MEM_STAGE[m.stage] || m.stage || '?') + ' · 权重 ' + w.toFixed(2) +
+            ' · ' + esc(String(m.created_at || '').slice(0, 10)) + '</span></button>';
+      }).join('') + (rows.length >= MEM_MORE
+        ? '<div class="nb-actrow" style="margin-top:10px"><button class="nb-btn" id="nb-mmore">再多看 ' + MEM_PAGE + ' 条</button></div>'
+        : '');
+      var mb = $('nb-mmore');
+      if (mb) mb.onclick = function(){ MEM_MORE += MEM_PAGE; memLoad(); };
+      Array.prototype.forEach.call(list.querySelectorAll('[data-mem]'), function(b){
+        b.onclick = function(){ memDrawer(Number(b.getAttribute('data-mem'))); };
+      });
+    }).catch(function(e){
+      if (list) list.innerHTML = '<div class="nb-empty">读取失败：' + esc((e && e.message) || e) + '</div>';
+    });
+  }
+
+  // 详情抽屉：从右侧滑出，列表留在原位。整页跳转再回来，用户得重新滚一遍找刚才那条。
+  function memDrawer(id){
+    var host = $('nb-mdraw');
+    if (!host) {
+      host = document.createElement('div');
+      host.id = 'nb-mdraw';
+      document.body.appendChild(host);
+    }
+    if (memDrawer._esc) document.removeEventListener('keydown', memDrawer._esc);
+    var close = function(){
+      host.innerHTML = '';
+      if (memDrawer._esc) { document.removeEventListener('keydown', memDrawer._esc); memDrawer._esc = null; }
+    };
+    memDrawer._esc = function(e){ if (e.key === 'Escape') close(); };
+    document.addEventListener('keydown', memDrawer._esc);
+    var bindClose = function(){
+      Array.prototype.forEach.call(host.querySelectorAll('[data-mclose]'), function(b){ b.onclick = close; });
+    };
+
+    host.innerHTML = '<div class="nb-draw-bg" data-mclose="1"></div>' +
+      '<div class="nb-draw" role="dialog" aria-modal="true"><div class="nb-empty">读取中…</div></div>';
+    bindClose();
+
+    fetch('/api/memories/' + id).then(function(r){ return r.json(); }).then(function(m){
+      if (!m || m.error) { close(); tick('找不到 #' + id); return; }
+      var kv = [
+        ['种类', memKind(m.kind) + (m.layer === 'contract' ? ' · 契约层（不衰减）' : ' · 叙事层')],
+        ['状态', (MEM_STAGE[m.stage] || m.stage || '?') + ' · 权重 ' + Number(m.weight || 0).toFixed(2) +
+          '（w0 ' + Number(m.w0 || 0).toFixed(2) + '）'],
+        ['分量', '重要性 ' + String(m.importance == null ? '?' : m.importance) + '/5 · 被召回 ' + String(m.recall_count || 0) + ' 次'],
+        ['来源', (m.source_kind || '?') + (m.source_ref ? ' · ' + m.source_ref : '') +
+          ' · ' + (m.sensitivity === 'shareable' ? '可出网' : '仅本地')],
+        ['时间', '记于 ' + String(m.created_at || '').slice(0, 16).replace('T', ' ') +
+          ' · 末次衰减 ' + String(m.last_decay_at || '').slice(0, 10)]
+      ];
+      if (m.superseded_by) kv.push(['顶替', '已被 #' + m.superseded_by + ' 取代（不再参与召回）']);
+      if (m.generation && m.generation.gen) {
+        kv.push(['分代', '第 ' + m.generation.gen + ' 代人格' + (m.generation.because ? ' · ' + m.generation.because : '')]);
+      }
+      var prov = m.provenance || {};
+      var hist = (prov.changes || []).length
+        ? '<div class="nb-sec"><span>改过的旧正文（只读留痕）</span></div>' + prov.changes.map(function(c){
+            return '<div class="nb-kv" style="margin:0 0 6px"><b>' + esc(String(c.at || '').slice(0, 10)) + '</b>' +
+              '<span style="color:var(--dim2)">' + esc(String(c.old || '').slice(0, 200)) + '</span></div>';
+          }).join('')
+        : '';
+      var docLine = (prov.doc && prov.doc.title)
+        ? '<div class="nb-kv"><b>来自文档</b><span>' + esc(prov.doc.title) + '</span></div>' : '';
+
+      host.innerHTML = '<div class="nb-draw-bg" data-mclose="1"></div>' +
+        '<div class="nb-draw" role="dialog" aria-modal="true">' +
+        '<div class="nb-draw-hd"><h2>记忆 #' + esc(m.id) + '</h2><span style="flex:1"></span>' +
+        '<button class="nb-btn" data-mclose="1">关闭</button></div>' +
+        '<div class="nb-drawtext">' + esc(m.text || '') + '</div>' +
+        (m.quote ? '<div class="nb-kv"><b>当时的原话</b><span>' + esc(m.quote) + '</span></div>' : '') +
+        docLine +
+        '<div class="nb-kv">' + kv.map(function(x){
+          return '<b>' + esc(x[0]) + '</b><span>' + esc(x[1]) + '</span>';
+        }).join('') + '</div>' +
+        hist +
+        '<div class="nb-sec"><span>能做什么</span></div>' +
+        '<div class="nb-actrow" style="margin-bottom:18px">' +
+          '<button class="nb-btn" id="mem-sens">改成' + (m.sensitivity === 'shareable' ? '仅本地' : '可出网') + '</button>' +
+          '<button class="nb-btn danger" id="mem-forget">忘掉这条</button></div>' +
+        '<div class="nb-sec"><span>为什么不能改正文</span></div>' +
+        '<div style="font:12.5px/1.85 var(--sans);color:var(--dim);padding:0 2px 10px">' +
+          '记忆记的是「发生过什么」。随手改正文，会让「她记得的」和「日志里的」对不上，' +
+          '以后也没法判断哪句是真的。<br>' +
+          '要纠正一条记错的，用<b style="color:var(--ink)">忘掉 → 重新记住</b>：' +
+          '忘掉只标成 deleted、随时能撤销；重新记住会留一条新事件，两步都有据可查。</div>' +
+        '</div>';
+      bindClose();
+
+      var sb = host.querySelector('#mem-sens');
+      if (sb) sb.onclick = function(){
+        var next = m.sensitivity === 'shareable' ? 'local_only' : 'shareable';
+        sb.disabled = true;
+        jsend('PUT', '/api/memories/' + m.id + '/sensitivity', { value: next })
+          .then(function(){
+            tick('敏感度：' + (next === 'shareable' ? '可出网' : '仅本地'));
+            memDrawer(m.id); memLoad();
+          })
+          .catch(function(e){ sb.disabled = false; tick('没改成：' + e.message); });
+      };
+
+      var fb = host.querySelector('#mem-forget');
+      if (fb) fb.onclick = function(){
+        if (!window.confirm('忘掉 #' + m.id + '？\n只会标成 deleted、不再参与召回；原始事件和日志都不动，随时能恢复。')) return;
+        fb.disabled = true;
+        jpost('/api/memories/' + m.id + '/forget', {})
+          .then(function(){
+            host.innerHTML = '<div class="nb-draw-bg" data-mclose="1"></div><div class="nb-draw">' +
+              '<div class="nb-draw-hd"><h2>已忘掉 #' + esc(m.id) + '</h2></div>' +
+              '<div class="nb-empty" style="line-height:1.75">已经标成 deleted，不再参与召回。' +
+              '原始事件还在 inbox，这条记忆也能原样恢复。</div>' +
+              '<div class="nb-actrow" style="margin-top:14px">' +
+              '<button class="nb-btn" id="mem-undo">撤销，恢复这条</button>' +
+              '<button class="nb-btn" data-mclose="1">关闭</button></div></div>';
+            bindClose();
+            var ub = host.querySelector('#mem-undo');
+            if (ub) ub.onclick = function(){
+              jpost('/api/memories/' + m.id + '/restore', {})
+                .then(function(){ tick('已恢复 #' + m.id); memDrawer(m.id); memLoad(); })
+                .catch(function(e){ tick('没恢复成：' + e.message); });
+            };
+            memLoad();
+          })
+          .catch(function(e){ fb.disabled = false; tick('忘不掉：' + e.message); });
+      };
+    }).catch(function(e){
+      host.innerHTML = '<div class="nb-draw-bg" data-mclose="1"></div>' +
+        '<div class="nb-draw"><div class="nb-empty">读取失败：' + esc((e && e.message) || e) + '</div></div>';
+      bindClose();
+    });
   }
 
   function docsView(){

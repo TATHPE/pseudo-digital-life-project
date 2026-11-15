@@ -51,20 +51,58 @@ export async function handleMemory(ctx: MemoryCtx): Promise<boolean> {
         // 两种视图（2026-11-04）：断片记录占了 active 的 92%，把「关于你」淹没了。
         // 只过滤**视图**，不动数据（D-J 2026-10-28：outage 是真事件，改视图不改记忆）。
         const scope = url.searchParams.get("scope") ?? "all";
-        const scopeSql = scope === "about" ? ` AND NOT ${OUTAGE_SQL}` : scope === "outage" ? ` AND ${OUTAGE_SQL}` : "";
-        const rows = q
-          ? (deps.getEmbedder()
-            ? (await search(deps.db, deps.getEmbedder()!, q, { k: 12 })).hits.map((h) => ({
-              id: h.id, text: h.text, stage: h.stage, weight: h.weight, kind: "episode",
-            }))
-            : [])
-          : (deps.db.prepare(
-            `SELECT id,text,stage,weight,kind FROM memories WHERE status='active'${scopeSql}
-             ORDER BY weight DESC, updated_at DESC LIMIT ? OFFSET ?`)
-            .all(
-              intParam(url, "limit", 40, 1, 200),
-              intParam(url, "offset", 0, 0),
-            ) as Array<{ id: number; text: string; stage: string; weight: number; kind: string }>);
+        const limit = intParam(url, "limit", 40, 1, 200);
+        const offset = intParam(url, "offset", 0, 0);
+
+        // 分面筛选（阶段 4，2026-11-15）：列表要能按层级/种类/阶段/敏感度/时间收窄。
+        // 每个值都走白名单或参数绑定 —— `sort` 是唯一直接拼进 SQL 的地方，
+        // 所以它只认下面四个字面量，别的一律回落到默认排序。
+        const where: string[] = ["status='active'"];
+        const args: string[] = [];
+        if (scope === "about") where.push(`NOT ${OUTAGE_SQL}`);
+        if (scope === "outage") where.push(OUTAGE_SQL);
+        const layer = url.searchParams.get("layer") ?? "";
+        if (layer === "narrative" || layer === "contract") { where.push("layer=?"); args.push(layer); }
+        const kind = url.searchParams.get("kind") ?? "";
+        if (kind) { where.push("kind=?"); args.push(kind); }
+        const stage = url.searchParams.get("stage") ?? "";
+        if (stage === "active" || stage === "fading" || stage === "dormant") { where.push("stage=?"); args.push(stage); }
+        const sens = url.searchParams.get("sens") ?? "";
+        if (sens === "local_only" || sens === "shareable") { where.push("sensitivity=?"); args.push(sens); }
+        const since = url.searchParams.get("since") ?? "";
+        if (since === "7d" || since === "30d") {
+          // 天数只来自这两个字面量，不把用户串拼进 SQL
+          where.push(`julianday(created_at) > julianday('now','-${since === "7d" ? 7 : 30} days')`);
+        }
+        const sort = url.searchParams.get("sort") ?? "";
+        const order = sort === "created" ? "created_at DESC"
+          : sort === "oldest" ? "created_at ASC"
+          : sort === "updated" ? "updated_at DESC"
+          : "weight DESC, updated_at DESC";
+        // 列表原来只给 id/text/stage/weight/kind，界面拿不到层级、时间、敏感度，
+        // 于是「筛选」根本无从谈起（2026-11-15 补全）
+        const COLS = "id,text,kind,layer,stage,weight,status,sensitivity,source_kind,created_at,updated_at";
+
+        if (q) {
+          const emb = deps.getEmbedder();
+          if (!emb) { json(res, 200, []); return true; }
+          const hits = (await search(deps.db, emb, q, { k: 12 })).hits;
+          if (!hits.length) { json(res, 200, []); return true; }
+          const ids = hits.map((h) => h.id);
+          const rows = deps.db.prepare(
+            `SELECT ${COLS} FROM memories WHERE id IN (${ids.map(() => "?").join(",")})
+             AND ${where.join(" AND ")}`,
+          ).all(...ids, ...args) as Array<Record<string, unknown>>;
+          // 搜索结果的顺序就是相关度，不能被 weight 重排（重排等于把「命中」变成「重要」）
+          const rank = new Map(ids.map((id, i) => [id, i]));
+          rows.sort((a, b) => Number(rank.get(Number(a.id))) - Number(rank.get(Number(b.id))));
+          json(res, 200, rows);
+          return true;
+        }
+
+        const rows = deps.db.prepare(
+          `SELECT ${COLS} FROM memories WHERE ${where.join(" AND ")} ORDER BY ${order} LIMIT ? OFFSET ?`,
+        ).all(...args, limit, offset);
         json(res, 200, rows);
         return true;
       }
@@ -99,8 +137,22 @@ export async function handleMemory(ctx: MemoryCtx): Promise<boolean> {
         ).get() as { total: number; outage: number | null; about7d: number | null };
         const total = Number(r.total ?? 0);
         const outage = Number(r.outage ?? 0);
+        // 分布（阶段 4）：界面既要画分布条，又要给筛选项 —— 只列**实际存在**的种类，
+        // 不然下拉里一排零结果的选项，等于让人自己试错
+        const byKind = deps.db.prepare(
+          "SELECT kind, count(*) AS n FROM memories WHERE status='active' GROUP BY kind ORDER BY n DESC",
+        ).all() as Array<{ kind: string; n: number }>;
+        const byStage = deps.db.prepare(
+          "SELECT stage, count(*) AS n FROM memories WHERE status='active' GROUP BY stage ORDER BY n DESC",
+        ).all() as Array<{ stage: string; n: number }>;
+        const byLayer = deps.db.prepare(
+          "SELECT layer, count(*) AS n FROM memories WHERE status='active' GROUP BY layer ORDER BY n DESC",
+        ).all() as Array<{ layer: string; n: number }>;
         // 本周新增的「关于你」：没有这条，用户只能靠感觉判断"是不是越记越多"
-        json(res, 200, { total, outage, about: total - outage, about7d: Number(r.about7d ?? 0) });
+        json(res, 200, {
+          total, outage, about: total - outage, about7d: Number(r.about7d ?? 0),
+          byKind, byStage, byLayer,
+        });
         return true;
       }
       const memId = url.pathname.match(/^\/api\/memories\/(\d+)$/);
@@ -167,6 +219,32 @@ export async function handleMemory(ctx: MemoryCtx): Promise<boolean> {
           payload: { id },
         });
         json(res, 200, { ok: true });
+        return true;
+      }
+
+      // 敏感度（能不能出网）：界面原来把「改成可出网」也塞进 PUT /api/memories/:id，
+      // 可那个端点根本不存在（正文按决策 3 不允许改），按钮点了没反应。
+      // 现在只放行这一个字段，单独一条路由，和文档的 /sensitivity 对齐。
+      const memSens = url.pathname.match(/^\/api\/memories\/(\d+)\/sensitivity$/);
+      if ((req.method === "PUT" || req.method === "POST") && memSens) {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return true; }
+        let body: { value?: unknown } = {};
+        try { body = await readJson(req) as typeof body; } catch { json(res, 400, { error: "E_JSON" }); return true; }
+        const value = String(body.value ?? "");
+        if (value !== "shareable" && value !== "local_only") {
+          json(res, 400, { error: "E_BAD_SENSITIVITY" });
+          return true;
+        }
+        const id = Number(memSens[1]);
+        const row = deps.db.prepare("SELECT id FROM memories WHERE id=?").get(id);
+        if (!row) { json(res, 404, { error: "E_NOT_FOUND" }); return true; }
+        deps.db.prepare("UPDATE memories SET sensitivity=?, updated_at=? WHERE id=?")
+          .run(value, now().toISOString(), id);
+        appendEvent(deps.inboxDir, {
+          v: 1, id: newEventId(), ts: now().toISOString(), kind: "memory_sensitivity", actor: "user",
+          payload: { id, value },
+        });
+        json(res, 200, { ok: true, value });
         return true;
       }
 

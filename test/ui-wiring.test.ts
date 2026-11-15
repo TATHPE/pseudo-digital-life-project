@@ -193,6 +193,24 @@ test("能力体检页（阶段 2）：有入口、能深链、开关写的是 co
   assert.ok(!/exec|spawn/.test(UI.slice(UI.indexOf("function ovwView"), UI.indexOf("function capView"))), "体检页不许自己执行命令");
 });
 
+test("记忆浏览器（阶段 4）：筛选 + 抽屉，且界面没有任何改正文的入口（决策 3）", () => {
+  const UI = NB;
+  assert.ok(UI.includes("function memView"), "要有记忆列表");
+  assert.ok(UI.includes("function memDrawer"), "详情要开抽屉，不要整页跳走");
+  assert.ok(UI.includes("data-mf="), "筛选 chip 要能点");
+  assert.ok(UI.includes("/api/memories/summary"), "筛选项要用真实分布，别列一排零结果选项");
+  assert.ok(UI.includes("history.replaceState"), "筛选要写进 URL，刷新不丢");
+  assert.ok(UI.includes("清掉条件"), "筛窄了要给下一步 —— 零命中 ≠ 没发生过");
+  const mem = UI.slice(UI.indexOf("function memView"), UI.indexOf("function docsView"));
+  // 决策 3：正文不可编辑。编辑框、保存正文的 PUT、编辑按钮，一个都不许留
+  assert.ok(!mem.includes("textarea"), "不许有能改正文的输入框");
+  assert.ok(!mem.includes("method: 'PUT'"), "记忆块里不许直接 PUT 正文");
+  assert.ok(!mem.includes("nb-medit"), "不许有编辑入口");
+  assert.ok(mem.includes("为什么不能改正文"), "要说明为什么不能改，而不是只把按钮藏起来");
+  assert.ok(mem.includes("忘掉 → 重新记住"), "要给出替代路径");
+  assert.ok(mem.includes("/sensitivity"), "敏感度是另一回事，走独立路由");
+});
+
 test("存储页（阶段 3）：总览卡片 + 可排序明细 + 最大文件，且只读不给删除入口", () => {
   const UI = NB;
   const TPL = readFileSync(new URL("../src/web/notebook.ts", import.meta.url), "utf8");

@@ -150,7 +150,7 @@
 | `E_NO_HUB` | `src/web/server.ts` |
 | `E_NO_KEY` | `src/web/server.ts` |
 | `E_NO_LINK` | `src/cli/jingjing.ts` |
-| `E_NO_MEMORY` | `src/store.ts` `src/web/server.ts` |
+| `E_NO_MEMORY` | `src/store.ts` |
 | `E_NO_MODEL` | `src/cli/night.ts` |
 | `E_NO_NIGHT` | `src/web/routes/control.ts` |
 | `E_NO_NOTE` | `src/web/server.ts` |

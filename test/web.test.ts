@@ -159,6 +159,71 @@ test("GET /api/memories：无 embedder 时退化为按权重列，不报错", as
   } finally { srv.close(); }
 });
 
+test("记忆浏览器（阶段 4）：列表带层级/时间/敏感度，分面筛选与排序落到 SQL", async () => {
+  const dir = tmp();
+  const d = openDb(join(dir, "m.db"));
+  const day = 86400 * 1000;
+  // 时间用「相对现在」造，别写死日期——闸门不该在几周后自己变红
+  remember(d.db, { layer: "contract", kind: "promise", text: "别在深夜提醒我", importance: 5, now: new Date(Date.now() - 60 * day) });
+  remember(d.db, { layer: "narrative", kind: "fact", text: "我住在杭州", importance: 4, sensitivity: "shareable", now: new Date(Date.now() - 3 * day) });
+  remember(d.db, { layer: "narrative", kind: "episode", text: "今天聊了移植", importance: 2, now: new Date(Date.now() - 1 * day) });
+  const srv = createWebServer({
+    db: d.db, inboxDir: join(dir, "inbox"), home: dir,
+    getTransport: () => { throw new Error("no model"); }, getEmbedder: () => null,
+    getConfig: () => ({ ollama: "", roles: { express: { provider: "deepseek", model: "x" } } }),
+  });
+  const base = `http://127.0.0.1:${await listenSafe(srv)}`;
+  const h = { "content-type": "application/json", "x-jj": "1" };
+  const list = async (qs = "") => (await (await fetch(`${base}/api/memories${qs}`)).json()) as any[];
+  try {
+    // 1) 字段齐：界面要按层级/时间/敏感度筛选，这三样以前根本没返回
+    const all = await list();
+    assert.equal(all.length, 3);
+    for (const f of ["kind", "layer", "stage", "weight", "sensitivity", "created_at"]) {
+      assert.ok(all.every((r) => r[f] !== undefined), `列表必须返回 ${f}，否则界面筛不了`);
+    }
+
+    // 2) 分面筛选
+    assert.deepEqual((await list("?layer=contract")).map((r) => r.kind), ["promise"]);
+    assert.deepEqual((await list("?kind=fact")).map((r) => r.text), ["我住在杭州"]);
+    assert.deepEqual((await list("?sens=shareable")).map((r) => r.kind), ["fact"]);
+    assert.equal((await list("?since=7d")).length, 2, "近 7 天不含 60 天前那条");
+    assert.equal((await list("?since=30d")).length, 2);
+    assert.equal((await list("?layer=narrative&kind=episode")).length, 1, "多个条件要 AND 起来");
+
+    // 3) 排序：按创建时间降序，最新那条在最前
+    const byCreated = await list("?sort=created");
+    assert.equal(byCreated[0].text, "今天聊了移植");
+    assert.equal((await list("?sort=oldest"))[0].text, "别在深夜提醒我");
+
+    // 4) 排序参数是唯一直接拼 SQL 的地方：白名单外一律回落，不许把表搞没
+    const evil = await list("?sort=" + encodeURIComponent("id; DROP TABLE memories; --"));
+    assert.equal(evil.length, 3, "非法 sort 要回落到默认排序，而不是报错或执行");
+    assert.equal((await list()).length, 3, "表还在");
+
+    // 5) 决策 3：正文不允许改。PUT /api/memories/:id 不存在，写不进去
+    const id = all.find((r) => r.kind === "fact")!.id;
+    const put = await fetch(`${base}/api/memories/${id}`, {
+      method: "PUT", headers: h, body: JSON.stringify({ text: "被改过的正文" }),
+    });
+    assert.notEqual(put.status, 200, "没有编辑端点，正文不能被界面改");
+    const detail = await (await fetch(`${base}/api/memories/${id}`)).json() as { text?: string };
+    assert.equal(detail.text, "我住在杭州", "被拒的写入不能改到正文");
+
+    // 6) 敏感度单独一条路由：这才是有正当需求、且以前点了没反应的那个按钮
+    const okSens = await fetch(`${base}/api/memories/${id}/sensitivity`, {
+      method: "PUT", headers: h, body: JSON.stringify({ value: "local_only" }),
+    });
+    assert.equal(okSens.status, 200);
+    const d2 = await (await fetch(`${base}/api/memories/${id}`)).json() as { sensitivity?: string };
+    assert.equal(d2.sensitivity, "local_only");
+    const badSens = await fetch(`${base}/api/memories/${id}/sensitivity`, {
+      method: "PUT", headers: h, body: JSON.stringify({ value: "随便写" }),
+    });
+    assert.equal(badSens.status, 400, "敏感度只认两个值");
+  } finally { srv.close(); }
+});
+
 test("时间轴：同日空隙用 gap 块，跨天把间隔写进日期标签", () => {
   const L = (d: number, h: number, m = 0) => new Date(2026, 9, d, h, m).toISOString(); // 本地时间
   const b = groupTimeline([

@@ -319,6 +319,15 @@ label.nb-btn{display:inline-flex;align-items:center;cursor:pointer}
 .nb-e .g .w{display:block;color:var(--dim);letter-spacing:.06em}
 .nb-modal-bg{position:fixed;inset:0;background:var(--modal-scrim);z-index:40}
 .nb-modal{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:41;width:min(560px,92vw);max-height:80vh;overflow:auto;background:var(--void);border:1px solid var(--line);padding:16px 18px}
+/* 记忆详情抽屉（阶段 4）：从右侧滑出，列表留在原位。
+   整页跳转再回来，用户得重新滚一遍才能找到刚才那条。 */
+.nb-draw-bg{position:fixed;inset:0;background:var(--modal-scrim);z-index:40}
+.nb-draw{position:fixed;top:0;right:0;bottom:0;z-index:41;width:min(560px,94vw);overflow:auto;
+  background:var(--void);border-left:1px solid var(--line-dim);padding:18px 20px 40px}
+.nb-draw-hd{display:flex;align-items:baseline;gap:10px;margin-bottom:12px}
+.nb-draw-hd h2{margin:0;font:11px/1 var(--mono);letter-spacing:.16em;color:var(--dim2);font-weight:400}
+.nb-drawtext{font:15px/1.8 var(--sans);color:var(--ink);padding:2px 0 16px;
+  border-bottom:1px solid var(--line-dim);margin-bottom:14px;overflow-wrap:anywhere}
 .nb-step{border-left:1px solid var(--line-dim);padding:2px 0 6px 10px;margin:8px 0}
 .nb-step .hd{font:9px/1 var(--mono);letter-spacing:.16em;color:var(--dim2);margin-bottom:6px}
 .nb-tr{font:11px/1.7 var(--mono);color:var(--ink);margin:4px 0;word-break:break-word}

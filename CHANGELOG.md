@@ -24,6 +24,25 @@
 - **资源快照补两层下钻**：`/api/overview.resources` 新增 `groups[].items`（组内按「最多两段路径」
   聚合的体积明细，默认每组前 20 条，超出用 `itemsOmitted` 如实计数）与 `topFiles`（全目录最大 10 个
   具体文件）；`depthLimited` 一并返回——阶段 2 漏暴露它，界面只能把「深度截断」误报成「文件数超限」。
+- **记忆浏览器**（`?view=mem`）：搜索 + 分面筛选（范围 / 层级 / 时间 / 出网 / 排序 / 种类）、
+  筛选状态写进 URL（刷新不丢）、空结果给「清掉条件」；详情改成右侧抽屉，列表留在原位。
+- `/api/memories` 补 `layer / status / sensitivity / source_kind / created_at` 字段，并支持
+  `layer / kind / stage / sens / since / sort` 筛选；`sort` 走白名单（唯一直接拼 SQL 的参数）。
+- `/api/memories/summary` 增加 `byKind / byStage / byLayer` 分布：筛选项只列**真实存在**的种类，
+  不摆一排零结果的选项让人试错。
+- 新增 `PUT /api/memories/:id/sensitivity`：敏感度单独一条路由，与文档的 `docs/:id/sensitivity` 对齐。
+
+### Changed
+
+- 记忆详情里的「种类」不再一律显示为「经历」：列表接口以前在搜索路径上把 `kind` 硬写成
+  `episode`，现在按真实 `kind` 返回。筛选器另加词表把 `fact / fact_hard` 区分为「事实 / 硬事实」、
+  `preference_*` 区分为「强偏好 / 弱偏好」——原来两组同名，会出现两个点了效果不同的同名按钮。
+
+### Removed
+
+- **`PUT /api/memories/:id`（改记忆正文）已删除**（决策 3：不允许编辑记忆）。界面上的
+  「编辑正文」入口同步移除；要纠正一条记错的记忆，走「忘掉 → 重新记住」，两步都留痕、都可撤销。
+  该端点原本同时承载「改 importance / 改敏感度」，敏感度已拆到独立路由，importance 无界面入口、一并撤掉。
 
 ### Fixed
 
