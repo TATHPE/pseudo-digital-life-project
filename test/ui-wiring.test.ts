@@ -258,3 +258,43 @@ test("设置页要有「主动开口」开关（只放在体检页里，用户�
   assert.ok(/JSON\.stringify\(\{\s*beat:\s*next\s*\}\)/.test(body), "开关写的是布尔 beat");
   assert.ok(/\/api\/ui/.test(body), "写进 config.json，不是改命令行参数");
 });
+
+test("陪伴视图：长回复不能把气泡顶出窗口（2026-11-15）", () => {
+  const TPL = readFileSync(new URL("../src/web/notebook.ts", import.meta.url), "utf8");
+  // 实测：收起态写 max-height:none 时，一条 22 行的回复把气泡撑到 1006px（窗口 1093×640，y=−461），
+  // 开头几段直接跑到窗口外面，且 overflow:visible 滚都滚不回去 —— 读不到的答案等于没答。
+  const clip = TPL.match(/\.cp-log\.clip\{[^}]*\}/)?.[0] ?? "";
+  assert.ok(clip, "找不到 .cp-log.clip 规则");
+  assert.ok(!/max-height\s*:\s*none/.test(clip), "收起态不许解除高度上限");
+  assert.ok(!/overflow\s*:\s*visible/.test(clip), "收起态超出时要能滚");
+  assert.ok(/\.cp-log\{[^}]*max-height:min\(46vh,480px\)/.test(TPL), "气泡要有明确的高度上限");
+  // 折叠入口压在照片背景上，10.5px + 低对比等于不存在
+  assert.ok(/\.cp-more\{[^}]*font:11\.5px/.test(TPL), "「之前 N 条」要够大才看得见");
+});
+
+test("陪伴面板：正文渲染 markdown、历史不截断、工具能点开（2026-11-15）", () => {
+  // 气泡原来是 textContent：`**读**`、`- ` 列表、反引号全裸奔（用户截图里就是这么一坨）。
+  // markdown 只该有一份实现（src/md.ts），前端拿服务端渲染好的 html，不再各写一套。
+  assert.ok(NB.includes("opts.html"), "cpLine 要能接服务端渲染的 html");
+  assert.ok(NB.includes("cp-tx cp-md"), "渲染后的正文要挂 cp-md 类（white-space 要退回 normal）");
+  assert.ok(!NB.includes("cpClip("), "历史不许再截 200 字（高度上限交给 .cp-log 滚）");
+  // 工具：她说「刚跑了两条」，面板得让人能核对
+  assert.ok(NB.includes("function cpToolStrip"), "要有工具胶囊");
+  assert.ok(NB.includes("toolList"), "历史工具要读 /api/timeline 的结构化那份");
+  assert.ok(NB.includes("ev.type === 'tool'") && NB.includes("ev.type === 'tool_result'"), "当场那一轮要从流里捡工具与结果");
+  // 渲染走「回读 timeline」，不新增 SSE 收尾帧（最后一帧仍是 done）
+  assert.ok(NB.includes("function cpUpgrade"), "说完要回读 timeline 换成渲染版");
+  assert.ok(!NB.includes('ev.type === \'html\''), "不要在流里加 html 帧：收尾帧只能是 done");
+  const TPL2 = readFileSync(new URL("../src/web/notebook.ts", import.meta.url), "utf8");
+  assert.ok(TPL2.includes(".cp-tchip"), "胶囊要有样式");
+  assert.ok(TPL2.includes(".cp-tx.cp-md p"), "markdown 段落要重设间距");
+});
+
+test("/api/timeline 给陪伴视图一份结构化工具列表", () => {
+  const SRV = readFileSync(new URL("../src/web/server.ts", import.meta.url), "utf8");
+  // 记录页用 toolCardHtml（<details> 卡片），气泡 580px 塞不下 → 另给 name/ms/result
+  assert.ok(/toolList:\s*src\.tools\.map/.test(SRV), "timeline 要返回 toolList");
+  // html 在 timeline 里算（记录页和陪伴视图共用一份 renderMarkdown），不额外推 SSE 帧
+  assert.ok(/renderMarkdown\(b\.text\)/.test(SRV), "timeline 要给正文的 html");
+  assert.ok(!/send\(\{\s*type:\s*"html"/.test(SRV), "收尾帧只能是 done，别在流里塞 html");
+});

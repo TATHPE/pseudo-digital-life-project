@@ -729,13 +729,17 @@ input:focus-visible,textarea:focus-visible{outline:none;border-bottom-color:var(
 /* 气泡里放的是**同一条对话**的最近几条（2026-11-13）：进陪伴视图能看见刚才在记录本里说了什么，
    不再是「进去就从空开始」；在陪伴里说的话也会出现在记录本里 */
 /* 默认只露最近一轮（你 + 她），更早的收成一行提示；点开才展开，不再一屏都是字 */
-.cp-more{display:block;width:fit-content;margin:0 auto 9px;padding:3px 13px;cursor:pointer;
-  background:rgba(120,200,235,.06);border:1px solid rgba(160,220,245,.14);border-radius:999px;
-  font:10.5px/1.5 var(--mono);letter-spacing:.08em;color:rgba(170,216,236,.85);text-align:center;transition:background .14s,color .14s,border-color .14s}
-.cp-more:hover{background:rgba(120,200,235,.18);border-color:rgba(150,215,240,.34);color:#e3f6ff}
-.cp-more:hover{color:#cfeeff}
+/* 2026-11-15：这颗键原来 10.5px + 低对比，压在一张照片背景上基本看不见 ——
+   用户在自己截图里找不到它（「之前 6 条」缩成一道发丝）。字号/底色/描边一起提一档 */
+.cp-more{display:block;width:fit-content;margin:0 auto 9px;padding:4px 13px;cursor:pointer;
+  background:rgba(120,200,235,.14);border:1px solid rgba(170,225,246,.3);border-radius:999px;
+  font:11.5px/1.5 var(--mono);letter-spacing:.06em;color:rgba(212,240,252,.95);text-align:center;transition:background .14s,color .14s,border-color .14s}
+.cp-more:hover{background:rgba(120,200,235,.24);border-color:rgba(160,230,250,.46);color:#f2fbff}
 .cp-more[hidden]{display:none}
-.cp-log{display:flex;flex-direction:column;gap:12px;max-height:32vh;overflow-y:auto;overscroll-behavior:contain;
+/* 高度上限：min(46vh, 480px)。收起态曾经写成 max-height:none，
+   结果一条长回复把气泡顶到 1006px（1093×640 的窗口里 y 直接是 -461）——
+   开头那几段跑到窗口外面，而且 overflow:visible 连滚都滚不回去。收起/展开同一套上限 */
+.cp-log{display:flex;flex-direction:column;gap:12px;max-height:min(46vh,480px);overflow-y:auto;overscroll-behavior:contain;
   scrollbar-width:thin;scrollbar-color:rgba(120,200,235,.45) transparent;padding-right:2px}
 .cp-log::-webkit-scrollbar{width:7px}
 .cp-log::-webkit-scrollbar-thumb{background:rgba(120,200,235,.4);border-radius:7px}
@@ -744,7 +748,8 @@ input:focus-visible,textarea:focus-visible{outline:none;border-bottom-color:var(
 .cp-log.fade-bottom{-webkit-mask-image:linear-gradient(to top, transparent 0, #000 20px);mask-image:linear-gradient(to top, transparent 0, #000 20px)}
 .cp-log.fade-top.fade-bottom{-webkit-mask-image:linear-gradient(to bottom, transparent 0, #000 20px, #000 calc(100% - 20px), transparent 100%);
   mask-image:linear-gradient(to bottom, transparent 0, #000 20px, #000 calc(100% - 20px), transparent 100%)}
-.cp-log.clip{max-height:none;overflow:visible;gap:7px}
+/* 收起态只改「显示哪几行」，**不动高度上限**（那是上面那条 bug 的来源） */
+.cp-log.clip{gap:7px}
 .cp-log.clip .cp-line{display:none}
 .cp-log.clip .cp-line:nth-last-child(-n+2){display:flex}
 .cp-log.clip .cp-line.cp-me .cp-tx{font-size:13px;opacity:.72}
@@ -757,6 +762,39 @@ input:focus-visible,textarea:focus-visible{outline:none;border-bottom-color:var(
 .cp-line.cp-me .cp-tx{color:#daeaf5}
 .cp-line .cp-typing::after{content:"…";animation:cp-dots 1.2s steps(4) infinite}
 @keyframes cp-dots{0%{content:""}25%{content:"·"}50%{content:"··"}75%{content:"···"}}
+/* 正文走服务端渲染的 markdown（和记录本同一份 md.ts）——气泡里原来是 textContent，
+   于是 **粗体** 的星号、行首的 - 列表、反引号全都原样露出来。换成 HTML 后 white-space
+   要退回 normal，否则 p 与 p 之间会被 pre-wrap 再撑一遍空行 */
+.cp-tx.cp-md{white-space:normal}
+.cp-tx.cp-md p{margin:0 0 .72em}
+.cp-tx.cp-md p:last-child{margin-bottom:0}
+.cp-tx.cp-md ul,.cp-tx.cp-md ol{margin:.1em 0 .8em;padding-left:1.2em}
+.cp-tx.cp-md li{margin:.22em 0}
+.cp-tx.cp-md code{font:12.5px/1.6 var(--mono);background:rgba(8,20,30,.46);border:1px solid rgba(160,220,245,.2);
+  border-radius:5px;padding:1px 5px}
+/* 只认**直接子级**的 pre：工具胶囊里那个输出框（.cp-tout）也在 .cp-tx 里，
+   但它在 .cp-tools 下 —— 用 > 把它排除掉，免得两条规则打架还要靠优先级 */
+.cp-tx.cp-md > pre{background:rgba(8,20,30,.5);border:1px solid rgba(160,220,245,.18);border-radius:10px;
+  padding:9px 11px;overflow:auto;margin:0 0 .8em}
+.cp-tx.cp-md > pre code{background:none;border:none;padding:0}
+.cp-tx.cp-md h1,.cp-tx.cp-md h2,.cp-tx.cp-md h3,.cp-tx.cp-md h4{font-size:15px;margin:.7em 0 .35em;letter-spacing:.02em}
+.cp-tx.cp-md blockquote{margin:0 0 .8em;padding-left:10px;border-left:2px solid rgba(150,215,240,.35);color:rgba(228,243,250,.86)}
+.cp-tx.cp-md hr{border:none;border-top:1px solid rgba(160,220,245,.2);margin:.9em 0}
+.cp-tx.cp-md a{color:#9fe3ff}
+.cp-tx.cp-md .md-table{border-collapse:collapse;margin:0 0 .8em;font-size:13px}
+.cp-tx.cp-md .md-table th,.cp-tx.cp-md .md-table td{border:1px solid rgba(160,220,245,.2);padding:4px 8px}
+/* 她这一轮动过什么手：工具名做成小胶囊，点一下展开那条结果。
+   面板原来完全不提过程 —— 她说「刚跑了两条」，人却无从核对 */
+.cp-tools{display:flex;flex-wrap:wrap;gap:6px;margin:9px 0 0}
+.cp-tchip{appearance:none;cursor:pointer;border-radius:999px;border:1px solid rgba(160,220,245,.24);
+  background:rgba(8,20,30,.38);color:rgba(206,234,246,.9);font:10.5px/1 var(--mono);letter-spacing:.04em;
+  padding:5px 9px;transition:background .14s,border-color .14s,color .14s}
+.cp-tchip:hover{background:rgba(120,200,235,.2);border-color:rgba(160,225,246,.42);color:#f2fbff}
+.cp-tchip.on{background:rgba(120,200,235,.26);border-color:rgba(170,230,250,.5);color:#fff}
+.cp-tout{margin:7px 0 0;max-height:150px;overflow:auto;white-space:pre-wrap;word-break:break-word;
+  background:rgba(8,20,30,.46);border:1px solid rgba(160,220,245,.16);border-radius:9px;
+  padding:8px 10px;font:11px/1.65 var(--mono);color:rgba(214,236,246,.9)}
+.cp-tout[hidden]{display:none}
 .cp-input{max-width:580px;width:100%;display:flex;align-items:flex-end;gap:10px;background:var(--cp-glass-strong);
   border:1px solid var(--cp-hair);-webkit-backdrop-filter:blur(20px) saturate(1.06);backdrop-filter:blur(20px) saturate(1.06);
   border-radius:999px;padding:8px 8px 8px 22px;

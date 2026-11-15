@@ -1013,6 +1013,9 @@ export function createWebServer(deps: WebDeps) {
           return {
             ...b, ...(html ? { html } : {}),
             ...(src?.tools ? { tools: src.tools.map(toolCardHtml) } : {}),
+            // 陪伴视图要的是**结构化**的一份：它把工具做成小胶囊（点开看结果），
+            // 塞不动记录页那种 <details> 卡片（气泡只有 580px 宽，还压在照片上）
+            ...(src?.tools ? { toolList: src.tools.map((t) => ({ name: t.name, ms: t.ms, result: t.result.slice(0, 600) })) } : {}),
             ...(src?.trace?.length ? { trace: src.trace } : {}),   // 过程要能回看（右栏第四个签）
             ...(src?.cites ? { cites: src.cites } : {}),
             ...(src?.omitted ? { omitted: src.omitted } : {}),
@@ -1412,6 +1415,9 @@ export function createWebServer(deps: WebDeps) {
               ...(rc.omittedDocs ? { omittedDocs: rc.omittedDocs } : {}),
             },
           });
+          // 正文的 markdown 渲染不在这里推：陪伴视图说完会回读一次 /api/timeline
+          // （那里同一份 html 已经算好，顺带把工具一起带上）。不新增收尾帧，
+          // 「最后一帧是 done」这条约定留给面板和手机端。
           try { touchSession(deps.db, sess.id, { status: "idle", bump: true }); touchSession(deps.db, sess.id, { bump: true }); } catch { /* ignore */ }
         }
         // 再巩固（J-1）：只有**真的进了装配块**的才算"被想起"（不是被检索到）。

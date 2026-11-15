@@ -2510,14 +2510,59 @@
   }
   var cpLogEl = $('cp-log');
   if (cpLogEl) cpLogEl.addEventListener('scroll', cpFadeSync);
-  function cpClip(s, n){ var x = String(s == null ? '' : s); return x.length > n ? x.slice(0, n) + '…' : x; }
-  function cpLine(role, text){
+  // 她这一轮动过什么手：一个胶囊一行，点一下摊开那条结果（再点收起）。
+  // 之所以不做成记录页那种 <details> 卡片：气泡只有 580px 宽，还压在房间照片上。
+  function cpToolStrip(list){
+    var box = document.createElement('div'); box.className = 'cp-tools';
+    var out = document.createElement('pre'); out.className = 'cp-tout'; out.hidden = true;
+    list.forEach(function(t){
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'cp-tchip';
+      b.textContent = String(t.name || '工具') + (t.ms == null ? '' : ' · ' + t.ms + 'ms');
+      b.title = '点开看这条的输出';
+      b.onclick = function(){
+        var open = !b.classList.contains('on');
+        Array.prototype.forEach.call(box.querySelectorAll('.cp-tchip'), function(x){ x.classList.remove('on'); });
+        if (!open){ out.hidden = true; return; }
+        b.classList.add('on');
+        out.textContent = String(t.result || '（没有输出）');
+        out.hidden = false;
+        cpLogScroll();
+      };
+      box.appendChild(b);
+    });
+    box.appendChild(out);
+    return box;
+  }
+  // 说完回读一次 /api/timeline，把刚才那条纯文字换成渲染好的 html + 工具胶囊。
+  // 为什么不走 SSE 多推一帧：那会破坏「最后一帧是 done」这条约定（面板和手机端都靠它收尾），
+  // 而 timeline 里这份 html 本来就算好了（md.ts 只有一份实现）。
+  function cpUpgrade(bt, reply){
+    if (!bt) return Promise.resolve(false);
+    return fetch('/api/timeline').then(function(r){ return r.json(); }).then(function(blocks){
+      var msgs = (blocks || []).filter(function(b){ return b.type === 'msg' && b.role === 'agent' && b.text; });
+      var last = msgs[msgs.length - 1];
+      if (!last || !last.html) return false;
+      // 只替换「就是这一条」：这一轮被掐断、或者服务端收尾时改写过正文（步数用完的收尾总结），
+      // 对不上就留着流式那段纯文字 —— 宁可没排版，也不能把别人的回答盖到这一条上
+      if (last.text.trim() !== String(reply == null ? '' : reply).trim()) return false;
+      bt.className = 'cp-tx cp-md';
+      bt.innerHTML = last.html;
+      if (last.toolList && last.toolList.length) bt.appendChild(cpToolStrip(last.toolList));
+      cpLogScroll();
+      return true;
+    }).catch(function(){ return false; });
+  }
+  // opts.html：服务端渲染好的 markdown（md.ts 那一份）；不给就按纯文本放
+  function cpLine(role, text, opts){
     var log = $('cp-log'); if (!log) return null;
     var d = document.createElement('div');
     d.className = 'cp-line ' + (role === 'me' ? 'cp-me' : 'cp-her');
     var w = document.createElement('span'); w.className = 'cp-who'; w.textContent = role === 'me' ? '你' : '她';
     var t = document.createElement('div'); t.className = 'cp-tx';
-    if (text) t.textContent = text;
+    if (opts && opts.html){ t.className = 'cp-tx cp-md'; t.innerHTML = opts.html; }
+    else if (text) t.textContent = text;
+    if (opts && opts.tools && opts.tools.length) t.appendChild(cpToolStrip(opts.tools));
     d.appendChild(w); d.appendChild(t); log.appendChild(d);
     cpMoreSync();
     cpLogScroll();
@@ -2532,7 +2577,12 @@
       var msgs = (blocks || []).filter(function(b){ return b.type === 'msg' && b.text; }).slice(-CP_HIST_N);
       if (!msgs.length) return;
       log.innerHTML = '';
-      msgs.forEach(function(b){ cpLine(b.role === 'user' ? 'me' : 'her', cpClip(b.text, 200)); });
+      // 全文，不再截 200 字（高度上限交给 .cp-log 自己滚）：
+      // 之前每条只留前 200 字，「往回看一眼」看到的全是省略号
+      msgs.forEach(function(b){
+        if (b.role === 'user'){ cpLine('me', b.text); return; }
+        cpLine('her', b.text, { html: b.html, tools: b.toolList });
+      });
       cpMoreSync();
       cpLogScroll();
     }).catch(function(){ /* 拉不到就留着那句招呼，不影响说话 */ });
@@ -2615,6 +2665,8 @@
     cpState('在思考');
     if (window.JJPal) window.JJPal.setState('thinking');
     var reply = '';
+    // 这一轮动过的手：从流里捡（tool / tool_result 两帧），说完再挂成胶囊
+    var liveTools = [];
     CP_AC = new AbortController();
     fetch('/api/say', { method: 'POST', headers: H, body: JSON.stringify({ text: text }), signal: CP_AC.signal }).then(function(res){
       if (!res.ok || !res.body) throw new Error('E_HTTP');
@@ -2627,6 +2679,10 @@
           var line = frame.trim(); if (line.indexOf('data: ') !== 0) return;
           var ev; try { ev = JSON.parse(line.slice(6)); } catch (e) { return; }
           if (ev.type === 'delta'){ reply += ev.text; if (bt){ bt.className = 'cp-tx'; bt.textContent = reply; cpLogScroll(); } }
+          else if (ev.type === 'tool'){ liveTools.push({ name: ev.name, ms: null, result: '' }); cpState('在用 ' + ev.name); }
+          else if (ev.type === 'tool_result'){
+            for (var i = liveTools.length - 1; i >= 0; i--){ if (liveTools[i].ms == null){ liveTools[i].ms = ev.ms; liveTools[i].result = ev.result; break; } }
+          }
         });
         return pump();
       }); }
@@ -2634,8 +2690,11 @@
     }).then(function(){
       CP_BUSY = false; CP_AC = null;
       if (send) { send.dataset.stop = '0'; send.textContent = '↑'; send.title = '发送'; send.disabled = false; }
-      if (bt) bt.className = 'cp-tx';
+      if (bt && !bt.classList.contains('cp-md')) bt.className = 'cp-tx';
       if (!reply && bt) bt.textContent = CP_STOPPED ? '（已停止）' : '（这一轮没接上）';
+      // 换成渲染好的正文 + 工具胶囊；回读失败就退回刚流下来的纯文字（至少不丢内容），
+      // 工具胶囊用当场捡到的那些补上
+      if (reply) cpUpgrade(bt, reply).then(function(ok){ if (!ok && bt && liveTools.length) bt.appendChild(cpToolStrip(liveTools)); });
       if (reply) TL_DIRTY = true;
       // 说这话的时候已经离开陪伴视图了：直接刷记录本，别等下次进来
       if (!COMPANION && reply) { TL_DIRTY = false; loadTimeline(); }
