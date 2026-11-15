@@ -13,7 +13,7 @@
 
 ![Companion mode — the room (dark)](docs/images/companion-room.png)
 
-> The companion window is above; the notebook and workbench are shown below.
+> Captured 2026-11-15 from the current build. The companion window is above; the notebook and workbench are shown below.
 
 ## What it is
 
@@ -42,9 +42,9 @@ The same memory and persona can live in a lighter window: she stands on your des
 
 ## Today
 
-| Companion · Ocean (light) | Workbench |
+| Companion · Ocean (light UI) | Workbench |
 |---|---|
-| ![Companion mode — the ocean (light)](docs/images/companion-ocean.png) | ![Workbench](docs/images/workbench.png) |
+| ![Companion mode — ocean backdrop (light UI)](docs/images/companion-ocean.png) | ![Workbench](docs/images/workbench.png) |
 
 Two themes (dark / light) and two ways to be with her: a companion window, or the full notebook / workbench. Switch at runtime; layout, type scale and rhythm stay the same — only the palette and density change.
 
