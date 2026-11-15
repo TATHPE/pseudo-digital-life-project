@@ -426,10 +426,15 @@ test("陪伴视图后端：静态资源 MIME/防穿越 + TTS 路由（2026-11-12
     const trav = await fetch(`${base}/static/..%2fserver.ts`);
     assert.ok(trav.status === 403 || trav.status === 404, "穿越要拒");
     assert.equal((await fetch(`${base}/static/pal/nope.js`)).status, 404);
-    // TTS 状态：默认 local 未就绪（无模型）
+    // TTS 状态：没配后端就是空、不兜底 local（2026-11-15）
     const st = await (await fetch(`${base}/api/tts/status`)).json() as any;
-    assert.equal(st.backend, "local");
+    assert.equal(st.backend, "");
+    assert.equal(st.configured, false);
     assert.equal(st.ready, false);
+    assert.match(st.why, /没配声音后端/);
+    const noBackend = await fetch(`${base}/api/tts`, { method: "POST", headers: h, body: JSON.stringify({ text: "你好" }) });
+    assert.equal(noBackend.status, 400);
+    assert.match((await noBackend.json() as any).error, /E_TTS_NO_BACKEND/);
     // 切云 + 持久化 + 音色列表
     const put = await (await fetch(`${base}/api/tts`, { method: "PUT", headers: h, body: JSON.stringify({ backend: "cloud", voice: "zh-CN-XiaoxiaoNeural", speed: 1.2 }) })).json() as any;
     assert.equal(put.ok, true);

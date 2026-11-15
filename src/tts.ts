@@ -8,6 +8,8 @@
  * 2026-11-15 之前 backend 只有 local|cloud 两个字面量，写别的值会被路由**静默丢掉**，
  * ttsConfig 又强推回 local —— 用户填了等于没填（「值写死、改了不生效」）。
  * 现在 backend 是任意字符串；运行时只是按上面三条路分派，不再改写用户的选择。
+ * **没配后端就是没配**：陪伴视图安静跳过发声，主动合成/试听报 E_TTS_NO_BACKEND，
+ * 不再偷偷拿 local 兜底（用户 2026-11-15 定：「没配就干脆不发声 / 明确报错」）。
  * 内置两个后端仍懒加载；模型由人下载：`jingjing tts setup`。
  *
  * 字段口径对齐 OpenAI /audio/speech 与本地推理服务（Ollama 11434/v1、LM Studio 1234/v1、
@@ -18,7 +20,7 @@ import { join } from "node:path";
 import { readFileConfig } from "./configfile.ts";
 
 export interface TtsConfig {
-  /** 任意字符串；空表示没设置，运行时默认 local（**不会写回配置**） */
+  /** 任意字符串；**空 = 没配，不兜底、不发声、主动合成报错** */
   backend: string;
   baseUrl: string;
   model: string;
@@ -43,7 +45,7 @@ export function ttsConfig(home: string): TtsConfig {
   const volume = typeof t.volume === "number" && Number.isFinite(t.volume)
     ? Math.max(0, Math.min(1, t.volume)) : 1;
   return {
-    backend: backend || "local",
+    backend,   // 空就是空，绝不补 "local"
     baseUrl: String(t.baseUrl ?? "").trim(),
     model: String(t.model ?? "").trim(),
     voice: String(t.voice ?? "").trim(),
@@ -230,8 +232,12 @@ export async function openaiSynthesize(
 }
 
 // ── 对外 ──────────────────────────────────────────────────────
+/** 没配后端时统一的一句话：状态栏、音色列表、合成错误都用同一个口径，别各说各的。 */
+export const NO_BACKEND_HINT = "没配声音后端：设置 → 声音，填 local / cloud / 或自定义端点名；留空就是没配，不会发声";
+
 export async function listVoices(home: string): Promise<{ backend: string; voices: Voice[]; note?: string }> {
   const cfg = ttsConfig(home);
+  if (!cfg.backend) return { backend: "", voices: [], note: NO_BACKEND_HINT };
   if (cfg.backend === "cloud") return { backend: "cloud", voices: EDGE_VOICES };
   if (cfg.backend !== "local") {
     return { backend: cfg.backend, voices: [], note: "自定义后端没有预置音色表，音色名自己填" };
@@ -243,6 +249,9 @@ export async function ttsStatus(home: string): Promise<{
   backend: string; configured: boolean; ready: boolean; voice: string; why?: string;
 }> {
   const cfg = ttsConfig(home);
+  if (!cfg.backend) {
+    return { backend: "", configured: false, ready: false, voice: cfg.voice, why: NO_BACKEND_HINT };
+  }
   if (cfg.backend === "cloud") {
     let ready = true; let why: string | undefined;
     try { await loadEdge(); } catch { ready = false; why = "msedge-tts 没装（npm i msedge-tts）"; }
@@ -269,6 +278,8 @@ export async function synthesize(
   if (!t) throw new Error("E_TTS_EMPTY: 没有要说的文本");
   if (t.length > 2000) throw new Error("E_TTS_TOO_LONG: 一次最多 2000 字");
   const cfg = ttsConfig(home);
+  // 没配就是没配：主动合成（试听 / CLI tts say）明确报错，不静默拿 local 兜底
+  if (!cfg.backend) throw new Error("E_TTS_NO_BACKEND: " + NO_BACKEND_HINT);
   const v = voice || cfg.voice;
   if (cfg.backend === "cloud") return edgeSynthesize(t, v || EDGE_VOICES[0]!.id, cfg.speed);
   if (cfg.backend !== "local") return openaiSynthesize(cfg, t, opts);

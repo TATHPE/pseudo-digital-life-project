@@ -9,7 +9,7 @@
 | 项 | 数量 |
 |---|---|
 | 源文件（src/**/*.ts） | 138 |
-| 错误码 E_* | 272 |
+| 错误码 E_* | 273 |
 | verbs | 33 |
 | CLI 子命令 | 42 |
 
@@ -260,6 +260,7 @@
 | `E_TOOL_FAILED` | `src/agent.ts` |
 | `E_TTS_EMPTY` | `src/tts.ts` |
 | `E_TTS_HTTP_` | `src/tts.ts` |
+| `E_TTS_NO_BACKEND` | `src/tts.ts` |
 | `E_TTS_NO_BASEURL` | `src/tts.ts` |
 | `E_TTS_NO_MODEL` | `src/tts.ts` |
 | `E_TTS_TOO_LONG` | `src/tts.ts` |

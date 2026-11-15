@@ -1181,9 +1181,14 @@ async function main(): Promise<void> {
       if (sub === "status") { console.log(JSON.stringify(await t.ttsStatus(HOME), null, 2)); return; }
       if (sub === "voices") { console.log(JSON.stringify(await t.listVoices(HOME), null, 2)); return; }
       if (sub === "use") {
+        // 2026-11-15：后端名不再限定 local|cloud，任意名字按 OpenAI 兼容端点走；
+        // `clear` 把配置清空 —— 没配就是没配，不兜底发声（与 /api/tts 同一语义）
         const b = rest[1];
-        if (b !== "local" && b !== "cloud") { console.error("用法: tts use local|cloud"); process.exitCode = 2; return; }
-        writeFileConfig(HOME, { tts: { backend: b } });
+        if (!b || b.startsWith("--")) {
+          console.error("用法: tts use <后端名>  （local / cloud / 自定义 OpenAI 兼容端点名；clear = 清空）");
+          process.exitCode = 2; return;
+        }
+        writeFileConfig(HOME, { tts: { backend: b === "clear" ? "" : b } });
         console.log(JSON.stringify(await t.ttsStatus(HOME), null, 2));
         return;
       }
@@ -1218,7 +1223,7 @@ async function main(): Promise<void> {
         } catch (e) { console.error(String((e as Error).message ?? e)); process.exitCode = 1; }
         return;
       }
-      console.error("用法: tts status | voices | setup [--model <目录>] | use local|cloud | say <文本>");
+      console.error("用法: tts status | voices | setup [--model <目录>] | use <后端名|clear> | say <文本>");
       process.exitCode = 2;
       return;
     }

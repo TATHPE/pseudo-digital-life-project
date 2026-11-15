@@ -329,3 +329,16 @@ test("陪伴视图：收起时也要能用鼠标滚轮翻历史（2026-11-15）"
   assert.ok(NB.includes("addEventListener('wheel'"), "指针在气泡按钮/内边距上时也要能滚");
   assert.ok(NB.includes("l.contains(e.target)"), "落在 cp-log 内部别滚两遍");
 });
+
+test("声音没配后端：陪伴视图安静跳过、主动试听明确报错（2026-11-15）", () => {
+  // 用户定：「没配就干脆不发声 / 明确报错」。不许再静默拿 local 兜底。
+  const TTS = readFileSync(new URL("../src/tts.ts", import.meta.url), "utf8");
+  assert.ok(!/backend\s*\|\|\s*"local"/.test(TTS), "配置读取不许把空后端补成 local");
+  assert.ok(TTS.includes("E_TTS_NO_BACKEND"), "合成要有明确的错误码");
+  assert.ok(TTS.includes("NO_BACKEND_HINT"), "状态/音色列表/错误共用同一个口径");
+  assert.ok(NB.includes("CP_TTS_CONFIGURED"), "陪伴视图要读「有没有配后端」");
+  assert.ok(/CP_SOUND && CP_TTS_CONFIGURED && window\.JJPal/.test(NB), "没配时连发声请求都不发");
+  assert.ok(NB.includes("没配 · 不发声"), "设置页要如实说明，不能写「暂用内置 local」");
+  assert.ok(/use <后端名\|clear>/.test(readFileSync(new URL("../src/cli/jingjing.ts", import.meta.url), "utf8")),
+    "CLI 也不该把后端名锁死在 local|cloud");
+});

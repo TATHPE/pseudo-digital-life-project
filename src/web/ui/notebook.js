@@ -2372,7 +2372,9 @@
   // ── 陪伴模式（2026-11-13）：鲸鱼娘（RuiC-2D 绑定的 mesh avatar）占主视觉 + 浮动对话，顶栏右上「陪伴」切换。只替换中间对话区，其余区域保留。 ──
   // CP_SOUND / CP_VOLUME 是**运行时**初值，不写回配置：真正的值从服务端读，
   // 点了开关才落盘。以前写死 true 且只在内存翻转，刷新就回去（2026-11-15）。
-  var COMPANION = false, CP_MOUNTED = false, CP_BUSY = false, CP_SOUND = true, CP_VOLUME = 1, CP_AC = null;
+  // CP_TTS_CONFIGURED：没配声音后端就**干脆不发声**（也不弹错），只在主动试听时明确报错。
+  var COMPANION = false, CP_MOUNTED = false, CP_BUSY = false;
+  var CP_SOUND = true, CP_VOLUME = 1, CP_TTS_CONFIGURED = false, CP_AC = null;
   function cpLoadPrefs(cb){
     Promise.all([
       fetch('/api/ui').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
@@ -2381,6 +2383,7 @@
       var ui = a[0] || {}, t = a[1] || {};
       CP_SOUND = ui.raw && typeof ui.raw.sound === 'boolean' ? ui.raw.sound : true;
       CP_VOLUME = t.raw && typeof t.raw.volume === 'number' ? t.raw.volume : 1;
+      CP_TTS_CONFIGURED = t.configured === true && !!t.backend;
       var b = $('cp-sound');
       if (b){ b.setAttribute('aria-pressed', CP_SOUND ? 'true' : 'false'); b.textContent = CP_SOUND ? '🔊' : '🔇'; }
       if (window.JJPal && window.JJPal.setVolume) window.JJPal.setVolume(CP_VOLUME);
@@ -2752,7 +2755,9 @@
       inp.disabled = false; inp.placeholder = CP_SAY_PH;
       cpMoreSync();
       if (window.JJPal) window.JJPal.setState('idle');
-      if (reply && CP_SOUND && window.JJPal){
+      // 没配声音后端 → 安静跳过，连请求都不发（不会弹错、不会偷偷拿 local 兜底）。
+      // 想听就先去「设置 → 声音」填后端；主动点「试听一句」会拿到明确的 E_TTS_NO_BACKEND。
+      if (reply && CP_SOUND && CP_TTS_CONFIGURED && window.JJPal){
         cpState('在说话');
         window.JJPal.speak(reply).then(function(){ cpState('在发呆'); }).catch(function(){ cpState('在发呆'); });
       } else { cpState('在发呆'); }
@@ -3279,7 +3284,7 @@
         field('格式', 'cf-ttsformat', tr.format || '', '未设置 · response_format：mp3 / wav / opus / aac / flac / pcm') +
         field('指令', 'cf-ttsinst', tr.instructions || '', '未设置 · instructions：部分 OpenAI 兼容模型支持') +
         field('模型目录', 'cf-ttsmodelpath', tr.modelPath || '', '未设置 · modelPath：仅后端填 local 时用') +
-        '<div class="nb-kv"><b>运行时后端</b><span>' + esc(tts.backend || '—') + (tts.configured === false ? '（未设置，暂用内置 local）' : '') + '</span>' +
+        '<div class="nb-kv"><b>运行时后端</b><span>' + esc(tts.backend || '—') + (tts.configured === false ? '（没配 · 不发声）' : '') + '</span>' +
         '<b>状态</b><span>' + (tts.ready ? '就绪' : '未就绪') + '</span></div>' +
         (tts.why ? '<div class="nb-empty">' + esc(tts.why) + '</div>' : '') +
         (ttsVoices.length ? '<div class="nb-empty">这几个是后端自带的可选音色，点一下填进去，也可以自己写：</div><div class="nb-opts">' +
@@ -3287,6 +3292,9 @@
         '<div class="nb-actrow"><button class="nb-btn" id="cf-ttssave">保存</button>' +
         '<button class="nb-btn" id="cf-ttstest">试听一句</button>' +
         '<span class="nb-empty" id="cf-ttsmsg"></span></div>' +
+        '<div class="nb-empty"><b>后端留空 = 没配声音</b>：她说话时安静跳过、不弹错，也不会偷偷拿 local 兜底；' +
+        '点「试听一句」或命令 <code>jingjing tts say 你好</code> 会明确报 E_TTS_NO_BACKEND。' +
+        '想听就填一个后端名。</div>' +
         '<div class="nb-empty">留空 = 清掉这一项，界面不会替你写回默认值。字段口径对齐 OpenAI 兼容 /v1/audio/speech ' +
         '与常见本地推理服务（Ollama 11434/v1、LM Studio 1234/v1、llama.cpp 8080/v1、vLLM 8000/v1）；' +
         '本地服务的 apiKey 常只是占位符。形象与背景在「形象与背景」那一节。</div>' +
