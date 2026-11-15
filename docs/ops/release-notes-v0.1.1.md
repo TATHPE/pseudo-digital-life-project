@@ -62,6 +62,9 @@
 | `release:check` / `bench:baseline:ci` / `desktop:sync:check` / `rollback:e2e` | 全绿（快照 179 个载荷文件逐字一致） |
 | 安装包 | `Pseudo Digital Life Project_0.1.1_x64-setup.exe`，32,490,058 B，SHA-256 `51d4433c634ccfad890f3a7f92436819ccc9c85a90be1de3562067b9303b3601` |
 
+GitHub Release 的附件沿用旧名 `PDLP-0.1.1-x64-setup.exe`，内容与上表这个包逐字相同
+（本地构建产物名带产品全称，只是命名差异）；这样 README 里的下载指引继续有效。
+
 拿到安装包后核对：
 
 ```bash
