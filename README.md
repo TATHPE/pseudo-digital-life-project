@@ -7,7 +7,6 @@
 [![ci](https://github.com/TATHPE/pseudo-digital-life-project/actions/workflows/ci.yml/badge.svg)](https://github.com/TATHPE/pseudo-digital-life-project/actions/workflows/ci.yml)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![node](https://img.shields.io/badge/node-%E2%89%A524-brightgreen.svg)](https://nodejs.org)
-[![release](https://img.shields.io/github/v/release/TATHPE/pseudo-digital-life-project)](https://github.com/TATHPE/pseudo-digital-life-project/releases/latest)
 
 [中文](README.zh-CN.md) · **English**
 
@@ -32,7 +31,10 @@ There is exactly one interface, a **notebook**: days down the left, prose in the
 - **Not a general assistant**: no web search, no plugin marketplace; the 33 capabilities are local read/write/exec
 - **Not a mature product**: 0.1.1 (installer rebuilt 2026-11-14), built and used by one person; the rough edges are documented in `docs/` (Chinese)
 
-> **2026-11-14 refresh**: the v0.1.1 installer was rebuilt with the startup-reliability fix, release verification, memory safeguards and the settings/observability work. Same version number, different binary — re-download it. See the [release notes](docs/ops/release-notes-v0.1.1.md) and [CHANGELOG](CHANGELOG.md).
+> **2026-11-15 correction (supersedes the 11-14 "re-download" note)**: the repository is private and
+> both GitHub Releases (`v0.1.0`, `v0.1.1`) with their installer assets have been deleted (git tags remain).
+> There is **no installer to download**; the release notes and CHANGELOG release sections are historical.
+> Build from source instead. The local `D:\Apps\PDLP` install is older logic + a junction and is not distributable.
 
 ## Companion mode
 
@@ -61,9 +63,13 @@ Two themes (dark / light) and two ways to be with her: a companion window, or th
 
 ## Quick start
 
-### Installer (Windows x64)
+### Installer (Windows x64) — **no downloadable build right now**
 
-Grab `PDLP-*.exe` from [Releases](https://github.com/TATHPE/pseudo-digital-life-project/releases/latest) and run it.
+> **2026-11-15**: the repository is **private** and both GitHub Releases (`v0.1.0`, `v0.1.1`)
+> with their installer assets have been **deleted**. There is **no installer to download**.
+> The last locally installed build (`D:\Apps\PDLP`) contains **older logic** and is a test-only
+> junction, not a distributable artifact. **Build from source** (next section) until a new
+> release is published. Release notes in `docs/ops/release-notes-v0.1.*.md` are historical records.
 
 First launch opens a guided setup (eight steps): environment check → install Ollama → pull embedding model → pull chat model → (optional) API key → persona → smoke test → first sentence.
 **Every step can be paused, stepped back or skipped.** If you skip, a banner stays at the top until a model is actually configured.

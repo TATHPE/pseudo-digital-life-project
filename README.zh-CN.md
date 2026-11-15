@@ -7,7 +7,6 @@
 [![ci](https://github.com/TATHPE/pseudo-digital-life-project/actions/workflows/ci.yml/badge.svg)](https://github.com/TATHPE/pseudo-digital-life-project/actions/workflows/ci.yml)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![node](https://img.shields.io/badge/node-%E2%89%A524-brightgreen.svg)](https://nodejs.org)
-[![release](https://img.shields.io/github/v/release/TATHPE/pseudo-digital-life-project)](https://github.com/TATHPE/pseudo-digital-life-project/releases/latest)
 
 [English](README.md) · **中文**
 
@@ -32,7 +31,11 @@
 - **不是通用助手**：没有联网搜索、没有插件市场，33 个能力都是本机的读写与执行
 - **不是一个成熟产品**：0.1.1（安装包 2026-11-14 重新构建），一个人用、一个人改，边界都在 `docs/` 里写着
 
-> **2026-11-14 刷新**：`v0.1.1` 的安装包已重新构建，换进了启动可靠性修复、发布校验、记忆防编造与设置页/可观测性改动。版本号没变，但**二进制变了，请重新下载**。见 [发布说明](docs/ops/release-notes-v0.1.1.md) 与 [更新记录](CHANGELOG.md)。
+> **2026-11-15 校正（覆盖 11-14 的「请重新下载」）**：仓库已转**私有**，`v0.1.0` / `v0.1.1`
+> 两个 Release 及安装包资产**全部删除**（git tag 仍在）。**现在没有可下载的安装包**，
+> `docs/ops/release-notes-v0.1.*.md` 与 CHANGELOG 里的发布段落都是历史记录。
+> 请按下面「从源码跑」构建；本机 `D:\Apps\PDLP` 是旧逻辑 + junction 的测试版，不是可分发产物。
+> 验证与分发状态的完整口径见工作区 `docs/ops/22 §0.5`。
 
 ## 陪伴模式
 
@@ -66,9 +69,10 @@
 
 ## 快速开始
 
-### 装安装包（Windows x64）
+### 装安装包（Windows x64）——**目前没有可下载的包**
 
-去 [Releases](https://github.com/TATHPE/pseudo-digital-life-project/releases/latest) 下 `PDLP-*.exe`，双击安装。
+> Release 与安装包资产已删除、仓库转私有。想在这台机器上用，走下一节「从源码跑」；
+> 想给别人用，得先重新构建 NSIS 包、补齐真机验收（尤其 Live2D 美术许可）再重发 Release。
 
 第一次打开会进引导页（八步）：环境检测 → 装 Ollama → 拉向量模型 → 拉对话模型 →（可选）API → 人格 → 试运行 → 第一句话。
 **每一步都能暂停、回退或跳过**；跳过后顶部会挂一条「还没配好」的横幅，配好自动消失。
@@ -149,7 +153,7 @@ CI 在 Ubuntu / Node 24 上跑 `check`、`map:check`、`eval:assembly:ci`、`rel
 - 跳过引导后，只有本机装了对话模型才能说话：会走本地兜底，那一档**不能调用工具**，顶栏会标出来。一个本地模型都没有时，横幅会一直提示去配置
 - 任务编排一次只推进一步，连续两步没进展就挂起；没有计划树，没有并行
 - `memory.db` 是明文 SQLite；密钥用 DPAPI 封着，换机器解不开
-- 不做**静默**自动更新：新版本需人工下载、校验 SHA-256 后覆盖安装（`/api/version` 可查当前版本，见 [`docs/ops/26`](docs/ops/26-更新与卸载策略.md)）；除了托盘没有系统集成，单机单人
+- 不做**静默**自动更新：新版本需人工下载、校验 SHA-256 后覆盖安装（`/api/version` 可查当前版本，见 [`docs/ops/26`](docs/ops/26-更新与卸载策略.md)）；**2026-11-15 起没有发布渠道，这条暂时无从执行**；除了托盘没有系统集成，单机单人
 - P10 里仍会混进 1–2 条弱相关叙事：向量候选没有相关性下限（cos 0.49–0.60 与真命中 0.72 一起进窗口）。加阈值会把真命中一起砍掉；cross-encoder 已于 2026-11-10 评估后放弃（见 `docs/ops/24` 的决策），此项按已知边界接受
 ## 许可
 
