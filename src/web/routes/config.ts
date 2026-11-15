@@ -11,7 +11,7 @@ import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { readFileConfig, writeFileConfig, resolveConfig, configSources, normalizeAgentName } from "../../configfile.ts";
 import { lastPreflight, preflight } from "../../preflight.ts";
-import { capabilities } from "../../capabilities.ts";
+import { capabilities, type Capabilities } from "../../capabilities.ts";
 import { CLI_COMMANDS } from "../../commands.ts";
 import { indexState } from "../../embedindex.ts";
 import { modelKeyOf } from "../../config.ts";
@@ -53,6 +53,24 @@ export interface ConfigCtx {
   readBody: (req: IncomingMessage) => Promise<string>;
   writeGuarded: (req: IncomingMessage) => { ok: boolean; reason?: string };
   secrets: () => SecretStore;
+}
+
+/**
+ * 能力自述的取数口径：`/api/capabilities` 与 `/api/overview` 共用，
+ * 避免两处各写一份参数导致「同一时刻两份状态不一致」。
+ * 只读缓存，不主动探头（preflight 内部按需走本地回环）。
+ */
+async function readCapabilities(deps: ConfigDeps): Promise<Capabilities> {
+  const cfgNow = deps.getConfig();
+  const pf = lastPreflight(cfgNow.ollama);
+  return capabilities({
+    db: deps.db, home: deps.home, cfg: resolveConfig(deps.home),
+    ollama: pf ? { base: pf.base, online: pf.online, names: pf.names, ...(pf.error ? { error: pf.error } : {}) } : null,
+    ...(deps.mcpInfo ? { mcp: deps.mcpInfo } : {}),
+    hooks: (await import("../../hooks.ts")).loadHooks(deps.home),
+    commands: CLI_COMMANDS,
+    panel: true,
+  });
 }
 
 export async function handleConfig(ctx: ConfigCtx): Promise<boolean> {
@@ -409,17 +427,67 @@ export async function handleConfig(ctx: ConfigCtx): Promise<boolean> {
         return true;
       }
       if (req.method === "GET" && url.pathname === "/api/capabilities") {
-        const cfgNow = deps.getConfig();
-        const pf = lastPreflight(cfgNow.ollama);          // 只读缓存，不在这里探头
-        const cap = await capabilities({
-          db: deps.db, home: deps.home, cfg: resolveConfig(deps.home),
-          ollama: pf ? { base: pf.base, online: pf.online, names: pf.names, ...(pf.error ? { error: pf.error } : {}) } : null,
-          ...(deps.mcpInfo ? { mcp: deps.mcpInfo } : {}),
-          hooks: (await import("../../hooks.ts")).loadHooks(deps.home),
-          commands: CLI_COMMANDS,
-          panel: true,
-        });
-        json(res, 200, cap);
+        json(res, 200, await readCapabilities(deps));
+        return true;
+      }
+      // 状态总览（阶段 1，2026-11-15）：能力 / 配置体检 / 模型与接口 / 资源当前快照。
+      // **纯只读**：不写任何文件、不新增写入端点、不 spawn 外部进程。
+      // 尤其不调 wsl.status()（内部会 spawnSync wsl.exe，本环境有命令安全黑名单）。
+      if (req.method === "GET" && url.pathname === "/api/overview") {
+        const {
+          buildOverview, scanHome,
+        } = await import("../../overview.ts");
+        const cfg = resolveConfig(deps.home);
+        const file = readFileConfig(deps.home);
+        const cap = await readCapabilities(deps);
+        const pf = lastPreflight(cfg.ollama);
+
+        // 只报「有没有登记」，不取密钥值
+        const secretFlags: Record<string, boolean> = {};
+        for (const p of ["deepseek", "anthropic", "openai", "vision"] as Provider[]) {
+          secretFlags[p] = Boolean(secrets().get(p));
+        }
+
+        const memoryRow = deps.db.prepare(
+          `SELECT count(*) AS total,
+                  sum(CASE WHEN julianday(created_at) > julianday('now','-7 days') THEN 1 ELSE 0 END) AS added7d
+             FROM memories WHERE status='active'`,
+        ).get() as { total?: number; added7d?: number } | undefined;
+        const usageRow = deps.db.prepare(
+          `SELECT count(*) n, sum(in_tokens) i, sum(out_tokens) o FROM usage WHERE ts >= date('now','localtime')`,
+        ).get() as { n?: number; i?: number; o?: number } | undefined;
+        const { spentToday } = await import("../../budget.ts");
+        const mem = process.memoryUsage();
+
+        json(res, 200, buildOverview({
+          cfg,
+          file,
+          sources: configSources(deps.home),
+          caps: cap,
+          secrets: secretFlags,
+          bootBeat: process.argv.includes("--beat"),
+          memory: {
+            total: Number(memoryRow?.total ?? 0),
+            added7d: Number(memoryRow?.added7d ?? 0),
+          },
+          usage: {
+            todayUsd: +spentToday(deps.db).toFixed(6),
+            calls: Number(usageRow?.n ?? 0),
+            inTokens: Number(usageRow?.i ?? 0),
+            outTokens: Number(usageRow?.o ?? 0),
+          },
+          proc: {
+            rss: mem.rss,
+            heapUsed: mem.heapUsed,
+            external: mem.external,
+            uptimeS: Math.round(process.uptime()),
+            node: process.version,
+            pid: process.pid,
+          },
+          scan: scanHome(deps.home),
+          ollamaProbed: Boolean(pf),
+          now: now(),
+        }));
         return true;
       }
       if (req.method === "GET" && url.pathname === "/api/models") {
