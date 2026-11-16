@@ -1175,8 +1175,13 @@ export function createWebServer(deps: WebDeps) {
           if (g) { gapAsk = g.question; markAsked(deps.db, now()); }
         } catch { /* 没有缺口就算了 */ }
 
+        // 2026-11-16 用户要求：工作上下文不设总预算；聊天默认 2600，可在设置里关掉。
+        // 只取消「总量收口」，分项上限（召回 8 条 / 契约 15 条 / 最近几轮行数）仍在。
+        const chatUnlimited = readFileConfig(deps.home).brief?.chatUnlimited === true;
+        const briefBudget = mode === "work" || chatUnlimited ? { total: Number.POSITIVE_INFINITY } : null;
         const brief = buildBrief({
           now: now(), persona: loadPersona(deps.home), contracts, recalled,
+          ...(briefBudget ? { budget: briefBudget } : {}),
           lastSeenAt: last ? new Date(last.ts) : null,
           outage: pending,
           state: { energy: selfState.energy, closeness: selfState.closeness, mood: selfState.mood ?? undefined },

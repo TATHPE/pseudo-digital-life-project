@@ -11,7 +11,7 @@
 | [runtime/04-执行层与权限分级.md](runtime/04-执行层与权限分级.md) | 23.3 KB |
 | [runtime/11-技能与插件兼容.md](runtime/11-技能与插件兼容.md) | 12.9 KB |
 | [runtime/13-模型与API配置方案.md](runtime/13-模型与API配置方案.md) | 8.7 KB |
-| [design/17-界面与上下文.md](design/17-界面与上下文.md) | 17.2 KB |
+| [design/17-界面与上下文.md](design/17-界面与上下文.md) | 17.7 KB |
 | [runtime/18-断电与自我更新.md](runtime/18-断电与自我更新.md) | 8.0 KB |
 | [runtime/21-语言与技术栈选择.md](runtime/21-语言与技术栈选择.md) | 4.4 KB |
 | [ops/23-发布-桌面端-首次配置.md](ops/23-发布-桌面端-首次配置.md) | 15.8 KB |

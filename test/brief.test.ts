@@ -30,8 +30,8 @@ test("不变量 1b：人格变了 → prefixHash 必须变", () => {
 });
 
 // 这两条是「夹具刚好没超」的历史断言，守的是不随轮数增长这一半；
-// 「总量 ≤ budget.total」真正由下面 2026-11-09 的两条用例守（会构造真超预算的输入）。
-test("不变量 2：总量 ≤2000，且第 1 轮 ≤ 第 100 轮（不随轮数增长）", () => {
+// 「总量 ≤ budget.total」真正由下面 2026-11-09 / 2026-11-16 的用例守（会构造真超预算的输入）。
+test("不变量 2：聊天档总量 ≤2600，且第 1 轮 ≤ 第 100 轮（不随轮数增长）", () => {
   const t1 = buildBrief(base());
   const t100 = buildBrief(base({
     lastSeenAt: new Date("2026-10-31T17:00:00"),
@@ -42,8 +42,8 @@ test("不变量 2：总量 ≤2000，且第 1 轮 ≤ 第 100 轮（不随轮数
     delta: "你昨天提过论文太多",
     recalled: mkRecall(8),
   }));
-  assert.ok(t1.tokens <= 2000, `turn1=${t1.tokens}`);
-  assert.ok(t100.tokens <= 2000, `turn100=${t100.tokens}`);
+  assert.ok(t1.tokens <= 2600, `turn1=${t1.tokens}`);
+  assert.ok(t100.tokens <= 2600, `turn100=${t100.tokens}`);
   assert.ok(t1.tokens <= t100.tokens);
 });
 
@@ -56,7 +56,7 @@ test("不变量 2b：超长输入被封顶（丢弃而不是溢出）", () => {
     })),
     threads: ["1", "2", "3", "4", "5"],
   }));
-  assert.ok(heavy.tokens <= 2000, `heavy=${heavy.tokens}`);
+  assert.ok(heavy.tokens <= 2600, `heavy=${heavy.tokens}`);
   assert.ok(heavy.dropped.recalled >= 40 - 8, `dropped=${heavy.dropped.recalled}`); // 上限 8 或预算先到
   assert.equal(heavy.dropped.threads, 2);            // 线头上限 3
 });
@@ -254,7 +254,7 @@ test("P19 我还不知道的：有缺口才出现，且明说「没聊到别硬�
   assert.ok(ask.text.includes("【我还不知道的】"));
   assert.ok(ask.text.includes("几点之后不想被打扰"));
   assert.ok(ask.text.includes("没聊到别硬问"), "要压住查户口感");
-  assert.ok(ask.tokens <= 2000, "加了这一槽也不能破预算");
+  assert.ok(ask.tokens <= 2600, "加了这一槽也不能破预算");
 });
 
 /** 一大堆易变槽都塞满，用来把总预算真的顶到上限（不是靠夹具刚好没超） */
@@ -289,15 +289,31 @@ test("总预算 2026-11-09：收紧到 1300 时逐槽让位，必留内容一个
   assert.ok(tight.text.includes("【现在】"), "P5 时刻不许动（相对日期推理靠它）");
 });
 
-test("总预算 2026-11-09：聊天档 2600 / 工作档 5200 各自收口，再收紧就继续让位", () => {
+test("总预算：聊天档 2600 收口；工作档不设总预算（2026-11-16）", () => {
   const chat = buildBrief(base({ mode: "chat", ...fatVolatile }));
-  const work = buildBrief(base({ mode: "work", ...fatVolatile }));
   assert.ok(chat.tokens <= 2600, `chat=${chat.tokens}`);
-  assert.ok(work.tokens <= 5200, `work=${work.tokens}`);
   assert.equal(chat.overBudget, false);
-  assert.equal(work.overBudget, false);
 
-  // 同一个肥输入，把聊天档 total 硬压到 1100：应该丢更多槽，且不假装达标
+  // 把用户输入撑到远超 5200：工作档不做总量收口，一个槽都不该丢
+  const huge: Partial<BriefInput> = {
+    ...fatVolatile,
+    user: "在吗" + "这句话很长，用来把总预算顶穿。".repeat(400),
+  };
+  const work = buildBrief(base({ mode: "work", ...huge }));
+  assert.ok(work.tokens > 5200, `工作档应该真的超过旧的 5200：${work.tokens}`);
+  assert.equal(work.dropped.slots.length, 0, "不设总预算就不许因为总量丢槽");
+  assert.equal(work.overBudget, false, "Infinity 不该报超预算");
+
+  // 聊天档开着预算：P11 不可丢 → 丢无可丢时要如实报 overBudget，而不是假装达标
+  const chatTight = buildBrief(base({ mode: "chat", ...huge }));
+  assert.equal(chatTight.overBudget, true, "不可丢的槽撑爆预算时必须诚实报");
+
+  // 聊天档关掉总预算（config.brief.chatUnlimited 的运行时等价形态）：同样不丢槽
+  const chatOff = buildBrief(base({ mode: "chat", budget: { total: Number.POSITIVE_INFINITY }, ...huge }));
+  assert.equal(chatOff.dropped.slots.length, 0, "关掉预算后聊天也不许丢槽");
+  assert.equal(chatOff.overBudget, false);
+
+  // 显式收紧仍按优先级让位
   const capped = buildBrief(base({ mode: "chat", budget: { total: 1100 }, ...fatVolatile }));
   assert.ok(capped.tokens <= 1100, `capped=${capped.tokens}`);
   assert.ok(capped.dropped.slots.length > chat.dropped.slots.length,

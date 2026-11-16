@@ -4,8 +4,10 @@
  * 三条不变量（test/brief.test.ts 守着）：
  *  1) P1–P4 逐字不变 → 前缀 hash 稳定 → 可命中缓存（0.1x）
  *  2) 总预算 ≤ budget.total，且**不随轮数增长**。
- *     DEFAULT_BUDGET 是 2000；聊天档放宽到 2600、工作档 5200（见 buildBrief 里的 b）。
+ *     聊天档 2600；**工作档不设总预算**（2026-11-16 用户要求，total = Infinity）。
  *     2026-11-09 前 b.total 只被赋值从未被读取，这条不变量实际没实现，现在按槽位优先级真收口。
+ *     「不设预算」只取消**总量收口**：召回条数 / 契约条数 / 最近几轮行数这些分项上限照旧，
+ *     所以实际上下文量仍由分项之和封顶，不是无限膨胀。
  *  3) 槽位集合与顺序固定，缺内容时留空标记而不是消失
  */
 import { createHash } from "node:crypto";
@@ -15,8 +17,13 @@ import type {
 } from "./types.ts";
 import { renderEroded } from "./erosion.ts";
 
+/** 聊天档总预算（2026-11-16 可被 config.brief.chatUnlimited 关掉）；路由与设置页读它，别各写一份 */
+export const CHAT_TOTAL = 2600;
+/** 工作档**不设总预算**（2026-11-16 用户要求）；Infinity = 不做总量收口 */
+export const WORK_TOTAL = Number.POSITIVE_INFINITY;
+
 const DEFAULT_BUDGET: BriefBudget = {
-  total: 2000,
+  total: 2000,        // 基线常量；两档在 buildBrief 里各自覆盖
   contracts: 400,
   recalled: 600,
   prefix: 1400,
@@ -119,10 +126,12 @@ function fit<T>(items: T[], max: number, budget: number, render: (x: T) => strin
 
 export function buildBrief(input: BriefInput): BriefOutput {
   const work = input.mode === "work";
-  // 工作模式把预算放宽：要把最近几轮装进来，2000 装不下
+  // 2026-11-16 用户定：**工作上下文不设总预算**（不再按 5200 收口）。
+  // 聊天默认 2600，可由 config.brief.chatUnlimited 或调用方 budget 关掉。
+  // 分项预算（recalled / prefix / contracts / P18 cap）保留：取消它们会让上下文不可控。
   const b: BriefBudget = work
-    ? { ...DEFAULT_BUDGET, total: 5200, recalled: 900, prefix: 2600, contracts: 600, ...(input.budget ?? {}) }
-    : { ...DEFAULT_BUDGET, total: 2600, ...(input.budget ?? {}) };   // 2026-11-06：要装得下「最近几轮」
+    ? { ...DEFAULT_BUDGET, total: WORK_TOTAL, recalled: 900, prefix: 2600, contracts: 600, ...(input.budget ?? {}) }
+    : { ...DEFAULT_BUDGET, total: CHAT_TOTAL, ...(input.budget ?? {}) };   // 2026-11-06：要装得下「最近几轮」
   const p = input.persona;
 
   // ── 稳定前缀（P1–P4）：逐字不变 ───────────────────────

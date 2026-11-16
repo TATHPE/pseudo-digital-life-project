@@ -3084,7 +3084,7 @@
   // 形象与背景在「她」、外观/片头在「观感」），用户点开叫「观感」的组反而找不到视觉。
   // 默认布局把它们收进一组；这只是兜底，用户随时能用布局编辑器改成自己的排法。
   var CFG_GROUPS_DEFAULT = [
-    { name: '大脑', hint: '模型 · 接口', secs: ['接口 · 云端', '本地模型'] },
+    { name: '大脑', hint: '模型 · 接口', secs: ['接口 · 云端', '本地模型', '对话预算'] },
     { name: '她',   hint: '人格 · 声音 · 主动性', secs: ['人格', '头像', '声音', '主动开口'] },
     { name: '视觉 · 观感', hint: '看图 · 形象 · 背景 · 主题 · 片头',
       secs: ['眼 · 视觉', '形象与背景', '外观', '开机片头'] },
@@ -3146,6 +3146,7 @@
       fetch('/api/pal').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
       fetch('/api/permission').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
       fetch('/api/version').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
+      fetch('/api/brief').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
     ]).then(function(res){
       var c = res[0] || {}, ui = res[1] || {}, m = res[2] || {}, mode = (res[3] || {}).mode || 'chat';
       var host = res[4] || {}, sd = Array.isArray(res[5]) ? res[5] : [];
@@ -3157,6 +3158,7 @@
       var pal = res[17] || {};
       var perm = res[18] || {};
       var ver = res[19] || {};
+      var briefCfg = res[20] || {};
       var CFG_GROUPS = cfgGroupsFrom(ui);   // 用户自己的分组/顺序；没写才用内置默认
       CP_PAL = pal.avatars ? pal : CP_PAL;
       var locals = m.installed || [];
@@ -3186,6 +3188,19 @@
         '<button class="nb-btn" id="cf-mpick">看看装了哪些模型</button>' +
         '<span class="nb-empty">端点 ' + esc(m.endpoint || '—') + ' · ' + (m.online ? '在线' : '离线') +
         ' · 索引 ' + esc((m.index && m.index.current) || '—') + '</span></div></div>');
+      // 对话预算（2026-11-16）：工作档不设总预算，聊天档 2600 可关。
+      // 「不设预算」只取消总量收口，分项上限照旧 —— 文案必须写清，否则会被读成「上下文无限」。
+      var chatOff = briefCfg.chatUnlimited === true;
+      html += sec('对话预算',
+        '<div class="nb-form">' +
+        '<div class="nb-kv"><b>聊天</b><span>' + (chatOff ? '不设总预算' : ('总预算 ' + esc(String(briefCfg.chatTotal == null ? 2600 : briefCfg.chatTotal)) + ' token')) + '</span>' +
+        '<b>工作</b><span>不设总预算</span></div>' +
+        '<div class="nb-actrow"><button class="nb-btn" id="cf-brief">' + (chatOff ? '恢复聊天的 2600 预算' : '聊天也不设总预算') + '</button>' +
+        '<span class="nb-empty" id="cf-briefmsg"></span></div>' +
+        '<div class="nb-empty">「不设总预算」只取消<b>超量时按优先级丢槽位</b>这一层：召回最多 8 条、契约最多 15 条、' +
+        '最近几轮的行数与每行字数上限仍然生效，所以上下文不会无限膨胀。工作档自 2026-11-16 起默认不设；' +
+        '聊天的 2600 是默认值，可以在这里关掉。改完下一轮对话就生效，不用重启。</div>' +
+        '</div>');
       var vr = vis.raw || {};
       // provider 也是自由文本：ollama=本地 /api/chat，其它任意名字都按 OpenAI 兼容
       // /v1/chat/completions 走（厂商名只是标签）。显示的同样只是用户写下的原值。
@@ -3631,6 +3646,14 @@
       on('cf-nsave', function(){
         fetch('/api/config', { method: 'PUT', headers: H, body: JSON.stringify({ agent: { name: $('cf-name').value.trim() } }) })
           .then(function(r){ return r.json(); }).then(function(j){ msg(j.ok ? '名字已保存' : (j.error || '失败'), !!j.ok); });
+      });
+      // 对话预算开关（2026-11-16）：聊天档 2600 ⇄ 不设总预算；工作档恒不设，不在这里切
+      on('cf-brief', function(){
+        var next = !(briefCfg.chatUnlimited === true);
+        var m = $('cf-briefmsg'); if (m) m.textContent = '保存中…';
+        jsend('PUT', '/api/brief', { chatUnlimited: next })
+          .then(function(){ tick(next ? '聊天也不设总预算了' : '聊天恢复 2600'); cfgView(); })
+          .catch(function(e){ if (m) m.textContent = '没存成：' + e.message; });
       });
       on('cf-mpick', modelPicker);
       // ── QQ 接入（OneBot 11）──

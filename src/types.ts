@@ -139,10 +139,11 @@ export interface BriefInput {
 }
 
 export interface BriefBudget {
-  total: number;      // 默认 2000（17 §2）
-  contracts: number;  // 默认 400
-  recalled: number;   // 默认 600
-  prefix: number;     // 默认 1400（稳定区上限）
+  /** 总预算：聊天 2600；工作 Infinity（2026-11-16 起不设总预算）。Infinity = 不做总量收口 */
+  total: number;
+  contracts: number;  // 默认 400（聊天）/ 600（工作）
+  recalled: number;   // 默认 600（聊天）/ 900（工作）
+  prefix: number;     // 默认 1400（聊天）/ 2600（工作，稳定区上限）
 }
 
 export interface BriefSlot {

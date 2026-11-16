@@ -20,6 +20,17 @@ export interface FileConfig {
   plan?: { provider?: string; model?: string };
   budget?: { dailyUsd?: number };
   /**
+   * 对话上下文预算（2026-11-16 用户要求）。
+   *
+   * 原先两档都有总预算：聊天 2600、工作 5200，超了就按 DROP_ORDER 丢槽位。
+   * 现在：
+   *   · **工作档不设总预算**（不做总量收口；召回条数 / 契约条数 / 最近几轮行数等
+   *     分项上限照旧，否则上下文会不可控）；
+   *   · **聊天档默认仍是 2600**，`chatUnlimited: true` 时不设总预算。
+   * 只影响「超量时丢不丢槽」，不影响分项上限 —— 别把「不设预算」理解成「不限条数」。
+   */
+  brief?: { chatUnlimited?: boolean };
+  /**
    * 本地模型（C-4）：沿用「共享默认 + 单个例外」这个已存在的语义，
    * 不摊成 5 个格子 —— 5 个角色 × N 个模型的下拉框没人会去调。
    *   default → route / extract / salience / conflict（night 也跟着它，除非单设）
@@ -86,8 +97,9 @@ export interface FileConfig {
   /**
    * 工作模式还是聊天模式（2026-11-03 用户要求）。
    *
-   * chat（默认）：靠「记忆 + 召回」代替历史，简报固定 2000 token —— 日常闲聊、一百轮也不爆预算。
-   * work：带最近 8 轮真实对话历史、预算放宽到 5000、工具步数 6→16、单轮输出 3000→6000。
+   * chat（默认）：靠「记忆 + 召回」代替历史，简报总预算 **2600 token** —— 日常闲聊、一百轮也不爆预算。
+   * work：带更多轮真实对话（最多 16 条 / 12 行）、**上下文不设总预算**（分项封顶）、
+   *       工具步数放宽到 45（super 60）、单轮输出上限仍是 3000。
    * 为什么必须分开：「不随轮数增长」在闲聊里成立，在连续干活时是错的 ——
    * 你连着问三件有依赖的事时，聊天模式会断片（实测她说「我看不到你的界面」）。
    */
@@ -207,6 +219,7 @@ export function writeFileConfig(home: string, patch: FileConfig): FileConfig {
       globals: { ...(cur.decay?.globals ?? {}), ...(patch.decay?.globals ?? {}) },
     },
     budget: { ...(cur.budget ?? {}), ...(patch.budget ?? {}) },
+    brief: { ...(cur.brief ?? {}), ...(patch.brief ?? {}) },
     persona: { ...(cur.persona ?? {}), ...(patch.persona ?? {}) },
     ui: { ...(cur.ui ?? {}), ...(patch.ui ?? {}) },
     agent: { ...(cur.agent ?? {}), ...(patch.agent ?? {}) },

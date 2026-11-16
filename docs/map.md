@@ -9,7 +9,7 @@
 | 项 | 数量 |
 |---|---|
 | 源文件（src/**/*.ts） | 138 |
-| 错误码 E_* | 273 |
+| 错误码 E_* | 274 |
 | verbs | 33 |
 | CLI 子命令 | 42 |
 
@@ -31,6 +31,7 @@
 | `E_BAD_ARGV` | `src/agentguard.ts` `src/execute.ts` `src/permcheck.ts` `src/shell.ts` `src/verbs.ts` `src/wsl.ts` |
 | `E_BAD_AVATAR` | `src/pal.ts` `src/web/server.ts` |
 | `E_BAD_BEAT` | `src/web/routes/config.ts` |
+| `E_BAD_BRIEF` | `src/web/routes/config.ts` |
 | `E_BAD_COMMAND` | `src/plugins.ts` |
 | `E_BAD_ENDPOINT` | `src/transport.ts` |
 | `E_BAD_GROUPS` | `src/config-custom.ts` |

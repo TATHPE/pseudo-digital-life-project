@@ -342,3 +342,13 @@ test("声音没配后端：陪伴视图安静跳过、主动试听明确报错�
   assert.ok(/use <后端名\|clear>/.test(readFileSync(new URL("../src/cli/jingjing.ts", import.meta.url), "utf8")),
     "CLI 也不该把后端名锁死在 local|cloud");
 });
+
+test("对话预算开关（2026-11-16）：设置页可切，且说清只取消总量收口", () => {
+  assert.ok(NB.includes("sec('对话预算'"), "设置页要有「对话预算」这一节");
+  assert.ok(NB.includes('id="cf-brief"'), "要有一个开关按钮");
+  assert.ok(NB.includes("/api/brief"), "开关要写 config，不是只改前端变量");
+  assert.ok(NB.includes("chatUnlimited"), "读的是 chatUnlimited 这个字段");
+  assert.ok(NB.includes("工作</b><span>不设总预算"), "工作档要如实写「不设总预算」");
+  assert.ok(NB.includes("召回最多 8 条"), "必须写清分项上限仍在，别被读成上下文无限");
+  assert.ok(NB.includes("'对话预算'"), "新节要进默认分组表，否则从页面消失");
+});

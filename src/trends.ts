@@ -188,13 +188,15 @@ export function memoryTrend(db: DatabaseSync, opts: TrendOptions = {}): MemoryTr
   const outageInWindow = Number(outRow?.n) || 0;
 
   // ⑥ 衰减：横轴是**年龄**，不是日期
-  //    julianday('now') 与 created_at 都是 UTC，差值才是真实天数；
-  //    这里**不要**套 localtime —— 只算间隔，跟时区无关。
+  //    created_at 是 UTC，差值才是真实天数；这里**不要**套 localtime —— 只算间隔，跟时区无关。
+  //    2026-11-16 修：年龄基准原来写死 `julianday('now')`，和函数入参 `now` 不是同一个时刻 ——
+  //    测试传固定 now 时会在跨天后错位（今天刚记的被算成 1 天前），界面上也是同一个毛病。
+  //    改成把 now 当参数传进去，只认调用方给的时刻。
   const live = db.prepare(
-    `SELECT weight, w0, kind, CAST(julianday('now') - julianday(created_at) AS INT) AS age
+    `SELECT weight, w0, kind, CAST(julianday(?) - julianday(created_at) AS INT) AS age
        FROM memories
       WHERE status='active' AND w0 > 0 AND ${scope}`,
-  ).all() as Array<{ weight: number; w0: number; kind: string; age: number }>;
+  ).all(now.toISOString()) as Array<{ weight: number; w0: number; kind: string; age: number }>;
 
   const acc = BUCKETS.map((b) => ({ ...b, n: 0, w0: 0, w: 0 }));
   const kindAcc = new Map<string, { n: number; w0: number; w: number }>();

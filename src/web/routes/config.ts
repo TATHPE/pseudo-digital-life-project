@@ -166,6 +166,30 @@ export async function handleConfig(ctx: ConfigCtx): Promise<boolean> {
         return true;
       }
 
+      // ── 对话上下文预算（2026-11-16）：工作档不设总预算，聊天档的 2600 可关 ──
+      if (req.method === "GET" && url.pathname === "/api/brief") {
+        const b = readFileConfig(deps.home).brief ?? {};
+        const briefMod = await import("../../brief.ts");
+        json(res, 200, { ok: true, chatUnlimited: b.chatUnlimited === true,
+          chatTotal: b.chatUnlimited === true ? null : briefMod.CHAT_TOTAL,
+          workTotal: null, why: "工作档不设总预算；聊天关掉后同样不做总量收口" });
+        return true;
+      }
+      if (req.method === "PUT" && url.pathname === "/api/brief") {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return true; }
+        const body = await readJson(req) as { chatUnlimited?: unknown };
+        // 只收真布尔：字符串 "false" 会被当 truthy，必须显式拒（与 beat 同一条规矩）
+        if (typeof body.chatUnlimited !== "boolean") {
+          json(res, 400, { error: "E_BAD_BRIEF", why: "chatUnlimited 只能是 true / false" });
+          return true;
+        }
+        writeFileConfig(deps.home, { brief: { chatUnlimited: body.chatUnlimited } });
+        const briefMod = await import("../../brief.ts");
+        json(res, 200, { ok: true, chatUnlimited: body.chatUnlimited,
+          chatTotal: body.chatUnlimited ? null : briefMod.CHAT_TOTAL, workTotal: null });
+        return true;
+      }
+
       // ── 直接编辑配置（VS Code 式 settings.json）：只开放 ui / tts / vision 三个命名空间。
       //     GET 脱敏（密钥在 SecretStore，不在这份里）；PUT 按命名空间合并，别的一律不动。
       if (req.method === "GET" && url.pathname === "/api/config/raw") {
