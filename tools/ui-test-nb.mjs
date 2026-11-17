@@ -376,7 +376,8 @@ for (const s of (softSwitch || [])) {
   );
 }
 
-// ⑥d3 陪伴视图（2026-11-17 修输入遮人物）：舞台底边 = 气泡+输入条顶边，画布不许伸进输入条。
+// ⑥d3 陪伴视图（2026-11-17 晚回滚后口径）：人物按整个陪伴区定尺寸——画布铺满舞台（不让位），
+// 开关干净。输入条浮在人物下半身之上是 owner 选定的此前效果，不再断言「不遮」。
 const cpFit = await js(`(async () => {
   const t = document.getElementById('nb-companion-toggle');
   if (!t) return { why: 'no-toggle' };
@@ -384,12 +385,10 @@ const cpFit = await js(`(async () => {
   for (let i = 0; i < 24; i++) { if (document.querySelector('#cp-stage canvas')) break; await new Promise((r) => setTimeout(r, 250)); }
   await new Promise((r) => setTimeout(r, 700));
   const st = document.getElementById('cp-stage');
-  const bot = document.querySelector('.cp-bottom');
   const cv = st && st.querySelector('canvas');
-  if (!st || !bot) { t.click(); return { why: 'no-stage' }; }
-  const sr = st.getBoundingClientRect(), br = bot.getBoundingClientRect();
-  const cr = cv ? cv.getBoundingClientRect() : null;
-  const out = { stageBottom: Math.round(sr.bottom), botTop: Math.round(br.top), canvasBottom: cr ? Math.round(cr.bottom) : null };
+  if (!st || !cv) { t.click(); return { why: 'no-canvas' }; }
+  const sr = st.getBoundingClientRect(), cr = cv.getBoundingClientRect();
+  const out = { stageH: Math.round(sr.height), canvasH: Math.round(cr.height), stageBottom: Math.round(sr.bottom) };
   t.click();
   await new Promise((r) => setTimeout(r, 400));
   out.off = !document.querySelector('.nb').classList.contains('companion-on');
@@ -397,10 +396,8 @@ const cpFit = await js(`(async () => {
 })()`);
 if (cpFit && cpFit.why) check("陪伴视图能开", false, cpFit.why);
 else check(
-  "陪伴：人物裁切线在输入条之上（输入不遮人物）",
-  !!cpFit && cpFit.stageBottom <= cpFit.botTop + 1
-    && (cpFit.canvasBottom == null || cpFit.canvasBottom <= cpFit.botTop + 1)
-    && cpFit.off === true,
+  "陪伴：画布铺满舞台（人物按整个陪伴区定尺寸）+ 开关干净",
+  !!cpFit && Math.abs(cpFit.canvasH - cpFit.stageH) <= 2 && cpFit.off === true,
   JSON.stringify(cpFit),
 );
 

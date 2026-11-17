@@ -2676,17 +2676,6 @@
     var inp = $('cp-say'); if (inp) inp.focus();
   };
 
-  // 舞台让出底部「气泡 + 输入条」：半身形裁切会把人物画到容器底边，
-  // 不让出舞台输入条就压在人物身上（用户 2026-11-17 实测）。气泡出现/消失、输入区长高都要跟着改。
-  var CP_RO = null;
-  function cpStageFit(){
-    if (!COMPANION) return;
-    var st = $('cp-stage'), bot = document.querySelector('.cp-bottom');
-    if (!st || !bot) return;
-    st.style.bottom = bot.offsetHeight + 'px';
-    // 复用既有 resize  wiring：PIXI resizeTo / fitCubism / mesh 都听 window resize
-    window.dispatchEvent(new Event('resize'));
-  }
   function companionOn(){
     COMPANION = true;
     document.querySelector('.nb').classList.add('companion-on');
@@ -2698,11 +2687,6 @@
     cpLoadPrefs(function(){ cpApplyState(); cpMount(); });
     cpLoadPal(function(){ cpApplyState(); cpMount(); });
     cpState('在发呆');
-    cpStageFit();
-    if (!CP_RO && typeof ResizeObserver !== 'undefined') {
-      var bot0 = document.querySelector('.cp-bottom');
-      if (bot0) { CP_RO = new ResizeObserver(function(){ cpStageFit(); }); CP_RO.observe(bot0); }
-    }
     var inp = $('cp-say'); if (inp) setTimeout(function(){ inp.focus(); if (typeof cpSayGrow === 'function') cpSayGrow(inp); }, 200);
   }
   function companionOff(){
@@ -2711,8 +2695,6 @@
     var cp = $('nb-companion'); if (cp) cp.hidden = true;
     var oc = $('nb-composer'); if (oc) oc.hidden = false;
     var t = $('nb-companion-toggle'); if (t) t.classList.remove('on');
-    if (CP_RO) { CP_RO.disconnect(); CP_RO = null; }
-    var st0 = $('cp-stage'); if (st0) st0.style.bottom = '';
     cpDestroy();
     // 在陪伴里说过的话，回记录本要立刻能看到（以前不重拉，那几轮像没发生过）
     if (TL_DIRTY){ TL_DIRTY = false; loadTimeline(); }

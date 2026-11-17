@@ -778,10 +778,11 @@ input:focus-visible,textarea:focus-visible{outline:none;border-bottom-color:var(
   background:radial-gradient(circle at 32% 30%, rgba(225,248,255,.55), rgba(160,220,240,.14) 58%, transparent 72%);
   border:1px solid rgba(205,240,255,.2);animation:cp-rise linear infinite}
 @keyframes cp-rise{0%{transform:translateY(0) translateX(0);opacity:0}8%{opacity:.75}88%{opacity:.5}100%{transform:translateY(-112vh) translateX(26px);opacity:0}}
-/* 人物舞台：WebGL 透明画布叠在背景上。bottom 由 JS（cpStageFit）写成 .cp-bottom 的实测高度：
-   气泡 + 输入条整块让出舞台，人物裁切线永远落在输入条之上（2026-11-17 修输入遮人物）。 */
+/* 人物舞台：WebGL 透明画布叠在背景上；底部留出浮动对话+输入条的位置 */
+/* 2026-11-17 晚回滚：舞台让位（cpStageFit）会缩小 fitCubism 的缩放基准并暴露半身形裁切缝，
+   owner 要求恢复此前效果（人物按整个陪伴区定尺寸、画到窗口底边）；让位方案待 owner 测试后再议。 */
 .cp-stage{position:absolute;inset:0;z-index:1}
-.cp-canvas{position:absolute;inset:0;width:100%;height:100%;display:block;
+.cp-canvas{position:absolute;left:0;right:0;top:0;bottom:186px;width:100%;height:100%;display:block;
   filter:drop-shadow(0 18px 30px rgba(0,10,25,.45))}
 @media (prefers-reduced-motion: reduce){.cp-rays,.cp-caustics{animation:none}}
 /* 顶部：状态胶囊 + 声音/切换 */

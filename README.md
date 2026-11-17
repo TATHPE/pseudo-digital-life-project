@@ -31,10 +31,11 @@ There is exactly one interface, a **notebook**: days down the left, prose in the
 - **Not a general assistant**: no web search, no plugin marketplace; the 33 capabilities are local read/write/exec
 - **Not a mature product**: 0.1.0 (version reset and re-released 2026-11-17), built and used by one person; the rough edges are documented in `docs/` (Chinese)
 
-> **2026-11-17 correction (supersedes the 11-15 "no installer" note)**: distribution is back — Release **v0.1.0**
-> (version reset: the old `v0.1.0` tag now points at this release; `v0.1.1` remains as history) ships a clean
-> `PDLP-0.1.0-x64-setup.exe`. **The repository was made public on 2026-11-17** (owner decision,
-> reversing the 11-15 privatization): the release and its assets are publicly downloadable.
+> **2026-11-17 evening correction (supersedes the same-day "distribution is back")**: Release **v0.1.0 and its
+> assets have been deleted** (owner decision: rebuild the installer and re-release after on-device testing);
+> **the repository stays public**, code version remains 0.1.0, the `v0.1.0` tag stays as a version marker.
+> **There is no installer to download right now**: use the test build (junction reading repo source) or build from source below.
+> The companion view was **reverted the same evening to its pre-11-17 behavior** (character sized against the whole companion area); the stage-yield approach is shelved pending testing.
 > Verification and distribution status: workspace `docs/ops/22 §0.5`.
 
 ## Companion mode
@@ -64,11 +65,11 @@ Four themes (ledger black-on-white compact / hermes paper-white wide / daylight 
 
 ## Quick start
 
-### Installer (Windows x64)
+### Installer (Windows x64) — **no downloadable build right now**
 
-Download `PDLP-0.1.0-x64-setup.exe` from [Releases](https://github.com/TATHPE/pseudo-digital-life-project/releases) (**v0.1.0**),
-verify the SHA-256 published in the release notes, then install.
-Uninstall any older build first: the installer only removes files in its manifest, leftover directories (notably a nested `persona/`) survive an over-install.
+> Release v0.1.0 and its assets were deleted on the evening of 2026-11-17: the owner will rebuild the
+> installer and re-release after on-device testing. For now use the test build (`D:\Apps\PDLP`, junction
+> reading repo source) or build from source (next section).
 
 First launch opens a guided setup (eight steps): environment check → install Ollama → pull embedding model → pull chat model → (optional) API key → persona → smoke test → first sentence.
 **Every step can be paused, stepped back or skipped.** If you skip, a banner stays at the top until a model is actually configured.
