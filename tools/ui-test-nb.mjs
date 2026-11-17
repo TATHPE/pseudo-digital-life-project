@@ -80,11 +80,14 @@ if (entries > 0) {
     const g = e && e.querySelector('.g');
     return !!g && /\\d{2}:\\d{2}/.test(g.textContent || '');
   })()`));
-  check("她的话是青色左边线", await js(`(() => {
+  check("她的话有可识别记号（线主题青左边线 / 主流主题圆角卡）", await js(`(() => {
     const her = document.querySelector('#nb-log .nb-e.her .nb-say');
     if (!her) return true;   // 库里只有用户消息时不算错
-    // Hermes 的青是 #0f7c74 = rgb(15, 124, 116)（2026-11-06 两套统一）
-    return getComputedStyle(her).borderLeftColor.includes('15, 124, 116');
+    const c = getComputedStyle(her);
+    const t = document.documentElement.getAttribute('data-theme');
+    // 主流两档她的记号是圆角实底卡面（四周 1px 卡边，不是青左边线）；线主题仍是青左边线 #0f7c74 = rgb(15, 124, 116)
+    if (t === 'daylight' || t === 'carbon') return c.borderTopLeftRadius !== '0px' && c.backgroundColor !== 'rgba(0, 0, 0, 0)';
+    return c.borderLeftColor.includes('15, 124, 116');
   })()`));
 } else skip("每条有页边时间戳", "空库");
 
@@ -166,19 +169,21 @@ if (memOk === 'NO_MEM') check("记忆页能打开", false, "左栏没有记忆�
 else if (!memOk) skip("记忆列表有条目", "库里还没有记忆");
 else {
   check("记忆页能打开且列出条目", true, memOk + " 条");
-  check("点一条能进详情（有种类/来源/采集）", await js(`(async () => {
+  check("点一条能进详情（有种类/来源/时间）", await js(`(async () => {
     const row = document.querySelector('#nb-mlist [data-mem]');
     row.click();
     await new Promise((r) => setTimeout(r, 700));
-    const t = document.getElementById('nb-view').textContent || '';
-    return /种类/.test(t) && /来源/.test(t) && /采集/.test(t);
+    // 2026-11-17 修：详情早已是抽屉（.nb-draw），不是 #nb-view 整页；字段口径随抽屉（种类/来源/记于）
+    const d = document.querySelector('.nb-draw');
+    const t = d ? d.textContent : '';
+    return /种类/.test(t) && /来源/.test(t) && /记于/.test(t);
   })()`));
   check("详情能回到列表", await js(`(async () => {
-    const b = document.getElementById('nb-mback') || document.getElementById('nb-mback3');
+    const b = document.querySelector('.nb-draw [data-mclose]');
     if (!b) return false;
     b.click();
     await new Promise((r) => setTimeout(r, 600));
-    return !!document.querySelector('#nb-mlist');
+    return !document.querySelector('.nb-draw') && !!document.querySelector('#nb-mlist');
   })()`));
 }
 
@@ -308,12 +313,9 @@ else check(
 const themeSwitch = await js(`(async () => {
   const goCfg = document.querySelector('.nb-go[data-v="cfg"]');
   if (goCfg) goCfg.click();
-  for (let i = 0; i < 20; i++) { if (document.querySelectorAll('.nb-jump').length) break; await new Promise((r) => setTimeout(r, 300)); }
-  const tab = [...document.querySelectorAll('.nb-jump')].find((x) => x.textContent.trim() === '外观');
-  if (!tab) return { why: 'no-tab' };
-  tab.click();
-  await new Promise((r) => setTimeout(r, 300));
-  const btn = [...document.querySelectorAll('[data-theme]')].find((x) => x.getAttribute('data-theme') === 'hermes');
+  // 2026-11-17 修：设置页 11-14 起整组铺开，.nb-jump 已是记忆详情的签；主题按钮直接在 #cf-theme 里等
+  for (let i = 0; i < 20; i++) { if (document.querySelector('#cf-theme [data-theme="hermes"]')) break; await new Promise((r) => setTimeout(r, 300)); }
+  const btn = document.querySelector('#cf-theme [data-theme="hermes"]');
   if (!btn) return { why: 'no-hermes-btn' };
   const before = getComputedStyle(document.body).fontSize;
   btn.click();
@@ -334,8 +336,88 @@ else check(
   themeSwitch ? (`${themeSwitch.before} → ${themeSwitch.after} · 存 ${themeSwitch.saved}`) : "?",
 );
 
+// ⑥d2 主流风格两档（2026-11-17）：daylight 暖白 / carbon 深灰。
+// 比三样：属性与配置存住、底色是对的、输入区是圆角卡面（新语汇的签名，ledger/hermes 是直角细线）。
+// 验完切回 ledger，后面的断言仍在默认主题下跑。
+const softSwitch = await js(`(async () => {
+  const out = [];
+  for (const name of ['daylight', 'carbon']) {
+    const btn = document.querySelector('#cf-theme [data-theme="' + name + '"]');
+    if (!btn) { out.push({ name, why: 'no-btn' }); continue; }
+    btn.click();
+    await new Promise((r) => setTimeout(r, 500));
+    const ui = await (await fetch('/api/ui')).json();
+    const cin = document.querySelector('.nb-cin');
+    // 回归（2026-11-17 变量泄漏）：未选中按钮必须全部跟随当前主题。
+    // 主题按钮自己带 data-theme 属性，变量块若不带 html 前缀会命中按钮本身 → 跨主题反色 / 深底黑字。
+    const pills = [...document.querySelectorAll('#cf-theme .nb-opt:not(.on), #cf-shell .nb-opt:not(.on)')]
+      .map((b) => { const c = getComputedStyle(b); return c.color + '|' + c.backgroundColor; });
+    out.push({
+      name, attr: document.documentElement.getAttribute('data-theme'), saved: ui.theme,
+      bg: getComputedStyle(document.body).backgroundColor,
+      radius: cin ? getComputedStyle(cin).borderTopLeftRadius : 'none',
+      pillUniform: new Set(pills).size === 1, pills: pills.length,
+    });
+  }
+  const back = document.querySelector('#cf-theme [data-theme="ledger"]');
+  if (back) back.click();
+  await new Promise((r) => setTimeout(r, 300));
+  return out;
+})()`);
+for (const s of (softSwitch || [])) {
+  if (s.why) check(`主流主题 ${s.name} 能切`, false, s.why);
+  else check(
+    `主流主题 ${s.name}（立刻生效 + 存住 + 圆角卡面）`,
+    s.attr === s.name && s.saved === s.name
+      && (s.name === 'daylight' ? /247, 246, 243/ : /27, 28, 30/).test(s.bg)
+      && s.radius !== '0px' && s.radius !== 'none'
+      && s.pillUniform === true && s.pills >= 4,
+    `${s.bg} · 圆角 ${s.radius} · 存 ${s.saved} · 未选中按钮同色 ${s.pillUniform}`,
+  );
+}
+
+// ⑥d3 陪伴视图（2026-11-17 修输入遮人物）：舞台底边 = 气泡+输入条顶边，画布不许伸进输入条。
+const cpFit = await js(`(async () => {
+  const t = document.getElementById('nb-companion-toggle');
+  if (!t) return { why: 'no-toggle' };
+  t.click();
+  for (let i = 0; i < 24; i++) { if (document.querySelector('#cp-stage canvas')) break; await new Promise((r) => setTimeout(r, 250)); }
+  await new Promise((r) => setTimeout(r, 700));
+  const st = document.getElementById('cp-stage');
+  const bot = document.querySelector('.cp-bottom');
+  const cv = st && st.querySelector('canvas');
+  if (!st || !bot) { t.click(); return { why: 'no-stage' }; }
+  const sr = st.getBoundingClientRect(), br = bot.getBoundingClientRect();
+  const cr = cv ? cv.getBoundingClientRect() : null;
+  const out = { stageBottom: Math.round(sr.bottom), botTop: Math.round(br.top), canvasBottom: cr ? Math.round(cr.bottom) : null };
+  t.click();
+  await new Promise((r) => setTimeout(r, 400));
+  out.off = !document.querySelector('.nb').classList.contains('companion-on');
+  return out;
+})()`);
+if (cpFit && cpFit.why) check("陪伴视图能开", false, cpFit.why);
+else check(
+  "陪伴：人物裁切线在输入条之上（输入不遮人物）",
+  !!cpFit && cpFit.stageBottom <= cpFit.botTop + 1
+    && (cpFit.canvasBottom == null || cpFit.canvasBottom <= cpFit.botTop + 1)
+    && cpFit.off === true,
+  JSON.stringify(cpFit),
+);
+
 // ⑥f 键盘可达性（a11y 审计 P1）：左栏/日期/切口签要能 Tab 进去，Enter 能触发
 const kb = await js(`(async () => {
+  // 2026-11-17 修：shell 未写时服务端归一化成 classic（左栏 display:none，focus 落不上）。
+  // 键盘可达性要在三栏记录本下验：用设置页真按钮切回 notebook，不手改属性假装状态。
+  if (!document.querySelector('[data-shellv="notebook"]')) {
+    const g = document.querySelector('.nb-go[data-v="cfg"]');
+    if (g) g.click();
+    await new Promise((r) => setTimeout(r, 700));
+  }
+  const shBtn = document.querySelector('[data-shellv="notebook"]');
+  if (shBtn && document.documentElement.getAttribute('data-shell') === 'classic') {
+    shBtn.click();
+    await new Promise((r) => setTimeout(r, 500));
+  }
   const nav = [...document.querySelectorAll('.nb-go')];
   const days = [...document.querySelectorAll('.nb-day')];
   const focusable = nav.filter((x) => x.getAttribute('tabindex') === '0' && x.getAttribute('role') === 'button');
@@ -423,13 +505,18 @@ const liveSrc = await (await fetch(new URL("/ui/notebook.js", URL_PAGE))).text()
 check("她的回答会被播报（#nb-live 带 role=log + aria-live）",
   /id="nb-live" role="log" aria-live="polite"/.test(liveSrc), "源码里没找到播报属性");
 
-// ⑦ 回到记录
+// ⑦ 回到记录（2026-11-17 修：先确保在标本页再点回，不从任意状态猜 BOARD）
 check("能回到记录页", await js(`(async () => {
   const b = document.getElementById('nb-board-btn');
+  if (document.getElementById('nb-board').hidden) {
+    b.click();
+    await new Promise((r) => setTimeout(r, 400));
+  }
+  const boardOn = !document.getElementById('nb-board').hidden;
   b.click();
   await new Promise((r) => setTimeout(r, 400));
   const log = document.getElementById('nb-log');
-  return log && !log.hidden;
+  return boardOn && log && !log.hidden;
 })()`));
 
 // ⑦b 头像：>512KB 的图要能换（用户实测「换不了」——原图 2–5MB，服务端限 512KB）
@@ -437,11 +524,8 @@ const avatarCheck = await js(`(async () => {
   // 先回设置页（这一步在记录页上跑，得自己过去）
   const goCfg = document.querySelector('.nb-go[data-v="cfg"]');
   if (goCfg) goCfg.click();
-  for (let i = 0; i < 20; i++) { if (document.querySelectorAll('.nb-jump').length) break; await new Promise((r) => setTimeout(r, 300)); }
-  const jump = [...document.querySelectorAll('.nb-jump')].find((x) => x.textContent.trim() === '头像');
-  if (!jump) return 'no-tab';
-  jump.click();
-  await new Promise((r) => setTimeout(r, 400));
+  // 2026-11-17 修：整组铺开后头像输入框直接在 DOM 里，不再需要点 .nb-jump 签
+  for (let i = 0; i < 20; i++) { if (document.querySelector('input[data-av="agent"]')) break; await new Promise((r) => setTimeout(r, 300)); }
   const inp = document.querySelector('input[data-av="agent"]');
   if (!inp) return 'no-input';
   const c = document.createElement('canvas'); c.width = 900; c.height = 900;

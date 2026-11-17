@@ -12,7 +12,7 @@
  *  2. 数值只校验范围，不静默替换成默认值。
  *  3. apiKey 永远不进 config.json（走 SecretStore），这里只认有没有。
  */
-import type { CfgGroup, FileConfig } from "./configfile.ts";
+import { UI_THEMES, type CfgGroup, type FileConfig } from "./configfile.ts";
 
 export type PatchResult<T> = { ok: true; patch: T } | { ok: false; error: string; why: string };
 
@@ -123,7 +123,7 @@ export function rawPatch(body: Record<string, unknown>): PatchResult<Partial<Fil
         // 这三项是**内置能力**的档位，不是自由值：写个不存在的值会被运行时默默回落，
         // 那又是「替你预设」。不如当场拒掉，说清有哪几档（与 /api/ui 的校验一致）。
         const v = String(u[k] ?? "").slice(0, 60);
-        const allowed = k === "theme" ? ["ledger", "hermes"]
+        const allowed = k === "theme" ? UI_THEMES
           : k === "shell" ? ["classic", "notebook"]
             : ["off", "simple", "full"];
         if (!allowed.includes(v)) return { ok: false, error: "E_BAD_RAW", why: `${k} 只能是 ${allowed.join(" / ")}` };

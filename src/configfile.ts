@@ -7,6 +7,13 @@ import { join } from "node:path";
 import { atomicWriteFile } from "./fsx.ts";
 import { applyEnv, baseConfig, type AppConfig } from "./config.ts";
 
+/**
+ * 内置主题清单（唯一真源：/api/ui 校验、config-custom 校验、首屏 data-theme 都读它）。
+ * ledger/hermes = 记录本语汇的明暗两版（2026-11-06）；
+ * daylight/carbon = 主流风格两档（2026-11-17 用户决定：向主流 AI Agent 软件对齐，新增而非替换）。
+ */
+export const UI_THEMES: readonly string[] = ["ledger", "hermes", "daylight", "carbon"];
+
 /** 设置页的自定义布局：一组里放哪些节、按什么顺序。用户自己写，代码不预设内容。 */
 export interface CfgGroup {
   name: string;
@@ -58,12 +65,12 @@ export interface FileConfig {
      *   off    不播
      *   simple 约 3.4s：logo 描边 → 填充 → 呼吸 → 项目名
      *   full   约 9s：多一层网格擦出 + 逐条真实读数 + READY
-     * 默认 full —— 用户 2026-11-02 明确要完整档。
+     * 默认 simple —— 2026-11-17 用户改定简易档（2026-11-02 曾明确要完整档，历史决定见 git）。
      */
     splash?: string;
-    /** 主题：ledger（记录本，默认）/ hermes（Hermes 版式） */
+    /** 主题：ledger（记录本）/ hermes（Hermes 版式）/ daylight（暖白消费级）/ carbon（深灰工具级，**默认**，2026-11-17 用户改定）；清单见 UI_THEMES */
     theme?: string;
-    /** 外壳：classic（经典面板）/ notebook（记录本） */
+    /** 外壳：notebook（三栏记录本，**默认**，2026-11-17 改回）/ classic（单栏专注） */
     shell?: string;
     /**
      * 主动开口（心跳）是否随面板启动（2026-11-15 用户决策 2：启动参数级开关做成界面开关）。

@@ -16,7 +16,7 @@ import { search, searchDocs } from "../retrieve.ts";
 import { buildBrief } from "../brief.ts";
 import { loadPersona } from "../persona.ts";
 import { expenseLine } from "./state.ts";
-import {readFileConfig, normalizeAgentName} from "../configfile.ts";
+import {readFileConfig, normalizeAgentName, UI_THEMES} from "../configfile.ts";
 import { capabilities } from "../capabilities.ts";
 import { preflight } from "../preflight.ts";
 import {listProposals} from "../proposals.ts";
@@ -448,10 +448,13 @@ export function createWebServer(deps: WebDeps) {
             : bootMod.bootOverlay(splash);
         res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
         // 主题在服务端就写进 <html>：否则首屏会是默认主题，闪一下再变（2026-11-06）
-        const themeAttr = readFileConfig(deps.home).ui?.theme === "hermes" ? ' data-theme="hermes"' : "";
+        const th = readFileConfig(deps.home).ui?.theme ?? "carbon";
+        const themeAttr = th !== "ledger" && UI_THEMES.includes(th) ? ' data-theme="' + th + '"' : "";
+        // 外壳同理：classic 是「收边」态，首屏不带属性就是三栏；配了 classic 要首屏就收，别闪一下三栏
+        const shellAttr = readFileConfig(deps.home).ui?.shell === "classic" ? ' data-shell="classic"' : "";
         const agentName = normalizeAgentName(readFileConfig(deps.home).agent?.name);
         const page = NOTEBOOK
-          .replace('<html lang="zh-CN">', '<html lang="zh-CN"' + themeAttr + '>')
+          .replace('<html lang="zh-CN">', '<html lang="zh-CN"' + themeAttr + shellAttr + '>')
           .split("{{AGENT}}").join(agentName)
           .split("<!--BOOT-->").join(bootHtml);
         res.end(req.method === "HEAD" ? undefined : page);

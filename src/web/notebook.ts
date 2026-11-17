@@ -47,7 +47,7 @@ export const NOTEBOOK = `<!doctype html>
    默认 = 记录本（黑白、紧凑、660 正文宽）
    hermes = 借 Hermes-CN-Desktop 的浅色底：纸白 + 墨黑、12.5/1.75、248 侧栏、容器 1120 / 正文 720
    只换变量与版式，结构不动 —— 切换靠 <html data-theme>，不刷新页面。 */
-[data-theme="hermes"]{
+html[data-theme="hermes"]{
   color-scheme:light;
   /* 纸白 + 墨黑：Hermes 是浅色底，不是深色底换个灰 */
   --void:#fbfbf9;--ink:#0a0b0c;--dim:#33393c;--dim2:#5a6165;
@@ -63,20 +63,161 @@ export const NOTEBOOK = `<!doctype html>
 }
 /* 版式差异：左栏 248（Hermes 的 sidebar 宽） */
 /* 正文别跟着容器一起变宽：容器 1120 / 正文 720 */
-[data-theme="hermes"] .nb-greet{font-size:22px;font-weight:600;letter-spacing:-.01em}
-[data-theme="hermes"] .nb-sec{letter-spacing:.18em}
-[data-theme="hermes"] .nb-e .g .w{letter-spacing:.1em}
+html[data-theme="hermes"] .nb-greet{font-size:22px;font-weight:600;letter-spacing:-.01em}
+html[data-theme="hermes"] .nb-sec{letter-spacing:.18em}
+html[data-theme="hermes"] .nb-e .g .w{letter-spacing:.1em}
 /* 浅色下代码块与表格的底要更实一点，不然像没渲染 */
-[data-theme="hermes"] .nb-say pre{background:var(--tint2)}
-[data-theme="hermes"] .md-table th{background:var(--tint2)}
+html[data-theme="hermes"] .nb-say pre{background:var(--tint2)}
+html[data-theme="hermes"] .md-table th{background:var(--tint2)}
 /* 顶栏与输入区在浅色底上要有一条实线，不然糊在一起 */
-[data-theme="hermes"] .nb-top{border-bottom-color:var(--line-dim)}
-[data-theme="hermes"] .nb-composer{border-top:1px solid var(--line-dim)}
+html[data-theme="hermes"] .nb-top{border-bottom-color:var(--line-dim)}
+html[data-theme="hermes"] .nb-composer{border-top:1px solid var(--line-dim)}
 /* 滚动条：浅色底上用墨色滑块 */
-[data-theme="hermes"] ::-webkit-scrollbar-thumb{background:var(--line-dim)}
-[data-theme="hermes"] ::-webkit-scrollbar-thumb:hover{background:var(--dim2)}
+html[data-theme="hermes"] ::-webkit-scrollbar-thumb{background:var(--line-dim)}
+html[data-theme="hermes"] ::-webkit-scrollbar-thumb:hover{background:var(--dim2)}
+/* ── 主流风格两档（2026-11-17 用户决定：向主流 AI Agent 软件对齐，新增主题而非替换）──
+   daylight = 消费级暖白（ChatGPT / Claude 网页版参考）：圆角卡片、留白、无衬线标签
+   carbon   = 深色友好工具级（Cherry Studio / Open WebUI 参考）：深灰表面层次、圆角、去终端味
+   与 ledger/hermes 并存，设置可切。11-06「一套风格明暗两版」的决定对这两档不再适用：
+   它们是**另一套版式语汇**（圆角/卡面/无衬线小标），不只是换色。
+   三处行为签名不动：没有新对话 / 沉默间隔可见 / 醒着+距上次状态行。
+   变量各写各的；版式覆盖只用 :is() 写一遍，结构、数据、接口都不动。
+   **选择器一律带 html 前缀**（2026-11-17 修）：设置页的主题按钮自己也带 data-theme 属性，
+   不带前缀时变量块会命中按钮本身——按钮局部继承「它所代表的那档」的变量，
+   表现为跨主题反色、hermes 缺 --surface 时深底黑字几乎不可读。变量只该落在根元素上。 */
+html[data-theme="daylight"]{
+  color-scheme:light;
+  --void:#f7f6f3;--surface:#ffffff;--rail-bg:#efede8;
+  --ink:#202123;--dim:#55575a;--dim2:#83858a;
+  --line:rgba(32,33,35,.16);--line-dim:rgba(32,33,35,.08);
+  --cyan:#b4533f;--amber:#9a6b1f;--fade:#9a9c9e;
+  --tint1:rgba(32,33,35,.025);--tint2:rgba(32,33,35,.045);--tint3:rgba(32,33,35,.075);
+  --ok:#3f7a3a;--warn:#8a6d1f;--err:#a8423a;
+  --danger:#a8423a;--danger-fg:#a8423a;--scrim:rgba(247,246,243,.92);--modal-scrim:rgba(32,33,35,.32);
+  --shadow:0 1px 2px rgba(32,33,35,.05);
+  --mono:var(--sans);
+}
+html[data-theme="carbon"]{
+  color-scheme:dark;
+  --void:#1b1c1e;--surface:#232427;--rail-bg:#17181a;
+  --ink:#e8e8e6;--dim:#b0b0ae;--dim2:#8a8a88;
+  --line:rgba(232,232,230,.16);--line-dim:rgba(232,232,230,.08);
+  --cyan:#64a4e8;--amber:#d0a53f;--fade:#77777a;
+  --tint1:rgba(232,232,230,.03);--tint2:rgba(232,232,230,.055);--tint3:rgba(232,232,230,.09);
+  --ok:#6fbf6a;--warn:#d0a53f;--err:#e07a72;
+  --danger:#8a4a44;--danger-fg:#e09a94;--scrim:rgba(23,24,26,.92);--modal-scrim:rgba(0,0,0,.6);
+  --shadow:0 1px 2px rgba(0,0,0,.35);
+  --mono:var(--sans);
+}
+/* 版式覆盖（两档共用一遍）：圆角 + 卡面 + 无衬线小标 + 留白。
+   强调色语义不变：--cyan 只用在她的记号（气泡边/状态点/光标/焦点），不撒到按钮标题上。 */
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) body{font-size:14px}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) :is(.nb-e .g .w,.nb-card2 .k,.nb-kv b,.nb-pagehd h1,.nb-row .tag,.nb-form label,.nb-fld label,.nb-fld span,.nb-daymark){text-transform:none;letter-spacing:.01em}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-top{flex-basis:44px;font-size:12px;letter-spacing:.01em;border-bottom:0}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-crumb{font-size:12px;letter-spacing:.01em}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-index{background:var(--rail-bg);border-right:0;padding-top:10px}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-index h2{font-size:11px;letter-spacing:.02em;margin:0 0 8px 18px}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-day{border-left:0;border-radius:9px;margin:1px 8px;padding:7px 10px;grid-template-columns:14px 1fr}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-day .mk{border-radius:50%;width:6px;height:6px;margin-top:8px}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-day.on{background:var(--tint3)}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-day .m{font-size:11px}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-go{border-top:0;border-radius:9px;margin:1px 8px;padding:6px 10px;font-size:12px}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-kicker,:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-meta{font-size:11.5px;letter-spacing:.01em}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-greet{font-size:24px;font-weight:600}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-greet em{border-bottom:0}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-cards{gap:10px;border:0}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-card2{border:1px solid var(--line-dim);border-radius:12px;background:var(--surface);box-shadow:var(--shadow);padding:14px 16px}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-card2:hover{border-color:var(--line);background:var(--surface)}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-card2 .k{font-size:11px;margin-bottom:8px}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-card2 b{font-size:24px;font-weight:600}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-card2 .m{font-size:11px}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-health{gap:8px;border:0;background:none}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-hc{background:var(--surface);border:1px solid var(--line-dim);border-radius:10px;padding:10px 12px}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-hc .k{font-size:10.5px;letter-spacing:.02em}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-hc .v{font-size:12px}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-sec{border-top:0;font-size:12px;font-weight:600;letter-spacing:.01em;color:var(--dim);margin:28px 0 10px}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-sec:after{display:none}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-pagehd h1{font-size:12px;font-weight:600;letter-spacing:.01em;color:var(--dim)}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-row{border-top:0;border-radius:9px;padding:10px 10px;font-size:14px}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-row .m{font-size:11px;letter-spacing:.01em}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-row .tag{font-size:10px;letter-spacing:.02em}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-kv{border-top:0;border-bottom:0;font-size:12px}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-kv b{font-size:11px;letter-spacing:.02em}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-pre{border-radius:10px;background:var(--surface);font-size:12px}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-btn{border-radius:8px;background:var(--surface);border-color:var(--line-dim);font-size:12px;letter-spacing:.01em;padding:8px 12px}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-btn:hover{background:var(--tint2);color:var(--ink);border-color:var(--line)}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-btn.danger:hover{color:#fff}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-search{border:1px solid var(--line-dim);border-radius:9px;background:var(--surface);padding:8px 12px;font-size:13px}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-search:focus{border-color:var(--cyan)}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-form input,:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-form textarea,:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-form select{border:1px solid var(--line-dim);border-radius:8px;background:var(--surface);padding:7px 10px;font-size:13px}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-form input:focus,:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-form textarea:focus{border-color:var(--cyan)}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-fld span,:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-fld label,:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-form label{font-size:11px;letter-spacing:.02em}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-opt{border-radius:999px;background:var(--surface);color:var(--ink);border:1px solid var(--line-dim);font-size:12px;font-weight:500;padding:7px 14px}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-opt:hover{background:var(--tint2);border-color:var(--line)}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-opt.on{background:var(--cyan);border-color:var(--cyan);color:var(--void);box-shadow:none;font-weight:600}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-av,:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-gav{border-radius:50%}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-e{border-top:0;padding:10px 0 14px;grid-template-columns:56px 1fr;gap:0 14px}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-e .g{font-size:11px;padding-top:8px}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-e .g .w{font-size:11px}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-e.me .g .w{color:var(--dim)}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-say{border-left:0;background:var(--surface);border:1px solid var(--line-dim);border-radius:12px;padding:10px 14px;box-shadow:var(--shadow)}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-e.me .nb-say{background:var(--tint2);border-color:transparent;box-shadow:none}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-say code{border-radius:5px}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-say pre{border-radius:10px;background:var(--tint2)}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-ev span{border:0;background:var(--tint2);border-radius:999px;padding:4px 10px;font-size:10.5px;letter-spacing:.01em}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-daymark{justify-content:center;font-size:11px;letter-spacing:.02em;margin:20px 0 12px}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-daymark:before{content:"";flex:1;height:1px;background:var(--line-dim)}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-more{border:1px solid var(--line-dim);border-radius:999px;padding:5px 12px;font-size:11px;letter-spacing:.01em;background:var(--surface)}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-more:hover{border-color:var(--line);color:var(--ink)}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-composer{background:transparent;padding:0 24px 18px}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-cin{border-top:0;border:1px solid var(--line-dim);border-radius:14px;background:var(--surface);box-shadow:var(--shadow);padding:10px 12px 10px 16px;align-items:center}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-cin .cr{display:none}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-cin .h{font-size:11px;letter-spacing:.01em;padding-bottom:0}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-cin .sd{border-radius:9px;background:var(--cyan);border-color:var(--cyan);color:var(--void);font-size:12px;letter-spacing:.01em;padding:8px 14px;margin-bottom:0}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-cin .sd:hover{opacity:.88;background:var(--cyan);color:var(--void)}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-tick div{font-size:11px}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-modechip{border-radius:999px;font-size:11px;letter-spacing:.01em;padding:5px 10px}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-latest{border-radius:999px;box-shadow:var(--shadow);font-size:11px;letter-spacing:.01em}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-tabs{border-left:0}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-tab{border-left:0;border-radius:9px;margin:0 6px;font-size:10.5px;letter-spacing:.02em}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-tab.on{background:var(--tint3);color:var(--ink)}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-tab.wait.on{background:var(--amber);color:var(--void)}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-panel h3{font-size:11px;letter-spacing:.02em}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-card{border-radius:12px;background:var(--surface);border-color:var(--line-dim);box-shadow:var(--shadow)}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-card .s{font-size:11px}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-card button{border-radius:7px;font-size:11px}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-modal{border-radius:14px;border-color:var(--line-dim);box-shadow:0 16px 48px rgba(0,0,0,.28)}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-draw{border-radius:14px 0 0 14px;box-shadow:-12px 0 40px rgba(0,0,0,.22)}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-draw-hd h2{font-size:12px;letter-spacing:.02em}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-palbox{border-radius:14px;border-color:var(--line-dim);box-shadow:0 16px 48px rgba(0,0,0,.28);overflow:hidden}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-palrow.on{background:var(--tint3);color:var(--ink)}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-palrow.on .k{color:var(--dim2)}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-spec{border-radius:12px;background:var(--surface);border-color:var(--line-dim);box-shadow:var(--shadow)}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-spec .k{font-size:10.5px;letter-spacing:.02em}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-spec .lab{font-size:10px}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-board h1{font-size:12px;font-weight:600;letter-spacing:.01em}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-recipe{border-radius:12px;background:var(--surface);border-color:var(--line-dim)}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-recipe .d{font-size:11px}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-logrow{font-size:11.5px}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-audit,:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-tr{font-size:11.5px}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-empty{font-size:12px}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-note{font-size:11px;letter-spacing:.01em}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-cfgbar{border-bottom:0;background:color-mix(in srgb,var(--amber) 14%,var(--void));font-size:11.5px;letter-spacing:.01em}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .md-table{border-collapse:separate;border-spacing:0;border:1px solid var(--line-dim);border-radius:10px;overflow:hidden;font-size:12.5px}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .md-table th,:is(html[data-theme="daylight"],html[data-theme="carbon"]) .md-table td{border:0;border-bottom:1px solid var(--line-dim)}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .md-table tr:last-child td{border-bottom:0}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .cf-navitem{border-radius:9px}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .cf-ghead{border-bottom:0}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .cf-ghead .t{font-size:10.5px;letter-spacing:.02em}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .cf-navhint{font-size:10px;letter-spacing:.01em}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) .nb-skip{border-radius:8px}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) ::selection{background:color-mix(in srgb,var(--cyan) 30%,transparent);color:var(--ink)}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) ::-webkit-scrollbar-thumb{border-radius:8px}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) :is([role="button"],button,a,textarea,input):focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+:is(html[data-theme="daylight"],html[data-theme="carbon"]) :is(input,textarea):focus-visible{outline:none;border-color:var(--cyan)}
 /* 选项按钮：一律走共用语汇里的通用三行（高亮卡片），主题级不再单独覆盖，
-   避免「深色主题一套、浅色主题另一套」，也不给任何单颗按钮开小灶。 */
+   避免「深色主题一套、浅色主题另一套」，也不给任何单颗按钮开小灶。
+   （2026-11-17 注：daylight/carbon 两档是用户新决定的另一套语汇，上面的 :is() 覆盖只作用于这两档。） */
 
 
 /* ── 共用语汇（两套主题都用；颜色全部走变量）────────────────
@@ -637,9 +778,10 @@ input:focus-visible,textarea:focus-visible{outline:none;border-bottom-color:var(
   background:radial-gradient(circle at 32% 30%, rgba(225,248,255,.55), rgba(160,220,240,.14) 58%, transparent 72%);
   border:1px solid rgba(205,240,255,.2);animation:cp-rise linear infinite}
 @keyframes cp-rise{0%{transform:translateY(0) translateX(0);opacity:0}8%{opacity:.75}88%{opacity:.5}100%{transform:translateY(-112vh) translateX(26px);opacity:0}}
-/* 人物舞台：WebGL 透明画布叠在背景上；底部留出浮动对话+输入条的位置 */
+/* 人物舞台：WebGL 透明画布叠在背景上。bottom 由 JS（cpStageFit）写成 .cp-bottom 的实测高度：
+   气泡 + 输入条整块让出舞台，人物裁切线永远落在输入条之上（2026-11-17 修输入遮人物）。 */
 .cp-stage{position:absolute;inset:0;z-index:1}
-.cp-canvas{position:absolute;left:0;right:0;top:0;bottom:186px;width:100%;height:100%;display:block;
+.cp-canvas{position:absolute;inset:0;width:100%;height:100%;display:block;
   filter:drop-shadow(0 18px 30px rgba(0,10,25,.45))}
 @media (prefers-reduced-motion: reduce){.cp-rays,.cp-caustics{animation:none}}
 /* 顶部：状态胶囊 + 声音/切换 */

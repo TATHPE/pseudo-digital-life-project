@@ -8,7 +8,9 @@
 ## 1. 怎么跑
 
 ```bash
-npm run check        # tsc + 全部测试（失败的用例会自动重跑两次；重跑通过会标 FLAKY 并列出文件名）
+npm run check        # tsc + 全部测试 + STATUS 新鲜度（失败的用例会自动重跑两次；重跑通过会标 FLAKY 并列出文件名）
+npm run status       # 实测重生成 STATUS.md（机器事实真源：git / 版本 / schema / 依赖 / 快照；改了代码或事实，提交前跑）
+npm run status:check # 抓 STATUS.md 漂移（已挂 check 与 release:check；CI 自动跳过，它是本地闸门）
 npm run ui:test      # headless Edge 真点真发：记录本 + 首启引导页
 npm run desktop:dev  # 桌面壳（Tauri；自己起 sidecar）
 

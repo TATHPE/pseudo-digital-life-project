@@ -8,7 +8,7 @@
  *   node --experimental-strip-types tools/release.ts verify-data [数据目录] [快照文件]
  *
  * `check` 是发布闸门（CI 里跑）：六处版本号逐字一致、CHANGELOG 与对应版本发布说明存在、
- * 打包快照不含 junction/symlink。`manifest` 只在构建出安装包后手工跑，产出 release.json
+ * 打包快照不含 junction/symlink、STATUS.md 与实测一致（本地闸门，CI 自动跳过）。`manifest` 只在构建出安装包后手工跑，产出 release.json
  * 供用户核对 SHA-256；`verify` 让下载方用同一份清单校验手里的文件。
  * `snapshot` / `verify-data` 是升级前后的数据目录指纹（2026-11-14）：退出应用 → 取快照 →
  * 覆盖安装 → 不启动应用 → 再比对；把「升级只该改安装目录」变成可断言的检查。
@@ -23,6 +23,7 @@ import {
   type DataSnapshot, type ReleaseArtifact, type ReleaseManifest,
 } from "../src/release.ts";
 import { scanLinks } from "./uninstall-guard.ts";
+import { statusGate } from "./status.ts";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const rel = (p: string) => relative(ROOT, p).split(sep).join("/");
@@ -42,6 +43,9 @@ function check(): number {
   const bundle = join(ROOT, "desktop", "bundle-src", "app");
   const links = existsSync(bundle) ? scanLinks(bundle) : [];
   results.push(["打包快照不含链接（防卸载递归删源码）", links.length === 0, links.slice(0, 5).join(", ") || "无"]);
+
+  const status = statusGate(ROOT);
+  results.push(["STATUS.md 与实测一致（本地闸门，CI 跳过）", status.ok, status.detail]);
 
   let bad = 0;
   for (const [name, pass, detail] of results) {

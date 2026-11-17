@@ -9,7 +9,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
-import { readFileConfig, writeFileConfig, resolveConfig, configSources, normalizeAgentName } from "../../configfile.ts";
+import { readFileConfig, writeFileConfig, resolveConfig, configSources, normalizeAgentName, UI_THEMES } from "../../configfile.ts";
 import { ttsPatch, visionPatch, cfgGroupsPatch, rawPatch, rawView } from "../../config-custom.ts";
 import { lastPreflight, preflight } from "../../preflight.ts";
 import { capabilities, type Capabilities } from "../../capabilities.ts";
@@ -89,9 +89,9 @@ export async function handleConfig(ctx: ConfigCtx): Promise<boolean> {
         const ui = readFileConfig(deps.home).ui ?? {};
         json(res, 200, {
           splash: boot.splashMode(ui),
-          theme: ui.theme === "hermes" ? "hermes" : "ledger",
+          theme: UI_THEMES.includes(ui.theme ?? "") ? (ui.theme as string) : "carbon",
           modes: boot.SPLASH_MODES,
-          shell: ui.shell === "notebook" ? "notebook" : "classic",
+          shell: ui.shell === "classic" ? "classic" : "notebook",
           shells: ["classic", "notebook"],
           // 两个状态分开报，别把「配置开了」谎报成「正在跑」（2026-11-15 决策 2）
           // 「正在跑」只认运行期信号：配置驱动的启动没有 --beat，认 argv 会报反
@@ -112,8 +112,8 @@ export async function handleConfig(ctx: ConfigCtx): Promise<boolean> {
         const patch: Record<string, unknown> = {};
         if (body.theme !== undefined) {
           const v = String(body.theme ?? "");
-          if (v !== "ledger" && v !== "hermes") {
-            json(res, 400, { error: "E_BAD_THEME", why: "只能是 ledger / hermes" });
+          if (!UI_THEMES.includes(v)) {
+            json(res, 400, { error: "E_BAD_THEME", why: "只能是 " + UI_THEMES.join(" / ") });
             return true;
           }
           patch.theme = v;

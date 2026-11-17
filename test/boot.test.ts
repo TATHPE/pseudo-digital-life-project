@@ -84,11 +84,11 @@ test("完整档不会编数字：每个数字都从接口来，拿不到就整�
     assert.ok(!m, "终端行里不许有写死的数字：" + head.slice(0, 40));
   }
 });
-test("片头档位：off / simple / full 三档，默认 full（配置说了算，不靠'配没配完'猜）", () => {
+test("片头档位：off / simple / full 三档，默认 simple（配置说了算，不靠'配没配完'猜）", () => {
   assert.deepEqual([...SPLASH_MODES], ["off", "simple", "full"]);
-  assert.equal(splashMode(undefined), "full", "没配过就是完整档（用户 2026-11-02 要的）");
+  assert.equal(splashMode(undefined), "simple", "没配过就是简易档（用户 2026-11-17 改定；11-02 曾是 full）");
   assert.equal(splashMode({ splash: "off" }), "off");
   assert.equal(splashMode({ splash: "simple" }), "simple");
   assert.equal(splashMode({ splash: "FULL" }), "full", "大小写不敏感");
-  assert.equal(splashMode({ splash: "乱写的" }), "full", "认不出来就 full，别让人以为坏了");
+  assert.equal(splashMode({ splash: "乱写的" }), "simple", "认不出来就回默认，别让人以为坏了");
 });

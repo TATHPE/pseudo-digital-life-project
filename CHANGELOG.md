@@ -4,8 +4,40 @@
 **注意（2026-11-15）**：GitHub 仓库 `TATHPE/pseudo-digital-life-project` 已转为**私有**，
 `v0.1.0` / `v0.1.1` 两个 Release 及其安装包资产已**全部删除**；仓库只保留 git tag。
 下面 0.1.x 段落里提到的「去 Releases 下载」不再成立，安装请从源码本地构建（`desktop/DEV.md`）。
+**注记（2026-11-17）**：对外分发恢复 —— 版本号重置为 **0.1.0** 重发（旧 `v0.1.0` tag 重指向本次发布，
+`v0.1.1` tag 保留为历史），Release 带干净构建的 NSIS 包；**仓库仍私有**，Release 仅协作者可见。
+下面第一个 0.1.0 段落是本次发布；文末同名旧段落是 2026-11-10 旧版本号的历史记录。
 
 ## [Unreleased]
+
+## [0.1.0] - 2026-11-17（版本号重置，重发）
+
+### Added
+
+- **主流风格两档主题**（2026-11-17 用户决定：向主流 AI Agent 软件对齐，新增而非替换）：
+  `daylight`（消费级暖白，ChatGPT / Claude 网页版参考）与 `carbon`（深色友好工具级，
+  Cherry Studio / Open WebUI 参考），与 ledger / hermes 并存、设置 → 外观即点即切。
+  圆角卡面 / 留白 / 无衬线小标是另一套版式语汇；三处行为签名全主题不变
+  （没有「新对话」、沉默间隔可见、「醒着 + 距上次」状态行）。
+- **STATUS.md 机器事实真源**：`npm run status` 实测生成（两仓 git / 六处版本号 / schema /
+  依赖 / 源文件数 / 打包快照一致性），`status:check` 闸门挂进 `npm run check` 与 `release:check`
+  （CI 跳过，它是本地闸门）；手写现状漂移由此收口。
+
+### Changed
+
+- **默认值改定**（2026-11-17）：`ui.theme` 未写默认 **carbon**、`ui.splash` 未写默认 **simple**、
+  `ui.shell` 未写默认 **notebook 三栏**。只改代码回落值，不写回用户 config.json；
+  首屏服务端注入 `data-theme` / `data-shell`，不闪默认色与默认版式。
+
+### Fixed
+
+- **主题变量泄漏**：`[data-theme=…]` 变量块曾命中设置页里自带同名属性的按钮，
+  导致跨主题反色、hermes 在 carbon 下深底黑字不可读；选择器全部加 `html` 前缀，变量只落根元素。
+- **陪伴视图输入条遮人物**：舞台改为按 `.cp-bottom` 实测高度让位（ResizeObserver），
+  人物裁切线永远在气泡 + 输入条之上；mesh 与 Live2D 两种形象都覆盖。
+- **ui:test 旧断言修复**（11-14/11-15 界面重排遗留，ui:test 不在 CI 一直藏着）：
+  记忆详情改读抽屉、设置改按组导航、Board 往返不再猜状态；首屏断言改查 `<html>` 开标签
+  （整页 includes 会命中样式表选择器文本，属假阳性）。
 
 ### Added
 

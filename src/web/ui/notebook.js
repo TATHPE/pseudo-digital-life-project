@@ -62,10 +62,12 @@
     });
   })();
   // ── 主题 ──────────────────────────────────────
-  // ledger（默认，黑白紧凑）/ hermes（中性灰、宽版式）。只改 <html data-theme>，
-  // 结构、数据、接口都不动；服务端也会把它写进首屏，避免闪一下。
+  // ledger（默认，黑白紧凑）/ hermes（中性灰、宽版式）/ daylight（暖白消费级）/ carbon（深灰工具级）。
+  // 只改 <html data-theme>，结构、数据、接口都不动；服务端也会把它写进首屏，避免闪一下。
+  // 清单与 src/configfile.ts 的 UI_THEMES 保持一致（JS 侧读不到 TS 常量，改一处要改两处，有测试盯）。
+  var UI_THEMES = ['ledger', 'hermes', 'daylight', 'carbon'];
   function applyTheme(name){
-    if (name === 'hermes') document.documentElement.setAttribute('data-theme', 'hermes');
+    if (UI_THEMES.indexOf(name) > 0) document.documentElement.setAttribute('data-theme', name);
     else document.documentElement.removeAttribute('data-theme');
   }
   // 外壳（2026-11-14）：ui.shell 以前只存不用。现在真的有第二种形态：
@@ -78,7 +80,7 @@
   function shellPeek(on){ document.documentElement.classList.toggle('shell-peek', !!on); }
   function loadTheme(){
     fetch('/api/ui').then(function(r){ return r.json(); }).then(function(j){
-      applyTheme((j && j.theme) || 'ledger');
+      applyTheme((j && j.theme) || 'carbon');
       applyShell((j && j.shell) || 'notebook');
     }).catch(function(){});
   }
@@ -2674,6 +2676,17 @@
     var inp = $('cp-say'); if (inp) inp.focus();
   };
 
+  // 舞台让出底部「气泡 + 输入条」：半身形裁切会把人物画到容器底边，
+  // 不让出舞台输入条就压在人物身上（用户 2026-11-17 实测）。气泡出现/消失、输入区长高都要跟着改。
+  var CP_RO = null;
+  function cpStageFit(){
+    if (!COMPANION) return;
+    var st = $('cp-stage'), bot = document.querySelector('.cp-bottom');
+    if (!st || !bot) return;
+    st.style.bottom = bot.offsetHeight + 'px';
+    // 复用既有 resize  wiring：PIXI resizeTo / fitCubism / mesh 都听 window resize
+    window.dispatchEvent(new Event('resize'));
+  }
   function companionOn(){
     COMPANION = true;
     document.querySelector('.nb').classList.add('companion-on');
@@ -2685,6 +2698,11 @@
     cpLoadPrefs(function(){ cpApplyState(); cpMount(); });
     cpLoadPal(function(){ cpApplyState(); cpMount(); });
     cpState('在发呆');
+    cpStageFit();
+    if (!CP_RO && typeof ResizeObserver !== 'undefined') {
+      var bot0 = document.querySelector('.cp-bottom');
+      if (bot0) { CP_RO = new ResizeObserver(function(){ cpStageFit(); }); CP_RO.observe(bot0); }
+    }
     var inp = $('cp-say'); if (inp) setTimeout(function(){ inp.focus(); if (typeof cpSayGrow === 'function') cpSayGrow(inp); }, 200);
   }
   function companionOff(){
@@ -2693,6 +2711,8 @@
     var cp = $('nb-companion'); if (cp) cp.hidden = true;
     var oc = $('nb-composer'); if (oc) oc.hidden = false;
     var t = $('nb-companion-toggle'); if (t) t.classList.remove('on');
+    if (CP_RO) { CP_RO.disconnect(); CP_RO = null; }
+    var st0 = $('cp-stage'); if (st0) st0.style.bottom = '';
     cpDestroy();
     // 在陪伴里说过的话，回记录本要立刻能看到（以前不重拉，那几轮像没发生过）
     if (TL_DIRTY){ TL_DIRTY = false; loadTimeline(); }
@@ -3403,7 +3423,8 @@
             '">' + x[1] + '</button>';
         }).join('') + '</div></div>' +
         '<div class="nb-opts" id="cf-theme">' +
-        [['ledger','记录本（黑白 · 紧凑）'],['hermes','Hermes（中性灰 · 宽版式）']].map(function(x){
+        [['ledger','记录本（黑白 · 紧凑）'],['hermes','Hermes（中性灰 · 宽版式）'],
+         ['daylight','Daylight（暖白 · 圆角卡片）'],['carbon','Carbon（深灰 · 圆角卡片）']].map(function(x){
           return '<button class="nb-opt" data-theme="' + x[0] + '">' + x[1] + '</button>';
         }).join('') + '</div>' +
         '<div class="nb-actrow"><span class="nb-empty">切了立刻生效，不用重启。这几档是内置版式 / 片头，' +
@@ -3747,7 +3768,7 @@
         };
       });
       // 主题：点一下立刻换（同时存进 config）
-      var curTheme = ui.theme === 'hermes' ? 'hermes' : 'ledger';
+      var curTheme = UI_THEMES.indexOf(ui.theme) > 0 ? ui.theme : 'carbon';
       function paintTheme(){
         Array.prototype.forEach.call(box.querySelectorAll('[data-theme]'), function(x){
           x.className = 'nb-opt' + (x.getAttribute('data-theme') === curTheme ? ' on' : '');
@@ -3761,7 +3782,7 @@
           applyTheme(v);
           paintTheme();
           fetch('/api/ui', { method: 'PUT', headers: H, body: JSON.stringify({ theme: v }) })
-            .then(function(r){ return r.json(); }).then(function(j){ tick(j.ok ? ('主题：' + (v === 'hermes' ? 'Hermes' : '记录本')) : (j.error || '没存成')); });
+            .then(function(r){ return r.json(); }).then(function(j){ tick(j.ok ? ('主题：' + ({hermes:'Hermes',daylight:'Daylight',carbon:'Carbon'}[v] || '记录本')) : (j.error || '没存成')); });
         };
       });
 

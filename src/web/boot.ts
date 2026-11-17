@@ -31,7 +31,8 @@ export const SPLASH_MODES = ["off", "simple", "full"] as const;
 /** 从配置读档位：认不出来就当 full（宁可多播一次，也别让人以为坏了） */
 export function splashMode(ui: { splash?: string } | undefined): "off" | BootMode {
   const v = String(ui?.splash ?? "").toLowerCase();
-  return v === "off" ? "off" : v === "simple" ? "simple" : "full";
+  // 默认 simple（2026-11-17 用户改定；2026-11-02 曾定 full）。认不出的值回落默认，别让人以为坏了。
+  return v === "off" ? "off" : v === "full" ? "full" : "simple";
 }
 
 /** 项目名（名字分两层：项目 = 这个，她 = agent.name；片头只出现项目层） */

@@ -11,6 +11,7 @@ import { execute } from "../src/execute.ts";
 import { ingestFile } from "../src/ingest.ts";
 import { loadPolicy } from "../src/policy.ts";
 import { NOTEBOOK, NB_JS } from "../src/web/notebook.ts";
+import { UI_THEMES } from "../src/configfile.ts";
 import { groupTimeline, gapLabel } from "../src/web/timeline.ts";
 import { expenseLine } from "../src/web/state.ts";
 import type { AddressInfo } from "node:net";
@@ -1358,7 +1359,7 @@ test("记忆视图：关于你 / 全部 / 断片 分流，summary 报三个数�
   }
 });
 
-test("主题：ledger / hermes 能读能写，首屏就带上 data-theme（2026-11-06）", async () => {
+test("主题：四档都能读能写，首屏就带上 data-theme（2026-11-06 / 11-17 加 mainstream 两档）", async () => {
   const dir = tmp();
   const d = openDb(join(dir, "m.db"));
   const srv = createWebServer({
@@ -1370,18 +1371,40 @@ test("主题：ledger / hermes 能读能写，首屏就带上 data-theme（2026-
   try {
     const h = { "content-type": "application/json", "x-jj": "1" };
     const a = await (await fetch(`${base}/api/ui`)).json() as { theme?: string };
-    assert.equal(a.theme, "ledger", "默认是记录本主题");
+    assert.equal(a.theme, "carbon", "默认是 carbon（2026-11-17 用户改定）");
+    // 只查 <html> 开标签：样式表里本来就有 [data-theme=…] 选择器，整页 includes 会假阳性
+    const tagOf = (s: string) => (s.match(/<html[^>]*>/) || [""])[0];
+    const first = await (await fetch(`${base}/?skip=1`)).text();
+    assert.ok(tagOf(first).includes('data-theme="carbon"'), "默认主题首屏就要带上，不能闪一下 ledger");
 
-    const put = await fetch(`${base}/api/ui`, { method: "PUT", headers: h, body: JSON.stringify({ theme: "hermes" }) });
-    assert.equal(put.status, 200);
-    const b = await (await fetch(`${base}/api/ui`)).json() as { theme?: string };
-    assert.equal(b.theme, "hermes", "写进去要能读回来");
-
-    const html = await (await fetch(`${base}/?skip=1`)).text();
-    assert.ok(html.includes('data-theme="hermes"'), "首屏就要带上，否则会闪一下默认主题");
+    for (const t of ["hermes", "daylight", "carbon"]) {
+      const put = await fetch(`${base}/api/ui`, { method: "PUT", headers: h, body: JSON.stringify({ theme: t }) });
+      assert.equal(put.status, 200, `${t} 要能写`);
+      const b = await (await fetch(`${base}/api/ui`)).json() as { theme?: string };
+      assert.equal(b.theme, t, "写进去要能读回来");
+      const html = await (await fetch(`${base}/?skip=1`)).text();
+      assert.ok(tagOf(html).includes(`data-theme="${t}"`), "首屏就要带上，否则会闪一下默认主题");
+    }
 
     const bad = await fetch(`${base}/api/ui`, { method: "PUT", headers: h, body: JSON.stringify({ theme: "neon" }) });
     assert.equal(bad.status, 400, "不认识的主题要拒");
+
+    // 外壳默认三栏（2026-11-17 改回）；classic 首屏就收边，不闪三栏
+    const sh0 = await (await fetch(`${base}/api/ui`)).json() as { shell?: string };
+    assert.equal(sh0.shell, "notebook", "没写 shell 就是三栏记录本");
+    const html0 = await (await fetch(`${base}/?skip=1`)).text();
+    assert.ok(!tagOf(html0).includes("data-shell"), "默认三栏不带收边属性");
+    const shPut = await fetch(`${base}/api/ui`, { method: "PUT", headers: h, body: JSON.stringify({ shell: "classic" }) });
+    assert.equal(shPut.status, 200);
+    const html1 = await (await fetch(`${base}/?skip=1`)).text();
+    assert.ok(tagOf(html1).includes('data-shell="classic"'), "配了 classic 首屏就要收边");
+    await fetch(`${base}/api/ui`, { method: "PUT", headers: h, body: JSON.stringify({ shell: "notebook" }) });
+
+    // 设置页按钮按 JS 侧清单画：两份清单 drift 了就会「有按钮但存不进」或「能存但没按钮」
+    const m = NB_JS.match(/var UI_THEMES = \[([^\]]*)\]/);
+    assert.ok(m, "notebook.js 里要有 UI_THEMES 清单");
+    const jsList = (m[1] ?? "").split(",").map((s) => s.trim().replace(/['"]/g, ""));
+    assert.deepEqual(jsList, [...UI_THEMES], "JS 与 TS 的主题清单必须逐字一致");
   } finally { srv.close(); }
 });
 

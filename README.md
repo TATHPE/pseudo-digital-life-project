@@ -10,9 +10,9 @@
 
 [中文](README.zh-CN.md) · **English**
 
-![Companion mode — the room (dark)](docs/images/companion-room.png)
+![Companion mode — ocean (default Carbon theme)](docs/images/companion-ocean-dark.png)
 
-> Captured 2026-11-15 from the current build. The companion window is above; the notebook and workbench are shown below.
+> Captured 2026-11-17 from the current build. The companion window is above; the notebook and the light companion are shown below.
 
 ## What it is
 
@@ -29,12 +29,13 @@ There is exactly one interface, a **notebook**: days down the left, prose in the
 
 - **Not a cloud service**: everything runs on loopback; the memory store is a local SQLite file
 - **Not a general assistant**: no web search, no plugin marketplace; the 33 capabilities are local read/write/exec
-- **Not a mature product**: 0.1.1 (installer rebuilt 2026-11-14), built and used by one person; the rough edges are documented in `docs/` (Chinese)
+- **Not a mature product**: 0.1.0 (version reset and re-released 2026-11-17), built and used by one person; the rough edges are documented in `docs/` (Chinese)
 
-> **2026-11-15 correction (supersedes the 11-14 "re-download" note)**: the repository is private and
-> both GitHub Releases (`v0.1.0`, `v0.1.1`) with their installer assets have been deleted (git tags remain).
-> There is **no installer to download**; the release notes and CHANGELOG release sections are historical.
-> Build from source instead. The local `D:\Apps\PDLP` install is older logic + a junction and is not distributable.
+> **2026-11-17 correction (supersedes the 11-15 "no installer" note)**: distribution is back — Release **v0.1.0**
+> (version reset: the old `v0.1.0` tag now points at this release; `v0.1.1` remains as history) ships a clean
+> `PDLP-0.1.0-x64-setup.exe`. **The repository is still private** (the 11-15 decision stands): the release and
+> its assets are visible to collaborators only; public downloads require making the repo public first.
+> Verification and distribution status: workspace `docs/ops/22 §0.5`.
 
 ## Companion mode
 
@@ -44,11 +45,11 @@ The same memory and persona can live in a lighter window: she stands on your des
 
 ## Today
 
-| Companion · Ocean (light UI) | Workbench |
+| Companion · Ocean (Daylight light theme) | Notebook, three columns (default Carbon) |
 |---|---|
-| ![Companion mode — ocean backdrop (light UI)](docs/images/companion-ocean.png) | ![Workbench](docs/images/workbench.png) |
+| ![Companion mode — ocean backdrop (Daylight light theme)](docs/images/companion-ocean.png) | ![Notebook, three columns](docs/images/workbench.png) |
 
-Two themes (dark / light) and two ways to be with her: a companion window, or the full notebook / workbench. Switch at runtime; layout, type scale and rhythm stay the same — only the palette and density change.
+Four themes (ledger black-on-white compact / hermes paper-white wide / daylight warm consumer light / carbon friendly tool dark, **carbon is the default when unset**), two shells (three-column notebook / single-column focus, **three columns by default**) and two ways to be with her: a companion window or the full notebook. The boot splash defaults to the simple tier. Switch at runtime; three behavioral signatures survive every theme: no "new chat" button, visible silence gaps, and an "awake + time since last" status line.
 
 ## What it does
 
@@ -63,13 +64,11 @@ Two themes (dark / light) and two ways to be with her: a companion window, or th
 
 ## Quick start
 
-### Installer (Windows x64) — **no downloadable build right now**
+### Installer (Windows x64)
 
-> **2026-11-15**: the repository is **private** and both GitHub Releases (`v0.1.0`, `v0.1.1`)
-> with their installer assets have been **deleted**. There is **no installer to download**.
-> The last locally installed build (`D:\Apps\PDLP`) contains **older logic** and is a test-only
-> junction, not a distributable artifact. **Build from source** (next section) until a new
-> release is published. Release notes in `docs/ops/release-notes-v0.1.*.md` are historical records.
+Download `PDLP-0.1.0-x64-setup.exe` from [Releases](https://github.com/TATHPE/pseudo-digital-life-project/releases) (**v0.1.0**),
+verify the SHA-256 published in the release notes, then install (the repo is private; collaborator access required).
+Uninstall any older build first: the installer only removes files in its manifest, leftover directories (notably a nested `persona/`) survive an over-install.
 
 First launch opens a guided setup (eight steps): environment check → install Ollama → pull embedding model → pull chat model → (optional) API key → persona → smoke test → first sentence.
 **Every step can be paused, stepped back or skipped.** If you skip, a banner stays at the top until a model is actually configured.
@@ -128,7 +127,7 @@ Design documents (Chinese) live in `docs/`:
 ## Development
 
 ```bash
-npm run check        # types + 826 tests (failed tests are retried; pass-on-retry is reported as FLAKY)
+npm run check        # types + all tests + STATUS freshness (failed tests are retried; pass-on-retry is reported as FLAKY)
 npm run ui:test      # headless Edge, real clicks (needs the server running)
 npm run map          # generate/verify docs/map.md (files · error codes · verbs · commands)
 node src/cli/jingjing.ts eval         # the four retrieval gates
@@ -150,7 +149,8 @@ After changing the assembly fixtures or the embed model, run `--refresh-embeddin
 - If you skip the setup guide, chat only works when a local chat model is installed: it then falls back to that model, which **cannot use tools** and says so in the top bar. With no local model, the banner keeps telling you to configure one
 - Task orchestration advances one step per tick and stops after two steps without progress; there is no planning tree, no parallelism
 - `memory.db` is plain SQLite; secrets are sealed with DPAPI and do not survive a machine move
-- No **silent** auto-update: new versions are downloaded, SHA-256 verified and installed manually (`/api/version` reports the installed build; see [`docs/ops/26`](docs/ops/26-更新与卸载策略.md)); no system integration beyond the tray, single user
+- No **silent** auto-update: new versions are downloaded, SHA-256 verified and installed manually (`/api/version` reports the installed build; see [`docs/ops/26`](docs/ops/26-更新与卸载策略.md)); the Release channel is back as of 2026-11-17 (v0.1.0, private repo); no system integration beyond the tray, single user
+- The installer bundles the Cubism Core and the whale-girl mesh rig: the former follows the Live2D official license (free for personal / small-scale use; commercial distribution needs its own terms), the latter is generated from artwork via RuiC-2D (see `src/web/static/pal/VENDOR.md`); Live2D models you import stay in your data directory and are **never shipped with the installer**
 - P10 still lets 1–2 weakly related memories in: vector candidates have no relevance floor (cos 0.49–0.60 lands next to a true hit at 0.72). A threshold would cut the true hits too; a cross-encoder was evaluated and deliberately dropped on 2026-11-10 (see `docs/ops/24`), so this is an accepted known limit
 ## License
 
