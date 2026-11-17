@@ -10,7 +10,7 @@
 
 [中文](README.zh-CN.md) · **English**
 
-![Companion mode — ocean (default Carbon theme)](docs/images/companion-ocean-dark.png)
+![Companion mode — ocean (default Carbon theme)](docs/images/companion-ocean-dark.png?v=20261117b)
 
 > Captured 2026-11-17 from the current build. The companion window is above; the notebook and the light companion are shown below.
 
@@ -48,7 +48,7 @@ The same memory and persona can live in a lighter window: she stands on your des
 
 | Companion · Ocean (Daylight light theme) | Notebook, three columns (default Carbon) |
 |---|---|
-| ![Companion mode — ocean backdrop (Daylight light theme)](docs/images/companion-ocean.png) | ![Notebook, three columns](docs/images/workbench.png) |
+| ![Companion mode — ocean backdrop (Daylight light theme)](docs/images/companion-ocean.png?v=20261117b) | ![Notebook, three columns](docs/images/workbench.png?v=20261117b) |
 
 Four themes (ledger black-on-white compact / hermes paper-white wide / daylight warm consumer light / carbon friendly tool dark, **carbon is the default when unset**), two shells (three-column notebook / single-column focus, **three columns by default**) and two ways to be with her: a companion window or the full notebook. The boot splash defaults to the simple tier. Switch at runtime; three behavioral signatures survive every theme: no "new chat" button, visible silence gaps, and an "awake + time since last" status line.
 

@@ -10,7 +10,7 @@
 
 [English](README.md) · **中文**
 
-![陪伴模式 · 海洋（默认 Carbon 主题）](docs/images/companion-ocean-dark.png)
+![陪伴模式 · 海洋（默认 Carbon 主题）](docs/images/companion-ocean-dark.png?v=20261117b)
 
 > 三张图均于 2026-11-17 从当前版本实拍。上图是陪伴窗口；记录本与浅色陪伴见下方。
 
@@ -49,7 +49,7 @@
 
 | 陪伴 · 海洋（Daylight 浅色主题） | 记录本三栏（默认 Carbon 主题） |
 |---|---|
-| ![陪伴模式 · 海洋背景（Daylight 浅色主题）](docs/images/companion-ocean.png) | ![记录本三栏](docs/images/workbench.png) |
+| ![陪伴模式 · 海洋背景（Daylight 浅色主题）](docs/images/companion-ocean.png?v=20261117b) | ![记录本三栏](docs/images/workbench.png?v=20261117b) |
 
 四套主题（ledger 黑白紧凑 / hermes 纸白宽版 / daylight 暖白消费级 / carbon 深灰工具级，**未配置时默认 carbon**）
 与两种外壳（三栏记录本 / 单栏专注，**默认三栏**）、两种相处方式（陪伴窗口 / 完整记录本）。
