@@ -1017,6 +1017,7 @@ input:focus-visible,textarea:focus-visible{outline:none;border-bottom-color:var(
       <div class="nb-go" data-v="mem" role="button" tabindex="0">记忆<span class="n" id="nb-nmem">…</span></div>
       <div class="nb-go" data-v="docs" role="button" tabindex="0">文档<span class="n" id="nb-ndocs">…</span></div>
       <div class="nb-go" data-v="cap" role="button" tabindex="0">能力</div>
+      <div class="nb-go" data-v="market" role="button" tabindex="0">插件市场</div>
       <div class="nb-go" data-v="ovw" role="button" tabindex="0">体检</div>
       <div class="nb-go" data-v="sto" role="button" tabindex="0">存储</div>
       <div class="nb-go" data-v="task" role="button" tabindex="0">任务<span class="n" id="nb-ntask">…</span></div>

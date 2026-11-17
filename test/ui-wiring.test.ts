@@ -353,12 +353,19 @@ test("对话预算开关（2026-11-16）：设置页可切，且说清只取消�
   assert.ok(NB.includes("'对话预算'"), "新节要进默认分组表，否则从页面消失");
 });
 
-test("插件市场（2026-11-17）：设置页可浏览 AstrBot 市场，且明说只浏览不安装", () => {
-  assert.ok(NB.includes("sec('插件市场'"), "设置页要有「插件市场」这一节");
-  assert.ok(NB.includes("'插件市场'"), "新节要进默认分组表，否则从页面消失");
-  assert.ok(NB.includes("/api/market?q="), "列表走后端聚合接口，不要把 3MB 原文甩给浏览器");
-  assert.ok(NB.includes("'cf-mkreg'"), "要能填自定义源（field() 运行时拼 id）");
-  assert.ok(NB.includes("PUT', '/api/market'"), "源地址要写进 config，不是只改前端变量");
+test("插件市场（2026-11-17）：在侧边栏有独立页，不在设置里藏着", () => {
+  const TPL = readFileSync(new URL("../src/web/notebook.ts", import.meta.url), "utf8");
+  assert.ok(TPL.includes('data-v="market"'), "侧边栏要有「插件市场」入口");
+  assert.ok(TPL.includes(">插件市场<"), "入口文案要叫插件市场");
+  assert.ok(NB.includes("function marketView()"), "要有独立页面渲染函数");
+  assert.ok(NB.includes("market: '插件市场'"), "面包屑要认这一页");
+  assert.ok(NB.includes("v === 'market'"), "go() 要分发到这一页");
+  assert.ok(NB.includes("v: '插件市场', go: 'market'"), "命令面板（Ctrl+K）要能搜到");
+  assert.ok(NB.includes("?view=home|chat|board|mem|docs|cap|ovw|sto|market"), "深链接要能直达");
+  assert.ok(!NB.includes("sec('插件市场'"), "不该再塞在设置页里");
+  assert.ok(NB.includes("/api/market?q="), "列表走后端聚合接口");
+  assert.ok(NB.includes("'mk-reg'"), "独立页要能填自定义源");
+  assert.ok(NB.includes("PUT', '/api/market'"), "源地址要写进 config");
   assert.ok(NB.includes("只浏览，不安装、不运行插件"), "必须说清边界：Python 插件不在这里跑");
-  assert.ok(NB.includes("target=\"_blank\" rel=\"noopener noreferrer\""), "外链要带 noopener");
+  assert.ok(NB.includes('target="_blank" rel="noopener noreferrer"'), "外链要带 noopener");
 });
