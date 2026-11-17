@@ -190,6 +190,40 @@ export async function handleConfig(ctx: ConfigCtx): Promise<boolean> {
         return true;
       }
 
+      // ── AstrBot 插件市场（只读浏览）：源地址由人配；GET 只从 config 读，不接受 query 覆盖，
+      //    否则任何前端都能让服务端去 fetch 任意 URL（SSRF 面）。
+      if (req.method === "GET" && url.pathname === "/api/market") {
+        const { OFFICIAL_MARKET, fetchMarket } = await import("../../plugins.ts");
+        const registry = String(readFileConfig(deps.home).market?.registry ?? "").trim();
+        const s = String(url.searchParams.get("sort") ?? "stars");
+        const sort = s === "downloads" || s === "updated" || s === "name" ? s : "stars";
+        const n = Number(url.searchParams.get("limit") ?? 60);
+        try {
+          const v = await fetchMarket(registry || OFFICIAL_MARKET, {
+            q: String(url.searchParams.get("q") ?? "").slice(0, 120),
+            limit: Number.isFinite(n) ? n : 60, sort,
+            force: url.searchParams.get("force") === "1",
+          });
+          json(res, 200, { ok: true, official: !registry, registry, ...v });
+        } catch (e) {
+          json(res, 502, { ok: false, error: String((e as Error).message ?? e).slice(0, 200) });
+        }
+        return true;
+      }
+      if (req.method === "PUT" && url.pathname === "/api/market") {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return true; }
+        const { marketUrlError, resetMarketCache } = await import("../../plugins.ts");
+        const body = await readJson(req) as { registry?: unknown };
+        const registry = body.registry === null || body.registry === undefined
+          ? "" : String(body.registry).trim().slice(0, 500);
+        const why = registry ? marketUrlError(registry) : null;
+        if (why) { json(res, 400, { error: "E_BAD_MARKET_URL", why }); return true; }
+        writeFileConfig(deps.home, { market: { registry } });
+        resetMarketCache();
+        json(res, 200, { ok: true, registry });
+        return true;
+      }
+
       // ── 直接编辑配置（VS Code 式 settings.json）：只开放 ui / tts / vision 三个命名空间。
       //     GET 脱敏（密钥在 SecretStore，不在这份里）；PUT 按命名空间合并，别的一律不动。
       if (req.method === "GET" && url.pathname === "/api/config/raw") {

@@ -12,6 +12,20 @@
 
 ## [Unreleased]
 
+### Added
+
+- **AstrBot 插件市场浏览（2026-11-17，用户选「只做市场浏览」）**：设置 → 手脚 → 「插件市场」，
+  按 AstrBot 官方市场 JSON schema（2026-06-27）归一插件信息，支持中文搜索、按热度/下载/更新时间排序、
+  打开仓库链接。**不下载、不安装、不运行插件** —— AstrBot 插件是 Python 包，这里只做只读浏览，
+  界面明确写了这条边界。
+  - 默认源 `https://cloud.astrbot.app/api/v1/market/plugins.json`（3445 条 / 3.2 MB），
+    可填自定义源（本地镜像也支持 http）；源地址写进 `config.market.registry`，只认本人操作。
+  - 后端按源缓存原始记录 15 分钟、每次查询重新过滤排序（缓存搜索结果会导致换关键词仍返回旧结果），
+    `force=1` 强制重拉；只回传轻量列表，不把 3.2 MB 原文甩给浏览器。
+  - 安全：GET 不接受 query 覆盖源地址（防 SSRF），repo 只认 https GitHub 形状，
+    响应限 12 MB、上游超时 30s、失败不写缓存。
+  - ZIP 优先回退 repo 是**以后接安装时**的约定，本轮未实现。
+
 ### Fixed
 
 - **引导界面卡死（2026-11-17）**：`POST /api/setup {action:"run"}` 在 `void (async()=>{})` 里

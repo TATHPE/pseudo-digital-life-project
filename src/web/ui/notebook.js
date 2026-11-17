@@ -3090,7 +3090,7 @@
     { name: '她',   hint: '人格 · 声音 · 主动性', secs: ['人格', '头像', '声音', '主动开口'] },
     { name: '视觉 · 观感', hint: '看图 · 形象 · 背景 · 主题 · 片头',
       secs: ['眼 · 视觉', '形象与背景', '外观', '开机片头'] },
-    { name: '手脚', hint: '能力 · 权限 · 接入', secs: ['主机 · 命令解释器', 'WSL 小房子', '常驻指令', '限制', 'QQ 接入（OneBot 11）'] },
+    { name: '手脚', hint: '能力 · 权限 · 接入', secs: ['主机 · 命令解释器', 'WSL 小房子', '常驻指令', '限制', 'QQ 接入（OneBot 11）', '插件市场'] },
     { name: '数据', hint: '备份 · 诊断 · 版本 · 目录', secs: ['诊断', '版本与更新', '导出 / 导入', '工作区域', '引导', '部署状态'] }
   ];
   function cfgGroupsFrom(ui){
@@ -3437,6 +3437,18 @@
         '<span class="nb-empty" id="cf-bmsg">保存即生效；软件下次启动会自动接着跑</span></div>' +
         '<div class="nb-empty">先装 NapCat 并在它的 WebUI 里开一个 WebSocket 服务器（默认 127.0.0.1:3001），' +
         '再回来填这里。开启后，私聊她就能收到消息；群里要 @ 她（或在白名单里配群号）。</div></div>');
+      html += sec('插件市场',
+        '<div class="nb-form">' +
+        '<div class="nb-kv"><b>市场源</b><span id="mk-source">官方 AstrBot 市场</span></div>' +
+        field('自定义源', 'cf-mkreg', '', '留空 = 官方源；可填自己的 JSON 地址') +
+        '<div class="nb-actrow"><button class="nb-btn" id="cf-mksave">保存源</button>' +
+        '<button class="nb-btn" id="cf-mkrefresh">刷新</button>' +
+        '<span class="nb-empty" id="cf-mkmsg">只浏览，不安装、不运行插件</span></div>' +
+        field('搜索', 'cf-mkq', '', '名字 / 描述 / 标签') +
+        '<div class="nb-actrow"><button class="nb-btn" id="cf-mksearch">搜索</button>' +
+        '<span class="nb-empty" id="mk-count"></span></div>' +
+        '<div id="mk-list" class="nb-empty">读取中…</div>' +
+        '<div class="nb-empty">AstrBot 插件是 Python 包，这里按官方市场数据列出信息并给仓库链接；本面板不下载、不加载它们。</div></div>');
       html += sec('工作区域',
         '<div class="nb-kv"><b>当前数据目录</b><span id="cf-where-home">读取中…</span></div>' +
         '<div class="nb-fld"><label>换到</label><input id="cf-where" class="nb-search" placeholder="D:\\Pseudo Digital Life Project"></div>' +
@@ -3658,6 +3670,44 @@
           .then(function(){ tick(next ? '聊天也不设总预算了' : '聊天恢复 2600'); cfgView(); })
           .catch(function(e){ if (m) m.textContent = '没存成：' + e.message; });
       });
+      // ── 插件市场（2026-11-17）：只读浏览，不下载不安装 ──
+      (function(){
+        function paint(list){
+          var box = $('mk-list'); if (!box) return;
+          if (!list.length) { box.textContent = '没有匹配的插件'; return; }
+          box.innerHTML = list.map(function(e){
+            var d = (e.shortDesc || e.desc || '').slice(0, 150);
+            return '<div style="padding:8px 0;border-bottom:1px solid var(--color-border-tertiary)">' +
+              '<div><b>' + esc(e.displayName) + '</b> <span class="m">' + esc(e.id) +
+              ' · v' + esc(e.version) + ' · ★' + (e.stars || 0) + '</span></div>' +
+              (d ? '<div class="nb-empty">' + esc(d) + '</div>' : '') +
+              (e.repo ? '<a href="' + esc(e.repo) + '" target="_blank" rel="noopener noreferrer">打开仓库 ↗</a>' : '') +
+              '</div>';
+          }).join('');
+        }
+        function load(force){
+          var box = $('mk-list'); if (box) box.textContent = '读取中…';
+          var q = encodeURIComponent(($('cf-mkq') || {}).value || '');
+          fetch('/api/market?q=' + q + '&limit=60' + (force ? '&force=1' : ''))
+            .then(function(r){ return r.json(); }).then(function(j){
+              if (!j || !j.ok) { if (box) box.textContent = '读不到：' + ((j && j.error) || '未知错误'); return; }
+              var s = $('mk-source'); if (s) s.textContent = j.official ? '官方 AstrBot 市场' : j.source;
+              var reg = $('cf-mkreg'); if (reg && document.activeElement !== reg) reg.value = j.registry || '';
+              var c = $('mk-count'); if (c) c.textContent = '共 ' + j.total + ' 条匹配，显示 ' + j.entries.length + ' 条';
+              paint(j.entries || []);
+            }).catch(function(e){ if (box) box.textContent = '读不到：' + e.message; });
+        }
+        on('cf-mksearch', function(){ load(false); });
+        on('cf-mkrefresh', function(){ load(true); });
+        on('cf-mksave', function(){
+          var m = $('cf-mkmsg'); if (m) m.textContent = '保存中…';
+          var v = (($('cf-mkreg') || {}).value || '').trim();
+          jsend('PUT', '/api/market', { registry: v })
+            .then(function(){ if (m) m.textContent = '源已保存'; load(true); })
+            .catch(function(e){ if (m) m.textContent = '没存成：' + e.message; });
+        });
+        load(false);
+      })();
       on('cf-mpick', modelPicker);
       // ── QQ 接入（OneBot 11）──
       (function(){

@@ -352,3 +352,13 @@ test("对话预算开关（2026-11-16）：设置页可切，且说清只取消�
   assert.ok(NB.includes("召回最多 8 条"), "必须写清分项上限仍在，别被读成上下文无限");
   assert.ok(NB.includes("'对话预算'"), "新节要进默认分组表，否则从页面消失");
 });
+
+test("插件市场（2026-11-17）：设置页可浏览 AstrBot 市场，且明说只浏览不安装", () => {
+  assert.ok(NB.includes("sec('插件市场'"), "设置页要有「插件市场」这一节");
+  assert.ok(NB.includes("'插件市场'"), "新节要进默认分组表，否则从页面消失");
+  assert.ok(NB.includes("/api/market?q="), "列表走后端聚合接口，不要把 3MB 原文甩给浏览器");
+  assert.ok(NB.includes("'cf-mkreg'"), "要能填自定义源（field() 运行时拼 id）");
+  assert.ok(NB.includes("PUT', '/api/market'"), "源地址要写进 config，不是只改前端变量");
+  assert.ok(NB.includes("只浏览，不安装、不运行插件"), "必须说清边界：Python 插件不在这里跑");
+  assert.ok(NB.includes("target=\"_blank\" rel=\"noopener noreferrer\""), "外链要带 noopener");
+});

@@ -9,7 +9,7 @@
 | 项 | 数量 |
 |---|---|
 | 源文件（src/**/*.ts） | 138 |
-| 错误码 E_* | 274 |
+| 错误码 E_* | 281 |
 | verbs | 33 |
 | CLI 子命令 | 42 |
 
@@ -39,6 +39,7 @@
 | `E_BAD_JSON` | `src/web/body.ts` `src/web/server.ts` |
 | `E_BAD_KEY` | `src/web/routes/config.ts` |
 | `E_BAD_LINK` | `src/web/routes/control.ts` |
+| `E_BAD_MARKET_URL` | `src/web/routes/config.ts` |
 | `E_BAD_MODE` | `src/web/server.ts` |
 | `E_BAD_MODEL` | `src/web/routes/config.ts` |
 | `E_BAD_NAME` | `src/plugins.ts` `src/selfupdate.ts` `src/web/server.ts` |
@@ -117,6 +118,12 @@
 | `E_INTERP_UNGROUNDED` | `src/interpretnight.ts` |
 | `E_IS_DIR` | `src/verbs.ts` |
 | `E_JSON` | `src/web/routes/memory.ts` |
+| `E_MARKET_HTTP` | `src/plugins.ts` |
+| `E_MARKET_PARSE` | `src/plugins.ts` |
+| `E_MARKET_SCHEMA` | `src/plugins.ts` |
+| `E_MARKET_SHAPE` | `src/plugins.ts` |
+| `E_MARKET_TOO_BIG` | `src/plugins.ts` |
+| `E_MARKET_URL` | `src/plugins.ts` |
 | `E_MAX_STEPS` | `src/agent.ts` `src/web/server.ts` |
 | `E_MCP` | `src/mcp.ts` |
 | `E_MCP_CLOSED` | `src/mcp.ts` |
@@ -414,7 +421,7 @@
 | `src/pathsafe.ts` | 路径安全与项目根（叶子模块，2026-11-09 从 verbs.ts / project.ts 抽出）。 |
 | `src/permcheck.ts` | 权限自查（docs/ops/22 §0.4「权限自查」）：回答「**这个能力现在为什么不能用**」。 |
 | `src/persona.ts` | import { readFileSync, mkdirSync, existsSync, readdirSync } from "node |
-| `src/plugins.ts` | 插件（MCP）与技能的**增删**（2026-11-01，用户："现在只能看，等于借来的手脚是死数据"）。 |
+| `src/plugins.ts` | 扩展（MCP / 技能 / 市场浏览）。 |
 | `src/policy.ts` | 策略层（04 §4 / 12 §9.2）：唯一有权说"不"的地方。 |
 | `src/posture.ts` | 默认姿态（用户 2026-10-31 的判断）： |
 | `src/preflight.ts` | 本地端点前置检查（C-3） |

@@ -38,6 +38,11 @@ export interface FileConfig {
    */
   brief?: { chatUnlimited?: boolean };
   /**
+   * AstrBot 插件市场源（2026-11-17）：只做浏览，不安装不运行。
+   * 留空 = 官方源；自定义地址由人写（接口有 writeGuarded），模型改不了。
+   */
+  market?: { registry?: string };
+  /**
    * 本地模型（C-4）：沿用「共享默认 + 单个例外」这个已存在的语义，
    * 不摊成 5 个格子 —— 5 个角色 × N 个模型的下拉框没人会去调。
    *   default → route / extract / salience / conflict（night 也跟着它，除非单设）
@@ -227,6 +232,7 @@ export function writeFileConfig(home: string, patch: FileConfig): FileConfig {
     },
     budget: { ...(cur.budget ?? {}), ...(patch.budget ?? {}) },
     brief: { ...(cur.brief ?? {}), ...(patch.brief ?? {}) },
+    market: { ...(cur.market ?? {}), ...(patch.market ?? {}) },
     persona: { ...(cur.persona ?? {}), ...(patch.persona ?? {}) },
     ui: { ...(cur.ui ?? {}), ...(patch.ui ?? {}) },
     agent: { ...(cur.agent ?? {}), ...(patch.agent ?? {}) },
