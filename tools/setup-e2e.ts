@@ -50,22 +50,28 @@ startSetup(home);
 ok("事务已开，账本落盘", readSession(home) !== null);
 
 // ── 1. 探测（只读）────────────────────────────────────
-const d = await detect(home, { totalMemGB: 15.4, run: runner.run });
+const d = await detect(home, {
+  totalMemGB: 15.4,
+  run: runner.run,
+  // 空机器夹具：探测以 HTTP 为准，这里必须明确「端点也不通」，
+  // 否则真机在跑 Ollama 时会被算成已装（夹具就不空了）。
+  probe: async () => ({ online: false, names: [] }),
+});
 ok("探测：认出 ollama 没装", d.ollama.installed === false);
 ok("探测：认出没有云端 key", d.config.hasCloudKey === false);
 ok("探测：按 15.4 GB 推荐 7B", /7b/.test(d.recommend.model), d.recommend.model);
 completeStep(home, "detect", true, "15.4 GB / 空机器");
 
 // ── 2–4. 装 Ollama / embedding / chat ─────────────────
-const a1 = runStep(home, "ollama", runner);
+const a1 = await runStep(home, "ollama", runner);
 ok("装 Ollama：winget 被调用", calls.some((c) => c.startsWith("winget install")), a1.note);
 ok("装 Ollama：记账了'我们起的进程'", (readSession(home)!.artifacts.startedProcesses.length > 0));
 
-const a2 = runStep(home, "embed", runner, { model: "bge-m3" });
+const a2 = await runStep(home, "embed", runner, { model: "bge-m3" });
 ok("装 embedding：成功", a2.ok, a2.note);
 ok("装 embedding：记账（终止会删）", readSession(home)!.artifacts.pulledModels.includes("bge-m3"));
 
-const a3 = runStep(home, "chat", runner, { chat: "qwen2.5:7b-instruct", model: "bge-m3" });
+const a3 = await runStep(home, "chat", runner, { chat: "qwen2.5:7b-instruct", model: "bge-m3" });
 ok("装 chat 模型：成功", a3.ok, a3.note);
 const cfg = JSON.parse(readFileSync(join(home, "config.json"), "utf8")) as { local?: Record<string, string> };
 ok("配置写对了 embed/chat", cfg.local?.embed === "bge-m3" && cfg.local?.default === "qwen2.5:7b-instruct", JSON.stringify(cfg.local));

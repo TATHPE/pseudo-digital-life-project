@@ -12,6 +12,26 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **引导界面卡死（2026-11-17）**：`POST /api/setup {action:"run"}` 在 `void (async()=>{})` 里
+  用 `execFileSync` 跑 `ollama pull` / `winget install` —— 外层看着是后台任务，实际上 Node
+  事件循环被同步按住几分钟，前端 `setInterval` 轮询的 `GET /api/setup` 一个都回不来，
+  界面与别的 API 一起「死住」。现在 `Runner` 允许异步返回，新增 `createAsyncRunner()`
+  用 `spawn + Promise` 真后台执行，pull 的逐行进度直接写进 job 供轮询显示；
+  探测（`detect`）也从 `execFileSync` 换成异步 `execFile`。
+  同时修掉**常驻进程被当一次性命令**：`ollama serve` 原先用「等它退出 + 5s 超时」跑，
+  超时会杀掉刚起的 serve；现在走 `start()` 后台启动、记 PID 供终止回滚。
+  回归测试覆盖「异步 runner 的失败不能被当成成功」「长命令期间事件循环照常转」
+  「serve 记 PID」，8 步 `setup:e2e` 全通。
+- **Ollama 识别不到（2026-11-17）**：探测端点原先写死 `http://127.0.0.1:11434`，
+  改过地址/端口的人会被报「没跑」；「装没装」只看 PATH 里的 `ollama --version`，
+  从桌面版启动、PATH 没带 Ollama 目录时会把正在跑的服务报成「未安装」。
+  现在端点读 `config.ollama`，以 HTTP `/api/tags` 在线为准，探测结果带上端点与错误原因。
+  设置页每次打开走 `/api/models?force=1` 强制重探：`preflight` 原先会把一次失败缓存
+  5 分钟，Ollama 起来后界面仍是「离线」；`/health` 也与设置页共用这份探活结果，
+  700ms 超时放宽到 3s（冷启动误报）。
+
 ## [0.1.0] - 2026-11-17（版本号重置，重发）
 
 ### Added

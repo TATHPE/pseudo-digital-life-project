@@ -3130,7 +3130,7 @@
     Promise.all([
       fetch('/api/config').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
       fetch('/api/ui').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
-      fetch('/api/models').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
+      fetch('/api/models?force=1').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
       fetch('/api/mode').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
       fetch('/api/host').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
       fetch('/api/standing').then(function(r){ return r.json(); }).catch(function(){ return []; }),

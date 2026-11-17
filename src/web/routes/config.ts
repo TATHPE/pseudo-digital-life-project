@@ -571,7 +571,10 @@ export async function handleConfig(ctx: ConfigCtx): Promise<boolean> {
       if (req.method === "GET" && url.pathname === "/api/models") {
         const cfg = deps.getConfig();
         const src = configSources(deps.home);
-        const probe = await preflight(cfg.ollama);        // C-3：统一前置检查（5 分钟按端点缓存）
+        // 设置页每次打开都强制重探：preflight 的 5 分钟缓存会把「Ollama 没起」的旧结果
+        // 留到它起来之后 —— 用户看到的就是「Ollama 识别不到了」。一次tags 请求很便宜。
+        const force = url.searchParams.get("force") === "1";
+        const probe = await preflight(cfg.ollama, { force });
         json(res, 200, {
           endpoint: cfg.ollama,
           online: probe.online,

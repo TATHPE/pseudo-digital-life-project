@@ -17,6 +17,8 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { atomicWriteFile } from "./fsx.ts";
+import { readFileConfig } from "./configfile.ts";
+import { probeOllama } from "./ollama.ts";
 
 export type SetupStep = "detect" | "ollama" | "embed" | "chat" | "api" | "persona" | "smoke" | "first";
 
@@ -243,7 +245,9 @@ export function undoSetup(home: string, deps: UndoDeps = {}): UndoReport {
 /** 硬件与现状探测（第 1 步；只读，不改任何东西） */
 export interface Detected {
   ramGB: number;
-  ollama: { installed: boolean; running: boolean; models: string[] };
+  /** 探测用的端点（来自 config.ollama，不是写死的 11434） */
+  endpoint: string;
+  ollama: { installed: boolean; running: boolean; models: string[]; error?: string };
   config: { hasCloudKey: boolean; roles: Record<string, string> };
   /** 推荐档（按 RAM 粗分；有 VRAM 更好，这里先用 RAM 兜底） */
   recommend: { model: string; note: string };
@@ -259,27 +263,35 @@ export function recommendFor(ramGB: number): { model: string; note: string } {
 /** 从 `/health` 之外的地方探测：只用 node 自带能力 + 可选命令 */
 export async function detect(
   home: string,
-  deps: { run?: (cmd: string, args: string[]) => { ok: boolean; out: string }; totalMemGB?: number } = {},
+  deps: {
+    run?: (cmd: string, args: string[]) => { ok: boolean; out: string } | Promise<{ ok: boolean; out: string }>;
+    totalMemGB?: number;
+    probe?: (base: string) => Promise<{ online: boolean; names: string[]; error?: string }>;
+  } = {},
 ): Promise<Detected> {
   const { totalmem } = await import("node:os");
   const ramGB = Math.round(((deps.totalMemGB ?? totalmem() / 1024 ** 3)) * 10) / 10;
-  const run = deps.run ?? ((cmd: string, args: string[]) => {
-    try { return { ok: true, out: String(execFileSync(cmd, args, { encoding: "utf8", windowsHide: true, timeout: 10_000 })) }; }
-    catch { return { ok: false, out: "" }; }
+  // 默认实现也必须异步：这个探测跑在 HTTP 请求里，execFileSync 会把事件循环按住最多 10s，
+  // 引导页「看一眼」之后所有请求都排队 —— 和 pull 卡死是同一类病。
+  const { execFile } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  const execFileAsync = promisify(execFile);
+  const run = deps.run ?? (async (cmd: string, args: string[]) => {
+    try {
+      const r = await execFileAsync(cmd, args, { windowsHide: true, timeout: 10_000, maxBuffer: 1_000_000 });
+      return { ok: true, out: String(r.stdout) };
+    } catch { return { ok: false, out: "" }; }
   });
-
-  const ver = run("ollama", ["--version"]);
-  const installed = ver.ok;
-  let running = false;
-  let models: string[] = [];
-  try {
-    const r = await fetch("http://127.0.0.1:11434/api/tags", { signal: AbortSignal.timeout(2000) });
-    if (r.ok) {
-      running = true;
-      const j = (await r.json()) as { models?: Array<{ name?: string }> };
-      models = (j.models ?? []).map((m) => String(m.name ?? "")).filter(Boolean);
-    }
-  } catch { /* 没跑就是没跑 */ }
+  const ver = await run("ollama", ["--version"]);
+  // 端点必须跟实际配置一致：写死 127.0.0.1:11434 时，改过端口/地址的人会看到「识别不到」。
+  const endpoint = String((readFileConfig(home) as { ollama?: string }).ollama ?? "http://127.0.0.1:11434")
+    .trim().replace(/\/+$/, "") || "http://127.0.0.1:11434";
+  const probe = deps.probe
+    ? await deps.probe(endpoint).catch((e) => ({ online: false, names: [] as string[], error: String(e).slice(0, 80) }))
+    : await probeOllama(endpoint, 3_000);
+  // 「装了没有」以能不能连上为准：CLI 不在 PATH（比如从桌面版启动）但服务在跑，
+  // 旧判断会报 installed:false —— 用户看到的就是「Ollama 识别不到」。
+  const installed = ver.ok || probe.online;
 
   // 配置：有没有云端 key（只读，不打印）
   let hasCloudKey = false;
@@ -294,5 +306,9 @@ export async function detect(
     hasCloudKey = Boolean(st.get("deepseek") || st.get("openai") || st.get("anthropic"));
   } catch { /* 读不到就当没有 */ }
 
-  return { ramGB, ollama: { installed, running, models }, config: { hasCloudKey, roles }, recommend: recommendFor(ramGB) };
+  return {
+    ramGB, endpoint,
+    ollama: { installed, running: probe.online, models: probe.names, ...(probe.error ? { error: probe.error } : {}) },
+    config: { hasCloudKey, roles }, recommend: recommendFor(ramGB),
+  };
 }

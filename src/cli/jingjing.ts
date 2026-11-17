@@ -815,7 +815,7 @@ async function main(): Promise<void> {
         };
         const model = arg("embed") ?? "bge-m3";
         const chat = arg("chat") ?? "";
-        const r = runStep(HOME, step, runner, { model, ...(chat ? { chat } : {}) });
+        const r = await runStep(HOME, step, runner, { model, ...(chat ? { chat } : {}) });
         console.log(JSON.stringify({ step, ...r }, null, 2));
         if (!r.ok) process.exitCode = 1;
         return;

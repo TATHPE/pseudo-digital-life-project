@@ -160,14 +160,17 @@ export async function handleStatus(ctx: StatusCtx): Promise<boolean> {
     let localInfo: Record<string, unknown> = {};
     try {
       const cfgL = deps.getConfig();
-      const { probeOllama } = await import("../../ollama.ts");
+      const { preflight, lastPreflight } = await import("../../preflight.ts");
       const { embedStats } = await import("../../embed.ts");
-      const pf = await probeOllama(cfgL.ollama ?? "http://127.0.0.1:11434", 700).catch(() => null);
+      const endpoint = cfgL.ollama ?? "http://127.0.0.1:11434";
+      // 与设置页 /api/models 共用一份探活结果（那里 force 重探后会立即更新这里）。
+      // 700ms 太紧：Ollama 冷启动会把「在跑」误报成「离线」。
+      const pf = lastPreflight(endpoint) ?? await preflight(endpoint, { ttlMs: 3_000 }).catch(() => null);
       const anyCfg = cfgL as unknown as { local?: { default?: string; night?: string } };
       const loc = anyCfg.local ?? {};
       let running: string[] = [];
       try {
-        const ps = await fetch((cfgL.ollama ?? "http://127.0.0.1:11434") + "/api/ps", { signal: AbortSignal.timeout(700) });
+        const ps = await fetch(endpoint + "/api/ps", { signal: AbortSignal.timeout(3_000) });
         const j = (await ps.json()) as { models?: Array<{ name?: string }> };
         running = (j.models ?? []).map((m) => String(m.name ?? "")).filter(Boolean);
       } catch { /* 没在跑就是空的 */ }

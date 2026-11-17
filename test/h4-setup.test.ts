@@ -47,20 +47,20 @@ test("H-4 步骤顺序写死，且能暂停/恢复", () => {
   assert.equal(readSession(home)!.status, "running");
 });
 
-test("H-4 embedding 是必装档：装过就不重复拉，且记账只在**我们拉的**时候", () => {
+test("H-4 embedding 是必装档：装过就不重复拉，且记账只在**我们拉的**时候", async () => {
   const home = H();
   startSetup(home);
 
   // 已经装过（不是我们装的）→ 不记账
   const r1 = fakeRunner({ listHas: ["bge-m3:latest"] });
-  const a = ensureEmbedding(home, r1, "bge-m3");
+  const a = await ensureEmbedding(home, r1, "bge-m3");
   assert.equal(a.ok, true);
   assert.match(a.note, /不是我们装的/);
   assert.equal(readSession(home)!.artifacts.pulledModels.length, 0, "本来就有的不能算我们的，否则终止会误删");
 
   // 没装 → 拉之前先记账
   const r2 = fakeRunner({ listHas: [] });
-  const b = ensureEmbedding(home, r2, "bge-m3");
+  const b = await ensureEmbedding(home, r2, "bge-m3");
   assert.equal(b.ok, true);
   assert.deepEqual(readSession(home)!.artifacts.pulledModels, ["bge-m3"]);
   assert.ok(r2.calls.some((c) => c.includes("pull bge-m3")));
@@ -104,13 +104,13 @@ test("H-4 终止后清干净才能再开始（账本不残留）", () => {
   assert.equal(again.artifacts.pulledModels.length, 0);
 });
 
-test("H-4 装 Ollama 失败要给可照做的退路，不是死路", () => {
+test("H-4 装 Ollama 失败要给可照做的退路，不是死路", async () => {
   const home = H();
   startSetup(home);
   const r = fakeRunner({ installed: false, serveFails: true });
   // winget 也失败
   const runner: Runner = { run: (cmd, args) => (cmd === "winget" ? { ok: false, out: "no network" } : r.run(cmd, args)) };
-  const out = ensureOllama(home, runner);
+  const out = await ensureOllama(home, runner);
   assert.equal(out.ok, false);
   assert.match(out.note, /ollama\.com\/download|云端模型/, "要给两个出口：手动装 或 跳过本地只配云端");
 });
@@ -123,33 +123,89 @@ test("H-4 推荐档按内存分，且说清代价", () => {
   assert.match(recommendFor(12).note, /拐点|性价比/);
 });
 
-test("H-4 探测是只读的：不动配置、不拉模型、不记账", async () => {
+test("H-4 探测：端点读配置、HTTP 在线就算装了（CLI 不在 PATH 也不误报）、只读", async () => {
   const home = H();
-  writeFileSync(join(home, "config.json"), JSON.stringify({ local: { embed: "bge-m3" } }), "utf8");
+  writeFileSync(join(home, "config.json"), JSON.stringify({ local: { embed: "bge-m3" }, ollama: "http://127.0.0.1:11435" }), "utf8");
   const before = readFileSync(join(home, "config.json"), "utf8");
+  let probed = "";
   const d = await detect(home, {
     totalMemGB: 12,
-    run: (cmd) => (cmd === "ollama" ? { ok: true, out: "ollama version 0.5.0" } : { ok: false, out: "" }),
+    run: () => ({ ok: false, out: "" }),  // CLI 不在 PATH（桌面版常见）
+    probe: async (base) => { probed = base; return { online: true, names: ["bge-m3:latest"] }; },
   });
+  assert.equal(probed, "http://127.0.0.1:11435", "探测必须用配置里的端点，不能写死 11434");
+  assert.equal(d.endpoint, "http://127.0.0.1:11435");
+  assert.equal(d.ollama.installed, true, "HTTP 在线就是装了 —— 旧判断只看 CLI，会误报『识别不到』");
+  assert.equal(d.ollama.running, true);
+  assert.deepEqual(d.ollama.models, ["bge-m3:latest"]);
   assert.equal(d.ramGB, 12);
-  assert.equal(d.ollama.installed, true);
   assert.match(d.recommend.model, /7b/);
   assert.equal(readFileSync(join(home, "config.json"), "utf8"), before, "探测不该改配置");
   assert.equal(readSession(home), null, "探测不该建事务账本");
   void existsSync;
 });
 
-test("H-4 runStep 记账：成功推指针，失败留原因且不前进", () => {
+test("H-4 runStep 记账：成功推指针，失败留原因且不前进", async () => {
   const home = H();
   startSetup(home);
   completeStep(home, "detect", true, "ok");
-  const bad = runStep(home, "embed", fakeRunner({ pullFails: true }), { model: "bge-m3" });
+  const bad = await runStep(home, "embed", fakeRunner({ pullFails: true }), { model: "bge-m3" });
   assert.equal(bad.ok, false);
   assert.match(bad.note, /ollama pull bge-m3/, "失败提示要能照做");
   assert.equal(readSession(home)!.step, "embed", "失败不前进");
 
-  const good = runStep(home, "embed", fakeRunner({ listHas: [] }), { model: "bge-m3" });
+  const good = await runStep(home, "embed", fakeRunner({ listHas: [] }), { model: "bge-m3" });
   assert.equal(good.ok, true);
   assert.equal(readSession(home)!.step, "chat");
-  assert.ok(ensureChatModel(home, fakeRunner({ listHas: ["qwen2.5:7b-instruct"] }), "qwen2.5:7b-instruct").ok);
+  assert.ok((await ensureChatModel(home, fakeRunner({ listHas: ["qwen2.5:7b-instruct"] }), "qwen2.5:7b-instruct")).ok);
+});
+
+test("H-4 2026-11-17：Runner 返回 Promise 必须等结果，不能把 Promise 当成功", async () => {
+  const home = H();
+  startSetup(home);
+  completeStep(home, "detect", true, "ok");
+  let resolved = false;
+  const slow: Runner = {
+    run: async () => {
+      await new Promise((r) => setTimeout(r, 5));
+      resolved = true;
+      return { ok: false, out: "network down" };
+    },
+  };
+  const out = await runStep(home, "embed", slow, { model: "bge-m3" });
+  assert.equal(resolved, true, "异步 runner 的结果必须被 await");
+  assert.equal(out.ok, false, "旧实现把 Promise 对象当结果，会误判成成功");
+  assert.match(out.note, /拉 bge-m3 失败/);
+});
+
+test("H-4 2026-11-17：常驻 serve 走 start 后台启动并记 PID，不再用 run 等它退出", async () => {
+  const home = H();
+  startSetup(home);
+  const calls: string[] = [];
+  const runner: Runner = {
+    run: (cmd, args) => {
+      calls.push([cmd, ...args].join(" "));
+      if (cmd === "ollama" && args[0] === "--version") return { ok: true, out: "0.5" };
+      return { ok: false, out: "not running" };
+    },
+    start: async (cmd, args) => { calls.push("START " + [cmd, ...args].join(" ")); return { ok: true, pid: 4242 }; },
+  };
+  const out = await ensureOllama(home, runner);
+  assert.equal(out.ok, true);
+  assert.match(out.note, /PID 4242/);
+  assert.ok(calls.includes("START ollama serve"));
+  assert.ok(!calls.includes("ollama serve"), "常驻进程不能交给 run 等退出（那只会超时并杀掉它）");
+  assert.equal(readSession(home)!.artifacts.startedProcesses[0]!.pid, 4242, "记账带 pid，终止时才停得掉");
+});
+
+test("2026-11-17 createAsyncRunner：长命令期间事件循环照常转，进度按行回传", async () => {
+  const { createAsyncRunner } = await import("../src/setupsteps.ts");
+  const r = createAsyncRunner();
+  let ticked = false;
+  setTimeout(() => { ticked = true; }, 20);
+  const lines: string[] = [];
+  const res = await r.stream!(process.execPath, ["-e", "console.log('one'); setTimeout(()=>console.log('two'), 120)"], (s) => lines.push(s));
+  assert.equal(res.ok, true);
+  assert.equal(ticked, true, "命令还没结束时定时器就该触发 —— 事件循环不能被同步按住（这就是引导卡死的根因）");
+  assert.deepEqual(lines, ["one", "two"]);
 });

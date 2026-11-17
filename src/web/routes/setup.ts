@@ -228,17 +228,16 @@ export async function handleSetup(ctx: SetupCtx): Promise<boolean> {
           if (!SETUP_STEPS.includes(step)) { json(res, 400, { error: "E_BAD_STEP" }); return true; }
           if (jobState.running) { json(res, 409, { error: "E_SETUP_BUSY" }); return true; }
           Object.assign(jobState, { running: true, step, note: "开始…", done: false, ok: true });
-          // 后台跑：pull 模型可能要几分钟，HTTP 不能挂着
+          // 真后台跑：pull 模型可能要几分钟。Runner 全程 spawn + Promise，
+          // 不能用 execFileSync —— 那会同步按住事件循环，让轮询和探测全部超时（界面像卡死）。
           void (async () => {
             try {
-              const { execFileSync } = await import("node:child_process");
-              const runner = {
-                run(cmd: string, args: string[], o?: { timeoutMs?: number }) {
-                  try { return { ok: true, out: String(execFileSync(cmd, args, { encoding: "utf8", windowsHide: true, timeout: o?.timeoutMs ?? 600_000 })) }; }
-                  catch (e) { return { ok: false, out: String((e as Error).message).slice(0, 200) }; }
-                },
-              };
-              const r = runStep(deps.home, step, runner);
+              const { createAsyncRunner } = await import("../../setupsteps.ts");
+              const runner = createAsyncRunner();
+              const r = await runStep(deps.home, step, runner, {
+                // 拉模型的进度直接写进 job，前端轮询才看得到「在动」
+                onLine: (line) => Object.assign(jobState, { note: line.slice(0, 300) }),
+              });
               Object.assign(jobState, { running: false, note: r.note, done: true, ok: r.ok });
             } catch (e) {
               Object.assign(jobState, { running: false, done: true, ok: false, note: String(e).slice(0, 200) });
