@@ -71,6 +71,8 @@ npm run uninstall:guard -- "D:\Apps\PDLP"
 ```bash
 cd /d/LLM/jingjing
 mkdir -p "/d/Apps/PDLP/app" "/d/Apps/PDLP/node"
+# 构建时若设了 CARGO_TARGET_DIR（如 target-nsis），exe 在对应目录的 release/ 下：
+# desktop/target-nsis/release/jingjing-desktop.exe（2026-11-17 注）
 cp -f desktop/src-tauri/target/release/jingjing-desktop.exe "/d/Apps/PDLP/"
 cp -r desktop/bundle-src/app/node_modules desktop/bundle-src/app/persona "/d/Apps/PDLP/app/"
 cp -f desktop/bundle-src/app/package*.json desktop/bundle-src/app/bundle-manifest.json "/d/Apps/PDLP/app/"
