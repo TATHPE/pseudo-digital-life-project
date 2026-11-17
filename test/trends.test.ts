@@ -32,18 +32,29 @@ function setCreated(db: ReturnType<typeof openDb>["db"], id: number, iso: string
   db.prepare("UPDATE memories SET created_at=? WHERE id=?").run(iso, id);
 }
 
-test("切日按本地时区：UTC 16:30 必须算本地次日，不能算前一天", () => {
+/** 用**本地时刻**构造再转 ISO：任何时区的 runner 都落在同一个本地日。
+ *  写死 UTC 串会让断言只在 UTC+8 成立（CI 是 UTC，11-16 起因此红）。 */
+function localIso(day: number, hour = 2): string {
+  return new Date(2026, 10, day, hour, 0, 0).toISOString();
+}
+
+test("切日按本地时区：本地凌晨与前一晚深夜只差一小时，仍必须分属两天", () => {
   withDb((db) => {
     const now = new Date(2026, 10, 15, 12, 0, 0); // 本地 11-15 12:00
     const r = remember(db, { layer: "narrative", kind: "fact", text: "本地次日凌晨写的一条", now });
-    // UTC 11-14 16:30 = 本地（UTC+8）11-15 00:30
-    setCreated(db, r, "2026-11-14T16:30:00.000Z");
+    // 本地 11-15 00:30：在 UTC+8 机器上即 UTC 11-14 16:30（跨 UTC 日界），
+    // 在 UTC runner 上不跨——但「按本地日分组」这条约束在两种机器上都要成立
+    setCreated(db, r, localIso(15, 0));
 
     const t = memoryTrend(db, { days: 5, now });
-    const day15 = t.daily.find((d) => d.date === "2026-11-15");
-    const day14 = t.daily.find((d) => d.date === "2026-11-14");
-    assert.equal(day15?.created, 1, "UTC 16:30 属于本地 11-15，不是 11-14");
-    assert.equal(day14?.created, 0, "11-14 不该被算进这条");
+    assert.equal(t.daily.find((d) => d.date === "2026-11-15")?.created, 1, "本地凌晨属于本地当天，不是 UTC 那天");
+    assert.equal(t.daily.find((d) => d.date === "2026-11-14")?.created, 0, "11-14 不该被算进这条");
+
+    const r2 = remember(db, { layer: "narrative", kind: "fact", text: "前一晚深夜写的一条", now });
+    setCreated(db, r2, new Date(2026, 10, 14, 23, 30, 0).toISOString());
+    const t2 = memoryTrend(db, { days: 5, now });
+    assert.equal(t2.daily.find((d) => d.date === "2026-11-14")?.created, 1, "差一小时也要切日：日界是本地 midnight");
+    assert.equal(t2.daily.find((d) => d.date === "2026-11-15")?.created, 1);
   });
 });
 
@@ -52,8 +63,8 @@ test("逐日补零：中间没有记忆的日期必须出现且为 0", () => {
     const now = new Date(2026, 10, 15, 12, 0, 0);
     const a = remember(db, { layer: "narrative", kind: "fact", text: "第一天", now });
     const b = remember(db, { layer: "narrative", kind: "fact", text: "第五天", now });
-    setCreated(db, a, "2026-11-11T02:00:00.000Z");
-    setCreated(db, b, "2026-11-15T02:00:00.000Z");
+    setCreated(db, a, localIso(11));
+    setCreated(db, b, localIso(15));
 
     const t = memoryTrend(db, { days: 5, now });
     assert.equal(t.daily.length, 5, "5 天窗口就给 5 个点，缺的日子用 0 补");
@@ -72,8 +83,8 @@ test("断片默认排除，但必须如实报出被排除了多少", () => {
     const now = new Date(2026, 10, 15, 12, 0, 0);
     const real = remember(db, { layer: "narrative", kind: "fact", text: "她说想养猫", now });
     const out = remember(db, { layer: "narrative", kind: "episode", text: "进程被杀 12 分钟", now });
-    setCreated(db, real, "2026-11-14T02:00:00.000Z");
-    setCreated(db, out, "2026-11-14T03:00:00.000Z");
+    setCreated(db, real, localIso(14));
+    setCreated(db, out, localIso(14, 3));
 
     const off = memoryTrend(db, { days: 3, now });
     assert.equal(off.summary.createdInWindow, 1, "默认不计断片");
@@ -90,8 +101,8 @@ test("累计曲线起点 = 窗口之前就有的条数", () => {
     const now = new Date(2026, 10, 15, 12, 0, 0);
     const old = remember(db, { layer: "narrative", kind: "fact", text: "很久以前", now });
     const recent = remember(db, { layer: "narrative", kind: "fact", text: "昨天", now });
-    setCreated(db, old, "2026-09-01T02:00:00.000Z");
-    setCreated(db, recent, "2026-11-14T02:00:00.000Z");
+    setCreated(db, old, new Date(2026, 8, 1, 2, 0, 0).toISOString());
+    setCreated(db, recent, localIso(14));
 
     const t = memoryTrend(db, { days: 7, now });
     assert.equal(t.summary.beforeWindow, 1, "窗口前已有 1 条");
@@ -105,8 +116,8 @@ test("被忘掉的不画进曲线，但要单独报数", () => {
     const now = new Date(2026, 10, 15, 12, 0, 0);
     const keep = remember(db, { layer: "narrative", kind: "fact", text: "留着", now });
     const gone = remember(db, { layer: "narrative", kind: "fact", text: "忘了", now });
-    setCreated(db, keep, "2026-11-13T02:00:00.000Z");
-    setCreated(db, gone, "2026-11-13T03:00:00.000Z");
+    setCreated(db, keep, localIso(13));
+    setCreated(db, gone, localIso(13, 3));
     db.prepare("UPDATE memories SET status='deleted' WHERE id=?").run(gone);
 
     const t = memoryTrend(db, { days: 4, now });
@@ -123,7 +134,7 @@ test("衰减曲线：横轴是记忆年龄，保留率 = weight / w0", () => {
     const fresh = remember(db, { layer: "narrative", kind: "fact", text: "今天的", importance: 5, now });
     // 40 天前记的：w0=1，掉到 0.4
     const old = remember(db, { layer: "narrative", kind: "fact", text: "很久前的", importance: 5, now });
-    setCreated(db, old, "2026-10-06T02:00:00.000Z");
+    setCreated(db, old, new Date(2026, 9, 6, 2, 0, 0).toISOString());
     // w0 由 importance 推导，不是常数 —— 不显式钉住就会算出 1.205 这种「>1」的保留率。
     // 顺便说明：keep 可以 >1（被召回加强过），这里**不 clamp**，clamp 等于抹掉真实情况。
     db.prepare("UPDATE memories SET w0=1, weight=0.4 WHERE id=?").run(old);
