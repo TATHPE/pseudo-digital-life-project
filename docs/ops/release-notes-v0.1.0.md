@@ -28,7 +28,7 @@ SHA-256：`3a6f1ce30cbcdcd5625d5d8c8caa0c320bcb07b3e377e9359d6f9d5de4ed5eef`
 
 ### 已知边界（不因重发而改变）
 
-- **仓库仍私有**：Release 与资产仅协作者可见；公开下载需先转公开（owner 决定，未撤销 11-15 的私有化）
+- **仓库 2026-11-17 转公开**（owner 决定，撤销 11-15 的私有化）：Release 与资产公开可下载；代码 MIT，内置 Cubism Core 与 ruic 形象的许可边界见上条
 - WSL / 视觉 / TTS / 陪伴互通仍是「源码 + 单测 + 独立 JJ_HOME 真机」级，**未在用户真机 / 干净机器 / 云端模型端到端验**（`docs/ops/22 §0.5`）
 - 安装包内置 Cubism Core（Live2D 官方许可：个人 / 小规模免费，商业分发另循许可）与鲸鱼娘 mesh 形象
   （立绘经 RuiC-2D 生成，见 `src/web/static/pal/VENDOR.md`）；导入的 Live2D 公皮在数据目录，不随包分发

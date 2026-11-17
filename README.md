@@ -33,8 +33,8 @@ There is exactly one interface, a **notebook**: days down the left, prose in the
 
 > **2026-11-17 correction (supersedes the 11-15 "no installer" note)**: distribution is back — Release **v0.1.0**
 > (version reset: the old `v0.1.0` tag now points at this release; `v0.1.1` remains as history) ships a clean
-> `PDLP-0.1.0-x64-setup.exe`. **The repository is still private** (the 11-15 decision stands): the release and
-> its assets are visible to collaborators only; public downloads require making the repo public first.
+> `PDLP-0.1.0-x64-setup.exe`. **The repository was made public on 2026-11-17** (owner decision,
+> reversing the 11-15 privatization): the release and its assets are publicly downloadable.
 > Verification and distribution status: workspace `docs/ops/22 §0.5`.
 
 ## Companion mode
@@ -67,7 +67,7 @@ Four themes (ledger black-on-white compact / hermes paper-white wide / daylight 
 ### Installer (Windows x64)
 
 Download `PDLP-0.1.0-x64-setup.exe` from [Releases](https://github.com/TATHPE/pseudo-digital-life-project/releases) (**v0.1.0**),
-verify the SHA-256 published in the release notes, then install (the repo is private; collaborator access required).
+verify the SHA-256 published in the release notes, then install.
 Uninstall any older build first: the installer only removes files in its manifest, leftover directories (notably a nested `persona/`) survive an over-install.
 
 First launch opens a guided setup (eight steps): environment check → install Ollama → pull embedding model → pull chat model → (optional) API key → persona → smoke test → first sentence.
@@ -149,7 +149,7 @@ After changing the assembly fixtures or the embed model, run `--refresh-embeddin
 - If you skip the setup guide, chat only works when a local chat model is installed: it then falls back to that model, which **cannot use tools** and says so in the top bar. With no local model, the banner keeps telling you to configure one
 - Task orchestration advances one step per tick and stops after two steps without progress; there is no planning tree, no parallelism
 - `memory.db` is plain SQLite; secrets are sealed with DPAPI and do not survive a machine move
-- No **silent** auto-update: new versions are downloaded, SHA-256 verified and installed manually (`/api/version` reports the installed build; see [`docs/ops/26`](docs/ops/26-更新与卸载策略.md)); the Release channel is back as of 2026-11-17 (v0.1.0, private repo); no system integration beyond the tray, single user
+- No **silent** auto-update: new versions are downloaded, SHA-256 verified and installed manually (`/api/version` reports the installed build; see [`docs/ops/26`](docs/ops/26-更新与卸载策略.md)); the Release channel is back as of 2026-11-17 (v0.1.0, public repo); no system integration beyond the tray, single user
 - The installer bundles the Cubism Core and the whale-girl mesh rig: the former follows the Live2D official license (free for personal / small-scale use; commercial distribution needs its own terms), the latter is generated from artwork via RuiC-2D (see `src/web/static/pal/VENDOR.md`); Live2D models you import stay in your data directory and are **never shipped with the installer**
 - P10 still lets 1–2 weakly related memories in: vector candidates have no relevance floor (cos 0.49–0.60 lands next to a true hit at 0.72). A threshold would cut the true hits too; a cross-encoder was evaluated and deliberately dropped on 2026-11-10 (see `docs/ops/24`), so this is an accepted known limit
 ## License
