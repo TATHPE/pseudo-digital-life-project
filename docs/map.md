@@ -9,7 +9,7 @@
 | 项 | 数量 |
 |---|---|
 | 源文件（src/**/*.ts） | 138 |
-| 错误码 E_* | 281 |
+| 错误码 E_* | 283 |
 | verbs | 33 |
 | CLI 子命令 | 42 |
 
@@ -59,6 +59,7 @@
 | `E_BAD_STEP` | `src/web/routes/setup.ts` |
 | `E_BAD_TARGET` | `src/decayparams.ts` `src/permcheck.ts` |
 | `E_BAD_TEMPLATE` | `src/shell.ts` |
+| `E_BAD_TEST` | `src/web/routes/setup.ts` |
 | `E_BAD_THEME` | `src/web/routes/config.ts` |
 | `E_BAD_VERSION` | `src/release.ts` |
 | `E_BAD_VOLUME` | `src/config-custom.ts` `src/web/routes/config.ts` |
@@ -248,6 +249,7 @@
 | `E_STANDING_WHEN` | `src/standing.ts` |
 | `E_STEER_EMPTY` | `src/web/server.ts` |
 | `E_STEER_MODEL` | `src/web/server.ts` |
+| `E_STEP_MISMATCH` | `src/web/routes/setup.ts` |
 | `E_SUPER_KEEP` | `src/grant.ts` `src/verbs.ts` |
 | `E_SUPER_STILL_DENY` | `src/grant.ts` |
 | `E_TAINT_CONTRACT` | `src/store.ts` |

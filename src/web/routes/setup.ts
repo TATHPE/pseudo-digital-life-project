@@ -6,7 +6,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { readJson } from "../body.ts";
 import type { DatabaseSync } from "node:sqlite";
 import { readFileConfig } from "../../configfile.ts";
-import { readSession, startSetup, skipSetup, pauseSetup, resumeSetup, backSetup, undoSetup, detect, SETUP_STEPS, type SetupStep } from "../../setup.ts";
+import { readSession, startSetup, skipSetup, skipOneStep, pauseSetup, resumeSetup, backSetup, undoSetup, detect, SETUP_STEPS, type SetupStep } from "../../setup.ts";
 import { runStep } from "../../setupsteps.ts";
 import { appendEvent, newEventId } from "../../journal.ts";
 import type { Provider } from "../../auth.ts";
@@ -73,6 +73,39 @@ export interface SetupCtx {
 
 export async function handleSetup(ctx: SetupCtx): Promise<boolean> {
   const { req, res, url, deps, now, json, readBody, writeGuarded, secrets } = ctx;
+      // ── 测试云端连接（2026-11-19）：保存配置前先真跑一个最小请求 ──
+      if (req.method === "POST" && url.pathname === "/api/setup/test-express") {
+        const g = writeGuarded(req); if (!g.ok) { json(res, 403, { error: g.reason }); return true; }
+        const body = await readJson(req) as { provider?: string; model?: string; key?: string };
+        const provider = String(body.provider ?? "").trim();
+        const model = String(body.model ?? "").trim();
+        const key = String(body.key ?? "").trim();
+        if (!provider || !model) { json(res, 400, { error: "E_BAD_TEST", why: "服务商和模型都要填" }); return true; }
+        try {
+          const { resolveConfig } = await import("../../configfile.ts");
+          const { createChatTransport, routerFrom } = await import("../../transport.ts");
+          const cfg = resolveConfig(deps.home);
+          const role = { ...cfg.roles["express"]!, provider: provider as never, model, kind: "cloud" as const };
+          const keys: Record<string, string> = {};
+          if (key) keys[provider] = key;
+          else {
+            const { createStore } = await import("../../auth.ts");
+            const saved = createStore(`${deps.home}/secrets`).get(provider as never);
+            if (saved) keys[provider] = saved;
+          }
+          const chat = createChatTransport(routerFrom({ ...cfg.roles, express: role } as never), { apiKeys: keys });
+          let out = "";
+          const t0 = Date.now();
+          for await (const ev of chat.chat("express", [{ role: "user", content: "只回一个字：在" }], {
+            containsMemory: false, purpose: "setup-test", maxTokens: 32, temperature: 0,
+          })) { if (ev.type === "delta") out += ev.text; }
+          json(res, 200, { ok: true, ms: Date.now() - t0, reply: out.trim().slice(0, 40) || "（空回复）" });
+        } catch (e) {
+          json(res, 200, { ok: false, why: String((e as Error).message ?? e).slice(0, 240) });
+        }
+        return true;
+      }
+
       // ── 人格访谈（H-4 ⑥）：5 问 → 6 块草稿 → 逐块确认 → 封存 ──
       if (req.method === "GET" && url.pathname === "/api/setup/interview") {
         const iv = await import("../../interview.ts");
@@ -221,6 +254,15 @@ export async function handleSetup(ctx: SetupCtx): Promise<boolean> {
         if (body.action === "start") { json(res, 200, { ok: true, session: startSetup(deps.home) }); return true; }
         if (body.action === "pause") { json(res, 200, { ok: true, session: pauseSetup(deps.home) }); return true; }
         if (body.action === "skip") { json(res, 200, { ok: true, session: skipSetup(deps.home) }); return true; }
+        // 单步跳过：**不执行**那一步，只推进指针（与 action:run 分开，别再被 confirm 误读成真跑）
+        if (body.action === "skipStep") {
+          const step = String(body.step ?? "") as SetupStep;
+          if (!SETUP_STEPS.includes(step)) { json(res, 400, { error: "E_BAD_STEP" }); return true; }
+          const cur = readSession(deps.home)?.step ?? "detect";
+          if (step !== cur) { json(res, 409, { error: "E_STEP_MISMATCH", why: `当前停在 ${cur}，不能跳过 ${step}` }); return true; }
+          json(res, 200, { ok: true, session: skipOneStep(deps.home, step, now()) });
+          return true;
+        }
         if (body.action === "resume") { json(res, 200, { ok: true, session: resumeSetup(deps.home) }); return true; }
         if (body.action === "back") { json(res, 200, { ok: true, session: backSetup(deps.home) }); return true; }
         if (body.action === "run") {

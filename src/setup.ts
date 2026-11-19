@@ -126,6 +126,24 @@ export function completeStep(home: string, step: SetupStep, ok: boolean, note: s
   return s;
 }
 
+/**
+ * 跳过单步：只把进度指针往前挪一格，**不执行那一步**。
+ *
+ * 2026-11-19 修：前端的「跳过这步」以前发 `action:'run' + confirm:true`，
+ * 后端 run 分支不读 confirm，于是「跳过」真去装 Ollama / 拉模型了。
+ * 现在走这条专用路径，log 里如实记 ok:false + 「用户跳过」，不假装成功。
+ */
+export function skipOneStep(home: string, step: SetupStep, now = new Date()): SetupSession {
+  const s = readSession(home) ?? startSetup(home, now);
+  const i = SETUP_STEPS.indexOf(step);
+  s.log.push({ step, at: now.toISOString(), ok: false, note: "用户跳过这一步" });
+  s.step = i >= 0 && i + 1 < SETUP_STEPS.length ? SETUP_STEPS[i + 1]! : step;
+  if (step === "first") s.status = "done";
+  s.updatedAt = now.toISOString();
+  writeSession(home, s);
+  return s;
+}
+
 /** 暂停：停在步骤边界（已经记账的东西**不清**，因为还没终止） */
 export function pauseSetup(home: string, now = new Date()): SetupSession {
   const s = readSession(home) ?? startSetup(home, now);
