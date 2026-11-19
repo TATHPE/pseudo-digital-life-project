@@ -327,7 +327,13 @@ export function createWebServer(deps: WebDeps) {
           const bootMod2 = await import("./boot.ts");
           const splash2 = bootMod2.splashMode(readFileConfig(deps.home).ui);
           const bootHtml = splash2 === "off" ? "" : bootMod2.bootOverlay(splash2 === "simple" ? "simple" : "full");
-          const page = WELCOME.split("{{AGENT}}").join(nm).split("<!--BOOT-->").join(bootHtml);
+          // 主题也要跟主面板一致：否则引导页是碳黑、进主界面突然变日光（2026-11-19）
+          const thW = readFileConfig(deps.home).ui?.theme ?? "carbon";
+          const themeAttrW = thW !== "ledger" && UI_THEMES.includes(thW) ? ' data-theme="' + thW + '"' : "";
+          const page = WELCOME
+            .replace("<html lang='zh-CN'>", "<html lang='zh-CN'" + themeAttrW + ">")
+            .split("{{AGENT}}").join(nm)
+            .split("<!--BOOT-->").join(bootHtml);
           res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
           res.end(req.method === "HEAD" ? undefined : page);
           return;

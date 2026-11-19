@@ -1,5 +1,5 @@
 <!-- 自动生成，勿手改；重生成 npm run status，漂移由 npm run status:check 抓 -->
-生成时间：2026-11-17T12:48:56.639Z
+生成时间：2026-11-19T06:45:08.600Z
 # 当前事实（STATUS）
 
 > 机器事实只信本文件：`npm run status` 重生成，`npm run status:check` 抓漂移（挂在 npm run check 与 release:check 上）。
@@ -11,9 +11,9 @@
 
 | 项 | 值 |
 |---|---|
-| HEAD | `4fc6ca3`（main） |
-| origin/main | `4fc6ca3`（ahead 0 / behind 0） |
-| 未提交改动 | 9 个文件（不含本文件） |
+| HEAD | `9b424b1`（main） |
+| origin/main | `9b424b1`（ahead 0 / behind 0） |
+| 未提交改动 | 2 个文件（不含本文件） |
 
 | 项 | 值 |
 |---|---|
@@ -29,4 +29,4 @@
 |---|---|
 | HEAD | `c2eaa34`（main） |
 | origin/main | 无 origin/main（本地提交为主） |
-| 未提交改动 | 0 个文件（不含本文件） |
+| 未提交改动 | 2 个文件（不含本文件） |
